@@ -1,0 +1,11 @@
+{
+  "index": 1,
+  "method": "POST",
+  "url": "/api/auth/refresh",
+  "statusCode": 401,
+  "statusText": "Unauthorized",
+  "durationMs": 30,
+  "payloadSize": "28 B",
+  "timestamp": "13:01:09.360",
+  "failed": true
+}

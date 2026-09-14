@@ -1,0 +1,105 @@
+{
+  "schemaVersion": "1.0",
+  "productName": "Portal",
+  "sessionId": "2026-09-14-1245",
+  "timing": {
+    "startedAt": "2026-09-14T12:45:41.7969199-04:00",
+    "endedAt": "2026-09-14T13:02:46.1003958-04:00",
+    "durationSeconds": 1024.3,
+    "formattedDuration": "17m 04s"
+  },
+  "environment": {
+    "baseUrl": "localhost:5175/portal/",
+    "activePage": "/",
+    "urlsTested": [
+      "http://localhost:5175/portal/"
+    ]
+  },
+  "summary": {
+    "assessment": "Issues Found",
+    "totalBugs": 1,
+    "blockers": 1,
+    "critical": 0,
+    "bugs": 0,
+    "minor": 0,
+    "consoleErrors": 5,
+    "networkFailures": 11,
+    "screenshotsCaptured": 1,
+    "apiCalls": 11
+  },
+  "bugs": [
+    {
+      "index": 1,
+      "id": 11,
+      "uuid": "03f3fa5f",
+      "severity": "Blocker",
+      "status": "Open",
+      "gitIssueNumber": null,
+      "resolution": null,
+      "resolutionReason": null,
+      "isDesign": false,
+      "title": "",
+      "notes": "Portal -\u003E Login as a Customer account and I am told I need to logout and login to the Admin Panel.\n\n![screenshot](C:\\Users\\Ronnie\\AppData\\Roaming\\BuildConsole\\visual-test-screenshots\\localhost_5175_portal\\_\\2026-09-14_13-00-37-161.png)",
+      "stepsToReproduce": "",
+      "expectedBehavior": "",
+      "actualBehavior": "",
+      "tags": [],
+      "url": "http://localhost:5175/portal/",
+      "pageTitle": "",
+      "browserVersion": "",
+      "osVersion": "",
+      "windowSize": "",
+      "viewportSize": "",
+      "userAgent": "",
+      "createdAt": "2026-09-14T13:00:41.1749355-04:00",
+      "performance": null,
+      "screenshots": [
+        "2026-09-14_13-00-37-161.png"
+      ]
+    }
+  ],
+  "consoleErrors": [
+    {
+      "Level": "exception",
+      "Message": "Uncaught TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.",
+      "StackTrace": "TypeError: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "Timestamp": "13:01:08.715"
+    },
+    {
+      "Level": "exception",
+      "Message": "TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "StackTrace": " (:15:17)\r\n (:20:2)",
+      "Timestamp": "13:00:59.641"
+    },
+    {
+      "Level": "exception",
+      "Message": "TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "StackTrace": " (:15:17)\r\n (:20:2)",
+      "Timestamp": "13:00:59.642"
+    },
+    {
+      "Level": "exception",
+      "Message": "TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "StackTrace": " (:15:17)\r\n (:20:2)",
+      "Timestamp": "13:01:08.721"
+    },
+    {
+      "Level": "exception",
+      "Message": "TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "StackTrace": " (:15:17)\r\n (:20:2)",
+      "Timestamp": "13:01:08.721"
+    }
+  ],
+  "commandsExecuted": [],
+  "screenshots": [
+    "screenshots/screenshot-01.png"
+  ],
+  "artifacts": {
+    "summaryMarkdown": "summary.md",
+    "consoleJson": "console/console.json",
+    "notesMarkdown": "notes/notes.md",
+    "apiDirectory": "api/",
+    "screenshotsDirectory": "screenshots/",
+    "attachmentsDirectory": "attachments/"
+  }
+}

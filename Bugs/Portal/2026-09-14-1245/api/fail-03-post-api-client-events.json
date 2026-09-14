@@ -1,0 +1,11 @@
+{
+  "index": 3,
+  "method": "POST",
+  "url": "/api/client-events",
+  "statusCode": 403,
+  "statusText": "Forbidden",
+  "durationMs": 322,
+  "payloadSize": "577 B",
+  "timestamp": "13:02:25.907",
+  "failed": true
+}

@@ -1,0 +1,11 @@
+{
+  "index": 8,
+  "method": "GET",
+  "url": "http://localhost:5174/api/admin/analytics/live",
+  "statusCode": 503,
+  "statusText": "Service Unavailable",
+  "durationMs": 321,
+  "payloadSize": "37 B",
+  "timestamp": "13:02:21.497",
+  "failed": true
+}

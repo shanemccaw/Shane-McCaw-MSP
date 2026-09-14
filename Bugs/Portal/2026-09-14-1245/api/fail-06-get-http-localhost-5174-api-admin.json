@@ -1,0 +1,11 @@
+{
+  "index": 6,
+  "method": "GET",
+  "url": "http://localhost:5174/api/admin/emails/unread-count",
+  "statusCode": 401,
+  "statusText": "Unauthorized",
+  "durationMs": 315,
+  "payloadSize": "96 B",
+  "timestamp": "13:01:23.487",
+  "failed": true
+}

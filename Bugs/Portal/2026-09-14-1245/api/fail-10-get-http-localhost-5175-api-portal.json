@@ -1,0 +1,11 @@
+{
+  "index": 10,
+  "method": "GET",
+  "url": "http://localhost:5175/api/portal/theme-preference",
+  "statusCode": 403,
+  "statusText": "Forbidden",
+  "durationMs": 63,
+  "payloadSize": "577 B",
+  "timestamp": "13:02:25.584",
+  "failed": true
+}

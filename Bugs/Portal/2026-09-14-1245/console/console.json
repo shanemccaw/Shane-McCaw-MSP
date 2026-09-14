@@ -1,0 +1,93 @@
+{
+  "sessionId": "2026-09-14-1245",
+  "capturedAt": "2026-09-14T13:02:55.4268299-04:00",
+  "totalLogs": 14,
+  "errorCount": 5,
+  "warningCount": 2,
+  "logs": [
+    {
+      "Level": "exception",
+      "Message": "Uncaught TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.",
+      "StackTrace": "TypeError: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "Timestamp": "13:01:08.715"
+    },
+    {
+      "Level": "info",
+      "Message": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold",
+      "StackTrace": "",
+      "Timestamp": "13:01:09.145"
+    },
+    {
+      "Level": "info",
+      "Message": "[admin.shell] workspace: System [object Object]",
+      "StackTrace": "",
+      "Timestamp": "12:59:19.448"
+    },
+    {
+      "Level": "info",
+      "Message": "[admin.shell] workspace: System Object",
+      "StackTrace": " (:83:31)\r\nemit (http://localhost:5174/admin-panel/src/lib/logger.ts:12:12)\r\ninfo (http://localhost:5174/admin-panel/src/lib/logger.ts:25:22)\r\n (http://localhost:5174/admin-panel/src/components/GlobalIDEShell.tsx:746:10)\r\nreact-stack-bottom-frame (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:17477:19)\r\nrunWithFiberInDEV (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:1484:71)\r\ncommitHookEffectListMount (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:8459:121)\r\ncommitHookPassiveMountEffects (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:8517:59)\r\ncommitPassiveMountOnFiber (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9886:28)\r\nrecursivelyTraversePassiveMountEffects (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9867:12)\r\ncommitPassiveMountOnFiber (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9880:12)\r\nrecursivelyTraversePassiveMountEffects (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9867:12)\r\ncommitPassiveMountOnFiber (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9880:12)\r\nrecursivelyTraversePassiveMountEffects (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9867:12)\r\ncommitPassiveMountOnFiber (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9983:12)\r\nrecursivelyTraversePassiveMountEffects (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9867:12)\r\ncommitPassiveMountOnFiber (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9880:12)\r\nrecursivelyTraversePassiveMountEffects (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9867:12)\r\ncommitPassiveMountOnFiber (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9880:12)\r\nrecursivelyTraversePassiveMountEffects (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9867:12)\r\ncommitPassiveMountOnFiber (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9880:12)\r\nrecursivelyTraversePassiveMountEffects (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9867:12)\r\ncommitPassiveMountOnFiber (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9983:12)\r\nrecursivelyTraversePassiveMountEffects (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9867:12)\r\ncommitPassiveMountOnFiber (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9880:12)\r\nrecursivelyTraversePassiveMountEffects (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9867:12)\r\ncommitPassiveMountOnFiber (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9983:12)\r\nrecursivelyTraversePassiveMountEffects (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9867:12)\r\ncommitPassiveMountOnFiber (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9983:12)\r\nrecursivelyTraversePassiveMountEffects (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9867:12)\r\ncommitPassiveMountOnFiber (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9983:12)\r\nrecursivelyTraversePassiveMountEffects (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9867:12)\r\ncommitPassiveMountOnFiber (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9880:12)\r\nrecursivelyTraversePassiveMountEffects (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9867:12)\r\ncommitPassiveMountOnFiber (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9983:12)\r\nrecursivelyTraversePassiveMountEffects (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9867:12)\r\ncommitPassiveMountOnFiber (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9880:12)\r\nrecursivelyTraversePassiveMountEffects (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9867:12)\r\ncommitPassiveMountOnFiber (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9983:12)\r\nrecursivelyTraversePassiveMountEffects (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9867:12)\r\ncommitPassiveMountOnFiber (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9880:12)\r\nrecursivelyTraversePassiveMountEffects (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9867:12)\r\ncommitPassiveMountOnFiber (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9880:12)\r\nrecursivelyTraversePassiveMountEffects (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9867:12)\r\ncommitPassiveMountOnFiber (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:9898:12)\r\nflushPassiveEffects (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:11301:10)\r\nflushPendingEffects (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:11275:15)\r\nperformSyncWorkOnRoot (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:11631:12)\r\nflushSyncWorkAcrossRoots_impl (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:11535:121)\r\nflushSpawnedWork (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:11253:10)\r\ncommitRoot (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:11080:10)\r\ncommitRootWhenReady (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:10511:8)\r\nperformWorkOnRoot (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:10456:16)\r\nperformWorkOnRootViaSchedulerTask (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:11622:8)\r\nperformWorkUntilDeadline (http://localhost:5174/admin-panel/node_modules/.vite/deps/chunk-AE322PLF.js?v=dc936ff6:35:49)",
+      "Timestamp": "12:59:19.450"
+    },
+    {
+      "Level": "warn",
+      "Message": "[admin.shell] live-visitor stream unavailable \u2014 falling back to polling",
+      "StackTrace": "",
+      "Timestamp": "12:59:20.380"
+    },
+    {
+      "Level": "warn",
+      "Message": "[admin.shell] live-visitor stream unavailable \u2014 falling back to polling",
+      "StackTrace": " (:83:31)\r\nemit (http://localhost:5174/admin-panel/src/lib/logger.ts:13:7)\r\nwarn (http://localhost:5174/admin-panel/src/lib/logger.ts:26:22)\r\nconnect (http://localhost:5174/admin-panel/src/components/GlobalIDEShell.tsx:1042:12)",
+      "Timestamp": "12:59:20.380"
+    },
+    {
+      "Level": "exception",
+      "Message": "TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "StackTrace": " (:15:17)\r\n (:20:2)",
+      "Timestamp": "13:00:59.641"
+    },
+    {
+      "Level": "exception",
+      "Message": "TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "StackTrace": " (:15:17)\r\n (:20:2)",
+      "Timestamp": "13:00:59.642"
+    },
+    {
+      "Level": "exception",
+      "Message": "TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "StackTrace": " (:15:17)\r\n (:20:2)",
+      "Timestamp": "13:01:08.721"
+    },
+    {
+      "Level": "exception",
+      "Message": "TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "StackTrace": " (:15:17)\r\n (:20:2)",
+      "Timestamp": "13:01:08.721"
+    },
+    {
+      "Level": "debug",
+      "Message": "[vite] connecting... (http://localhost:5175/portal/@vite/client:733)",
+      "StackTrace": "",
+      "Timestamp": "13:01:08.763"
+    },
+    {
+      "Level": "debug",
+      "Message": "[vite] connecting...",
+      "StackTrace": " (http://localhost:5175/portal/@vite/client:732:8)",
+      "Timestamp": "13:01:08.763"
+    },
+    {
+      "Level": "debug",
+      "Message": "[vite] connected. (http://localhost:5175/portal/@vite/client:827)",
+      "StackTrace": "",
+      "Timestamp": "13:01:09.337"
+    },
+    {
+      "Level": "debug",
+      "Message": "[vite] connected.",
+      "StackTrace": "handleMessage (http://localhost:5175/portal/@vite/client:826:11)\r\n (http://localhost:5175/portal/@vite/client:457:41)\r\ndequeue (http://localhost:5175/portal/@vite/client:479:7)\r\n (http://localhost:5175/portal/@vite/client:471:8)\r\nenqueue (http://localhost:5175/portal/@vite/client:465:9)\r\n (http://localhost:5175/portal/@vite/client:457:27)\r\nonMessage (http://localhost:5175/portal/@vite/client:304:5)\r\n (http://localhost:5175/portal/@vite/client:412:4)",
+      "Timestamp": "13:01:09.337"
+    }
+  ]
+}
