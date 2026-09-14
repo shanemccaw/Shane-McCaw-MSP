@@ -62,8 +62,11 @@ namespace BuildConsole.Controls
             };
         }
 
-        public void AttachWebView(WebView2? webView, string baseUrl, string pagePath)
+        public async void AttachWebView(WebView2? webView, string baseUrl, string pagePath)
         {
+            var previousWebView = _activeWebView;
+            bool isTabSwitch = previousWebView != null && !ReferenceEquals(previousWebView, webView);
+
             if (_activeWebView?.CoreWebView2 != null)
             {
                 try { _activeWebView.CoreWebView2.WebMessageReceived -= OnActiveWebView_WebMessageReceived; } catch { }
@@ -102,6 +105,14 @@ namespace BuildConsole.Controls
             else
             {
                 UpdateTelemetry();
+            }
+
+            // Stop the DOM Inspector's in-page listeners on the tab we just left — otherwise
+            // they keep running unthrottled in that tab's own document (Git #3990).
+            if (isTabSwitch && previousWebView?.CoreWebView2 != null)
+            {
+                await VisualTestTrackerTelemetry.DisableDomInspectorAsync(previousWebView);
+                await VisualTestTrackerTelemetry.DisableDomMutationObserverAsync(previousWebView);
             }
         }
 
@@ -223,8 +234,10 @@ namespace BuildConsole.Controls
             catch { }
         }
 
-        public void ClearActiveTab()
+        public async void ClearActiveTab()
         {
+            var webViewToStop = _activeWebView;
+
             if (_activeWebView?.CoreWebView2 != null)
             {
                 try { _activeWebView.CoreWebView2.WebMessageReceived -= OnActiveWebView_WebMessageReceived; } catch { }
@@ -237,6 +250,15 @@ namespace BuildConsole.Controls
             _activeBaseUrl = "";
             _activePagePath = "";
             UpdateTelemetry();
+
+            // Run the DOM Inspector's real stop script inside the page's own JS context — without
+            // this, its unthrottled mousemove/click listeners keep running on that tab after Test
+            // Mode exits, lagging the tab and swallowing clicks in normal Build Mode (Git #3990).
+            if (webViewToStop?.CoreWebView2 != null)
+            {
+                await VisualTestTrackerTelemetry.DisableDomInspectorAsync(webViewToStop);
+                await VisualTestTrackerTelemetry.DisableDomMutationObserverAsync(webViewToStop);
+            }
         }
 
         public async void UpdateTelemetry()
