@@ -52,7 +52,7 @@ import {
   wfRunsTable,
   wfVersionsTable,
 } from "@workspace/db";
-import { eq, inArray, sql } from "drizzle-orm";
+import { desc, eq, inArray, sql } from "drizzle-orm";
 
 const liveMode = vi.hoisted(() => ({
   store: "real" as "real" | "stub",
@@ -86,6 +86,25 @@ vi.mock("../lib/generated-secret-store.ts", async (importOriginal) => {
   };
 });
 
+// #4041 — invite and reveal are exercised through the real routes. Two things are
+// stubbed at the edges: the portal session (requireAuth / assertCustomerAccess —
+// not what is under test) and the outgoing invite email, which would otherwise
+// send real mail to the synthetic identity. The rows, the routes and the
+// Microsoft token endpoint stay real.
+const liveInvites = vi.hoisted(() => ({ sent: [] as string[] }));
+vi.mock("../lib/mailer.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/mailer.ts")>();
+  return { ...actual, sendEmailForMspOrThrow: async (_mspId: number, to: string) => { liveInvites.sent.push(to); } };
+});
+vi.mock("../middlewares/requireAuth.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../middlewares/requireAuth.ts")>();
+  return {
+    ...actual,
+    requireAuth: (req: { user?: unknown }, _res: unknown, next: () => void) => { req.user = { id: 0, role: "admin", mspRole: null }; next(); },
+    assertCustomerAccess: async () => true,
+  };
+});
+
 vi.mock("../lib/graph.ts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/graph.ts")>();
   return {
@@ -97,10 +116,15 @@ vi.mock("../lib/graph.ts", async (importOriginal) => {
   };
 });
 
+import express from "express";
+import type { AddressInfo } from "node:net";
+import type { Server } from "node:http";
+import { createHmac, randomBytes } from "node:crypto";
 import { fireWorkflowForDefinition } from "../lib/workflow-executor.ts";
 import { generatedSecretStoreConfigured } from "../lib/generated-secret-store.ts";
 import { graphFetchForTenant } from "../lib/graph.ts";
-import {
+import breakGlassRouter, {
+  CREDENTIAL_UNCERTAIN_ERROR,
   generateStrongPassword,
   performBreakGlassAdminOverride,
   resolvePendingContext,
@@ -150,7 +174,62 @@ async function overrideOnce(mutate?: (ctx: NonNullable<Awaited<ReturnType<typeof
   return performBreakGlassAdminOverride(ctx!, pendingId, 0, "zz-test #4029 live verify", undefined);
 }
 
+// ── #4041 — the real router on an ephemeral port ─────────────────────────────
+let server: Server | null = null;
+let baseUrl = "";
+async function api(): Promise<string> {
+  if (server) return baseUrl;
+  const app = express();
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: false }));
+  app.use((req, _res, next) => { (req as unknown as { log: unknown }).log = console; next(); });
+  app.use("/api", breakGlassRouter);
+  server = app.listen(0);
+  await new Promise<void>((r) => server!.once("listening", () => r()));
+  baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
+  return baseUrl;
+}
+
+/** The route's own state format: `${token}.${hmac-sha256(JWT_SECRET, token)}`. */
+const signedState = (token: string) =>
+  `${token}.${createHmac("sha256", process.env.JWT_SECRET!).update(token).digest("hex")}`;
+
+/** A link as it exists when the row is marked — issued before, or racing, the override. */
+async function insertLink(secretId: number): Promise<{ id: number; linkToken: string }> {
+  const linkToken = `zz-test-4041-${randomBytes(24).toString("hex")}`;
+  const [row] = await db.insert(breakGlassVerificationAttemptsTable).values({
+    pendingSecretId: secretId, initiatedByPortalUserId: 0, invitedEmail: TEST_USER_UPN,
+    linkToken, linkStatus: "pending", failedAttemptCount: 0,
+  }).returning({ id: breakGlassVerificationAttemptsTable.id });
+  return { id: row.id, linkToken };
+}
+
+async function linkStatusOf(attemptId: number): Promise<string | undefined> {
+  const [row] = await db.select({ linkStatus: breakGlassVerificationAttemptsTable.linkStatus })
+    .from(breakGlassVerificationAttemptsTable).where(eq(breakGlassVerificationAttemptsTable.id, attemptId)).limit(1);
+  return row?.linkStatus;
+}
+
+async function uncertainAtOf(secretId: number): Promise<Date | null | undefined> {
+  const [row] = await db.select({ at: breakGlassPendingSecretsTable.credentialUncertainAt })
+    .from(breakGlassPendingSecretsTable).where(eq(breakGlassPendingSecretsTable.id, secretId)).limit(1);
+  return row?.at;
+}
+
+/** Counts calls the callback makes to Microsoft's token endpoint, without altering them. */
+function watchTokenExchanges(): { count: () => number; restore: () => void } {
+  const real = globalThis.fetch;
+  let n = 0;
+  const spy = vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (url.startsWith("https://login.microsoftonline.com/") && url.includes("/oauth2/v2.0/token")) n += 1;
+    return real(input, init);
+  });
+  return { count: () => n, restore: () => spy.mockRestore() };
+}
+
 afterAll(async () => {
+  if (server) await new Promise<void>((r) => server!.close(() => r()));
   if (runId) {
     const secretIds = (await db.select({ id: breakGlassPendingSecretsTable.id })
       .from(breakGlassPendingSecretsTable)
@@ -317,6 +396,8 @@ describe("#4015 / #4029 — break-glass admin-override against the gated account
 
     const rows = await runSecrets();
     expect(rows.map((r) => r.status)).toEqual(["pending_delivery"]);
+    // #4041 — nothing changed on the tenant, so the marker written before the reset was put back.
+    expect(rows[0].credentialUncertainAt).toBeNull();
   }, 60_000);
 
   it("#4029 — reset lands but recording fails: the replacement is kept and the row stays overridable", async () => {
@@ -347,13 +428,69 @@ describe("#4015 / #4029 — break-glass admin-override against the gated account
     passwordChangedBefore = changed;
   }, 120_000);
 
+  it("#4041 — the unrecorded reset is persisted on the row", async () => {
+    const at = await uncertainAtOf(pendingId);
+    console.log("[#4041] credential_uncertain_at after replacement_unrecorded:", at);
+    expect(at).toBeInstanceOf(Date);
+  });
+
+  it("#4041 — invite is refused while the row is marked", async () => {
+    const base = await api();
+    const sentBefore = liveInvites.sent.length;
+    const res = await fetch(`${base}/portal/break-glass/${pendingId}/invite`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ emails: [TEST_USER_UPN] }),
+    });
+    const body = await res.json();
+    console.log("[#4041] invite while marked:", res.status, body);
+    expect(res.status).toBe(409);
+    expect(body).toEqual({ error: CREDENTIAL_UNCERTAIN_ERROR, detail: "credential_uncertain" });
+    expect(liveInvites.sent.length).toBe(sentBefore);
+    const links = await db.select().from(breakGlassVerificationAttemptsTable)
+      .where(eq(breakGlassVerificationAttemptsTable.pendingSecretId, pendingId));
+    expect(links).toEqual([]);
+  });
+
+  it("#4041 — reveal is refused while the row is marked, and the link is retired rather than left live", async () => {
+    const base = await api();
+    const exchanges = watchTokenExchanges();
+    try {
+      // The landing redirect refuses before sending anyone to Microsoft.
+      const first = await insertLink(pendingId);
+      const landing = await fetch(`${base}/public/break-glass/verify/${first.linkToken}`, { redirect: "manual" });
+      const landingHtml = await landing.text();
+      console.log("[#4041] verify link while marked:", landing.status, landing.headers.get("location"));
+      expect(landing.status).toBe(409);
+      expect(landingHtml).toContain("This credential cannot be delivered right now");
+      expect(await linkStatusOf(first.id)).toBe("superseded");
+
+      // The callback — where the credential is shown — refuses before exchanging the code.
+      const second = await insertLink(pendingId);
+      const callback = await fetch(
+        `${base}/public/break-glass/verify/callback?state=${encodeURIComponent(signedState(second.linkToken))}&code=zz-test-4041`,
+        { redirect: "manual" },
+      );
+      const callbackHtml = await callback.text();
+      console.log("[#4041] callback while marked:", callback.status);
+      expect(callback.status).toBe(409);
+      expect(callbackHtml).toContain("This credential cannot be delivered right now");
+      expect(callbackHtml).not.toContain('class="secret"');
+      expect(await linkStatusOf(second.id)).toBe("superseded");
+      expect(exchanges.count()).toBe(0);
+    } finally {
+      exchanges.restore();
+    }
+  });
+
   it("#4029 — running the override again issues a recorded, deliverable replacement", async () => {
     liveMode.store = "stub";
     const writesBefore = liveMode.graphWrites;
 
     const result = await overrideOnce();
     console.log("[#4029] recovery override:", result);
-    expect(result).toMatchObject({ ok: true, reissued: 0, sent: 0 });
+    // #4041 — the two retired links are what makes the override allowed, and their
+    // recipient is re-invited (one address, deduplicated) on the replacement.
+    expect(result).toMatchObject({ ok: true, reissued: 1, sent: 1 });
     expect(liveMode.graphWrites).toBe(writesBefore + 1);
     const newId = (result as { newPendingSecretId: number }).newPendingSecretId;
     replacementId = newId;
@@ -374,8 +511,64 @@ describe("#4015 / #4029 — break-glass admin-override against the gated account
     const changed = await waitForPasswordChange(passwordChangedBefore);
     console.log("[#4029] lastPasswordChangeDateTime after the recovery reset:", { before: passwordChangedBefore, after: changed });
     expect(changed).not.toBe(passwordChangedBefore);
+
+    // #4041 — the successful override clears the marker; the replacement starts clean.
+    expect(old?.credentialUncertainAt).toBeNull();
+    expect(replacement?.credentialUncertainAt).toBeNull();
     passwordChangedBefore = changed;
   }, 120_000);
+
+  it("#4041 — after the successful override, invite and reveal are allowed again", async () => {
+    expect(replacementId).not.toBe(0);
+    const base = await api();
+
+    const res = await fetch(`${base}/portal/break-glass/${replacementId}/invite`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ emails: [TEST_USER_UPN] }),
+    });
+    const body = await res.json();
+    console.log("[#4041] invite on the replacement:", res.status, body);
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ ok: true, invited: 1, sent: 1 });
+
+    const [link] = await db.select().from(breakGlassVerificationAttemptsTable)
+      .where(eq(breakGlassVerificationAttemptsTable.pendingSecretId, replacementId))
+      .orderBy(desc(breakGlassVerificationAttemptsTable.id)).limit(1);
+    expect(link.linkStatus).toBe("pending");
+
+    // The landing link now sends the recipient to their tenant's Microsoft sign-in.
+    const landing = await fetch(`${base}/public/break-glass/verify/${link.linkToken}`, { redirect: "manual" });
+    const location = landing.headers.get("location") ?? "";
+    console.log("[#4041] verify link on the replacement:", landing.status, location.split("?")[0]);
+    expect(landing.status).toBe(302);
+    expect(location.startsWith(`https://login.microsoftonline.com/${TESTBED_TENANT_ID}/oauth2/v2.0/authorize`)).toBe(true);
+
+    // The callback now gets as far as exchanging the code with Microsoft. A real
+    // Global Administrator sign-in is the one step no harness can perform, so the
+    // placeholder code is rejected there — past the #4041 check, not at it.
+    const exchanges = watchTokenExchanges();
+    try {
+      const callback = await fetch(
+        `${base}/public/break-glass/verify/callback?state=${encodeURIComponent(signedState(link.linkToken))}&code=zz-test-4041`,
+        { redirect: "manual" },
+      );
+      const html = await callback.text();
+      console.log("[#4041] callback on the replacement:", callback.status, "token exchanges:", exchanges.count());
+      expect(html).not.toContain("This credential cannot be delivered right now");
+      expect(exchanges.count()).toBe(1);
+      expect(callback.status).toBe(400);
+    } finally {
+      exchanges.restore();
+    }
+    expect(await linkStatusOf(link.id)).toBe("pending");
+
+    // Hand the next test a dead-ended handoff, as the 24h link expiry would: the
+    // #4040 pair below needs every link on the replacement terminal before either
+    // override may claim it.
+    await db.update(breakGlassVerificationAttemptsTable)
+      .set({ linkStatus: "expired", verificationOutcome: "expired" })
+      .where(eq(breakGlassVerificationAttemptsTable.pendingSecretId, replacementId));
+  }, 60_000);
 
   // #4040 — two overrides on the same pending secret, fired together. Both contexts
   // are read first, so both callers hold a row that says pending_delivery — the

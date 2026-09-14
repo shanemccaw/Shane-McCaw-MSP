@@ -91,6 +91,8 @@ export interface BreakGlassPending {
   customerName: string | null;
   status: string;
   createdAt: string;
+  /** #4041 — set while invites and reveals refuse pending a re-run admin-override. */
+  credentialUncertainAt: string | null;
   liveInviteCount: number;
   totalInviteCount: number;
 }

@@ -21,7 +21,7 @@
  * or the run payload — only { revealed, deliveredToEmail, timestamp } is logged.
  */
 
-import { Router, type Request, type Response } from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import { randomBytes, createHmac, timingSafeEqual } from "crypto";
 import { z } from "zod";
@@ -354,6 +354,32 @@ async function purgePendingSecretFromVault(
   }
 }
 
+/**
+ * Git #4041 — the refusal an operator sees when a row carries
+ * `credential_uncertain_at`: an earlier admin-override may have changed the tenant
+ * credential without recording a replacement, so what this row holds may be dead.
+ */
+export const CREDENTIAL_UNCERTAIN_ERROR =
+  "The last admin-override on this credential ended without a definite answer, so the tenant may no longer accept it. Run the admin-override again before inviting anyone.";
+
+/**
+ * Git #4041 — a link that reaches a row whose credential is uncertain is
+ * retired rather than left pending. A pending (or consumed) link counts as live
+ * to admin-override's precondition, so leaving it would block the one action
+ * that resolves the uncertainty. The recovery override re-invites every prior
+ * recipient, this one included.
+ */
+async function retireLinkOnUncertainCredential(attemptId: number, pendingSecretId: number): Promise<void> {
+  await db.update(breakGlassVerificationAttemptsTable)
+    .set({ linkStatus: "superseded", verificationOutcome: "superseded" })
+    .where(eq(breakGlassVerificationAttemptsTable.id, attemptId));
+  log.warn({ pendingSecretId, attemptId }, "break-glass: link refused and retired — credential uncertain after an admin-override; run the override again");
+}
+
+const credentialUncertainPage = (branding: PageBranding | null) => renderPage("Not available",
+  `<h1>This credential cannot be delivered right now</h1>` +
+  `<p>It may no longer be valid. Your provider has to issue a replacement, and will send you a new link when they do.</p>`, branding);
+
 const effectiveRoleOf = (user: AuthUser) => (user.role === "admin" ? LEGACY_ROLE.platformAdmin : user.mspRole);
 
 // ── Delegated Graph helpers (auth-code flow — net-new; standard OAuth) ─────────
@@ -409,6 +435,9 @@ router.post("/portal/break-glass/:pendingSecretId/invite", requireAuth, async (r
     }
     if (ctx.secret.status !== "pending_delivery") {
       return res.status(409).json({ error: "This secret is no longer awaiting delivery" });
+    }
+    if (ctx.secret.credentialUncertainAt) {
+      return res.status(409).json({ error: CREDENTIAL_UNCERTAIN_ERROR, detail: "credential_uncertain" });
     }
 
     const sent = await sendBreakGlassInvites(pendingSecretId, body.data.emails, req.user!.id, ctx.mspId);
@@ -491,6 +520,8 @@ router.get("/portal/break-glass/by-run/:runId", requireAuth, async (req: Request
       pendingSecretId: secret.id,
       status: secret.status,
       createdAt: secret.createdAt,
+      // #4041 — non-null while invites and reveals refuse pending a re-run override.
+      credentialUncertainAt: secret.credentialUncertainAt,
       // #3994 — expiresAt is the same createdAt + BREAK_GLASS_LINK_TTL_MS the
       // public verify endpoint enforces, served so the portal never restates the
       // TTL as a second hardcoded number that could drift from this constant.
@@ -580,6 +611,7 @@ router.get("/portal/break-glass", requireAuth, async (req: Request, res: Respons
         run: await resolveRunContext(run),
         pendingSecretId: secret.id,
         createdAt: secret.createdAt,
+        credentialUncertainAt: secret.credentialUncertainAt,
         liveInviteCount: mine.filter((a) => a.linkStatus === "pending").length,
         totalInviteCount: mine.length,
       };
@@ -595,8 +627,13 @@ router.get("/portal/break-glass", requireAuth, async (req: Request, res: Respons
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /public/break-glass/verify/:token  — redirect into tenant-scoped OAuth
 // ─────────────────────────────────────────────────────────────────────────────
-router.get("/public/break-glass/verify/:token", publicLimiter, async (req: Request, res: Response) => {
+router.get("/public/break-glass/verify/:token", publicLimiter, async (req: Request, res: Response, next: NextFunction) => {
   const token = req.params.token as string;
+  // This route is registered before /verify/callback below, so without this the
+  // OAuth redirect back from Microsoft landed here as token "callback", found no
+  // attempt, and answered 410 — the role check and the reveal were unreachable.
+  // Link tokens are 64 hex characters and can never equal it.
+  if (token === "callback") return next();
   // Declared outside try so the catch-all error page can still use it if it was
   // resolved before the exception was thrown; null renders an unbranded page
   // (the credibility footer still renders unconditionally either way).
@@ -624,6 +661,11 @@ router.get("/public/break-glass/verify/:token", publicLimiter, async (req: Reque
         .where(eq(breakGlassVerificationAttemptsTable.id, attempt.id));
       return res.status(410).send(renderPage("Link expired",
         `<h1>This verification link has expired</h1><p>Please ask your provider to send a new link.</p>`, branding));
+    }
+    // #4041 — refuse before the Microsoft sign-in, not after it.
+    if (ctx?.secret.credentialUncertainAt) {
+      await retireLinkOnUncertainCredential(attempt.id, attempt.pendingSecretId);
+      return res.status(409).send(credentialUncertainPage(branding));
     }
 
     if (!ctx || !ctx.tenantId) {
@@ -676,6 +718,12 @@ router.get("/public/break-glass/verify/callback", publicLimiter, async (req: Req
 
     if (!attempt || attempt.linkStatus !== "pending") {
       return res.status(410).send(renderPage("Link unavailable", `<h1>This verification link is no longer valid</h1>`, branding));
+    }
+    // #4041 — checked before the code exchange, so a marked row never costs a
+    // sign-in and never consumes the link.
+    if (ctx?.secret.credentialUncertainAt) {
+      await retireLinkOnUncertainCredential(attempt.id, attempt.pendingSecretId);
+      return res.status(409).send(credentialUncertainPage(branding));
     }
 
     if (!ctx || !ctx.tenantId) {
@@ -734,6 +782,13 @@ router.get("/public/break-glass/verify/callback", publicLimiter, async (req: Req
         .where(eq(breakGlassPendingSecretsTable.id, attempt.pendingSecretId)).limit(1);
       if (!secret || secret.status !== "pending_delivery") {
         return res.status(409).send(renderPage("Already delivered", `<h1>This credential has already been delivered</h1>`, branding));
+      }
+      // #4041 — an override can mark the row between the check above and this
+      // claim. Release the claimed link (a consumed link would block the override
+      // that resolves this) and refuse the reveal.
+      if (secret.credentialUncertainAt) {
+        await retireLinkOnUncertainCredential(attempt.id, attempt.pendingSecretId);
+        return res.status(409).send(credentialUncertainPage(branding));
       }
 
       // #1911 — the store is Key Vault; the reference on this row is where the
@@ -978,9 +1033,21 @@ export async function performBreakGlassAdminOverride(
   // caller; every other is refused here, before the store or the tenant is touched.
   // A claim older than BREAK_GLASS_OVERRIDE_CLAIM_STALE_MS was left by a process
   // that died mid-override and may be taken over.
+  //
+  // #4041 — the claim also marks the credential uncertain, in the same statement.
+  // From the claim until a replacement is recorded, what this row holds may stop
+  // being the tenant's password, and only a marker written up front survives a
+  // process that dies between the reset and the record. A row that is already
+  // marked keeps its original time. Invite and reveal refuse while it is set.
+  const priorUncertainAt = ctx.secret.credentialUncertainAt;
   const claimToken = randomBytes(16).toString("hex");
   const claimed = await db.update(breakGlassPendingSecretsTable)
-    .set({ status: "reset_in_progress", resetClaimToken: claimToken, resetClaimedAt: sql`now()` })
+    .set({
+      status: "reset_in_progress",
+      resetClaimToken: claimToken,
+      resetClaimedAt: sql`now()`,
+      credentialUncertainAt: sql`coalesce(${breakGlassPendingSecretsTable.credentialUncertainAt}, now())`,
+    })
     .where(and(
       eq(breakGlassPendingSecretsTable.id, pendingSecretId),
       or(
@@ -1004,11 +1071,24 @@ export async function performBreakGlassAdminOverride(
     return { ok: false, status: 409, error: "This secret is not awaiting delivery" };
   }
 
-  /** Hand the row back as pending_delivery — only while this call still holds it. */
-  const releaseClaim = async (why: string) => {
+  /**
+   * Hand the row back as pending_delivery — only while this call still holds it.
+   * #4041 — "definite": the tenant credential was not changed, so the uncertainty
+   * marker goes back to what it was before the claim. "uncertain": the reset may
+   * have landed (outcome_unknown) or did land unrecorded (replacement_unrecorded),
+   * so the marker the claim wrote stays, and invites and reveals keep refusing
+   * until an override records a replacement. If the release itself fails the row
+   * stays reset_in_progress, which refuses them too.
+   */
+  const releaseClaim = async (why: string, outcome: "definite" | "uncertain" = "definite") => {
     try {
       await db.update(breakGlassPendingSecretsTable)
-        .set({ status: "pending_delivery", resetClaimToken: null, resetClaimedAt: null })
+        .set({
+          status: "pending_delivery",
+          resetClaimToken: null,
+          resetClaimedAt: null,
+          ...(outcome === "definite" ? { credentialUncertainAt: priorUncertainAt } : {}),
+        })
         .where(and(
           eq(breakGlassPendingSecretsTable.id, pendingSecretId),
           eq(breakGlassPendingSecretsTable.status, "reset_in_progress"),
@@ -1109,7 +1189,7 @@ export async function performBreakGlassAdminOverride(
     // if the reset did land, it is the only record of the password. The claim is
     // released so the override can be run again, as the answer says.
     log.error({ err, pendingSecretId, secretName: newSecretRef.secretName }, "break-glass: admin-override reset outcome unknown — replacement kept in the store; run the override again");
-    await releaseClaim("reset outcome unknown");
+    await releaseClaim("reset outcome unknown", "uncertain");
     return {
       ok: false,
       status: 502,
@@ -1125,7 +1205,7 @@ export async function performBreakGlassAdminOverride(
       return { ok: false, status: 502, error: "Failed to reset the tenant credential", detail: write.errorType };
     }
     log.error({ pendingSecretId, status: write.status, errorType: write.errorType, secretName: newSecretRef.secretName }, "break-glass: admin-override reset outcome unknown — replacement kept in the store; run the override again");
-    await releaseClaim(`reset outcome unknown (${write.status})`);
+    await releaseClaim(`reset outcome unknown (${write.status})`, "uncertain");
     return {
       ok: false,
       status: 502,
@@ -1145,7 +1225,9 @@ export async function performBreakGlassAdminOverride(
     // (stale), the whole transaction rolls back rather than record a second
     // replacement beside the one the other override is issuing.
     const superseded = await tx.update(breakGlassPendingSecretsTable)
-      .set({ status: "superseded_by_reset", resetClaimToken: null })
+      // #4041 — the replacement is recorded, so the uncertainty is resolved: the
+      // tenant holds the credential on the new row, which starts unmarked.
+      .set({ status: "superseded_by_reset", resetClaimToken: null, credentialUncertainAt: null })
       .where(and(
         eq(breakGlassPendingSecretsTable.id, oldPendingSecretId),
         eq(breakGlassPendingSecretsTable.status, "reset_in_progress"),
@@ -1213,7 +1295,7 @@ export async function performBreakGlassAdminOverride(
         { err, pendingSecretId, secretName: newSecretRef.secretName },
         "break-glass: admin-override RESET LANDED but the replacement could not be recorded — the credential is held only in the store under secretName; run the override again",
       );
-      await releaseClaim("replacement could not be recorded");
+      await releaseClaim("replacement could not be recorded", "uncertain");
       return {
         ok: false,
         status: 500,

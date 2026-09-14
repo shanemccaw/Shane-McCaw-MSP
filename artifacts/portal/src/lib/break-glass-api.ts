@@ -50,6 +50,8 @@ export type BreakGlassRunStatus =
       readonly pendingSecretId: number;
       readonly status: "pending_delivery";
       readonly createdAt: string;
+      /** #4041 — set while invites and reveals refuse pending a re-run admin-override. */
+      readonly credentialUncertainAt: string | null;
       readonly attempts: readonly BreakGlassAttempt[];
     };
 
@@ -57,6 +59,7 @@ export interface BreakGlassHandoff {
   readonly run: BreakGlassRun;
   readonly pendingSecretId: number;
   readonly createdAt: string;
+  readonly credentialUncertainAt: string | null;
   readonly liveInviteCount: number;
   readonly totalInviteCount: number;
 }
