@@ -16,6 +16,7 @@ import { getRequestContext } from "../lib/request-context.ts";
 import { portalLandingSurface } from "../lib/identity-presentation.ts";
 import { effectiveLegacyRole, LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 import { logger } from "../lib/logger.ts";
+import { createAuditLog } from "../lib/audit.ts";
 import {
   createSession,
   touchSessionByTokenHash,
@@ -316,6 +317,18 @@ async function issueSessionForUser(
     metadata: { email: user.email },
   });
 
+  await createAuditLog({
+    actorUserId: user.id,
+    actorName: user.email,
+    actorRole: user.role,
+    actionType: source,
+    actionCategory: "auth",
+    entityType: "user",
+    entityId: user.id,
+    tenantId: mspClaims.customerId,
+    metadata: { mfaSetupPending },
+  });
+
   res.cookie("refreshToken", refreshToken, cookieOpts());
   res.json({ accessToken, refreshToken, refreshExpiresAt: refreshExpiresAt.toISOString(), user: payload });
 }
@@ -417,6 +430,16 @@ router.post("/auth/login", loginLimiter, async (req: Request, res: Response) => 
       .where(eq(usersTable.id, user.id));
 
     if (willLock) {
+      await createAuditLog({
+        actorUserId: user.id,
+        actorName: user.email,
+        actorRole: user.role,
+        actionType: "auth.account_locked",
+        actionCategory: "security",
+        entityType: "user",
+        entityId: user.id,
+        metadata: { failedAttempts: nextAttempts, lockedUntil: newLockedUntil!.toISOString() },
+      });
       res.status(423).json({
         error: "This account has been locked due to repeated failed login attempts. Contact your administrator to unlock it.",
         accountLocked: true,
@@ -530,6 +553,17 @@ router.post("/auth/refresh", async (req: Request, res: Response) => {
 
   void touchSessionByTokenHash(tokenHash, newTokenHash, newExpiresAt);
 
+  void createAuditLog({
+    actorUserId: user.id,
+    actorName: user.email,
+    actorRole: user.role,
+    actionType: "auth.token_refreshed",
+    actionCategory: "auth",
+    entityType: "user",
+    entityId: user.id,
+    tenantId: mspClaims.customerId,
+  });
+
   void dispatchEvent({
     eventType: EVENT_TYPES.AUTH_TOKEN_REFRESH,
     actor: userActor(user.id, mspClaims.mspRole ?? "Free"),
@@ -579,6 +613,19 @@ router.post("/auth/logout", async (req: Request, res: Response) => {
       payload: { userId: logoutUserId },
     });
     void writeAuthAuditLog("AUTH_LOGOUT", req, { userId: logoutUserId });
+    const [loggedOutUser] = await db.select({ email: usersTable.email, role: usersTable.role })
+      .from(usersTable).where(eq(usersTable.id, logoutUserId)).limit(1);
+    if (loggedOutUser) {
+      void createAuditLog({
+        actorUserId: logoutUserId,
+        actorName: loggedOutUser.email,
+        actorRole: loggedOutUser.role,
+        actionType: "auth.logout",
+        actionCategory: "auth",
+        entityType: "user",
+        entityId: logoutUserId,
+      });
+    }
   }
 
   res.clearCookie("refreshToken", { path: "/api/auth" });
@@ -674,6 +721,17 @@ router.post("/auth/setup-password", setupPasswordLimiter, async (req: Request, r
     mspId: mspClaims.mspId,
     customerId: mspClaims.customerId,
     mspRole: mspClaims.mspRole,
+  });
+
+  await createAuditLog({
+    actorUserId: user.id,
+    actorName: user.email,
+    actorRole: user.role,
+    actionType: "auth.account_setup",
+    actionCategory: "auth",
+    entityType: "user",
+    entityId: user.id,
+    tenantId: mspClaims.customerId,
   });
 
   res.cookie("refreshToken", refreshToken, cookieOpts());
@@ -806,6 +864,16 @@ router.post("/auth/forgot-password", async (req: Request, res: Response) => {
 
     await db.insert(accountSetupTokensTable).values({ userId: user.id, token, expiresAt });
 
+    void createAuditLog({
+      actorUserId: user.id,
+      actorName: user.email,
+      actorRole: user.role,
+      actionType: "auth.account_setup_link_requested",
+      actionCategory: "auth",
+      entityType: "user",
+      entityId: user.id,
+    });
+
     const setupUrl = buildAccountSetupUrl(token);
 
     void sendEmailFromTemplate(
@@ -823,6 +891,16 @@ router.post("/auth/forgot-password", async (req: Request, res: Response) => {
   const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
 
   await db.insert(passwordResetTokensTable).values({ userId: user.id, token, expiresAt });
+
+  void createAuditLog({
+    actorUserId: user.id,
+    actorName: user.email,
+    actorRole: user.role,
+    actionType: "auth.password_reset_requested",
+    actionCategory: "auth",
+    entityType: "user",
+    entityId: user.id,
+  });
 
   // The MSP console reuses ONE page (/msp-console/forgot-password) for both the
   // request form and the reset form, keyed on the presence of ?token= (see
@@ -881,6 +959,20 @@ router.post("/auth/reset-password", async (req: Request, res: Response) => {
     .set({ usedAt: now })
     .where(eq(passwordResetTokensTable.id, record.id));
 
+  const [resetUser] = await db.select({ email: usersTable.email, role: usersTable.role })
+    .from(usersTable).where(eq(usersTable.id, record.userId)).limit(1);
+  if (resetUser) {
+    void createAuditLog({
+      actorUserId: record.userId,
+      actorName: resetUser.email,
+      actorRole: resetUser.role,
+      actionType: "auth.password_reset_completed",
+      actionCategory: "auth",
+      entityType: "user",
+      entityId: record.userId,
+    });
+  }
+
   res.json({ ok: true });
 });
 
@@ -928,6 +1020,18 @@ router.post("/auth/change-password", requireAuth, async (req: Request, res: Resp
     metadata: { revokedOtherSessions: revokedCount },
   });
 
+  void createAuditLog({
+    actorUserId: authUser.id,
+    actorName: authUser.name ?? authUser.email,
+    actorRole: authUser.role,
+    actionType: "auth.password_changed",
+    actionCategory: "security",
+    entityType: "user",
+    entityId: authUser.id,
+    tenantId: authUser.customerId ?? null,
+    metadata: { revokedOtherSessions: revokedCount },
+  });
+
   res.json({ ok: true, revokedOtherSessions: revokedCount });
 });
 
@@ -955,6 +1059,16 @@ router.delete("/auth/sessions/:id", requireAuth, async (req: Request, res: Respo
   }
 
   void writeAuthAuditLog("AUTH_SESSION_REVOKED", req, { userId: authUser.id, metadata: { sessionId } });
+  void createAuditLog({
+    actorUserId: authUser.id,
+    actorName: authUser.name ?? authUser.email,
+    actorRole: authUser.role,
+    actionType: "auth.session_revoked",
+    actionCategory: "security",
+    entityType: "user_session",
+    entityId: sessionId,
+    tenantId: authUser.customerId ?? null,
+  });
   res.json({ ok: true });
 });
 
@@ -966,6 +1080,18 @@ router.post("/auth/sessions/revoke-others", requireAuth, async (req: Request, re
 
   void writeAuthAuditLog("AUTH_SESSIONS_REVOKED_OTHERS", req, {
     userId: authUser.id,
+    metadata: { revokedCount },
+  });
+
+  void createAuditLog({
+    actorUserId: authUser.id,
+    actorName: authUser.name ?? authUser.email,
+    actorRole: authUser.role,
+    actionType: "auth.sessions_revoked_others",
+    actionCategory: "security",
+    entityType: "user",
+    entityId: authUser.id,
+    tenantId: authUser.customerId ?? null,
     metadata: { revokedCount },
   });
 
@@ -1080,6 +1206,21 @@ router.post("/auth/impersonate-exchange", async (req: Request, res: Response) =>
   } catch {
     // Audit log is non-fatal
   }
+
+  const [adminActor] = await db.select({ email: usersTable.email, name: usersTable.name, role: usersTable.role })
+    .from(usersTable).where(eq(usersTable.id, record.adminUserId)).limit(1);
+  void createAuditLog({
+    actorUserId: record.adminUserId,
+    actorName: adminActor?.name ?? adminActor?.email ?? `user #${record.adminUserId}`,
+    actorRole: adminActor?.role ?? "admin",
+    actionType: "auth.impersonation_session_started",
+    actionCategory: "access",
+    entityType: "user",
+    entityId: targetUser.id,
+    entityLabel: targetUser.email,
+    tenantId: mspClaims.customerId,
+    metadata: { impersonatedMspId: impersonatedMspId ?? null },
+  });
 
   // Dispatch a canonical event with the enriched impersonation actor so the
   // event store records who (PlatformAdmin userId) acted as which MSP (actingAs).
@@ -1443,6 +1584,18 @@ router.post("/admin/msp/service-accounts", requireCapability("ladder.platform-ad
     mspId: mspId ?? null,
     mspRole: actor?.mspRole,
     metadata: { serviceAccountId: inserted?.id, name, keyPrefix: prefix },
+  });
+
+  void createAuditLog({
+    actorUserId: actor?.id ?? null,
+    actorName: req.user?.email ?? actor?.mspRole ?? "platform-admin",
+    actorRole: "platform_admin",
+    actionType: "auth.service_account_created",
+    actionCategory: "security",
+    entityType: "msp_service_account",
+    entityId: inserted?.id ?? null,
+    entityLabel: name,
+    metadata: { mspId: mspId ?? null, keyPrefix: prefix, scopes: scopes ?? [] },
   });
 
   res.status(201).json({
