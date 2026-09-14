@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { AlertCircle, CheckCircle2, XCircle } from "lucide-react";
 import { useBillingLive } from "@/components/billingLive";
 import { useRetainerIntervalProposalLive } from "@/components/retainerIntervalProposalLive";
@@ -42,7 +43,10 @@ const RED = "#f87171";
  *    as the design's own labeled illustration, not tenant data.
  *  - No interval / tier-switch / add-on toggles — the design's own
  *    hypothetical-repricing calculator, explicitly out of scope.
- *  - No pay-invoice, invoice-detail, or card-details surface on this page.
+ *  - No pay-invoice or card-details surface on this page. A receipt row now
+ *    links to a real invoice detail + version-history page (#4116,
+ *    `pages/invoice-detail.tsx`) — the "Receipt" button still downloads the
+ *    PDF directly, unchanged.
  *
  * One addition past the landed design (#4112): when an MSP operator has
  * PROPOSED a retainer interval switch (`msp-retainer-billing.ts`'s
@@ -324,7 +328,11 @@ export default function BillingPage() {
                       data-testid="billing-receipt-row"
                     >
                       <span className="w-[78px] shrink-0 whitespace-nowrap text-[11.5px] text-[#94a3b8]">{r.date}</span>
-                      <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
+                      <Link
+                        href={`/billing/invoices/${r.id}`}
+                        className="flex min-w-0 flex-1 flex-col gap-[2px] hover:opacity-80"
+                        data-testid={`billing-invoice-link-${r.id}`}
+                      >
                         <span className="text-[12.5px] leading-[1.4] text-[#e2e8f0]">{r.what}</span>
                         <span
                           className="overflow-hidden text-ellipsis whitespace-nowrap text-[10.5px] text-[#64748b]"
@@ -332,7 +340,7 @@ export default function BillingPage() {
                         >
                           {r.ref}
                         </span>
-                      </div>
+                      </Link>
                       <span
                         className="w-[74px] shrink-0 whitespace-nowrap text-right text-[12.5px] text-[#e2e8f0]"
                         style={{ fontVariantNumeric: "tabular-nums" }}
@@ -565,7 +573,7 @@ const LEDGER = [
     where: "§1.3",
   },
   {
-    gap: "No invoice detail page. The endpoint exists and is unused — a receipt opens its PDF rather than a screen.",
+    gap: "Clicking a receipt row opens a real invoice detail page (#4116), not its PDF — the PDF stays on the separate \"Receipt\" download button.",
     where: "§1.2",
   },
   {

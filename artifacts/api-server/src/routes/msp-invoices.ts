@@ -30,12 +30,12 @@
  * unsent/sent boundary exactly where Shane drew it: the CREATE step never
  * bypasses it.
  *
- * What the customer sees when an invoice is revised (do they see version
- * history, or just the latest?) is a real customer-portal-side product
- * question this build does NOT answer — `portal-billing.ts`'s
- * `GET /portal/invoices` is unchanged here and will list both the superseded
- * row and its replacement until that's decided. Filed as a separate finding,
- * sibling of #1692, rather than guessed at here.
+ * What the customer sees when an invoice is revised was answered by #4116
+ * (Shane's decision, dispatch 2026-09-14): the customer's default invoice
+ * view (`GET /portal/invoices`) shows only the latest non-superseded version,
+ * a real notification links straight to the revised invoice, and a real
+ * version-history view (`GET /portal/invoices/:id/versions`) shows each prior
+ * version's reason and field-level diff. See `routes/portal-billing.ts`.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -420,12 +420,16 @@ router.post(
       });
 
       void uploadInvoiceToSharePoint(revised.id);
+      // Shane's decision (#4116, dispatch 2026-09-14): the customer sees a real
+      // notification when a sent invoice is revised, linking straight to the
+      // revised invoice's own detail/version-history page — not the bare
+      // billing list — so "see what changed" is one click away, not a search.
       void createNotification({
-        title: `Invoice ${revised.invoiceNumber} revised`,
-        body: `Reason: ${d.reason}`,
+        title: "Your invoice was updated, see what changed",
+        body: `Invoice ${revised.invoiceNumber}. Reason: ${d.reason}`,
         notifType: "invoice",
         category: "invoice",
-        linkPath: "/portal/billing",
+        linkPath: `/billing/invoices/${revised.id}`,
         recipient: { type: "customer_user", userId: revised.clientUserId },
       });
 

@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, invoicesTable, projectsTable, usersTable, contractsTable, servicesTable, clientServicesTable } from "@workspace/db";
-import { eq, and, desc, isNotNull, inArray } from "drizzle-orm";
+import { eq, and, desc, isNotNull, inArray, ne } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.ts";
 import { requireCustomerCapability } from "../middlewares/rbac-capability.ts";
 import { billingScopeUserIds } from "../lib/portal-billing-scope.ts";
@@ -81,10 +81,17 @@ async function getOrCreateStripeCustomer(
 // stay scoped to the caller's own row — whether a Billing holder may act on a
 // colleague's subscription is still an open entitlement question per #3648.
 
+// #4116 — Shane's decision: the customer's default invoice view shows only the
+// latest (non-superseded) version of each logical invoice. #4109's revise route
+// never edits a sent invoice in place — it inserts a new row and marks the old
+// one `status: "superseded"` — so excluding that status here is exactly "latest
+// only", not a guess at what "latest" means. The full version chain (with the
+// superseded rows and their diffs) is real and reachable via
+// GET /portal/invoices/:id/versions below, for the "see what changed" affordance.
 router.get("/portal/invoices", requireAuth, requireCustomerCapability("billing.view"), async (req: Request, res: Response) => {
   const scopeUserIds = await billingScopeUserIds(req.user!);
   const invoices = await db.select().from(invoicesTable)
-    .where(inArray(invoicesTable.clientUserId, scopeUserIds))
+    .where(and(inArray(invoicesTable.clientUserId, scopeUserIds), ne(invoicesTable.status, "superseded")))
     .orderBy(desc(invoicesTable.createdAt));
   res.json(invoices);
 });
@@ -155,6 +162,70 @@ router.get("/portal/invoices/:id", requireAuth, requireCustomerCapability("billi
   }
 
   res.json({ invoice, project, contracts, client });
+});
+
+// ─── CLIENT: Invoice version history ("see what changed", #4116) ─────────────
+// Walks the real supersedesInvoiceId chain #4109's revise route writes, oldest
+// version first, and computes a real field-level diff (amount/description/
+// dueDate) for every version against the one it superseded. Every row in the
+// chain shares the same clientUserId (the revise route always carries it
+// forward — msp-invoices.ts), so the ownership check on the requested id alone
+// is sufficient; the walk still re-checks it per hop as a defensive guard.
+router.get("/portal/invoices/:id/versions", requireAuth, requireCustomerCapability("billing.view"), async (req: Request, res: Response) => {
+  const scopeUserIds = await billingScopeUserIds(req.user!);
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const [start] = await db.select().from(invoicesTable)
+    .where(and(eq(invoicesTable.id, id), inArray(invoicesTable.clientUserId, scopeUserIds)));
+  if (!start) { res.status(404).json({ error: "Invoice not found" }); return; }
+
+  const chain: (typeof invoicesTable.$inferSelect)[] = [start];
+  const seen = new Set<number>([start.id]);
+  let cursor = start.supersedesInvoiceId;
+  while (cursor !== null && !seen.has(cursor)) {
+    const [prev] = await db.select().from(invoicesTable).where(eq(invoicesTable.id, cursor));
+    if (!prev || prev.clientUserId !== start.clientUserId) break;
+    chain.push(prev);
+    seen.add(prev.id);
+    cursor = prev.supersedesInvoiceId;
+  }
+  chain.reverse(); // oldest -> newest
+
+  const fmtDollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+  const fmtDate = (d: Date | string | null) => (d ? new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "(none)");
+
+  const versions = chain.map((row, i) => {
+    const prev = i > 0 ? chain[i - 1] : null;
+    const diff: Array<{ field: string; from: string; to: string }> = [];
+    if (prev) {
+      if (prev.amount !== row.amount) {
+        diff.push({ field: "amount", from: fmtDollars(prev.amount), to: fmtDollars(row.amount) });
+      }
+      if ((prev.description ?? "") !== (row.description ?? "")) {
+        diff.push({ field: "description", from: prev.description ?? "(none)", to: row.description ?? "(none)" });
+      }
+      const prevDue = prev.dueDate ? new Date(prev.dueDate).toISOString() : null;
+      const rowDue = row.dueDate ? new Date(row.dueDate).toISOString() : null;
+      if (prevDue !== rowDue) {
+        diff.push({ field: "dueDate", from: fmtDate(prev.dueDate), to: fmtDate(row.dueDate) });
+      }
+    }
+    return {
+      id: row.id,
+      version: row.version,
+      status: row.status,
+      amount: fmtDollars(row.amount),
+      description: row.description,
+      dueDate: row.dueDate,
+      revisionReason: row.revisionReason,
+      createdAt: row.createdAt,
+      isCurrent: row.status !== "superseded",
+      diff,
+    };
+  });
+
+  res.json({ versions });
 });
 
 router.post("/portal/invoices/:id/pay", requireAuth, requireCustomerCapability("billing.manage"), async (req: Request, res: Response) => {
