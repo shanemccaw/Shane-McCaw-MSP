@@ -14,7 +14,9 @@
             Effect="{StaticResource SoftRowShadow}">
         <StackPanel>
             <!-- ===== main strip ===== -->
-            <Grid Height="34" Margin="10,0">
+            <!-- Git #3988 — MinHeight (not a fixed Height) so the strip can grow when EtaText
+                 wraps to a second line for the flat/negative-net-rate reason sentence. -->
+            <Grid MinHeight="34" Margin="10,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
@@ -74,8 +76,12 @@
                 <!-- middle: ETA + points + latest achievement -->
                 <StackPanel x:Name="MiddlePanel" Grid.Column="2" Orientation="Horizontal"
                             HorizontalAlignment="Left" VerticalAlignment="Center" Margin="16,0">
+                    <!-- Git #3988 — short reasons/success text ("~Xd left · Y/day net", "done 🎉",
+                         "Calculating…") stay single-line; only the long flat/negative-net-rate
+                         sentence is tall enough to actually wrap. No TextTrimming: with wrapping
+                         and no height cap the text just grows the row instead of truncating. -->
                     <TextBlock x:Name="EtaText" FontSize="10.5" Foreground="{StaticResource BlueBrush}"
-                               VerticalAlignment="Center" MaxWidth="360" TextTrimming="CharacterEllipsis"/>
+                               VerticalAlignment="Center" MaxWidth="560" TextWrapping="Wrap"/>
                     <!-- Git #3906 — manual re-trigger of the real underlying ETA recompute (the same
                          board fetch a manual Git refresh runs), not just a redraw of stale data. -->
                     <Button x:Name="EtaRefreshBtn" Content="⟳" Style="{StaticResource IconButton}"
