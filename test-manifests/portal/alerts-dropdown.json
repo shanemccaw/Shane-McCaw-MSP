@@ -3,7 +3,7 @@
   "feature": "Portal Shell: alerts dropdown - the real bell/popover in artifacts/portal's TopBar (components/shell/notifications/AlertsDropdown.tsx), backed by the real GET /api/portal/notifications, /unread-count, /activity-feed, PATCH /:id/read and POST /read-all routes in artifacts/api-server/src/routes/notifications.ts, live via GET /api/portal/notifications/stream (SSE). Every row's linkPath is resolved server-side through portal-deep-links.ts (deepLink.href/available/label) so the dropdown never renders a dead /portal-v2/* href. Supersedes nothing - test-manifests/portal/shell-systems.json covers the retired portal-v2 alerts tray (pv2-alerts-bell/pv2-alerts-tray selectors, a different, deleted surface); this is the real #1821 build against the fresh artifacts/portal shell (#1817).",
   "baseUrl": "{{DEPLOY_URL}}",
   "loginAs": "Customer — RBAC test",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "858838923",
 
   "notes": [
     "WHAT THIS COVERS: the real, deterministic surface of #1821 - that every /api/portal/notifications* route is auth-gated, that a logged-in customer gets the real list/unread-count/activity-feed shapes (including the server-resolved deepLink field), that read/read-all actually flip the read flag, and a real UI walk (login -> open bell -> see the real popover and its Personal tab) proving the trigger and popover actually mount and open in the DOM.",
