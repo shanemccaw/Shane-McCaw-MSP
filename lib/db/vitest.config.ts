@@ -36,6 +36,11 @@ export default defineConfig({
       // invoices / client_services triggers that grant the billed party Billing. Runs
       // against DATABASE_URL, everything rolled back.
       "src/rbac/customer-admin-billing-roles.test.ts",
+      // #3974 — the RetainerNoConsent gating audit: the seeded role/ladder/capability
+      // rows, the explicit team.manage/changes.approve denials, marketplace parity
+      // with Customer, and the billed-party trigger still granting billing
+      // independent of msp_role. Runs against DATABASE_URL, everything rolled back.
+      "src/rbac/retainer-no-consent-gating.test.ts",
     ],
   },
 });
