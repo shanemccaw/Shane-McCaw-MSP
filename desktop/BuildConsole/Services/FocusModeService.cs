@@ -664,6 +664,19 @@ namespace BuildConsole.Services
         /// "history only spans &lt;60m" the Focus bar showed even on mature milestones with months of
         /// real GitHub history. A real per-day mirror query instead means a fresh install/restart
         /// shows a trustworthy ETA immediately, with no local warm-up period.</summary>
+        /// <summary>Git #4042 — the fitted pace is now scoped to the most recent
+        /// <see cref="EtaRecentWindowDays"/> real days, not the milestone's entire lifetime history.
+        /// A plain OLS slope fit over months of history is nearly immovable day-to-day (the same
+        /// discipline gap <see cref="UsageProjection.CurrentWindow"/> already closed for the Claude
+        /// usage meter, via an explicit reset-boundary cut before fitting — this had no equivalent
+        /// cut). Real measured data on milestone #5 confirmed the gap: the full ~48-day lifetime
+        /// series nets -10.5 issues/day (matches the reported permanently-flat/negative verdict),
+        /// a 30-day window still nets -15.4/day, but the most recent 14 real days net +10.8/day —
+        /// a genuinely different, positive verdict the lifetime fit could never surface. 14 days was
+        /// picked over 30 specifically because 30 still washed out a real recent improvement behind
+        /// an earlier bad stretch in the same window.</summary>
+        private const int EtaRecentWindowDays = 14;
+
         private async Task<FocusProgress> BuildProgressAsync(FocusMilestone ms)
         {
             var p = new FocusProgress
@@ -693,18 +706,28 @@ namespace BuildConsole.Services
                 return p;
             }
 
+            // Git #4042 — cut to the most recent EtaRecentWindowDays real days BEFORE fitting, so
+            // the pace reflects genuine recent velocity instead of an all-time average that a single
+            // day (or even a busy week) can barely move. series.Points is contiguous/oldest-first
+            // (see BuildSeries), so the last N points are exactly the last N real calendar days.
+            var recentPoints = series.Points.Count > EtaRecentWindowDays
+                ? series.Points.Skip(series.Points.Count - EtaRecentWindowDays).ToList()
+                : series.Points.ToList();
+
             // Fit the ETA with the ONE shared honest-projection core (#2714 extracted this from
             // here verbatim so the Home dashboard's per-Epic / Milestone panel reuses the exact
             // same sampling/gating discipline instead of approximating it). Feed the series' real
             // daily cumulative-closed curve so the fitted slope is "issues closed per day"; the
-            // gates and reason strings are unchanged from what this method has always produced.
-            var window = series.Points
+            // gates and reason strings are unchanged from what this method has always produced —
+            // a young/thin-history milestone still correctly falls through IssueEtaProjection's own
+            // MinEtaSamples/MinEtaSpan gates rather than getting a false-confident windowed number.
+            var window = recentPoints
                 .Select(pt => new UsageSample { At = pt.Date.ToDateTime(TimeOnly.MinValue), Percent = pt.ClosedCumulative })
                 .ToList();
             // Git #3869 — the same real series already carries the real cumulative-opened curve
             // (the #2721 burn-up chart's own "Total Scope" line), so the shared core's net-rate ETA
             // gets its creation series for free — same fix, same core, no second definition of it.
-            var totalWindow = series.Points
+            var totalWindow = recentPoints
                 .Select(pt => new UsageSample { At = pt.Date.ToDateTime(TimeOnly.MinValue), Percent = pt.CumulativeOpened })
                 .ToList();
             // Real still-open count from the live milestone snapshot (ms), not the series' own
