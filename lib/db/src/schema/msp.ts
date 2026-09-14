@@ -9233,6 +9233,45 @@ export const retainerPeriodClosesTable = pgTable("retainer_period_closes", {
 export type RetainerPeriodCloseRow = typeof retainerPeriodClosesTable.$inferSelect;
 export type InsertRetainerPeriodCloseRow = typeof retainerPeriodClosesTable.$inferInsert;
 
+// The "adjust after close" audit trail (Git #4026). Shane's decision
+// (2026-09-14): a closed period's hours stay frozen everywhere EXCEPT one
+// deliberate override path in the MSP Console (routes/msp-retainer.ts POST
+// .../adjustments) — no silent AdminV2 bypass, mandatory reason on every use.
+// One row per adjustment made to a closed period's ledger, so the reason a
+// closed figure changed survives as a real, customer-visible record rather
+// than living only in msp_audit_logs (which the customer never sees).
+// `workLogEntryId` is the retainer_work_log row the adjustment touched — the
+// NEW row's id for a "create", the existing row's id for "update"/"delete"
+// (carried with no FK, matching retainer_work_log's own customerId
+// convention, since a "delete" adjustment outlives the row it points at).
+export const RETAINER_ADJUSTMENT_ACTIONS = ["create", "update", "delete"] as const;
+export type RetainerAdjustmentAction = typeof RETAINER_ADJUSTMENT_ACTIONS[number];
+
+export const retainerAdjustmentNotesTable = pgTable("retainer_adjustment_notes", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  periodKey: text("period_key").notNull(),
+  /** retainer_work_log.id, no FK — see comment above re: "delete" outliving its row. */
+  workLogEntryId: integer("work_log_entry_id"),
+  action: text("action", { enum: RETAINER_ADJUSTMENT_ACTIONS }).notNull(),
+  /** Mandatory — the API layer rejects an empty reason before this is ever written. */
+  reason: text("reason").notNull(),
+  /** The entry's item/description at the time of the adjustment, for display without a join. */
+  item: text("item").notNull(),
+  beforeMinutes: integer("before_minutes"),
+  afterMinutes: integer("after_minutes"),
+  /** users.id of the MSP operator/admin who made the adjustment. */
+  createdByUserId: integer("created_by_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("retainer_adjustment_notes_customer_period_idx").on(t.customerId, t.periodKey),
+  index("retainer_adjustment_notes_msp_id_idx").on(t.mspId),
+]);
+
+export type RetainerAdjustmentNoteRow = typeof retainerAdjustmentNotesTable.$inferSelect;
+export type InsertRetainerAdjustmentNoteRow = typeof retainerAdjustmentNotesTable.$inferInsert;
+
 // ── Evidence attachments (#3503) ──────────────────────────────────────────────
 //
 // `desktop/MyArchitect/Services/IEvidencePostClient.cs` (#3470's screenshot tool)

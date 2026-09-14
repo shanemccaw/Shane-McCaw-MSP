@@ -29,7 +29,10 @@
  * `portal-projects.ts` already applies.
  *
  * GET /api/portal/retainer — settings + this month's bucket + the full ledger
- * for the caller's own retainer, plus their own sent status reports.
+ * for the caller's own retainer, plus their own sent status reports and any
+ * `retainer_adjustment_notes` (Git #4026 — the MSP Console's "adjust after
+ * close" revision notes; the mandatory reason behind any figure the operator
+ * changed after the period it lived in had already closed).
  * `configured` is false (and `settings`/`bucket` carry the honest
  * default-allotment shape) when the customer has no active retainer row yet
  * — the page falls back to its design fixture rather than rendering a
@@ -38,7 +41,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, retainerSettingsTable, retainerWorkLogTable, statusReportsTable } from "@workspace/db";
+import { db, retainerSettingsTable, retainerWorkLogTable, retainerAdjustmentNotesTable, statusReportsTable } from "@workspace/db";
 import { eq, and, or, inArray, desc } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.ts";
 import { resolveCustomerId } from "../lib/portal-customer-scope.ts";
@@ -46,7 +49,7 @@ import { resolveCustomerUserIds } from "../lib/tenant-signals.ts";
 import { logger } from "../lib/logger.ts";
 import { periodKeyOf, computeMonthBucket, usedMinutesByPeriod, minutesToHours } from "../lib/retainer-hours.ts";
 import { resolveRetainerAnchorDay } from "../lib/retainer-period-anchor.ts";
-import { DEFAULT_RETAINED_MINUTES, entryToWire, bucketToWire } from "./admin-retainer.ts";
+import { DEFAULT_RETAINED_MINUTES, entryToWire, bucketToWire, adjustmentNoteToWire } from "./admin-retainer.ts";
 
 const log = logger.child({ channel: "billing" });
 
@@ -71,6 +74,16 @@ router.get("/portal/retainer", requireAuth, async (req: Request, res: Response) 
       .from(retainerWorkLogTable)
       .where(eq(retainerWorkLogTable.customerId, customerId))
       .orderBy(desc(retainerWorkLogTable.occurredAt));
+
+    // #4026 — real, persisted revision notes for any "adjust after close"
+    // write the MSP Console made against one of this customer's closed
+    // periods. A figure that changed after close is never silent: the reason
+    // is right here alongside the entries it explains.
+    const adjustmentNotes = await db
+      .select()
+      .from(retainerAdjustmentNotesTable)
+      .where(eq(retainerAdjustmentNotesTable.customerId, customerId))
+      .orderBy(desc(retainerAdjustmentNotesTable.createdAt));
 
     const retainedMinutes = settings?.retainedMinutesPerMonth ?? DEFAULT_RETAINED_MINUTES;
     const usedByPeriod = usedMinutesByPeriod(entries);
@@ -112,6 +125,7 @@ router.get("/portal/retainer", requireAuth, async (req: Request, res: Response) 
       bucket: bucketToWire(bucket),
       months: [...new Set(entries.map((e) => e.periodMonth))].sort().reverse(),
       entries: entries.map(entryToWire),
+      adjustmentNotes: adjustmentNotes.map(adjustmentNoteToWire),
       statusReports: statusReports.map(statusReportToWire),
     });
   } catch (err) {

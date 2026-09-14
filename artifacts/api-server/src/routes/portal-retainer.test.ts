@@ -52,6 +52,11 @@ vi.mock("@workspace/db", () => {
       customerId: col("customer_id"),
       occurredAt: col("occurred_at"),
     },
+    // #4026 — the "adjust after close" revision-note read this route now does.
+    retainerAdjustmentNotesTable: {
+      customerId: col("customer_id"),
+      createdAt: col("created_at"),
+    },
     statusReportsTable: {
       id: col("id"),
       customerId: col("customer_id"),
@@ -139,7 +144,7 @@ describe("GET /api/portal/retainer", () => {
   });
 
   it("reports configured:false with an honest empty ledger when no retainer row exists", async () => {
-    mockSelectResultsQueue = [[], [], []]; // settings, entries, statusReports
+    mockSelectResultsQueue = [[], [], [], []]; // settings, entries, adjustmentNotes, statusReports
     const res = await request(makeApp({ id: 1, customerId: 42 })).get("/api/portal/retainer");
     expect(res.status).toBe(200);
     expect(res.body.configured).toBe(false);
@@ -171,6 +176,7 @@ describe("GET /api/portal/retainer", () => {
           occurredAt: new Date("2026-08-20T00:00:00Z"),
         },
       ],
+      [], // adjustmentNotes
       [], // statusReports
     ];
     const res = await request(makeApp({ id: 1, customerId: 42 })).get("/api/portal/retainer");
@@ -235,6 +241,7 @@ describe("GET /api/portal/retainer", () => {
           occurredAt: new Date("2026-08-20T00:00:00Z"),
         },
       ],
+      [], // adjustmentNotes
       [], // statusReports
     ];
     const res = await request(makeApp({ id: 1, customerId: 42 })).get("/api/portal/retainer");
@@ -250,6 +257,7 @@ describe("GET /api/portal/retainer", () => {
   it("does not surface an inactive retainer as configured", async () => {
     mockSelectResultsQueue = [
       [{ customerId: 42, retainedMinutesPerMonth: 480, hourlyRateCents: 30000, architectName: null, active: false }],
+      [],
       [],
       [],
     ];
@@ -268,6 +276,7 @@ describe("GET /api/portal/retainer — statusReports (Git #1410, id-space correc
     mockSelectResultsQueue = [
       [], // settings
       [], // entries
+      [], // adjustmentNotes
       [
         {
           id: 5,
@@ -302,6 +311,7 @@ describe("GET /api/portal/retainer — statusReports (Git #1410, id-space correc
     mockSelectResultsQueue = [
       [], // settings — no retainer row
       [], // entries
+      [], // adjustmentNotes
       [
         {
           id: 6,
@@ -335,6 +345,7 @@ describe("GET /api/portal/retainer — statusReports (Git #1410, id-space correc
     mockSelectResultsQueue = [
       [], // settings
       [], // entries
+      [], // adjustmentNotes
       [
         {
           id: 9,

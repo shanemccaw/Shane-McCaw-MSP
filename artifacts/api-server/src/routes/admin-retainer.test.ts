@@ -34,18 +34,49 @@ vi.mock("@workspace/db", () => {
     // computed periodMonth (not a canned fixture) reaches the wire.
     returning: () => Promise.resolve([{ id: 1, ...mockInsertedValues }]),
   };
+  const updateChain: any = {
+    set: () => updateChain,
+    where: () => updateChain,
+    returning: () => Promise.resolve([{ id: 1 }]),
+  };
+  const deleteChain: any = {
+    where: () => deleteChain,
+    returning: () => Promise.resolve([{ id: 1 }]),
+  };
+  // #4026 — withLedgerLock runs its callback against a transaction handle;
+  // for these mocks it's the same chains the outer `db` exposes, plus a
+  // no-op `execute` standing in for the real advisory-lock SELECT.
+  const makeTx = () => ({
+    execute: () => Promise.resolve(),
+    select: () => makeSelectChain(),
+    insert: () => insertChain,
+    update: () => updateChain,
+    delete: () => deleteChain,
+  });
   const col = (name: string) => name;
   return {
-    db: { select: vi.fn(() => makeSelectChain()), insert: vi.fn(() => insertChain) },
+    db: {
+      select: vi.fn(() => makeSelectChain()),
+      insert: vi.fn(() => insertChain),
+      transaction: vi.fn((fn: (tx: unknown) => unknown) => fn(makeTx())),
+    },
     retainerSettingsTable: {
       customerId: col("customer_id"),
       createdAt: col("created_at"),
     },
     retainerWorkLogTable: {
+      id: col("id"),
       customerId: col("customer_id"),
+      mspId: col("msp_id"),
+      periodMonth: col("period_month"),
       occurredAt: col("occurred_at"),
       source: col("source"),
       sourceRefId: col("source_ref_id"),
+    },
+    // #4026 — the period-close lock every write on this router now checks.
+    retainerPeriodClosesTable: {
+      customerId: col("customer_id"),
+      periodKey: col("period_key"),
     },
     tenantsTable: {
       id: col("id"),
@@ -93,6 +124,9 @@ vi.mock("drizzle-orm", () => ({
   eq: (l: unknown, r: unknown) => ({ eq: [l, r] }),
   and: (...conds: unknown[]) => ({ and: conds }),
   desc: (c: unknown) => ({ desc: c }),
+  // #4026 — retainer-ledger-lock.ts's advisory-lock SELECT; the tx mock's
+  // `execute` is a no-op, so this only needs to not throw as a tagged template.
+  sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({ sql: strings, values }),
 }));
 
 import router from "./admin-retainer.ts";

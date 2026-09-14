@@ -16,6 +16,15 @@
  * Every customer's rows are scoped by resolving its own tenant (mspId+tenantId),
  * so a stamped `msp_id` is always the customer's real MSP, never assumed.
  *
+ * Period close (Git #4026): the three writers above (unscoped/PATCH/DELETE)
+ * honor the SAME close lock the MSP Console (`routes/msp-retainer.ts`, #4020)
+ * already enforces — a write into a closed period answers 409, same as the
+ * console. Shane's decision (2026-09-14): no silent override anywhere in
+ * AdminV2, no admin bypass flag. The lock lives once, in
+ * `lib/retainer-ledger-lock.ts`, shared by both routers. Reopening a period
+ * and the deliberate, reason-required "adjust after close" path both stay
+ * MSP Console-only (`routes/msp-retainer.ts`) — AdminV2 has neither.
+ *
  * Hours cross the wire as decimal HOURS (1.5), stored as integer MINUTES.
  */
 
@@ -24,6 +33,7 @@ import {
   db,
   retainerSettingsTable,
   retainerWorkLogTable,
+  retainerAdjustmentNotesTable,
   tenantsTable,
   tenantSubscriptionsTable,
   RETAINER_WORK_STATES,
@@ -44,6 +54,7 @@ import {
   RETAINER_STATE_DISPLAY,
 } from "../lib/retainer-hours.ts";
 import { resolveRetainerAnchorDay, anchorDayFromRows, type AnchorSubscriptionRow } from "../lib/retainer-period-anchor.ts";
+import { withLedgerLock, assertPeriodOpen, sendLedgerError } from "../lib/retainer-ledger-lock.ts";
 
 const log = logger.child({ channel: "billing" });
 
@@ -100,6 +111,28 @@ export function bucketToWire(bucket: ReturnType<typeof computeMonthBucket>) {
     // === 0, which is also true for a customer who used exactly their allotment.
     overHours: minutesToHours(bucket.overMinutes),
     isOverMonth: bucket.overMinutes > 0,
+  };
+}
+
+/**
+ * A `retainer_adjustment_notes` row → wire (Git #4026). Exported so both the
+ * MSP Console operator read (`routes/msp-retainer.ts`, the only writer) and
+ * the customer-facing read (`routes/portal-retainer.ts`) render the exact
+ * same shape — this is a customer-visible revision note, so it deliberately
+ * carries no actor id, matching `entryToWire`'s own omission of
+ * `loggedByUserId`.
+ */
+export function adjustmentNoteToWire(row: typeof retainerAdjustmentNotesTable.$inferSelect) {
+  return {
+    id: row.id,
+    periodKey: row.periodKey,
+    workLogEntryId: row.workLogEntryId,
+    action: row.action,
+    reason: row.reason,
+    item: row.item,
+    beforeHours: row.beforeMinutes != null ? minutesToHours(row.beforeMinutes) : null,
+    afterHours: row.afterMinutes != null ? minutesToHours(row.afterMinutes) : null,
+    createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
   };
 }
 
@@ -329,31 +362,36 @@ router.post("/admin/retainer/:customerId/unscoped", requireAdmin, async (req: Re
     const occurredAt = parsed.data.occurredAt ? new Date(parsed.data.occurredAt) : new Date();
     // Git #3473 — anniversary-based, not calendar-month.
     const anchorDay = await resolveRetainerAnchorDay(customerId);
-    const [inserted] = await db
-      .insert(retainerWorkLogTable)
-      .values({
-        customerId,
-        mspId: scope.mspId,
-        periodMonth: periodKeyOf(anchorDay, occurredAt),
-        weekLabel: isoWeekLabel(occurredAt),
-        item: parsed.data.item,
-        minutes: hoursToMinutes(parsed.data.hours),
-        pillar: parsed.data.pillar ?? null,
-        finding: parsed.data.finding ?? null,
-        outcome: parsed.data.outcome ?? null,
-        state: parsed.data.state ?? "in_progress",
-        source: "unscoped",
-        sourceRefId: null,
-        loggedByUserId: req.user?.id ?? null,
-        occurredAt,
-      })
-      .returning();
+    const periodMonth = periodKeyOf(anchorDay, occurredAt);
+
+    const inserted = await withLedgerLock(customerId, async (tx) => {
+      await assertPeriodOpen(tx, customerId, periodMonth);
+      const [row] = await tx
+        .insert(retainerWorkLogTable)
+        .values({
+          customerId,
+          mspId: scope.mspId,
+          periodMonth,
+          weekLabel: isoWeekLabel(occurredAt),
+          item: parsed.data.item,
+          minutes: hoursToMinutes(parsed.data.hours),
+          pillar: parsed.data.pillar ?? null,
+          finding: parsed.data.finding ?? null,
+          outcome: parsed.data.outcome ?? null,
+          state: parsed.data.state ?? "in_progress",
+          source: "unscoped",
+          sourceRefId: null,
+          loggedByUserId: req.user?.id ?? null,
+          occurredAt,
+        })
+        .returning();
+      return row;
+    });
 
     log.info({ customerId, entryId: inserted.id, hours: parsed.data.hours }, "unscoped retainer hours logged");
     res.status(201).json({ entry: entryToWire(inserted) });
   } catch (err) {
-    log.error({ err }, "POST /admin/retainer/:customerId/unscoped failed");
-    res.status(500).json({ error: "Failed to log hours" });
+    sendLedgerError(res, err, log, "POST /admin/retainer/:customerId/unscoped failed", "Failed to log hours");
   }
 });
 
@@ -390,20 +428,29 @@ router.patch("/admin/retainer/entry/:id", requireAdmin, async (req: Request, res
     if (parsed.data.state !== undefined) patch.state = parsed.data.state;
     if (parsed.data.week !== undefined) patch.weekLabel = parsed.data.week;
 
-    const [updated] = await db
-      .update(retainerWorkLogTable)
-      .set(patch)
+    const [existing] = await db
+      .select()
+      .from(retainerWorkLogTable)
       .where(eq(retainerWorkLogTable.id, id))
-      .returning();
-
-    if (!updated) {
+      .limit(1);
+    if (!existing) {
       res.status(404).json({ error: "Entry not found" });
       return;
     }
+
+    const updated = await withLedgerLock(existing.customerId, async (tx) => {
+      await assertPeriodOpen(tx, existing.customerId, existing.periodMonth);
+      const [row] = await tx
+        .update(retainerWorkLogTable)
+        .set(patch)
+        .where(eq(retainerWorkLogTable.id, id))
+        .returning();
+      return row;
+    });
+
     res.json({ entry: entryToWire(updated) });
   } catch (err) {
-    log.error({ err }, "PATCH /admin/retainer/entry/:id failed");
-    res.status(500).json({ error: "Failed to update entry" });
+    sendLedgerError(res, err, log, "PATCH /admin/retainer/entry/:id failed", "Failed to update entry");
   }
 });
 
@@ -415,18 +462,29 @@ router.delete("/admin/retainer/entry/:id", requireAdmin, async (req: Request, re
       res.status(400).json({ error: "Invalid entry id" });
       return;
     }
-    const [deleted] = await db
-      .delete(retainerWorkLogTable)
+    const [existing] = await db
+      .select()
+      .from(retainerWorkLogTable)
       .where(eq(retainerWorkLogTable.id, id))
-      .returning({ id: retainerWorkLogTable.id });
-    if (!deleted) {
+      .limit(1);
+    if (!existing) {
       res.status(404).json({ error: "Entry not found" });
       return;
     }
+
+    const deleted = await withLedgerLock(existing.customerId, async (tx) => {
+      await assertPeriodOpen(tx, existing.customerId, existing.periodMonth);
+      const [row] = await tx
+        .delete(retainerWorkLogTable)
+        .where(eq(retainerWorkLogTable.id, id))
+        .returning({ id: retainerWorkLogTable.id });
+      if (!row) throw new Error("Entry not found");
+      return row;
+    });
+
     res.json({ ok: true, id: deleted.id });
   } catch (err) {
-    log.error({ err }, "DELETE /admin/retainer/entry/:id failed");
-    res.status(500).json({ error: "Failed to delete entry" });
+    sendLedgerError(res, err, log, "DELETE /admin/retainer/entry/:id failed", "Failed to delete entry");
   }
 });
 

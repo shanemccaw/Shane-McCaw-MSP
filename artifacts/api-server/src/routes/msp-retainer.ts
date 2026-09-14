@@ -11,11 +11,13 @@
  *   POST   /api/msp/:mspId/customers/:customerId/retainer/entries                   — log hours
  *   PATCH  /api/msp/:mspId/customers/:customerId/retainer/entries/:entryId          — adjust one entry
  *   DELETE /api/msp/:mspId/customers/:customerId/retainer/entries/:entryId          — remove one entry
- *   POST   /api/msp/:mspId/customers/:customerId/retainer/periods/:periodKey/close  — close an ended period
- *   POST   /api/msp/:mspId/customers/:customerId/retainer/periods/:periodKey/reopen — reopen a closed period (MSP admin)
+ *   POST   /api/msp/:mspId/customers/:customerId/retainer/periods/:periodKey/close       — close an ended period
+ *   POST   /api/msp/:mspId/customers/:customerId/retainer/periods/:periodKey/reopen      — reopen a closed period (MSP admin)
+ *   POST   /api/msp/:mspId/customers/:customerId/retainer/periods/:periodKey/adjustments — adjust a CLOSED period, with a mandatory reason (#4026)
  *
  * Auth: `requireCapability("ladder.msp-operator")` + `requireMspScope("params")`;
- * reopen requires `ladder.msp-admin`, since it undoes a lock another operator set.
+ * reopen and adjustments require `ladder.msp-admin` — reopen undoes a lock
+ * another operator set, and adjustments deliberately bypass that lock.
  * Every route then confirms the customer is a tenant of `:mspId` (IDOR guard,
  * same as msp-staff.ts), and every entry lookup matches customer AND MSP.
  *
@@ -28,7 +30,11 @@
  * `entryToWire`/`bucketToWire`, so all three surfaces render one shape.
  *
  * Period close: writes `retainer_period_closes` with a frozen bucket snapshot.
- * While closed, log/adjust/delete into that period answer 409. Every ledger
+ * While closed, log/adjust/delete into that period answer 409 — same lock,
+ * shared via `lib/retainer-ledger-lock.ts`, also honored by AdminV2's own
+ * writers (`routes/admin-retainer.ts`, Git #4026, no bypass). The ONE way to
+ * change a closed period's hours is the `.../adjustments` route above, which
+ * requires a reason and writes a `retainer_adjustment_notes` row. Every ledger
  * write runs under a per-customer transaction-scoped advisory lock, so a write
  * can't slip into a period between the closed-check and a concurrent close.
  * Closing has no billing side effect — it records and locks, nothing is charged.
@@ -43,12 +49,14 @@ import {
   retainerSettingsTable,
   retainerWorkLogTable,
   retainerPeriodClosesTable,
+  retainerAdjustmentNotesTable,
   tenantsTable,
   tenantSubscriptionsTable,
   mspAuditLogsTable,
   RETAINER_WORK_STATES,
+  RETAINER_ADJUSTMENT_ACTIONS,
 } from "@workspace/db";
-import { and, eq, desc, inArray, sql } from "drizzle-orm";
+import { and, eq, desc, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { requireCapability, requireMspScope } from "../middlewares/requireAuth.ts";
 import { getRequestContext } from "../lib/request-context.ts";
@@ -78,27 +86,22 @@ import {
   DEFAULT_RATE_CENTS,
   entryToWire,
   bucketToWire,
+  adjustmentNoteToWire,
   type SettingsWire,
 } from "./admin-retainer.ts";
+import {
+  withLedgerLock,
+  assertPeriodOpen,
+  findClose,
+  sendLedgerError,
+  LedgerConflict,
+  type Tx,
+  type CloseRow,
+} from "../lib/retainer-ledger-lock.ts";
 
 const log = logger.child({ channel: "billing" });
 
 const router: IRouter = Router();
-
-/** First key of the two-int advisory lock; the second is the customer id. */
-const LEDGER_LOCK_NAMESPACE = 4020;
-
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-type CloseRow = typeof retainerPeriodClosesTable.$inferSelect;
-
-/** Thrown inside a ledger transaction to answer with a specific status. */
-class LedgerConflict extends Error {
-  readonly status: number;
-  constructor(status: number, message: string) {
-    super(message);
-    this.status = status;
-  }
-}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -135,29 +138,6 @@ async function resolveCustomerOrRespond(req: Request, res: Response) {
     return null;
   }
   return { mspId, customerId, customerName: customer.name };
-}
-
-/** Serialise every ledger write for one customer for the life of the transaction. */
-async function withLedgerLock<T>(customerId: number, fn: (tx: Tx) => Promise<T>): Promise<T> {
-  return db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(${LEDGER_LOCK_NAMESPACE}, ${customerId})`);
-    return fn(tx);
-  });
-}
-
-async function findClose(tx: Tx, customerId: number, periodKey: string): Promise<CloseRow | null> {
-  const [row] = await tx
-    .select()
-    .from(retainerPeriodClosesTable)
-    .where(and(eq(retainerPeriodClosesTable.customerId, customerId), eq(retainerPeriodClosesTable.periodKey, periodKey)))
-    .limit(1);
-  return row ?? null;
-}
-
-async function assertPeriodOpen(tx: Tx, customerId: number, periodKey: string): Promise<void> {
-  if (await findClose(tx, customerId, periodKey)) {
-    throw new LedgerConflict(409, `Period ${periodKey} is closed. Reopen it before changing its hours.`);
-  }
 }
 
 function closeToWire(row: CloseRow) {
@@ -201,15 +181,6 @@ async function audit(
   } catch (err) {
     log.warn({ err, actionType, entityId }, "msp-retainer: audit write failed (non-fatal)");
   }
-}
-
-function sendLedgerError(res: Response, err: unknown, logMessage: string, publicMessage: string): void {
-  if (err instanceof LedgerConflict) {
-    res.status(err.status).json({ error: err.message });
-    return;
-  }
-  log.error({ err }, logMessage);
-  res.status(500).json({ error: publicMessage });
 }
 
 // ── GET /msp/:mspId/retainer/customers ────────────────────────────────────────
@@ -334,6 +305,11 @@ router.get(
         .select()
         .from(retainerPeriodClosesTable)
         .where(eq(retainerPeriodClosesTable.customerId, customerId));
+      const adjustmentNotes = await db
+        .select()
+        .from(retainerAdjustmentNotesTable)
+        .where(eq(retainerAdjustmentNotesTable.customerId, customerId))
+        .orderBy(desc(retainerAdjustmentNotesTable.createdAt));
 
       const retainedMinutes = settings?.retainedMinutesPerMonth ?? DEFAULT_RETAINED_MINUTES;
       const usedByPeriod = usedMinutesByPeriod(entries);
@@ -343,6 +319,12 @@ router.get(
       const closeByKey = new Map(closes.map((c) => [c.periodKey, c]));
       const entryCountByKey = new Map<string, number>();
       for (const e of entries) entryCountByKey.set(e.periodMonth, (entryCountByKey.get(e.periodMonth) ?? 0) + 1);
+      const notesByKey = new Map<string, (typeof adjustmentNotes)>();
+      for (const n of adjustmentNotes) {
+        const arr = notesByKey.get(n.periodKey) ?? [];
+        arr.push(n);
+        notesByKey.set(n.periodKey, arr);
+      }
 
       const periods = summaryPeriodKeys(currentPeriod, usedByPeriod.keys(), closeByKey.keys()).map((key) => {
         const close = closeByKey.get(key);
@@ -356,6 +338,7 @@ router.get(
           bucket: bucketToWire(computeMonthBucket(anchorDay, key, retainedMinutes, usedByPeriod)),
           closed: !!close,
           close: close ? closeToWire(close) : null,
+          adjustmentNotes: (notesByKey.get(key) ?? []).map(adjustmentNoteToWire),
         };
       });
 
@@ -445,7 +428,7 @@ router.post(
       log.info({ mspId, customerId, entryId: inserted.id, minutes: inserted.minutes }, "msp retainer hours logged");
       res.status(201).json({ entry: { ...entryToWire(inserted), periodClosed: false } });
     } catch (err) {
-      sendLedgerError(res, err, "POST /msp/:mspId/customers/:customerId/retainer/entries failed", "Failed to log hours");
+      sendLedgerError(res, err, log, "POST /msp/:mspId/customers/:customerId/retainer/entries failed", "Failed to log hours");
     }
   },
 );
@@ -538,7 +521,7 @@ router.patch(
       );
       res.json({ entry: { ...entryToWire(result.updated), periodClosed: false } });
     } catch (err) {
-      sendLedgerError(res, err, "PATCH /msp/:mspId/customers/:customerId/retainer/entries/:entryId failed", "Failed to update entry");
+      sendLedgerError(res, err, log, "PATCH /msp/:mspId/customers/:customerId/retainer/entries/:entryId failed", "Failed to update entry");
     }
   },
 );
@@ -584,7 +567,7 @@ router.delete(
       log.info({ mspId, customerId, entryId, minutes: deleted.minutes }, "msp retainer entry deleted");
       res.json({ ok: true, id: entryId });
     } catch (err) {
-      sendLedgerError(res, err, "DELETE /msp/:mspId/customers/:customerId/retainer/entries/:entryId failed", "Failed to delete entry");
+      sendLedgerError(res, err, log, "DELETE /msp/:mspId/customers/:customerId/retainer/entries/:entryId failed", "Failed to delete entry");
     }
   },
 );
@@ -681,7 +664,7 @@ router.post(
       log.info({ mspId, customerId, periodKey, closeId: close.id }, "msp retainer period closed");
       res.status(201).json({ close: closeToWire(close) });
     } catch (err) {
-      sendLedgerError(res, err, "POST /msp/:mspId/customers/:customerId/retainer/periods/:periodKey/close failed", "Failed to close period");
+      sendLedgerError(res, err, log, "POST /msp/:mspId/customers/:customerId/retainer/periods/:periodKey/close failed", "Failed to close period");
     }
   },
 );
@@ -719,7 +702,162 @@ router.post(
       log.info({ mspId, customerId, periodKey }, "msp retainer period reopened");
       res.json({ ok: true, periodKey });
     } catch (err) {
-      sendLedgerError(res, err, "POST /msp/:mspId/customers/:customerId/retainer/periods/:periodKey/reopen failed", "Failed to reopen period");
+      sendLedgerError(res, err, log, "POST /msp/:mspId/customers/:customerId/retainer/periods/:periodKey/reopen failed", "Failed to reopen period");
+    }
+  },
+);
+
+// ── POST /msp/:mspId/customers/:customerId/retainer/periods/:periodKey/adjustments ─
+// "Adjust after close" (#4026, Shane's 2026-09-14 decision): the normal
+// log/adjust/delete endpoints above stay hard-blocked (409) once a period is
+// closed — AdminV2 too, no bypass flag. This is the ONE deliberate override,
+// MSP Console only, and it requires a real reason on every call. Every use
+// writes a `retainer_adjustment_notes` row (a real, customer-visible revision
+// note — see `routes/portal-retainer.ts`) plus an `msp_audit_logs` entry, same
+// as every other write on this router.
+const adjustmentSchema = z.object({
+  reason: z.string().trim().min(1, "A reason is required to adjust a closed period"),
+  action: z.enum(RETAINER_ADJUSTMENT_ACTIONS),
+  entryId: z.number().int().positive().optional(),
+  item: z.string().trim().min(1).max(1000).optional(),
+  hours: z.number().min(0).max(1000).optional(),
+  pillar: z.string().max(100).nullable().optional(),
+  finding: z.string().max(100).nullable().optional(),
+  outcome: z.string().max(4000).nullable().optional(),
+  state: z.enum(RETAINER_WORK_STATES).optional(),
+  occurredAt: z.string().datetime().optional(),
+});
+
+router.post(
+  "/msp/:mspId/customers/:customerId/retainer/periods/:periodKey/adjustments",
+  requireCapability("ladder.msp-admin"),
+  requireMspScope("params"),
+  async (req: Request, res: Response) => {
+    try {
+      const parsed = adjustmentSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: zodMessage(parsed.error) });
+        return;
+      }
+      const { action, reason } = parsed.data;
+      if (action === "create" && (!parsed.data.item || parsed.data.hours === undefined)) {
+        res.status(400).json({ error: "item and hours are required to create an entry" });
+        return;
+      }
+      if ((action === "update" || action === "delete") && parsed.data.entryId == null) {
+        res.status(400).json({ error: "entryId is required to update or delete an entry" });
+        return;
+      }
+
+      const scope = await resolveCustomerOrRespond(req, res);
+      if (!scope) return;
+      const { mspId, customerId } = scope;
+      const periodKey = String(req.params.periodKey ?? "");
+
+      const result = await withLedgerLock(customerId, async (tx) => {
+        const close = await findClose(tx, customerId, periodKey);
+        if (!close) {
+          throw new LedgerConflict(400, `Period ${periodKey} is not closed. Use the normal entry endpoints to change an open period.`);
+        }
+
+        let entry: typeof retainerWorkLogTable.$inferSelect;
+        let beforeMinutes: number | null = null;
+
+        if (action === "create") {
+          // No entry to derive occurredAt from — default to the start of the
+          // closed period itself, since periodMonth is set explicitly below
+          // rather than derived from occurredAt via periodKeyOf.
+          const occurredAt = parsed.data.occurredAt ? new Date(parsed.data.occurredAt) : new Date(`${periodKey}T12:00:00Z`);
+          const [row] = await tx
+            .insert(retainerWorkLogTable)
+            .values({
+              customerId,
+              mspId,
+              periodMonth: periodKey,
+              weekLabel: isoWeekLabel(occurredAt),
+              item: parsed.data.item!,
+              minutes: hoursToMinutes(parsed.data.hours!),
+              pillar: parsed.data.pillar ?? null,
+              finding: parsed.data.finding ?? null,
+              outcome: parsed.data.outcome ?? null,
+              state: parsed.data.state ?? "in_progress",
+              source: "unscoped",
+              sourceRefId: null,
+              loggedByUserId: req.user?.id ?? null,
+              occurredAt,
+            })
+            .returning();
+          entry = row;
+        } else {
+          const [existing] = await tx
+            .select()
+            .from(retainerWorkLogTable)
+            .where(and(
+              eq(retainerWorkLogTable.id, parsed.data.entryId!),
+              eq(retainerWorkLogTable.customerId, customerId),
+              eq(retainerWorkLogTable.mspId, mspId),
+            ))
+            .limit(1);
+          if (!existing) throw new LedgerConflict(404, "Entry not found");
+          if (existing.periodMonth !== periodKey) {
+            throw new LedgerConflict(400, `Entry ${existing.id} is not in period ${periodKey}`);
+          }
+          beforeMinutes = existing.minutes;
+
+          if (action === "delete") {
+            await tx.delete(retainerWorkLogTable).where(eq(retainerWorkLogTable.id, existing.id));
+            entry = existing;
+          } else {
+            const patch: Partial<typeof retainerWorkLogTable.$inferInsert> = { updatedAt: new Date() };
+            const d = parsed.data;
+            if (d.item !== undefined) patch.item = d.item;
+            if (d.hours !== undefined) patch.minutes = hoursToMinutes(d.hours);
+            if (d.pillar !== undefined) patch.pillar = d.pillar;
+            if (d.finding !== undefined) patch.finding = d.finding;
+            if (d.outcome !== undefined) patch.outcome = d.outcome;
+            if (d.state !== undefined) patch.state = d.state;
+            const [updated] = await tx
+              .update(retainerWorkLogTable)
+              .set(patch)
+              .where(eq(retainerWorkLogTable.id, existing.id))
+              .returning();
+            entry = updated;
+          }
+        }
+
+        const [note] = await tx
+          .insert(retainerAdjustmentNotesTable)
+          .values({
+            customerId,
+            mspId,
+            periodKey,
+            workLogEntryId: entry.id,
+            action,
+            reason,
+            item: entry.item,
+            beforeMinutes,
+            afterMinutes: action === "delete" ? null : entry.minutes,
+            createdByUserId: req.user?.id ?? null,
+          })
+          .returning();
+
+        return { entry, note, wasDeleted: action === "delete" };
+      });
+
+      await audit(req, scope, "RETAINER_PERIOD_ADJUSTED_AFTER_CLOSE", "retainer_work_log", String(result.entry.id), {
+        periodKey,
+        action,
+        reason,
+        beforeMinutes: result.note.beforeMinutes,
+        afterMinutes: result.note.afterMinutes,
+      });
+      log.info({ mspId, customerId, periodKey, action, entryId: result.entry.id }, "msp retainer period adjusted after close");
+      res.status(201).json({
+        note: adjustmentNoteToWire(result.note),
+        entry: result.wasDeleted ? null : { ...entryToWire(result.entry), periodClosed: true },
+      });
+    } catch (err) {
+      sendLedgerError(res, err, log, "POST /msp/:mspId/customers/:customerId/retainer/periods/:periodKey/adjustments failed", "Failed to adjust closed period");
     }
   },
 );

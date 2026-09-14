@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useMyArchitectRetainer } from "@/lib/my-architect-api";
 import type {
+  RetainerAdjustmentAction,
   RetainerWorkSource,
   StatusReportClientStatus,
   WireRetainerEntry,
@@ -45,6 +46,12 @@ const SOURCE_LABEL: Record<RetainerWorkSource, string> = {
   change_control: "from change control",
   remediation_tracker: "from remediation",
   unscoped: "logged by your architect",
+};
+
+const ADJUSTMENT_ACTION_LABEL: Record<RetainerAdjustmentAction, string> = {
+  create: "hours added",
+  update: "hours changed",
+  delete: "entry removed",
 };
 
 const CLIENT_STATUS_STYLE: Record<StatusReportClientStatus, { label: string; className: string }> = {
@@ -318,6 +325,41 @@ export default function MyArchitectPage() {
               </span>
             </CardContent>
           </Card>
+
+          {data.adjustmentNotes.length > 0 && (
+            <Card data-testid="my-architect-adjustment-notes">
+              <CardContent className="flex flex-col gap-1 pt-6">
+                <div className="flex flex-wrap items-center gap-2.5 pb-2">
+                  <span className="text-[13.5px] font-semibold text-foreground">Revisions to closed periods</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {data.adjustmentNotes.length} {data.adjustmentNotes.length === 1 ? "revision" : "revisions"}
+                  </span>
+                </div>
+                {data.adjustmentNotes.map((n) => (
+                  <div key={n.id} className="flex flex-col gap-1 border-t border-border/50 py-2.5 first:border-t-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[12.5px] text-foreground">{n.item}</span>
+                      <Badge variant="outline" className="border-status-amber/28 bg-status-amber/10 text-status-amber text-[10px]">
+                        {ADJUSTMENT_ACTION_LABEL[n.action as RetainerAdjustmentAction] ?? n.action}
+                      </Badge>
+                      <span className="ml-auto text-[10.5px] text-muted-foreground">{formatDate(n.createdAt)}</span>
+                    </div>
+                    <span className="text-[11.5px] leading-relaxed text-foreground/90">{n.reason}</span>
+                    <span className="text-[10.5px] text-muted-foreground/70">
+                      {formatPeriodLabel(n.periodKey)}
+                      {n.beforeHours != null || n.afterHours != null
+                        ? ` · ${n.beforeHours ?? 0}h → ${n.afterHours ?? 0}h`
+                        : ""}
+                    </span>
+                  </div>
+                ))}
+                <span className="border-t border-border/50 pt-2.5 text-[10.5px] leading-relaxed text-muted-foreground/70">
+                  A period's hours are locked once closed. This is the real, full list of every change
+                  made to a closed period since — each one requires a reason from your provider.
+                </span>
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
 

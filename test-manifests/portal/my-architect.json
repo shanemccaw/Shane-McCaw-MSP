@@ -1,6 +1,6 @@
 {
   "issue": 1746,
-  "feature": "My Architect (#1746, Feature #1569) -- the real customer-facing retainer page in artifacts/portal (/my-architect), wired to the one real, GET-only endpoint GET /api/portal/retainer -- see Design/portal/design_handoff_full_site/docs/my-architect-contract-pack.md. No fixture module: every row on screen (settings, bucket, work log, status reports) comes from this one endpoint. Money (hourlyRateCents) is a real, live field on the response and is never rendered, per contract pack §6.1.",
+  "feature": "My Architect (#1746, Feature #1569) -- the real customer-facing retainer page in artifacts/portal (/my-architect), wired to the one real, GET-only endpoint GET /api/portal/retainer -- see Design/portal/design_handoff_full_site/docs/my-architect-contract-pack.md. No fixture module: every row on screen (settings, bucket, work log, status reports, adjustmentNotes) comes from this one endpoint. Money (hourlyRateCents) is a real, live field on the response and is never rendered, per contract pack §6.1. #4026 added adjustmentNotes: the real, persisted reason behind any hours change the MSP Console made to an already-closed period (retainer_adjustment_notes) -- rendered as a 'Revisions to closed periods' card, only when non-empty.",
   "baseUrl": "{{DEPLOY_URL}}",
   "lastVerifiedAgainstCommit": "TBD-fill-at-DONE",
 
@@ -63,6 +63,14 @@
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.statusReports", "isArray": true },
       "sessionTag": "my-architect-1746"
+    },
+    {
+      "name": "A6 (#4026) -- adjustmentNotes is a real array on the response, not omitted -- retainer_adjustment_notes has 0 rows for this account, so it reads empty, not the field being absent.",
+      "method": "GET",
+      "path": "/api/portal/retainer",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.adjustmentNotes", "isArray": true },
+      "sessionTag": "my-architect-4026"
     }
   ],
 

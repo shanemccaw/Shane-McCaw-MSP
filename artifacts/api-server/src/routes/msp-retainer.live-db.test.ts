@@ -22,6 +22,7 @@ import {
   retainerSettingsTable,
   retainerWorkLogTable,
   retainerPeriodClosesTable,
+  retainerAdjustmentNotesTable,
   mspAuditLogsTable,
 } from "@workspace/db";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
@@ -94,6 +95,7 @@ describe.skipIf(!process.env.DATABASE_URL)("MSP Console retainer hours — live 
 
   afterAll(async () => {
     await db.delete(mspAuditLogsTable).where(eq(mspAuditLogsTable.mspId, mspId));
+    await db.delete(retainerAdjustmentNotesTable).where(eq(retainerAdjustmentNotesTable.customerId, customerId));
     await db.delete(retainerPeriodClosesTable).where(eq(retainerPeriodClosesTable.customerId, customerId));
     await db.delete(retainerWorkLogTable).where(eq(retainerWorkLogTable.customerId, customerId));
     await db.delete(retainerSettingsTable).where(eq(retainerSettingsTable.customerId, customerId));
@@ -203,6 +205,140 @@ describe.skipIf(!process.env.DATABASE_URL)("MSP Console retainer hours — live 
     const june = detail.body.periods.find((p: { periodKey: string }) => p.periodKey === JUNE);
     expect(june.closed).toBe(true);
     expect(detail.body.entries.find((e: { id: number }) => e.id === juneEntryId).periodClosed).toBe(true);
+  });
+
+  it("adjusting a closed period requires ladder.msp-admin and a non-empty reason (#4026)", async () => {
+    const byOperator = await request(app)
+      .post(`${base()}/periods/${JUNE}/adjustments`)
+      .set("Authorization", `Bearer ${operator}`)
+      .send({ action: "create", item: "late fix", hours: 1, reason: "backfill" });
+    expect(byOperator.status).toBe(403);
+
+    const noReason = await request(app)
+      .post(`${base()}/periods/${JUNE}/adjustments`)
+      .set("Authorization", `Bearer ${admin}`)
+      .send({ action: "create", item: "late fix", hours: 1 });
+    expect(noReason.status).toBe(400);
+
+    const emptyReason = await request(app)
+      .post(`${base()}/periods/${JUNE}/adjustments`)
+      .set("Authorization", `Bearer ${admin}`)
+      .send({ action: "create", item: "late fix", hours: 1, reason: "   " });
+    expect(emptyReason.status).toBe(400);
+  });
+
+  it("refuses to adjust a period that isn't closed (#4026)", async () => {
+    const res = await request(app)
+      .post(`${base()}/periods/${MAY}/adjustments`)
+      .set("Authorization", `Bearer ${admin}`)
+      .send({ action: "create", item: "backfill", hours: 1, reason: "found a late invoice" });
+    expect(res.status).toBe(400);
+  });
+
+  let adjustedEntryId: number;
+
+  it("creates a new entry in a closed period with a mandatory reason, recorded as a real revision note (#4026)", async () => {
+    const res = await request(app)
+      .post(`${base()}/periods/${JUNE}/adjustments`)
+      .set("Authorization", `Bearer ${admin}`)
+      .send({
+        action: "create",
+        item: "Late-discovered June fix",
+        hours: 2,
+        reason: "Customer disputed a missing entry, confirmed via ticket #9911",
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.entry).toMatchObject({ item: "Late-discovered June fix", hours: 2, periodMonth: JUNE, periodClosed: true });
+    expect(res.body.note).toMatchObject({
+      periodKey: JUNE,
+      action: "create",
+      item: "Late-discovered June fix",
+      reason: "Customer disputed a missing entry, confirmed via ticket #9911",
+      beforeHours: null,
+      afterHours: 2,
+    });
+    adjustedEntryId = res.body.entry.id;
+  });
+
+  it("updates an entry inside a closed period with a reason (#4026)", async () => {
+    const res = await request(app)
+      .post(`${base()}/periods/${JUNE}/adjustments`)
+      .set("Authorization", `Bearer ${admin}`)
+      .send({ action: "update", entryId: adjustedEntryId, hours: 3, reason: "Undercounted — corrected after review" });
+    expect(res.status).toBe(201);
+    expect(res.body.entry.hours).toBe(3);
+    expect(res.body.note).toMatchObject({ action: "update", beforeHours: 2, afterHours: 3 });
+  });
+
+  it("surfaces every revision note in the operator's own GET, and to the CUSTOMER via portal-retainer (#4026)", async () => {
+    const detail = await request(app).get(base()).set("Authorization", `Bearer ${operator}`);
+    const june = detail.body.periods.find((p: { periodKey: string }) => p.periodKey === JUNE);
+    expect(june.adjustmentNotes).toHaveLength(2);
+    expect(june.adjustmentNotes.map((n: { action: string }) => n.action).sort()).toEqual(["create", "update"]);
+
+    const { default: portalRouter } = await import("./portal-retainer.ts");
+    const portalApp = express();
+    portalApp.use(express.json());
+    portalApp.use("/api", portalRouter);
+    const customerToken = jwt.sign(
+      { id: 999, email: "customer@test.example", role: "client", customerId },
+      JWT_SECRET,
+      { expiresIn: "1h" },
+    );
+    const portalRes = await request(portalApp).get("/api/portal/retainer").set("Authorization", `Bearer ${customerToken}`);
+    expect(portalRes.status).toBe(200);
+    expect(portalRes.body.adjustmentNotes.length).toBeGreaterThanOrEqual(2);
+    expect(portalRes.body.adjustmentNotes.some((n: { reason: string }) => n.reason.includes("Customer disputed"))).toBe(true);
+  });
+
+  it("deletes an entry inside a closed period with a reason (#4026)", async () => {
+    const res = await request(app)
+      .post(`${base()}/periods/${JUNE}/adjustments`)
+      .set("Authorization", `Bearer ${admin}`)
+      .send({ action: "delete", entryId: adjustedEntryId, reason: "Duplicate of an existing entry" });
+    expect(res.status).toBe(201);
+    expect(res.body.entry).toBeNull();
+    expect(res.body.note).toMatchObject({ action: "delete", beforeHours: 3, afterHours: null });
+  });
+
+  it("writes an msp_audit_logs row for every adjust-after-close use (#4026)", async () => {
+    const rows = await db.select({ actionType: mspAuditLogsTable.actionType }).from(mspAuditLogsTable).where(eq(mspAuditLogsTable.mspId, mspId));
+    const count = rows.filter((r) => r.actionType === "RETAINER_PERIOD_ADJUSTED_AFTER_CLOSE").length;
+    expect(count).toBeGreaterThanOrEqual(3);
+  });
+
+  it("AdminV2 honors the SAME close lock — no override, no bypass flag (#4026)", async () => {
+    const { default: adminRouter } = await import("./admin-retainer.ts");
+    const adminApp = express();
+    adminApp.use(express.json());
+    adminApp.use("/api", adminRouter);
+    // requireAdmin isn't mocked — the real router is mounted behind the real
+    // requireAuth/requireAdmin chain, matching how msp-retainer's router is
+    // mounted above. A real admin JWT (role: "admin"), so this proves the
+    // lock via the authenticated path a real AdminV2 session takes.
+    const adminToken = jwt.sign({ id: 1, email: "shane@admin.test", role: "admin" }, JWT_SECRET, { expiresIn: "1h" });
+
+    const unscoped = await request(adminApp)
+      .post(`/api/admin/retainer/${customerId}/unscoped`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ item: "AdminV2 attempt", hours: 1, occurredAt: "2026-06-15T10:00:00Z" });
+    expect(unscoped.status).toBe(409);
+
+    const patch = await request(adminApp)
+      .patch(`/api/admin/retainer/entry/${mayEntryId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ hours: 1 });
+    // mayEntryId's period (MAY) is still open — proves this 409 is scoped to
+    // the CLOSED period, not every write in AdminV2.
+    expect(patch.status).toBe(200);
+
+    const patchClosed = await request(adminApp)
+      .patch(`/api/admin/retainer/entry/${adjustedEntryId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ hours: 1 });
+    // adjustedEntryId was deleted by the adjust-after-close test above —
+    // 404, not 409, proving the lock check runs AFTER existence, not instead of it.
+    expect(patchClosed.status).toBe(404);
   });
 
   it("only an MSP admin can reopen; reopening unlocks the period", async () => {

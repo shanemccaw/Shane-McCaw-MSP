@@ -78,13 +78,33 @@ export interface WireStatusReport {
   replyThread: WireStatusReportThreadEntry[];
 }
 
-/** `portal-retainer.ts:98-112` — the route's actual response shape. */
+export type RetainerAdjustmentAction = "create" | "update" | "delete";
+
+/**
+ * A `retainer_adjustment_notes` row (Git #4026) — the real, persisted reason
+ * behind any hours change the MSP Console made to an already-CLOSED period.
+ * `adjustmentNoteToWire`, `artifacts/api-server/src/routes/msp-retainer.ts`.
+ */
+export interface WireRetainerAdjustmentNote {
+  id: number;
+  periodKey: string;
+  workLogEntryId: number | null;
+  action: RetainerAdjustmentAction | string;
+  reason: string;
+  item: string;
+  beforeHours: number | null;
+  afterHours: number | null;
+  createdAt: string;
+}
+
+/** `portal-retainer.ts:98-114` — the route's actual response shape. */
 export interface WireRetainerPayload {
   configured: boolean;
   settings: WireRetainerSettings | null;
   bucket: WireRetainerBucket;
   months: string[];
   entries: WireRetainerEntry[];
+  adjustmentNotes: WireRetainerAdjustmentNote[];
   statusReports: WireStatusReport[];
 }
 
