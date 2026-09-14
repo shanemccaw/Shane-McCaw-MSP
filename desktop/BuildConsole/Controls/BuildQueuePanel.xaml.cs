@@ -6693,6 +6693,30 @@ namespace BuildConsole.Controls
             miOpenBuildLog.Click += (_, _) => SelectNode(node, openLogPanel: true);
             cm.Items.Add(miOpenBuildLog);
 
+            // Git #4106 — same log-exists gate as the badge/"Open Build Log" above; grabs
+            // the real tail of the build's actual log file to the clipboard.
+            var miCopyBuildLog = new MenuItem { Header = "📋 Copy Build Log (Last 10 Lines)" };
+            miCopyBuildLog.Click += (_, _) =>
+            {
+                if (!Services.BuildLogExistenceCache.HasLog(item.Id))
+                {
+                    ToastEngine.Warning("Copy Build Log", "No log file exists for this build yet.");
+                    return;
+                }
+                try
+                {
+                    var path = Services.BuildLogPaths.ForQueueItem(item.Id);
+                    var lastLines = System.IO.File.ReadLines(path).TakeLast(10);
+                    Clipboard.SetText(string.Join(Environment.NewLine, lastLines));
+                    ToastEngine.Success("Copy Build Log", "Last 10 lines copied to clipboard.");
+                }
+                catch (Exception ex)
+                {
+                    ToastEngine.Error("Copy Build Log", $"Couldn't copy the log: {ex.Message}");
+                }
+            };
+            cm.Items.Add(miCopyBuildLog);
+
             var miMarkComplete = new MenuItem { Header = "✓ Mark Complete (Hide)" };
             miMarkComplete.Click += async (_, _) =>
             {
