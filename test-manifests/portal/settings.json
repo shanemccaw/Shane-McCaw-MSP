@@ -6,7 +6,7 @@
 
   "notes": [
     "shaneapp://runTest hits the DEPLOYED build, not the local worktree — these assertions only go green once this session's commit is deployed by the dev-server rebuild.",
-    "ENV VARS required: DEPLOY_URL, TEST_CUSTOMER_EMAIL / TEST_CUSTOMER_PASSWORD — the same Customer testbed account test-manifests/portal/webhooks.json already uses.",
+    "ENV VARS required: DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD — the same Customer testbed account test-manifests/portal/webhooks.json already uses.",
     "RULES-1 is the new portal-facing route this build added — GET /api/portal/alert-preferences/rules, a read of the customer_tenant_alert_rules catalog (previously admin-only, zero customer-facing consumers). Asserted directly since it has no prior coverage anywhere.",
     "DEPT-1 confirms the already-built (but previously zero-consumer) GET /api/portal/settings/departments contract this page's new Departments tab now wires — real, possibly-empty array, never a fixture.",
     "UI steps click through all six tabs to confirm the container's real stab-switching renders each real tab content component (not a placeholder), reusing each tab's own already-established data-testid (alert-preferences-content, departments-content, webhooks-page, notification-preferences-page, email-auth-setup-page, data-rights-and-privacy-page — the last of which this build added since the standalone page had none before).",
@@ -20,7 +20,7 @@
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_CUSTOMER_EMAIL}}", "password": "{{TEST_CUSTOMER_PASSWORD}}" },
+      "body": { "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
     },
@@ -50,8 +50,8 @@
   "uiSteps": [
     { "name": "goto the real login page.", "action": "goto", "target": "/portal/login" },
     { "action": "expect", "selector": "[data-testid='login-email']", "state": "visible", "critical": true },
-    { "action": "input", "selector": "[data-testid='login-email']", "value": "{{TEST_CUSTOMER_EMAIL}}" },
-    { "action": "input", "selector": "[data-testid='login-password']", "value": "{{TEST_CUSTOMER_PASSWORD}}" },
+    { "action": "input", "selector": "[data-testid='login-email']", "value": "{{TEST_RBAC_CUSTOMER_EMAIL}}" },
+    { "action": "input", "selector": "[data-testid='login-password']", "value": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
     { "name": "sign in.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
 
     { "name": "goto the real Settings page.", "action": "goto", "target": "/portal/settings" },
