@@ -50,7 +50,7 @@ const log = logger.child({ channel: "billing" });
 const router: IRouter = Router();
 
 export const DEFAULT_RETAINED_MINUTES = 480; // 8.0h
-const DEFAULT_RATE_CENTS = 30000; // $300/hr
+export const DEFAULT_RATE_CENTS = 30000; // $300/hr
 
 // ── Wire mappers ──────────────────────────────────────────────────────────────
 // Exported so the customer-facing seam (routes/portal-retainer.ts) renders the

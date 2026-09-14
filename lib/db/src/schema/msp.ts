@@ -9185,6 +9185,41 @@ export const retainerWorkLogTable = pgTable("retainer_work_log", {
 export type RetainerWorkLogRow = typeof retainerWorkLogTable.$inferSelect;
 export type InsertRetainerWorkLogRow = typeof retainerWorkLogTable.$inferInsert;
 
+// The period-close record (Git #4020) — one row per (customer, anniversary
+// period) an MSP Console operator has closed. Carries a frozen snapshot of the
+// bucket `computeMonthBucket` produced at close time, so the closed figures
+// survive a later allotment change. While a row exists, routes/msp-retainer.ts
+// refuses ledger writes into that period; reopening deletes the row.
+// `customerId` (tenants.id, no FK) and `periodKey` (ISO "YYYY-MM-DD"
+// anniversary key, #3473) match retainer_work_log's own convention.
+export const retainerPeriodClosesTable = pgTable("retainer_period_closes", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  periodKey: text("period_key").notNull(),
+  /** The anniversary anchor day the period was bucketed under when it closed. */
+  anchorDay: integer("anchor_day").notNull(),
+  retainedMinutes: integer("retained_minutes").notNull(),
+  rolledMinutes: integer("rolled_minutes").notNull(),
+  usedMinutes: integer("used_minutes").notNull(),
+  remainingMinutes: integer("remaining_minutes").notNull(),
+  overMinutes: integer("over_minutes").notNull(),
+  /** retainer_settings.hourly_rate_cents at close time. */
+  hourlyRateCents: integer("hourly_rate_cents").notNull(),
+  /** Ledger entries in the period at close time. */
+  entryCount: integer("entry_count").notNull(),
+  note: text("note"),
+  /** users.id of the operator who closed it. */
+  closedByUserId: integer("closed_by_user_id"),
+  closedAt: timestamp("closed_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("retainer_period_closes_customer_period_uidx").on(t.customerId, t.periodKey),
+  index("retainer_period_closes_msp_id_idx").on(t.mspId),
+]);
+
+export type RetainerPeriodCloseRow = typeof retainerPeriodClosesTable.$inferSelect;
+export type InsertRetainerPeriodCloseRow = typeof retainerPeriodClosesTable.$inferInsert;
+
 // ── Evidence attachments (#3503) ──────────────────────────────────────────────
 //
 // `desktop/MyArchitect/Services/IEvidencePostClient.cs` (#3470's screenshot tool)
