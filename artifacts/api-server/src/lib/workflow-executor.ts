@@ -83,6 +83,7 @@ import { getEngineDef } from "./engine-registry.ts";
 import { scoreHealthFromScriptRun } from "./m365-health-ai-scorer.ts";
 import { anthropic, withAiAttribution, type AiCallAttribution } from "@workspace/integrations-anthropic-ai";
 import { resolveNodeTypeMeta, resolveEffectiveNodeType } from "./node-type-registry.ts";
+import { isExchangeOnlineEndpoint, parseExchangeOnlineEndpoint, buildPsExecutionParams, classifyPsExecutionFailure } from "./exchange-online-transport.ts";
 import { openai } from "@workspace/integrations-openai-ai-server/image";
 import { eq, and, count, desc, inArray, or, sql } from "drizzle-orm";
 import { purchaseApproverUserIds } from "../middlewares/rbac-capability.ts";
@@ -1083,6 +1084,119 @@ async function runRemoveAuthMethodAgainstTenant(
   };
 }
 
+/**
+ * #3948 — the second execution transport: an `exchange-online://<Cmdlet>`
+ * template executes through the ps-execution container's app-only
+ * Connect-ExchangeOnline session (callPsExecution), not through Graph.
+ * See exchange-online-transport.ts for the pure parse/param-map/success
+ * design; this wrapper supplies the tenant-bound pieces (Organization
+ * resolution from tenants.domain — the same rule runPowerShellCheck in
+ * monitor-executor.ts uses — the real container call, and the audit row).
+ */
+async function runExchangeOnlineTemplateAgainstTenant(opts: {
+  templateId: string;
+  tenantId: string;
+  customerId: number;
+  /** The template's raw exchange-online:// endpoint (post-interpolation). */
+  endpoint: string;
+  /** The resolved body — becomes the cmdlet's named parameters. */
+  body: Record<string, unknown>;
+  label: string;
+  /** What the audit row records as requestVariables. */
+  effectivePayload: Record<string, unknown>;
+  source?: string;
+}): Promise<BaselineTemplateExecutionResult> {
+  const { templateId, tenantId, customerId, endpoint, body, label, effectivePayload, source } = opts;
+
+  const writeAudit = async (snapshot: Record<string, unknown>): Promise<number | undefined> => {
+    try {
+      const [inserted] = await db.insert(baselineActionTemplateAuditLogTable).values({
+        action: snapshot.success === true ? "executed" : "failed",
+        templateId,
+        requestVariables: effectivePayload,
+        afterSnapshot: {
+          endpoint,
+          method: "POWERSHELL",
+          transport: "exchange-online-powershell",
+          customerId,
+          tenantId,
+          executedAt: new Date().toISOString(),
+          ...snapshot,
+          ...(source !== undefined ? { source } : {}),
+        },
+      }).returning({ id: baselineActionTemplateAuditLogTable.id });
+      return inserted?.id;
+    } catch (auditErr) {
+      log.warn({ auditErr, templateId }, "runExchangeOnlineTemplateAgainstTenant: audit log insert failed (non-fatal)");
+      return undefined;
+    }
+  };
+
+  const parsed = parseExchangeOnlineEndpoint(endpoint);
+  if (!parsed.ok) {
+    log.warn({ templateId, endpoint, reason: parsed.error }, "runExchangeOnlineTemplateAgainstTenant: endpoint rejected — nothing fired");
+    const auditLogId = await writeAudit({ success: false, status: 400, errorType: "bad_request", rejectReason: parsed.error });
+    return { success: false, status: 400, errorType: "bad_request", data: parsed.error, endpoint, method: "POWERSHELL", label, auditLogId };
+  }
+
+  // Organization is the tenant-identity field Connect-ExchangeOnline needs —
+  // resolved from the tenant's own domain (fallback: the tenant GUID, which
+  // Connect-ExchangeOnline's -Organization also accepts), never from the body.
+  const [tenantRow] = await db
+    .select({ domain: tenantsTable.domain })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.tenantId, tenantId))
+    .limit(1);
+  const organization = tenantRow?.domain || tenantId;
+
+  const built = buildPsExecutionParams(body, organization);
+  if (!built.ok) {
+    log.warn({ templateId, endpoint, reason: built.error }, "runExchangeOnlineTemplateAgainstTenant: body rejected — nothing fired");
+    const auditLogId = await writeAudit({ success: false, status: 400, errorType: "bad_request", rejectReason: built.error });
+    return { success: false, status: 400, errorType: "bad_request", data: built.error, endpoint, method: "POWERSHELL", label, auditLogId };
+  }
+
+  const { callPsExecution, PsExecutionError } = await import("./ps-execution-client.ts");
+  try {
+    const result = await callPsExecution(parsed.parsed.cmdletKey, built.params);
+    // No throw == the container returned 200 == the cmdlet completed without
+    // error — the transport's success signal (see exchange-online-transport.ts's
+    // header for why this, and not an HTTP-status comparison, is the design).
+    const auditLogId = await writeAudit({
+      success: true,
+      status: 200,
+      errorType: null,
+      cmdlet: parsed.parsed.cmdlet,
+      cmdletKey: parsed.parsed.cmdletKey,
+      organization,
+      psResult: result.rawResponse,
+    });
+    return { success: true, status: 200, data: result.rawResponse, endpoint, method: "POWERSHELL", label, auditLogId };
+  } catch (err) {
+    if (!(err instanceof PsExecutionError)) throw err;
+    const classified = classifyPsExecutionFailure(err);
+    log.warn(
+      { templateId, cmdletKey: err.cmdletKey, kind: err.kind, containerErrorKind: err.containerErrorKind },
+      "runExchangeOnlineTemplateAgainstTenant: ps-execution call failed",
+    );
+    const auditLogId = await writeAudit({
+      success: false,
+      status: classified.status,
+      errorType: classified.errorType,
+      cmdlet: parsed.parsed.cmdlet,
+      cmdletKey: parsed.parsed.cmdletKey,
+      organization,
+      psErrorKind: err.kind,
+      psContainerErrorKind: err.containerErrorKind ?? null,
+      psErrorMessage: err.message,
+    });
+    return {
+      success: false, status: classified.status, errorType: classified.errorType, data: err.message,
+      endpoint, method: "POWERSHELL", label, auditLogId,
+    };
+  }
+}
+
 export async function runBaselineTemplateAgainstTenant(
   templateId: string,
   tenantId: string,
@@ -1249,6 +1363,17 @@ export async function runBaselineTemplateAgainstTenant(
   const endpoint = writeResolved.endpoint;
   const method = writeResolved.method;
   const body = writeResolved.body;
+
+  // #3948 — second transport: an exchange-online:// endpoint is an Exchange
+  // Online PowerShell cmdlet, not a Graph URL. Route it through the
+  // ps-execution container instead of graphWriteForTenant, which would
+  // otherwise receive the pseudo-URI as a malformed Graph path.
+  if (isExchangeOnlineEndpoint(endpoint)) {
+    return await runExchangeOnlineTemplateAgainstTenant({
+      templateId, tenantId, customerId, endpoint, body,
+      label: writeResolved.label, effectivePayload, source,
+    });
+  }
 
   const { graphWriteForTenant } = await import("./graph.ts");
   const result = await graphWriteForTenant(tenantId, customerId, endpoint, method, body, [200, 201, 204]);
