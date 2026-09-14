@@ -382,6 +382,11 @@ namespace BuildConsole.Controls
 
         private async void BtnToggleDomInspect_Click(object sender, RoutedEventArgs e)
         {
+            await ToggleDomInspectorAsync();
+        }
+
+        public async Task ToggleDomInspectorAsync()
+        {
             if (_activeWebView?.CoreWebView2 == null)
             {
                 MessageBox.Show("No active WebView2 page connected.", "DOM Inspector", MessageBoxButton.OK, MessageBoxImage.Information);

@@ -1790,6 +1790,19 @@ namespace BuildConsole
                 return;
             }
 
+            // Git #4093 — Ctrl+Shift+E: toggle the DOM Inspector's Element Inspector, mirroring
+            // its click handler. Only meaningful while Test Mode is active (the panel is Test
+            // Mode-only UI); no-op otherwise rather than auto-entering Test Mode as a side effect.
+            if (e.Key == Key.E && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+            {
+                if (_isTestMode)
+                {
+                    e.Handled = true;
+                    _ = TestModeDiagnosticsPanel.ToggleDomInspectorAsync();
+                }
+                return;
+            }
+
             // Git #3829 (supersedes #3553's own Ctrl+D binding — confirmed via direct code read
             // before claiming the key, per this issue's own explicit instruction) — Ctrl+D (no
             // Shift, distinct from the Ctrl+Shift+D mascot chord above) opens the real Command
