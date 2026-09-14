@@ -8,6 +8,24 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+const BRANCHES = [
+  {
+    rule: "border-emerald-400/50",
+    title: "Account with a password → reset link",
+    text: "A single-use reset token, valid one hour, in a link to the reset screen. Requesting a second link does not invalidate the first before its hour is up.",
+  },
+  {
+    rule: "border-sky-400/50",
+    title: "Account that never finished setup → setup link",
+    text: "A setup token valid seventy-two hours, sent only if the account has a real purchased service behind it. Same check runs again at the moment a password is actually set, so a link minted in error still cannot be used.",
+  },
+  {
+    rule: "border-slate-400/35",
+    title: "No matching account, or a blank field → nothing at all",
+    text: "The handler returns early and sends no mail. The screen above looks identical either way, which is the point.",
+  },
+];
+
 /**
  * Auth — Forgot password (#2991, Feature #1648). Wired to
  * POST /api/auth/forgot-password (auth.ts:718-780), which is unconditionally
@@ -91,6 +109,22 @@ export default function ForgotPasswordPage() {
           </div>
         </Card>
       )}
+
+      <div className="flex flex-col gap-2.5 rounded-xl border border-border bg-card/40 p-4">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+          What happens behind that one response
+        </span>
+        {BRANCHES.map((b, i) => (
+          <div key={i} className={`flex flex-col gap-0.5 border-l-2 ${b.rule} pl-3`}>
+            <span className="text-xs font-semibold leading-snug text-foreground">{b.title}</span>
+            <span className="text-[11.5px] leading-snug text-muted-foreground">{b.text}</span>
+          </div>
+        ))}
+        <p className="border-t border-border pt-2.5 text-[10.5px] leading-snug text-muted-foreground">
+          A mail-send failure is swallowed too — nothing about it reaches this screen. So "received"
+          here means the request was accepted, never that an email definitely left the building.
+        </p>
+      </div>
     </AuthPageShell>
   );
 }

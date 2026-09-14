@@ -2,14 +2,16 @@
   "issue": 4013,
   "feature": "Team Management and Invitations - the real artifacts/portal '/team' page (src/pages/customer-team.tsx), part of #1656 (page itself #3996; Billing/Customer-Admin role surface #4013). Adapted from Design/portal/design_handoff_billing_roles_and_new_modules/screens/Team Management.dc.html using this codebase's own React/Vite/Tailwind/shadcn/lucide patterns, wired against all 13 real routes on artifacts/api-server/src/routes/portal-team.ts via useTeamLive.ts/teamWire.ts: GET /portal/team (roster), POST /portal/team/invite, PATCH /portal/team/:userId/status, DELETE /portal/team/:userId/sessions, PATCH /portal/team/:userId/mfa-enforcement, POST /portal/team/:userId/unlock, POST /portal/team/:userId/reset-password, POST /portal/team/:userId/temp-password, POST /portal/team/:userId/reset-mfa, POST /portal/team/:userId/emergency-bypass, PATCH /portal/team/:userId/manager, and PATCH /portal/team/:userId/role (#3647, wired #4013). The page's ROLES block now draws role chips, held/not-held role cards, grant/revoke confirm modals, and the self-revoke refusal for Customer Admin - see test-manifests/portal/team-role-assignment.json for that route's own auth/validation coverage.",
   "baseUrl": "{{DEPLOY_URL}}",
+  "loginAs": "Customer — RBAC test",
   "lastVerifiedAgainstCommit": "PENDING",
 
   "notes": [
     "GET /api/portal/team's managerUserId field is new this build (Git #3996) - previously selected only inside the manager-assignment route itself (#2527), never projected on the roster read (contract pack #2895 §5 finding). Added so the page's 'Reports to' panel has something real to read instead of a second, unbuilt lookup.",
-    "WHAT THIS COVERS: the roster read's real auth-gate (403 for a caller with no customerId claim is the route's own contract, not asserted here without a non-customer test account; 200 with a real array for an authenticated customer account, including the managerUserId/isCustomerAdmin/hasBillingRole fields this build reads/added) and the page's honest not-signed-in state.",
-    "WHAT THIS DELIBERATELY DOES NOT COVER, AND WHY (no portal login page yet, #1648): artifacts/portal's RequireAuth renders an honest 'Sign in required' panel for an unauthenticated visitor - the same structural gap test-manifests/portal/billing.json and account-security-data-rights.json already document. The mutating actions (invite, suspend, sessions revoke, MFA enforcement/reset, unlock, password reset/temp-password, emergency bypass, manager assignment, role grant/revoke) are exhaustively covered by portal-team.test.ts's own vitest suite (14 tests) against the auth/capability gate and business logic directly - this manifest does not re-drive them against a live account whose customer:team.manage grant state isn't established for any test-manifests/portal/*.json account today (the same reasoning team-role-assignment.json's own notes give for not asserting a live 200 grant).",
+    "WHAT THIS COVERS: the roster read's real auth-gate (403 for a caller with no customerId claim is the route's own contract, not asserted here without a non-customer test account; 200 with a real array for an authenticated customer account, including the managerUserId/isCustomerAdmin/hasBillingRole fields this build reads/added), and a real UI walk proving the roster the ENDPOINT returned is the same roster rendered in the DOM (real member row, keyed by the real userId field the endpoint returns).",
+    "AUTH CORE HAS LANDED (#2991, Feature #1648) - login.tsx now ships real #email/#password inputs and a login-submit testid, so this manifest drives a real login and asserts the real rendered roster instead of only the pre-auth honest empty state (Git #4104 - this note previously said no login page existed yet; that premise was stale, the same correction test-manifests/portal/risk-register.json already made). The mutating actions (invite, suspend, sessions revoke, MFA enforcement/reset, unlock, password reset/temp-password, emergency bypass, manager assignment, role grant/revoke) remain exhaustively covered by portal-team.test.ts's own vitest suite (14 tests) against the auth/capability gate and business logic directly - this manifest does not re-drive them against a live account whose customer:team.manage grant state isn't established for any test-manifests/portal/*.json account today (the same reasoning team-role-assignment.json's own notes give for not asserting a live 200 grant).",
     "ENV VARS required: DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD.",
-    "NOT YET RUN via shaneapp://runTest as of this build (2026-09-14): two real Start-Process attempts against the running local BuildConsole process (confirmed running, pid present) produced no result file within 90s / 20s - genuinely unreachable from this session, not skipped (same as team-role-assignment.json's own note this build). Verified instead by: a real `tsc -p tsconfig.json --noEmit` pass (0 errors) in both artifacts/portal and artifacts/api-server, a real `vitest run src/routes/portal-team.test.ts` pass (14/14) in artifacts/api-server, and a real `vite build` pass in artifacts/portal. Re-run this manifest via shaneapp://runTest once reachable."
+    "NOT YET RUN via shaneapp://runTest as of this build (2026-09-14): two real Start-Process attempts against the running local BuildConsole process (confirmed running, pid present) produced no result file within 90s / 20s - genuinely unreachable from this session, not skipped (same as team-role-assignment.json's own note this build). Verified instead by: a real `tsc -p tsconfig.json --noEmit` pass (0 errors) in both artifacts/portal and artifacts/api-server, a real `vitest run src/routes/portal-team.test.ts` pass (14/14) in artifacts/api-server, and a real `vite build` pass in artifacts/portal. Re-run this manifest via shaneapp://runTest once reachable.",
+    "Git #4104 (2026-09-14): a real shaneapp://runTest attempt was made for THIS exact file (`shaneapp://runTest?file=team-management.json`) and genuinely reached BuildConsole/WebView2 - 5/6 steps passed for real (a real login as the designated Customer test profile, and a real GET /api/portal/team returning the real roster including userId=2762/isCustomerAdmin:true), confirming TEST_RBAC_CUSTOMER_EMAIL/PASSWORD are live and working in this environment. It ran the PRE-#4104 file though: BuildConsole's dev-server checkout still resolves the OLD bare-'/team'-goto + unauthenticated-h1-check version - this worktree's edit hasn't merged yet, the same structural gap every sibling manifest in this build documents. That OLD assertion itself failed live (h1 not found, empty text) - real evidence the WebView2 profile already carried an authenticated session from an earlier run in this same environment and landed on the real team page (which has no literal <h1> element at all, confirming why the old single unauthenticated-only check was already fragile in practice, independent of this fix). Re-run this manifest via shaneapp://runTest once this branch merges to the dev-server checkout."
   ],
 
   "apiTests": [
@@ -36,6 +38,14 @@
       "expect": { "status": 200, "isArray": true }
     },
     {
+      "name": "ROSTER-EXTRACT - take the first real member's userId, the value UI2 below proves reached the DOM (portal-team.ts's own field name).",
+      "method": "GET",
+      "path": "/api/portal/team",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "isArray": true },
+      "extract": { "as": "firstMemberUserId", "jsonPath": "$[0].userId" }
+    },
+    {
       "name": "AUTH-GATE - POST /api/portal/team/invite with no Authorization header returns 401 (requireAuth)",
       "method": "POST",
       "path": "/api/portal/team/invite",
@@ -46,14 +56,8 @@
   ],
 
   "uiSteps": [
-    { "action": "goto", "target": "/team" },
-    {
-      "name": "Unauthenticated visit: the shell route mounts and RequireAuth's honest sign-in-required panel renders (no portal login page exists yet - see notes)",
-      "action": "expect",
-      "selector": "h1",
-      "state": "visible",
-      "textContains": "Sign in required",
-      "critical": true
-    }
+    { "name": "goto the real Team page.", "action": "goto", "target": "/portal/team" },
+    { "name": "UI1 - the real roster container renders for a signed-in customer.", "action": "expect", "selector": "[data-testid='team-roster']", "state": "visible", "critical": true },
+    { "name": "UI2 - THE REAL-DATA ASSERTION. The member row the ENDPOINT returned first is on screen, keyed by its own real userId. A page falling back to fixture/placeholder rows has no element with this id at all.", "action": "expect", "selector": "[data-testid='team-roster-row-{{firstMemberUserId}}']", "state": "visible", "critical": true }
   ]
 }

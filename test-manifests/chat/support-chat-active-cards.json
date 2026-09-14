@@ -2,18 +2,20 @@
   "issue": 2519,
   "feature": "ShaneBot Active Cards - invoice/subscription/score/data-answer cards rendered inline in the real artifacts/portal chat shell (/support, support.tsx), driven by card_router + customer_entitlements grounding's cardData (shanebot-engine.ts). Supersedes the #366 manifest's prior assumption of a portal-v2 support-chat.tsx surface - portal-v2 is retired (see CLAUDE.md); this is the real #2519 build against the fresh artifacts/portal scaffolding (#1673).",
   "baseUrl": "{{DEPLOY_URL}}",
+  "loginAs": "Customer — RBAC test",
   "lastVerifiedAgainstCommit": "7298ec329",
 
   "notes": [
-    "WHAT THIS COVERS: the real, deterministic surface of #2519/#366 - that POST /api/msp/support/chat is auth-gated, that a logged-in customer gets a real structured response (content block array), and that the real /support route in artifacts/portal actually mounts (honest sign-in-required state for an unauthenticated visitor, since RequireAuth gates the whole app - see App.tsx).",
+    "WHAT THIS COVERS: the real, deterministic surface of #2519/#366 - that POST /api/msp/support/chat is auth-gated, that a logged-in customer gets a real structured response (content block array), and a real UI walk of the chat surface itself: the route mounts, the message input/send controls are real, and sending a turn renders a real assistant reply bubble (support-chat-latest-reply, ChatBubble.tsx:34).",
 
     "WHAT THIS DOES NOT COVER, AND WHY (card non-determinism): whether a [SHOW_CARD:x] marker (and therefore an actual `{type:'card',...}` block) appears in any given reply is a live-model judgment call (claude-haiku-4-5 deciding, per-turn, whether the user's question warrants a card) - it cannot be forced or seeded, the same class of non-determinism already documented for /api/quiz/submit (MEMORY: quiz-scoring-no-deterministic-endpoint). A UI/API step asserting 'a card renders for this exact prompt' would be flaky by construction, so it is not attempted here. Instead: card_router's parse/gate/strip, the customer_entitlements builder's cardData assembly (invoice/subscription/score/data-answer, real DB rows), and the full propose-resolve-strip flow in the /msp/support/chat handler all have full DETERMINISTIC unit coverage with a mocked model reply: artifacts/api-server/src/lib/shanebot-engine.test.ts and artifacts/api-server/src/routes/support-chat.test.ts.",
 
-    "WHAT THIS DOES NOT COVER, AND WHY (no portal login page yet): the rebuilt artifacts/portal (#1673 scaffolding) has NO login page today - App.tsx's RequireAuth renders an honest 'Sign in required' panel for an unauthenticated visitor rather than a redirect to a route that does not exist yet (see App.tsx's own comment). So a real end-to-end UI login -> chat -> reply flow cannot be exercised through the browser right now for ANY portal page, not just this one - this is a structural gap in the portal rebuild, not a defect in the #2519 build. The uiSteps below therefore only assert what is honestly reachable today (the route mounts, RequireAuth's honest empty state renders). The chat surface itself - [data-testid='support-chat-input'], [data-testid='support-chat-send'], [data-testid='support-chat-latest-reply'], [data-testid='support-chat-escalate'] - is real, built, and wired to the real endpoint (support.tsx); once a portal login page exists, extend this manifest's uiSteps with a real login block (matching the pattern other msp-portal manifests use) followed by goto /portal/support and exercising those same selectors - no code change needed on the chat surface side.",
+    "AUTH CORE HAS LANDED (#2991, Feature #1648) - login.tsx now ships real #email/#password inputs and a login-submit testid, so this manifest drives a real login and a real send-a-turn round trip through the browser instead of only asserting the pre-auth honest empty state (Git #4104 - this note previously said no login page existed yet; that premise was stale).",
 
     "ENV VARS (BuildConsole -> Settings -> Test Environment Variables): DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD (the same designated testbed portal account other msp-portal manifests use).",
 
-    "logger channel for the endpoint under test: `engine.shanebot`."
+    "logger channel for the endpoint under test: `engine.shanebot`.",
+    "Git #4104 (2026-09-14): this manifest's real loginAs + authenticated-uiSteps rewrite was validated indirectly rather than by directly invoking shaneapp://runTest against THIS file - BuildConsole's dev-server checkout still resolves the pre-#4104 file (the same structural gap test-manifests/portal/team-management.json's own #4104 note documents with direct live evidence). Instead, the identical pattern (top-level loginAs, goto the real route, expect a real data-testid) was verified live against test-manifests/portal/risk-register.json - an already-merged sibling using this exact mechanism - via a real shaneapp://runTest invocation from this build session: real login succeeded, the real goto navigated correctly, and the real testid-based expect assertions ([data-testid='risk-row-toggle-RBD-2026-104'], [data-testid='policy-decision-row-RBD-2026-104']) genuinely passed in this live BuildConsole/WebView2 environment (18/21 steps passed; the 3 failures are pre-existing content-drift already in that file, unrelated to and not touched by this build). Re-run this manifest directly via shaneapp://runTest once this branch merges to the dev-server checkout."
   ],
 
   "apiTests": [
@@ -69,14 +71,11 @@
   ],
 
   "uiSteps": [
-    { "action": "goto", "target": "/portal/support" },
-    {
-      "name": "Unauthenticated visit: the route mounts and RequireAuth's honest sign-in-required panel renders (no portal login page exists yet - see notes)",
-      "action": "expect",
-      "selector": "h1",
-      "state": "visible",
-      "textContains": "Sign in required",
-      "critical": true
-    }
+    { "name": "goto the real Support (ShaneBot) page.", "action": "goto", "target": "/portal/support" },
+    { "name": "UI1 - the real chat surface mounts (support.tsx).", "action": "expect", "selector": "[data-testid='support-page']", "state": "visible", "critical": true },
+    { "name": "UI2 - the message input is real and present.", "action": "expect", "selector": "[data-testid='support-chat-input']", "state": "present", "critical": true },
+    { "action": "input", "selector": "[data-testid='support-chat-input']", "value": "What is my current plan status?" },
+    { "name": "UI3 - send the real turn through the real endpoint.", "action": "click", "selector": "[data-testid='support-chat-send']" },
+    { "name": "UI4 - THE REAL-DATA ASSERTION. A real assistant reply bubble renders (ChatBubble.tsx's own latest-assistant testid) - proves the full login -> send -> live model round trip actually reaches the DOM, not just the API. Content is never asserted (model-turn non-determinism, see notes); presence is.", "action": "expect", "selector": "[data-testid='support-chat-latest-reply']", "state": "visible", "critical": true, "timeoutMs": 30000 }
   ]
 }
