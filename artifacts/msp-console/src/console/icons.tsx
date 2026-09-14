@@ -67,6 +67,8 @@ import {
   BadgeCheck, FlaskConical, Variable,
   // Azure Credential (#3968)
   Cloud,
+  // Projects — Simple Kanban (#2621)
+  Kanban,
   type LucideIcon,
 } from "lucide-react";
 
@@ -248,6 +250,8 @@ const REGISTRY: Record<string, LucideIcon> = {
   variable: Variable,
   // Azure Credential (#3968)
   cloud: Cloud,
+  // Projects — Simple Kanban (#2621)
+  kanban: Kanban,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});

@@ -107,6 +107,13 @@ export const MSP_PAGES: LeafPage[] = [
   { id: "docs", label: "Documents", icon: "files" },
   { id: "connectors", label: "SharePoint connectors", icon: "plug" },
   { id: "offboarding", label: "Offboarding", icon: "log-out" },
+  // Projects (Git #2621, Feature #2561) — the design's own MSP-wide
+  // Operations placement (`MSP Console.dc.html`'s `mspSel === "projects"`,
+  // between Offboarding and Retainer hours). Free-form buckets/cards per
+  // customer, Phase 1 only — not to be confused with the pre-existing,
+  // unrelated project-scoped Kanban on the admin-panel Delivery Projects
+  // board (`ProjectDetail.tsx`, fixed pipeline, #3433's target).
+  { id: "projects", label: "Projects", icon: "kanban" },
   { id: "policy", label: "Policy engine", icon: "shield-check" },
   { id: "staff", label: "Staff Roster", icon: "user-plus" },
   { id: "acctsec", label: "Account Security", icon: "key-round" },

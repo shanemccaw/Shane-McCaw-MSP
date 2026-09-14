@@ -57,6 +57,7 @@ import { PartnerRevenue } from "./modules/PartnerRevenue";
 import { Overview } from "./modules/Overview";
 import { LaunchControl } from "./modules/LaunchControl";
 import { AzureCredential } from "./modules/AzureCredential";
+import { Projects } from "./modules/Projects";
 
 function roleLabelFor(p: MspUserProfile): string {
   if (p.mspRole === "PlatformAdmin") return "PlatformAdmin — full access";
@@ -460,6 +461,13 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "msp" && sel.page === "revenue") {
     return <PartnerRevenue embedded />;
+  }
+  if (sel.kind === "msp" && sel.page === "projects") {
+    // Projects — Simple Kanban (#2621), README-equivalent placement per
+    // `MSP Console.dc.html`. Per-customer buckets/cards; the customer picker
+    // lives inside the module itself, not the outer tree, since the backend
+    // has no cross-customer aggregate route (pack §5).
+    return <Projects customers={customers} embedded />;
   }
   if (sel.kind === "msp" && sel.page === "audit") {
     // Audit Log (#4012, README screen 63), Operations mount — no customer

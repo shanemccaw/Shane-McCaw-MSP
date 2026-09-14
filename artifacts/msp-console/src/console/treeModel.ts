@@ -420,6 +420,17 @@ export function pageMeta(sel: Selection, customers: DirectoryCustomer[]): PageMe
         note: "Two halves that must never be totalled: what you pay the platform, verified with the payment processor, and your own resale worksheet, which nothing here charges or reconciles.",
       };
     }
+    // #2621 — Projects (Simple Kanban, Phase 1). Eyebrow/tagline are the
+    // design's own exact copy (`Projects.dc.html`'s own header, shown when
+    // not embedded); the note folds in the role gate the same way Audit
+    // Log's note does.
+    if (sel.page === "projects") {
+      return {
+        eyebrow: "PROJECTS · KANBAN (PHASE 1)",
+        title: "Projects",
+        note: "MSPOperator or above. Free-form boards, no card types yet — buckets and cards live per customer, and a card can only move within its own customer's board.",
+      };
+    }
     if (sel.page === "plan") {
       return {
         eyebrow: "PLATFORM SUBSCRIPTION — SELF-SERVICE",
