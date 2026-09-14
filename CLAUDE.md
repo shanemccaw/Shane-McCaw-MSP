@@ -319,12 +319,19 @@ without the comment.
 
 ### Board status — "AI Batter Up," not Backlog (Git #1708)
 
-Every new issue you file under this section gets its project board status set to **"AI Batter
-Up"** (option id `a0296971` on the Status field `PVTSSF_lAHOEiBDdc4BeoiYzhZBRB0`), not left at the
+There are two distinct review lanes on this Status field — pick the one that actually matches
+what you're filing. Don't default to the finding lane just because it's the one documented
+first below.
+
+**Build-ready finding → "AI Batter Up"** (option id `a0296971` on the Status field
+`PVTSSF_lAHOEiBDdc4BeoiYzhZBRB0`). This is the lane from "Mandatory: file every finding as its
+own GitHub issue" above — a genuine, actionable finding a build can be dispatched against.
+Every new issue you file under that section gets its status set here, not left at the
 project's default. This is a genuinely different board status from "Batter Up" — landing here
 triggers nothing; it is a review queue, not a launch queue. Shane reviews it and clicks Yes
-(promotes to real "Batter Up," picked up on the next queue refresh) or No (demotes to "Backlog").
-Never set "Batter Up" directly on a finding you filed yourself — only Shane's own Yes does that.
+(promotes to real "Batter Up," picked up on the next queue refresh) or No (demotes to
+"Backlog"). Never set "Batter Up" directly on a finding you filed yourself — only Shane's own
+Yes does that.
 
 ```
 gh api graphql -f query='
@@ -334,6 +341,29 @@ gh api graphql -f query='
       itemId: "<the new issue''s project item id>"
       fieldId: "PVTSSF_lAHOEiBDdc4BeoiYzhZBRB0"
       value: { singleSelectOptionId: "a0296971" }
+    }) { projectV2Item { id } }
+  }'
+```
+
+**Real question, no proposed build → the question-review lane** (option id `404998bb` on the
+same Status field). Use this lane when what you're filing is a genuine product gap or open
+question
+that code cannot settle by itself — not something you're proposing as a buildable finding, and
+not a yes/no toggle for Shane to click through. It needs a real, considered answer either way,
+the same class of thing "When to actually stop and ask" above hands to Shane directly: a
+two-model decision with different customer-visible consequences, something touching money or
+entitlement, or a conflict with a decision already recorded on an issue. File the issue the same
+way (labels, milestone, evidence in the body per the "How" section above), then set its status
+here instead of `a0296971`:
+
+```
+gh api graphql -f query='
+  mutation {
+    updateProjectV2ItemFieldValue(input: {
+      projectId: "PVT_kwHOEiBDdc4BeoiY"
+      itemId: "<the new issue''s project item id>"
+      fieldId: "PVTSSF_lAHOEiBDdc4BeoiYzhZBRB0"
+      value: { singleSelectOptionId: "404998bb" }
     }) { projectV2Item { id } }
   }'
 ```
