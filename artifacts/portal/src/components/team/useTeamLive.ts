@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
-import { toTeamMember, type TeamMember, type WireTeamMember } from "./teamWire";
+import { toTeamMember, type AssignableRole, type TeamMember, type WireTeamMember } from "./teamWire";
 
 /**
  * Live data + write actions for the Team Management page (#3996, part of
@@ -40,6 +40,7 @@ export interface TeamLiveState {
   readonly resetMfa: (userId: number) => Promise<{ clearedMethods: string[] } | string>;
   readonly generateBypassCode: (userId: number) => Promise<{ bypassCode: string; expiresAt: string } | string>;
   readonly setManager: (userId: number, managerUserId: number | null) => Promise<string | null>;
+  readonly setRole: (userId: number, role: AssignableRole, granted: boolean) => Promise<string | null>;
 
   readonly actionPending: boolean;
 }
@@ -261,6 +262,27 @@ export function useTeamLive(): TeamLiveState {
     [runMutation, patchMember],
   );
 
+  const setRole = useCallback(
+    async (userId: number, role: AssignableRole, granted: boolean): Promise<string | null> =>
+      runMutation<{ role: AssignableRole; granted: boolean }>(
+        `${TEAM_URL}/${userId}/role`,
+        "PATCH",
+        { role, granted },
+        () => {
+          patchMember(
+            userId,
+            role === "customer-admin" ? { isCustomerAdmin: granted } : { hasBillingRole: granted },
+          );
+          toast.success(
+            granted
+              ? `${role === "customer-admin" ? "Customer Admin" : "Billing"} granted`
+              : `${role === "customer-admin" ? "Customer Admin" : "Billing"} removed`,
+          );
+        },
+      ),
+    [runMutation, patchMember],
+  );
+
   return {
     members,
     loading,
@@ -277,6 +299,7 @@ export function useTeamLive(): TeamLiveState {
     resetMfa,
     generateBypassCode,
     setManager,
+    setRole,
     actionPending,
   };
 }

@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import bcrypt from "bcryptjs";
-import { db, usersTable, mfaEnrollmentsTable, webauthnCredentialsTable, userSessionsTable, passwordResetTokensTable, mfaChallengesTable, webauthnChallengesTable, mfaBypassCodesTable } from "@workspace/db";
+import { db, usersTable, mfaEnrollmentsTable, webauthnCredentialsTable, userSessionsTable, passwordResetTokensTable, mfaChallengesTable, webauthnChallengesTable, mfaBypassCodesTable, invoicesTable, clientServicesTable } from "@workspace/db";
 import { eq, and, inArray, gte, isNull, sql, count } from "drizzle-orm";
 import { requireAuth, assertCustomerAccess, type AuthUser } from "../middlewares/requireAuth.ts";
 import { userHasCapability, setGrantRole, usersHoldingGrantRole } from "../middlewares/rbac-capability.ts";
@@ -231,7 +231,7 @@ router.get("/portal/team", requireAuth, async (req: Request, res: Response) => {
 
   const userIds = members.map((m) => m.userId);
 
-  const [mfaRows, passkeyRows, activeSessionRows, lastLoginRows, customerAdminIds, billingRoleIds] = await Promise.all([
+  const [mfaRows, passkeyRows, activeSessionRows, lastLoginRows, customerAdminIds, billingRoleIds, billedInvoiceRows, billedServiceRows] = await Promise.all([
     db.select({ userId: mfaEnrollmentsTable.userId, method: mfaEnrollmentsTable.method })
       .from(mfaEnrollmentsTable)
       .where(and(inArray(mfaEnrollmentsTable.userId, userIds), eq(mfaEnrollmentsTable.enabled, true))),
@@ -257,6 +257,23 @@ router.get("/portal/team", requireAuth, async (req: Request, res: Response) => {
     // as "nobody", never as a 500 on an otherwise-working roster read.
     usersHoldingGrantRole("customer", CUSTOMER_PLATFORM_ROLE_KEYS.customerAdmin, userIds),
     usersHoldingGrantRole("customer", CUSTOMER_PLATFORM_ROLE_KEYS.billing, userIds),
+    // #4013 — the same real condition the #3629 migration's own trigger acts
+    // on (`rbac_grant_billing_to_billed_party`, run on `invoices`/
+    // `client_services` insert or a `client_user_id` change): whoever an
+    // invoice or client service is addressed to. Needed so Team Management can
+    // draw the design's honest "granted automatically, a removal stands only
+    // until their next bill" note against the member it's actually true for,
+    // instead of showing it against everyone holding Billing regardless of how.
+    db.selectDistinct({ userId: invoicesTable.clientUserId })
+      .from(invoicesTable)
+      .where(inArray(invoicesTable.clientUserId, userIds)),
+    db.selectDistinct({ userId: clientServicesTable.clientUserId })
+      .from(clientServicesTable)
+      .where(inArray(clientServicesTable.clientUserId, userIds)),
+  ]);
+  const billedPartyIds = new Set<number>([
+    ...billedInvoiceRows.map((r) => r.userId),
+    ...billedServiceRows.map((r) => r.userId),
   ]);
 
   const methodsByUser = new Map<number, string[]>();
@@ -290,6 +307,7 @@ router.get("/portal/team", requireAuth, async (req: Request, res: Response) => {
     activeSessionsCount: activeCountByUser.get(m.userId) ?? 0,
     isCustomerAdmin: customerAdminIds?.has(m.userId) ?? false,
     hasBillingRole: billingRoleIds?.has(m.userId) ?? false,
+    isBilledParty: billedPartyIds.has(m.userId),
     managerUserId: m.managerUserId,
   }));
 

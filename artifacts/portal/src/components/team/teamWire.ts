@@ -36,8 +36,19 @@ export interface WireTeamMember {
   activeSessionsCount: number;
   isCustomerAdmin: boolean;
   hasBillingRole: boolean;
+  /**
+   * #4013 — whether this member is the real, current #3629 "billed party"
+   * (an `invoices`/`client_services` row addressed to them), the condition
+   * `rbac_grant_billing_to_billed_party()` auto-grants Billing on. Distinct
+   * from `hasBillingRole` itself: a member can hold Billing by manual grant
+   * without being the billed party, in which case a manual revoke sticks.
+   */
+  isBilledParty: boolean;
   managerUserId: number | null;
 }
+
+/** The two `customer_roles.key` values assignable from this page (#3629, #3647). */
+export type AssignableRole = "customer-admin" | "billing";
 
 export interface TeamMember extends WireTeamMember {
   readonly initials: string;

@@ -9,35 +9,29 @@ import {
   nameOf,
   roleLineOf,
   wouldCreateManagerCycle,
+  type AssignableRole,
   type TeamMember,
 } from "@/components/team/teamWire";
 
 const HAIRLINE = "rgba(255,255,255,.09)";
 const CARD_BG = "rgba(255,255,255,.02)";
 const RED = "#f87171";
+const CYAN = "#00B4D8";
+const VIOLET = "#a78bfa";
 
 /**
- * Team Management and Invitations (#3996, part of #1656). Adapted from
- * `Design/portal/design_handoff_full_site/screens/Team Management.dc.html`
- * using this codebase's existing React + Vite + Tailwind v4 + shadcn/ui +
- * lucide-react patterns, not the reference markup — same discipline as
- * `billing.tsx` / `account-security.tsx`.
+ * Team Management and Invitations (#3996, part of #1656; role surface #4013).
+ * Adapted from `Design/portal/design_handoff_billing_roles_and_new_modules/
+ * screens/Team Management.dc.html` using this codebase's existing
+ * React + Vite + Tailwind v4 + shadcn/ui + lucide-react patterns, not the
+ * reference markup — same discipline as `billing.tsx` / `account-security.tsx`.
  *
- * Wired against all 12 real routes on `portal-team.ts` via
+ * Wired against all 13 real routes on `portal-team.ts` via
  * `useTeamLive`/`teamWire` (see those files' own headers) — invite, roster
  * read, suspend/reactivate, sign-out-everywhere, MFA enforcement toggle,
  * unlock, password reset email, temp password, MFA reset, emergency bypass,
- * and "reports to" (manager) assignment.
- *
- * Not drawn on this page, deliberately: the landed design's own
- * state-switcher (`scene: "manager" | "viewer" | "empty"`) and logic class
- * carry no Billing/Customer-Admin role-assignment UI at all — no picker, no
- * badge, `sel.roleLine` shows only title/department — even though the
- * backend (`PATCH /portal/team/:userId/role`, #3647) and the roster read's
- * `isCustomerAdmin`/`hasBillingRole` fields exist. Per the design-source rule
- * (CLAUDE.md, #1485) this page follows the landed design as given rather
- * than inventing a role-assignment surface the design doesn't carry; the gap
- * is filed as a finding under #1656 instead.
+ * "reports to" (manager) assignment, and the two-role (Customer Admin /
+ * Billing) grant/revoke surface #4013 adds.
  */
 export default function CustomerTeamPage() {
   const { can, user } = useAuth();
@@ -230,7 +224,7 @@ export default function CustomerTeamPage() {
         ) : null}
       </div>
 
-      {modal && selected ? (
+      {modal && selected && modal.kind !== "invite" ? (
         <ActionModal
           modal={modal}
           member={selected}
@@ -297,6 +291,22 @@ function RosterCard({
                     style={{ border: "1px solid rgba(96,165,250,.3)" }}
                   >
                     You
+                  </span>
+                ) : null}
+                {m.isCustomerAdmin ? (
+                  <span
+                    className="rounded-full px-[6px] py-[1px] text-[9.5px] font-semibold"
+                    style={{ color: CYAN, border: "1px solid rgba(0,180,216,.35)" }}
+                  >
+                    Customer Admin
+                  </span>
+                ) : null}
+                {m.hasBillingRole ? (
+                  <span
+                    className="rounded-full px-[6px] py-[1px] text-[9.5px] font-semibold"
+                    style={{ color: VIOLET, border: "1px solid rgba(167,139,250,.35)" }}
+                  >
+                    Billing
                   </span>
                 ) : null}
                 {!m.isActive ? (
@@ -403,6 +413,8 @@ function DetailCard({
         />
       </div>
 
+      <RolesBlock member={member} isYou={isYou} canManage={canManage} onOpenModal={onOpenModal} />
+
       {canManage ? (
         <div className="flex flex-col gap-2 border-t pt-3" style={{ borderColor: "rgba(255,255,255,.07)" }}>
           <span className="text-[9px] font-bold text-[#475569]" style={{ letterSpacing: ".09em" }}>
@@ -495,6 +507,128 @@ function DetailCard({
   );
 }
 
+function RolesBlock({
+  member,
+  isYou,
+  canManage,
+  onOpenModal,
+}: {
+  member: TeamMember;
+  isYou: boolean;
+  canManage: boolean;
+  onOpenModal: (m: ModalState) => void;
+}) {
+  const adminSelfLock = isYou && member.isCustomerAdmin;
+  const cards: {
+    key: string;
+    name: string;
+    grants: string;
+    held: boolean;
+    stLabel: string;
+    ink: string;
+    bd: string;
+    bg: string;
+    note: string | null;
+    action: { label: string; title: string; disabled: boolean; onClick: () => void };
+  }[] = [
+    {
+      key: "customer-admin",
+      name: "Customer Admin",
+      grants: "Everything on the customer side: billing view and manage, team management, change approval, the full marketplace.",
+      held: member.isCustomerAdmin,
+      stLabel: member.isCustomerAdmin ? "Held" : "Not held",
+      ink: CYAN,
+      bd: member.isCustomerAdmin ? "rgba(0,180,216,.25)" : "rgba(255,255,255,.07)",
+      bg: member.isCustomerAdmin ? "rgba(0,180,216,.04)" : "transparent",
+      note: adminSelfLock ? "Your own admin role cannot be removed from here — the server refuses it." : null,
+      action: {
+        label: member.isCustomerAdmin ? "Remove" : "Grant",
+        title: member.isCustomerAdmin
+          ? adminSelfLock
+            ? "You cannot remove your own Customer Admin role"
+            : "Removes every admin capability"
+          : "Grants every customer capability",
+        disabled: adminSelfLock,
+        onClick: () => onOpenModal({ kind: member.isCustomerAdmin ? "revokeAdmin" : "grantAdmin" }),
+      },
+    },
+    {
+      key: "billing",
+      name: "Billing",
+      grants: "Billing view and manage only — invoices, subscriptions, payment methods. No admin rights.",
+      held: member.hasBillingRole,
+      stLabel: member.hasBillingRole ? (member.isBilledParty ? "Held · a bill is addressed to them" : "Held") : "Not held",
+      ink: VIOLET,
+      bd: member.hasBillingRole ? "rgba(167,139,250,.25)" : "rgba(255,255,255,.07)",
+      bg: member.hasBillingRole ? "rgba(167,139,250,.04)" : "transparent",
+      note: member.isBilledParty
+        ? "Granted automatically to whoever an invoice or service is addressed to, because billing routes read that person's own rows. A removal stands until their next bill."
+        : null,
+      action: {
+        label: member.hasBillingRole ? "Remove" : "Grant",
+        title: member.hasBillingRole ? "Removes billing access" : "Grants billing access without admin rights",
+        disabled: false,
+        onClick: () => onOpenModal({ kind: member.hasBillingRole ? "revokeBilling" : "grantBilling" }),
+      },
+    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-2 border-t pt-3" style={{ borderColor: "rgba(255,255,255,.07)" }}>
+      <div className="flex flex-wrap items-baseline gap-[10px]">
+        <span className="text-[9px] font-bold text-[#475569]" style={{ letterSpacing: ".09em" }}>
+          ROLES
+        </span>
+        <span className="text-[10.5px] text-[#64748b]">
+          {canManage ? "granted here by a team manager · read live on every request" : "read live · only a team manager can change them"}
+        </span>
+      </div>
+      {cards.map((c) => (
+        <div
+          key={c.key}
+          className="flex items-start gap-3 rounded-[10px] px-3 py-[10px]"
+          style={{ border: `1px solid ${c.bd}`, background: c.bg }}
+          data-testid={`team-role-card-${c.key}`}
+        >
+          <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[12.5px] font-semibold text-[#f8fafc]">{c.name}</span>
+              <span
+                className="rounded-full px-2 py-[1px] text-[10px] font-semibold"
+                style={{ color: c.held ? c.ink : "#64748b", border: `1px solid ${c.held ? c.ink + "66" : "rgba(100,116,139,.35)"}` }}
+              >
+                {c.stLabel}
+              </span>
+            </div>
+            <span className="text-[11px] leading-[1.5] text-[#94a3b8]">{c.grants}</span>
+            {c.note ? <span className="text-[10.5px] leading-[1.5] text-[#64748b]">{c.note}</span> : null}
+          </div>
+          {canManage ? (
+            <button
+              type="button"
+              title={c.action.title}
+              disabled={c.action.disabled}
+              onClick={c.action.onClick}
+              className="shrink-0 whitespace-nowrap rounded-md px-[11px] py-[6px] text-[11.5px] font-semibold"
+              style={{
+                color: c.action.disabled ? "#475569" : c.held ? RED : "#cbd5e1",
+                border: `1px solid ${c.action.disabled ? "rgba(255,255,255,.07)" : c.held ? "rgba(248,113,113,.4)" : "rgba(255,255,255,.14)"}`,
+                cursor: c.action.disabled ? "not-allowed" : "pointer",
+              }}
+              data-testid={`team-role-action-${c.key}`}
+            >
+              {c.action.label}
+            </button>
+          ) : null}
+        </div>
+      ))}
+      <span className="text-[10.5px] leading-[1.5] text-[#475569]">
+        Only these two platform roles can be assigned here. A role your organisation defines itself is not offered; the server refuses any other key.
+      </span>
+    </div>
+  );
+}
+
 function DetailField({
   label,
   value,
@@ -567,6 +701,10 @@ type ModalState =
   | { kind: "mfaCleared"; clearedMethods: string[] }
   | { kind: "bypass"; secret?: string; expiresAt?: string }
   | { kind: "manager" }
+  | { kind: "grantAdmin" }
+  | { kind: "revokeAdmin" }
+  | { kind: "grantBilling" }
+  | { kind: "revokeBilling" }
   | null;
 
 function ModalShell({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
@@ -769,6 +907,18 @@ function ActionModal({
         const res = await live.resetMfa(member.userId);
         if (typeof res === "string") return setActionError(res);
         return onChangeModal({ kind: "mfaCleared", clearedMethods: res.clearedMethods });
+      }
+      case "grantAdmin":
+      case "revokeAdmin": {
+        const err = await live.setRole(member.userId, "customer-admin", modal.kind === "grantAdmin");
+        if (err) return setActionError(err);
+        return onClose();
+      }
+      case "grantBilling":
+      case "revokeBilling": {
+        const err = await live.setRole(member.userId, "billing", modal.kind === "grantBilling");
+        if (err) return setActionError(err);
+        return onClose();
       }
       default:
         return;
@@ -980,6 +1130,38 @@ const SPECS: Record<string, (member: TeamMember, modal: NonNullable<ModalState>)
     body: "Lets its holder skip MFA on this account for 24 hours, once. Any earlier code for them is now invalid. Pass it on out of band — it is not emailed and will not be shown again.",
     note: "The highest-privilege action on this page. It is recorded with its expiry.",
   }),
+  grantAdmin: (m) => ({
+    title: `Make ${m.name ?? m.email} a Customer Admin?`,
+    body: "They gain every customer capability at once: billing view and manage, team management (everything on this page, including granting these roles), approving change requests, and the full marketplace. This is the top of your organisation, parallel to your MSP's own admin role.",
+    note: "Recorded on the audit trail as team_member_role_granted with the role key. Takes effect on their next request — nothing waits for a token refresh.",
+    cta: "Grant Customer Admin",
+    confirmable: true,
+  }),
+  revokeAdmin: (m) => ({
+    title: `Remove Customer Admin from ${m.name ?? m.email}?`,
+    body: "They lose team management, change approval and the full marketplace. Billing access goes too unless they hold the Billing role separately.",
+    note: "You cannot remove your own Customer Admin role — the server refuses it, so the organisation always keeps at least the admin doing the removal.",
+    cta: "Remove Customer Admin",
+    danger: true,
+    confirmable: true,
+  }),
+  grantBilling: (m) => ({
+    title: `Give ${m.name ?? m.email} the Billing role?`,
+    body: "They can see and act on your organisation's billing — invoices, subscriptions, payment methods — without any admin rights. Built for the finance person who should see bills while engineers should not.",
+    note: "Recorded on the audit trail as team_member_role_granted with the role key.",
+    cta: "Grant Billing",
+    confirmable: true,
+  }),
+  revokeBilling: (m) => ({
+    title: `Remove the Billing role from ${m.name ?? m.email}?`,
+    body: m.isBilledParty
+      ? "They lose billing access now. Because an invoice or service is addressed to them personally, the platform will grant Billing back automatically the next time a bill is issued to them — the revoke stands until then."
+      : "They lose billing access from their next request.",
+    note: "Recorded on the audit trail as team_member_role_revoked with the role key.",
+    cta: "Remove Billing",
+    danger: true,
+    confirmable: true,
+  }),
 };
 
 const LEDGER = [
@@ -988,7 +1170,7 @@ const LEDGER = [
     where: "§0 · §1",
   },
   {
-    gap: 'Invites create a standard member only. There is no "invite as manager"; the page says so instead of drawing a role picker the route does not take.',
+    gap: "Invites create a standard member only. There is no \"invite as admin\"; the role is granted afterwards under Roles, which is what the route takes.",
     where: "§2 · §5",
   },
   {
@@ -1004,8 +1186,12 @@ const LEDGER = [
     where: "§1 · §3",
   },
   {
-    gap: '"Reports to" is written by its own route and read on the roster. The manager picker refuses self, other organisations and loops, mirroring the three server checks.',
-    where: "§1 · §4i",
+    gap: "\"Reports to\" is written by its own route; the roster read carries managerUserId too, so the page shows what is stored rather than only what it set.",
+    where: "§1 · §4i · #3996",
+  },
+  {
+    gap: "The manager picker refuses self, other organisations and loops, mirroring the three server checks; the page cannot show the before/after in the audit because the audit row carries none.",
+    where: "§4i",
   },
   {
     gap: "You cannot suspend yourself here; the button is disabled on your own row.",
@@ -1018,5 +1204,25 @@ const LEDGER = [
   {
     gap: "The roster is unsorted because the read is; the page keeps the server's order rather than inventing one.",
     where: "§1",
+  },
+  {
+    gap: "Two roles, no more. Only the platform keys customer-admin and billing can be granted here; an organisation's own custom roles and every other key are refused by the server (400) and not offered.",
+    where: "#3629 · #3647",
+  },
+  {
+    gap: "Granting roles is gated exactly like every other action here — the team-management grant, read live. A Customer Admin holds it by role; a plain member with the grant holds it too.",
+    where: "#3647 · #2460",
+  },
+  {
+    gap: "You cannot remove your own Customer Admin role; the button is disabled with the server's reason. Removing someone else's is allowed even if they are the last one — the page does not add a floor the server lacks.",
+    where: "#3647",
+  },
+  {
+    gap: "Billing is also granted by the platform, not only by people: whoever an invoice or service is addressed to gets it automatically, and a removal stands only until their next bill. Drawn on the role card rather than hidden.",
+    where: "#3629",
+  },
+  {
+    gap: "Roles take effect on the next request. Nothing here waits for a sign-out or token refresh, and a 503 (role model unreadable) is drawn as unavailable, never as denied.",
+    where: "#2460 · #3647",
   },
 ] as const;
