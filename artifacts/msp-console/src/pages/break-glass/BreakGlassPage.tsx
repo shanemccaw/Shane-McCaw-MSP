@@ -43,6 +43,8 @@ const CARD_BG = "rgba(15,23,42,.6)";
 
 const STATUS_TONE: Record<BreakGlassStatus, { color: string; tint: string; line: string; icon: IconName; label: string }> = {
   pending_delivery: { color: "#fbbf24", tint: "rgba(251,191,36,.1)", line: "rgba(251,191,36,.26)", icon: "hourglass", label: "waiting to be claimed" },
+  // #4040 — not in the design: an admin-override holds the row while it resets the tenant.
+  reset_in_progress: { color: "#60a5fa", tint: "rgba(96,165,250,.1)", line: "rgba(96,165,250,.26)", icon: "loader", label: "reset in progress" },
   delivered_purged: { color: "#34d399", tint: "rgba(52,211,153,.1)", line: "rgba(52,211,153,.26)", icon: "circle-check-big", label: "claimed and wiped" },
   superseded_by_reset: { color: "#94a3b8", tint: "rgba(148,163,184,.08)", line: "rgba(148,163,184,.2)", icon: "circle-minus", label: "reset, never claimed" },
 };
@@ -350,7 +352,9 @@ export function BreakGlassPage({ customerId }: { customerId: number }) {
                 )}
               </div>
 
-              {detail.status === "pending_delivery" && (
+              {/* #4040 — reset_in_progress keeps the form: the server refuses with 409 while the
+                  claim is live, and lets a claim abandoned by a crashed override be taken over. */}
+              {(detail.status === "pending_delivery" || detail.status === "reset_in_progress") && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 9, paddingTop: 13, borderTop: `1px solid ${border.faint}` }}>
                   <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".12em", color: text.faint }}>FORCE A RESET</span>
                   {overridePreflight(detail.attempts, detail.breakGlassAccountId).map((p, i) => (

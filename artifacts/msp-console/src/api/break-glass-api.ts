@@ -28,7 +28,7 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 
-export type BreakGlassStatus = "pending_delivery" | "delivered_purged" | "superseded_by_reset";
+export type BreakGlassStatus = "pending_delivery" | "reset_in_progress" | "delivered_purged" | "superseded_by_reset";
 export type LinkStatus = "pending" | "consumed" | "expired" | "superseded";
 export type VerificationOutcome = "success" | "role_not_active_pim_eligible" | "role_absent" | "expired" | "superseded" | null;
 

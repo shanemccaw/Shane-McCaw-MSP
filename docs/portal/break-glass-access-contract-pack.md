@@ -236,11 +236,25 @@ see §5's "callers own their own auth" note): role must be `PlatformAdmin`,
 Preconditions, enforced inside `performBreakGlassAdminOverride()` — identical
 regardless of which caller invokes it:
 
-- `ctx.secret.status === "pending_delivery"` (`:803-805`) else 409
-- `ctx.tenantId` must be configured (`:806-808`) else 409
+- `ctx.tenantId` must be configured else 409 (checked before the claim)
+- **the claim** (Git #4040) — a conditional
+  `UPDATE break_glass_pending_secrets SET status = 'reset_in_progress',
+  reset_claim_token = <random>, reset_claimed_at = now() WHERE id = :id AND
+  status = 'pending_delivery' RETURNING id`. Zero rows → 409 before the store or
+  the tenant is touched: `detail: "override_in_progress"` when another override
+  holds the row, otherwise `"This secret is not awaiting delivery"`. This is the
+  mutual exclusion: before it, the status was checked on the row read before the
+  call, so two concurrent overrides (a double-click, or the portal and MSP
+  console routes together) both reset the tenant and both inserted a deliverable
+  replacement. Live-reproduced and live-verified closed on
+  `zz-test-graphwrite-01`. A `reset_in_progress` claim older than
+  `BREAK_GLASS_OVERRIDE_CLAIM_STALE_MS` (15 min) was left by a process that died
+  mid-override and may be taken over. **Every refusal below hands the claim back**
+  (`reset_in_progress` → `pending_delivery`, conditional on the claim token).
 - **every existing verification attempt for this secret must be terminal**
-  (`expired` or `superseded` — `:811-817`) — an admin cannot override while a
-  link is still live
+  (`expired` or `superseded`), read under the claim — an admin cannot override
+  while a link is still live, and the invite route refuses a row that is not
+  `pending_delivery`, so no new link can appear after this check
 - the pending-secret row must record the account to reset —
   `break_glass_pending_secrets.break_glass_account_id`, written by the gate at
   insert (§4) — else 409. Until #4015 this was read from
@@ -267,11 +281,15 @@ irreversible step, the tenant reset):
      password; it expires with the store TTL), the old row is left
      overridable; `502` with `detail: "outcome_unknown"`.
 4. **Record**: supersede the old pending-secret row, insert the new one plus an
-   audit row, in one transaction. On failure it is retried once (after checking
+   audit row, in one transaction. The supersede is conditional on this call's
+   claim (`status = 'reset_in_progress' AND reset_claim_token = <its token>`);
+   if a stale takeover means the claim is gone, the transaction rolls back and
+   the answer is `500` with `detail: "claim_lost"` (vault copy kept). On any
+   other failure it is retried once (after checking
    the failed attempt did not in fact commit, by `secret_ref->>'secretName'`).
    If the retry fails too → `500` with `detail: "replacement_unrecorded"`; the
-   vault copy is **not** purged and the old row stays overridable, so running
-   the override again issues a recorded credential.
+   vault copy is **not** purged and the claim is handed back so the old row is
+   overridable, so running the override again issues a recorded credential.
 5. Purges the old row's now-orphaned vault copy, fires the repeated-override
    alert if this is the 2nd+ override in 24h (see §7), and re-issues invites.
    **Does not resume the run** — it stays paused until the new secret is
@@ -356,7 +374,7 @@ Each `pending[]` row:
 | `runId` | `number` | `breakGlassPendingSecretsTable.runId` |
 | `customerId` | `number` | `breakGlassPendingSecretsTable.customerId` |
 | `customerName` | `string \| null` | `tenantsTable.customerName`, looked up by id (`:145`) |
-| `status` | `"pending_delivery"` | only value reachable here — the query itself filters on it (`:115`) |
+| `status` | `"pending_delivery" \| "reset_in_progress"` | the query filters on these two (#4040 — a secret an override is resetting stays listed) |
 | `createdAt` | `string` (ISO) | `.toISOString()` |
 | `liveInviteCount` | `number` | attempts for this secret with `linkStatus === "pending"` (`:132-139`) — **not** persisted on the row, computed per-request |
 | `totalInviteCount` | `number` | all attempts for this secret, any `linkStatus` |
@@ -381,7 +399,7 @@ Each `secrets[]` row:
 |---|---|---|
 | `pendingSecretId` | `number` | `id` |
 | `runId` | `number` | `runId` |
-| `status` | `"pending_delivery" \| "delivered_purged" \| "superseded_by_reset"` | real enum, §6 — **unlike §3.1, all three values are reachable here** |
+| `status` | `"pending_delivery" \| "reset_in_progress" \| "delivered_purged" \| "superseded_by_reset"` | real enum, §5 — **unlike §3.1, every value is reachable here** |
 | `createdAt` | `string` (ISO) | |
 | `deliveredAt` | `string` (ISO) `\| null` | |
 | `deliveredToEmail` | `string \| null` | |
@@ -557,9 +575,14 @@ Pulled directly from the Drizzle schema (`lib/db/src/schema/msp.ts:3999-4088`)
 and route code — no invented vocabulary:
 
 - **Pending-secret status** — `break_glass_pending_secrets.status`:
-  `"pending_delivery" | "delivered_purged" | "superseded_by_reset"`
-  (`:4031`). `"superseded_by_reset"` means an admin-override replaced it —
-  nothing was ever delivered from that row (schema comment, `:4029-4030`).
+  `"pending_delivery" | "reset_in_progress" | "delivered_purged" | "superseded_by_reset"`.
+  `"superseded_by_reset"` means an admin-override replaced it —
+  nothing was ever delivered from that row. `"reset_in_progress"` (Git #4040)
+  means an admin-override has claimed the row and is resetting the tenant; it is
+  never deliverable, and every portal read that filters on `pending_delivery`
+  (invite, by-run, the handoff list, reveal, acknowledge) treats it as not
+  pending. Companion columns `reset_claim_token` / `reset_claimed_at` identify
+  the claim holder.
 - **Verification link status** — `break_glass_verification_attempts.link_status`:
   `"pending" | "consumed" | "expired" | "superseded"` (`:4052`).
   `"consumed"` = the winning attempt claimed the reveal; `"superseded"` = a

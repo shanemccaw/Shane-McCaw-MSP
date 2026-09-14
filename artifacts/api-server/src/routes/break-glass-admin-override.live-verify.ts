@@ -59,6 +59,7 @@ const liveMode = vi.hoisted(() => ({
   held: new Map<string, string>(),
   purged: [] as string[],
   graphWrites: 0,
+  stores: 0,
 }));
 
 vi.mock("../lib/generated-secret-store.ts", async (importOriginal) => {
@@ -67,6 +68,7 @@ vi.mock("../lib/generated-secret-store.ts", async (importOriginal) => {
     ...actual,
     generatedSecretStoreConfigured: () => liveMode.store === "stub" || actual.generatedSecretStoreConfigured(),
     storeGeneratedSecret: async (o: Parameters<typeof actual.storeGeneratedSecret>[0]) => {
+      liveMode.stores += 1;
       if (liveMode.store !== "stub") return actual.storeGeneratedSecret(o);
       const secretName = `zz-test-4029-${randomUUID()}`;
       liveMode.held.set(secretName, o.value);
@@ -111,6 +113,8 @@ const CUSTOMER_ID = 1; // the testbed tenant row
 let definitionId = 0;
 let runId = 0;
 let pendingId = 0;
+/** #4040 — the deliverable replacement the recovery override issues; the concurrent pair targets it. */
+let replacementId = 0;
 let accountObjectId = "";
 let passwordChangedBefore: string | null = null;
 
@@ -352,6 +356,7 @@ describe("#4015 / #4029 — break-glass admin-override against the gated account
     expect(result).toMatchObject({ ok: true, reissued: 0, sent: 0 });
     expect(liveMode.graphWrites).toBe(writesBefore + 1);
     const newId = (result as { newPendingSecretId: number }).newPendingSecretId;
+    replacementId = newId;
 
     const rows = await runSecrets();
     const old = rows.find((r) => r.id === pendingId);
@@ -368,6 +373,52 @@ describe("#4015 / #4029 — break-glass admin-override against the gated account
 
     const changed = await waitForPasswordChange(passwordChangedBefore);
     console.log("[#4029] lastPasswordChangeDateTime after the recovery reset:", { before: passwordChangedBefore, after: changed });
+    expect(changed).not.toBe(passwordChangedBefore);
+    passwordChangedBefore = changed;
+  }, 120_000);
+
+  // #4040 — two overrides on the same pending secret, fired together. Both contexts
+  // are read first, so both callers hold a row that says pending_delivery — the
+  // exact shape of an operator double-click or the portal and MSP console racing.
+  // Before the claim, both passed that in-memory check, both reset the tenant and
+  // both inserted a deliverable replacement; only one of those is the live password.
+  it("#4040 — two concurrent overrides: one resets, the other is refused before any tenant write", async () => {
+    expect(replacementId).not.toBe(0);
+    liveMode.store = "stub";
+    const writesBefore = liveMode.graphWrites;
+    const storesBefore = liveMode.stores;
+
+    const [ctxA, ctxB] = await Promise.all([resolvePendingContext(replacementId), resolvePendingContext(replacementId)]);
+    expect(ctxA?.secret.status).toBe("pending_delivery");
+    expect(ctxB?.secret.status).toBe("pending_delivery");
+
+    const results = await Promise.all([
+      performBreakGlassAdminOverride(ctxA!, replacementId, 0, "zz-test #4040 concurrent A", undefined),
+      performBreakGlassAdminOverride(ctxB!, replacementId, 0, "zz-test #4040 concurrent B", undefined),
+    ]);
+    console.log("[#4040] concurrent overrides:", results);
+
+    const won = results.filter((r) => r.ok);
+    const refused = results.filter((r) => !r.ok);
+    expect(won.length).toBe(1);
+    expect(refused).toEqual([expect.objectContaining({ ok: false, status: 409 })]);
+    // The refused call never reached the store or the tenant.
+    expect(liveMode.graphWrites).toBe(writesBefore + 1);
+    expect(liveMode.stores).toBe(storesBefore + 1);
+
+    // Exactly one deliverable row for the run, and it is the winner's.
+    const winnerId = (won[0] as { newPendingSecretId: number }).newPendingSecretId;
+    const rows = await runSecrets();
+    expect(rows.filter((r) => r.status === "pending_delivery").map((r) => r.id)).toEqual([winnerId]);
+    expect(rows.find((r) => r.id === replacementId)?.status).toBe("superseded_by_reset");
+    expect(rows.some((r) => r.status === "reset_in_progress")).toBe(false);
+
+    const audit = await db.select().from(breakGlassOverrideAuditTable)
+      .where(eq(breakGlassOverrideAuditTable.oldPendingSecretId, replacementId));
+    expect(audit.map((a) => a.newPendingSecretId)).toEqual([winnerId]);
+
+    const changed = await waitForPasswordChange(passwordChangedBefore);
+    console.log("[#4040] lastPasswordChangeDateTime after the concurrent pair:", { before: passwordChangedBefore, after: changed });
     expect(changed).not.toBe(passwordChangedBefore);
   }, 120_000);
 });

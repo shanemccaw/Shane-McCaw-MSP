@@ -112,7 +112,9 @@ router.get("/msp/break-glass", requireCapability("ladder.msp-operator"), async (
       })
       .from(breakGlassPendingSecretsTable)
       .where(and(
-        eq(breakGlassPendingSecretsTable.status, "pending_delivery"),
+        // #4040 — a secret an override is resetting stays on the watchlist; a claim
+        // left by a crashed override would otherwise vanish from every surface.
+        inArray(breakGlassPendingSecretsTable.status, ["pending_delivery", "reset_in_progress"]),
         inArray(breakGlassPendingSecretsTable.customerId, customerIds),
       ))
       .orderBy(desc(breakGlassPendingSecretsTable.createdAt));

@@ -98,7 +98,7 @@ Each `pending[]` row:
 | `runId` | `number` | `.runId` |
 | `customerId` | `number` | `.customerId` |
 | `customerName` | `string \| null` | `tenantsTable.customerName`, looked up by id (`:145`) |
-| `status` | `"pending_delivery"` | the only value reachable here — the query filters on it (`:115`) |
+| `status` | `"pending_delivery" \| "reset_in_progress"` | the query filters on these two (#4040 — a secret an override is resetting, or one whose override crashed mid-reset, stays on the watchlist) |
 | `createdAt` | `string` (ISO) | `.toISOString()` |
 | `liveInviteCount` | `number` | attempts for this secret with `linkStatus === "pending"` (`:132-139`) — computed per-request, not persisted |
 | `totalInviteCount` | `number` | all attempts for this secret, any `linkStatus` |
@@ -115,7 +115,7 @@ Response (`:184-193`), each `secrets[]` row:
 |---|---|---|
 | `pendingSecretId` | `number` | `id` |
 | `runId` | `number` | `runId` |
-| `status` | `"pending_delivery" \| "delivered_purged" \| "superseded_by_reset"` | real enum, §2 — all three values reachable here |
+| `status` | `"pending_delivery" \| "reset_in_progress" \| "delivered_purged" \| "superseded_by_reset"` | real enum, §2 — every value reachable here |
 | `createdAt` | `string` (ISO) | |
 | `deliveredAt` | `string` (ISO) `\| null` | |
 | `deliveredToEmail` | `string \| null` | |
@@ -183,7 +183,9 @@ regardless of which of the two routes calls it.
 Response on success: `AdminOverrideResult` — `{ ok: true, newPendingSecretId,
 reissued, sent }`, JSONed straight through (`:295`). On `{ ok: false, status: 409 |
 500 | 502 | 503, error, detail? }` (#4029 — `500 replacement_unrecorded` and `502
-outcome_unknown` both mean "run the override again before re-inviting"), this route mirrors that status (`:293`). Write-back gate
+outcome_unknown` both mean "run the override again before re-inviting"; #4040 — `409
+override_in_progress` means another override holds the secret's claim and nothing was
+touched, and `500 claim_lost` means a stale takeover beat this call to recording), this route mirrors that status (`:293`). Write-back gate
 errors (`WriteBackNotEnabledError`, `WriteBackCustomerNotFoundError`,
 `WriteConsentRequiredError`) are caught explicitly (`:297-299`) and surfaced as `409
 { error, blockedBy: err.reason }` — a real, distinct state, not a generic 500.
@@ -217,9 +219,13 @@ Pulled verbatim from the schema (`lib/db/src/schema/msp.ts:4338-4427`), verified
 
 ```ts
 // msp.ts:4370 — break_glass_pending_secrets.status
-BREAK_GLASS_STATUS = ["pending_delivery", "delivered_purged", "superseded_by_reset"]
+BREAK_GLASS_STATUS = ["pending_delivery", "reset_in_progress", "delivered_purged", "superseded_by_reset"]
 // "superseded_by_reset" = an admin-override replaced this row; nothing was ever
 // delivered from it (schema comment, :4368-4369).
+// "reset_in_progress" (Git #4040) = an admin-override has claimed this row and is
+// resetting the tenant; a second override is refused 409 override_in_progress. The
+// console shows the reset form for it too — the server refuses while the claim is
+// live and lets a claim abandoned by a crashed override be taken over once stale.
 
 // msp.ts:4391 — break_glass_verification_attempts.link_status
 LINK_STATUS = ["pending", "consumed", "expired", "superseded"]

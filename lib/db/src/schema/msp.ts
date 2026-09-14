@@ -4444,7 +4444,17 @@ export const breakGlassPendingSecretsTable = pgTable("break_glass_pending_secret
   breakGlassAccountId: text("break_glass_account_id"),
   // "superseded_by_reset" = an admin-override reset the credential and issued a new
   // pending secret; nothing was ever delivered from this row.
-  status: text("status", { enum: ["pending_delivery", "delivered_purged", "superseded_by_reset"] }).notNull().default("pending_delivery"),
+  // Git #4040 — "reset_in_progress" = an admin-override has claimed this row (a
+  // conditional UPDATE from pending_delivery) and is storing a replacement and
+  // resetting the tenant. It is never deliverable, and a second override is refused
+  // with 409 while it holds. The claim returns to pending_delivery on any refusal,
+  // or becomes superseded_by_reset once the replacement is recorded.
+  status: text("status", { enum: ["pending_delivery", "reset_in_progress", "delivered_purged", "superseded_by_reset"] }).notNull().default("pending_delivery"),
+  // Git #4040 — the claiming override's own random token, so only that call can
+  // release or supersede the row; and when it claimed, so a claim left by a process
+  // that died mid-override can be taken over once it is stale.
+  resetClaimToken: text("reset_claim_token"),
+  resetClaimedAt: timestamp("reset_claimed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   deliveredAt: timestamp("delivered_at", { withTimezone: true }),
   deliveredToEmail: text("delivered_to_email"),

@@ -381,7 +381,8 @@ async function purgeGeneratedSecretsForTerminalRun(
       .from(breakGlassPendingSecretsTable)
       .where(and(
         eq(breakGlassPendingSecretsTable.runId, runId),
-        eq(breakGlassPendingSecretsTable.status, "pending_delivery"),
+        // #4040 — a row an admin-override is resetting is still undelivered.
+        inArray(breakGlassPendingSecretsTable.status, ["pending_delivery", "reset_in_progress"]),
       ))
       .limit(1);
     if (undelivered.length > 0) {

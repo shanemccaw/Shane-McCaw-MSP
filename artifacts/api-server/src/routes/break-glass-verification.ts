@@ -36,7 +36,7 @@ import {
   wfDefinitionsTable,
   configPacksTable,
 } from "@workspace/db";
-import { and, eq, ne, gte, desc, inArray, sql } from "drizzle-orm";
+import { and, or, eq, ne, gte, desc, inArray, sql } from "drizzle-orm";
 import { requireAuth, assertCustomerAccess, type AuthUser } from "../middlewares/requireAuth.ts";
 import { resolveCustomerId } from "../lib/portal-customer-scope.ts";
 import { logger } from "../lib/logger.ts";
@@ -67,6 +67,13 @@ const BREAK_GLASS_MAX_ATTEMPTS = 5;
 const BREAK_GLASS_OVERRIDE_ALERT_WINDOW_MS = 24 * 60 * 60 * 1000; // 24h
 /** Number of overrides in the window that triggers the alert (2nd override fires it). */
 const BREAK_GLASS_OVERRIDE_ALERT_THRESHOLD = 2;
+/**
+ * Git #4040 — how long an admin-override's reset_in_progress claim is honoured. An
+ * override stores one secret and sends one Graph PATCH, so seconds is normal; a
+ * claim this old was left by a process that died mid-override and may be taken
+ * over, so a crash cannot strand the secret out of reach of every override.
+ */
+const BREAK_GLASS_OVERRIDE_CLAIM_STALE_MS = 15 * 60 * 1000; // 15m
 /**
  * Entra role template ids that satisfy the gate. Global Administrator by default;
  * extend here to accept other eligible roles (single source of truth — not inlined).
@@ -898,6 +905,13 @@ function resetFailureIsDefinite(write: { status: number }): boolean {
   return write.status >= 400 && write.status < 500;
 }
 
+/** Git #4040 — the row is no longer held by this override's claim (a stale takeover). */
+class OverrideClaimLostError extends Error {
+  constructor() {
+    super("admin-override claim was taken over before the replacement was recorded");
+  }
+}
+
 /**
  * Shared "force reset + reissue" admin-override — the ONE implementation of a
  * security-sensitive credential reset, called from both
@@ -913,19 +927,69 @@ export async function performBreakGlassAdminOverride(
   reason: string,
   emailsOverride: string[] | undefined,
 ): Promise<AdminOverrideResult> {
-  if (ctx.secret.status !== "pending_delivery") {
-    return { ok: false, status: 409, error: "This secret is not awaiting delivery" };
-  }
-  if (!ctx.tenantId) {
+  const tenantId = ctx.tenantId;
+  if (!tenantId) {
     return { ok: false, status: 409, error: "Customer tenant is not configured" };
   }
 
+  // Git #4040 — mutual exclusion. `ctx.secret.status` was read before this call, so
+  // two overrides on the same secret (an operator double-click, or the portal and
+  // MSP console routes together) both saw pending_delivery, both reset the tenant,
+  // and both inserted a deliverable replacement — only one of which was the live
+  // password. The claim is a conditional UPDATE, so Postgres admits exactly one
+  // caller; every other is refused here, before the store or the tenant is touched.
+  // A claim older than BREAK_GLASS_OVERRIDE_CLAIM_STALE_MS was left by a process
+  // that died mid-override and may be taken over.
+  const claimToken = randomBytes(16).toString("hex");
+  const claimed = await db.update(breakGlassPendingSecretsTable)
+    .set({ status: "reset_in_progress", resetClaimToken: claimToken, resetClaimedAt: sql`now()` })
+    .where(and(
+      eq(breakGlassPendingSecretsTable.id, pendingSecretId),
+      or(
+        eq(breakGlassPendingSecretsTable.status, "pending_delivery"),
+        and(
+          eq(breakGlassPendingSecretsTable.status, "reset_in_progress"),
+          sql`${breakGlassPendingSecretsTable.resetClaimedAt} < now() - make_interval(secs => ${BREAK_GLASS_OVERRIDE_CLAIM_STALE_MS / 1000})`,
+        ),
+      ),
+    ))
+    .returning({ id: breakGlassPendingSecretsTable.id });
+  if (claimed.length === 0) {
+    const [current] = await db.select({ status: breakGlassPendingSecretsTable.status })
+      .from(breakGlassPendingSecretsTable)
+      .where(eq(breakGlassPendingSecretsTable.id, pendingSecretId))
+      .limit(1);
+    if (current?.status === "reset_in_progress") {
+      log.warn({ pendingSecretId }, "break-glass: admin-override refused — another override holds this secret (tenant credential not changed)");
+      return { ok: false, status: 409, error: "Another admin-override is already resetting this credential", detail: "override_in_progress" };
+    }
+    return { ok: false, status: 409, error: "This secret is not awaiting delivery" };
+  }
+
+  /** Hand the row back as pending_delivery — only while this call still holds it. */
+  const releaseClaim = async (why: string) => {
+    try {
+      await db.update(breakGlassPendingSecretsTable)
+        .set({ status: "pending_delivery", resetClaimToken: null, resetClaimedAt: null })
+        .where(and(
+          eq(breakGlassPendingSecretsTable.id, pendingSecretId),
+          eq(breakGlassPendingSecretsTable.status, "reset_in_progress"),
+          eq(breakGlassPendingSecretsTable.resetClaimToken, claimToken),
+        ));
+    } catch (err) {
+      log.error({ err, pendingSecretId, why }, "break-glass: admin-override could not release its claim — the secret stays reset_in_progress until the claim is stale");
+    }
+  };
+
   // Every attempt for this pending secret must be terminal (expired/superseded).
+  // Read under the claim: the invite route refuses a row that is not
+  // pending_delivery, so no new live link can appear after this check.
   const attempts = await db.select({ linkStatus: breakGlassVerificationAttemptsTable.linkStatus, invitedEmail: breakGlassVerificationAttemptsTable.invitedEmail })
     .from(breakGlassVerificationAttemptsTable)
     .where(eq(breakGlassVerificationAttemptsTable.pendingSecretId, pendingSecretId));
   const anyLive = attempts.some((a) => a.linkStatus !== "expired" && a.linkStatus !== "superseded");
   if (anyLive) {
+    await releaseClaim("live verification links");
     return { ok: false, status: 409, error: "There are still live verification links for this secret" };
   }
 
@@ -936,6 +1000,7 @@ export async function performBreakGlassAdminOverride(
   // exist. A row with no identity is refused rather than guessed at.
   const accountId = ctx.secret.breakGlassAccountId;
   if (!accountId) {
+    await releaseClaim("no account identity");
     return { ok: false, status: 409, error: "This pending secret does not record the break-glass account identity" };
   }
 
@@ -957,6 +1022,7 @@ export async function performBreakGlassAdminOverride(
   // 1. #1911 fail-closed: no store, no override — refused with the tenant untouched.
   if (!generatedSecretStoreConfigured()) {
     log.error({ pendingSecretId }, "break-glass: admin-override refused — generated-secret store is not configured (tenant credential not changed)");
+    await releaseClaim("store not configured");
     return { ok: false, status: 503, error: "The generated-credential store is not configured — the tenant credential was not changed" };
   }
 
@@ -973,6 +1039,7 @@ export async function performBreakGlassAdminOverride(
     });
   } catch (err) {
     log.error({ err, pendingSecretId }, "break-glass: admin-override refused — the replacement credential could not be stored (tenant credential not changed)");
+    await releaseClaim("replacement could not be stored");
     return { ok: false, status: 503, error: "The replacement credential could not be stored — the tenant credential was not changed" };
   }
 
@@ -987,7 +1054,7 @@ export async function performBreakGlassAdminOverride(
   let write: Awaited<ReturnType<typeof graphWriteForTenant>>;
   try {
     write = await graphWriteForTenant(
-      ctx.tenantId,
+      tenantId,
       ctx.secret.customerId,
       `/users/${encodeURIComponent(accountId)}`,
       "PATCH",
@@ -997,11 +1064,14 @@ export async function performBreakGlassAdminOverride(
     if (err instanceof WriteBackNotEnabledError || err instanceof WriteBackCustomerNotFoundError || err instanceof WriteConsentRequiredError) {
       // Refused by a gate (or by a consent error in Graph's reply) — nothing changed.
       await discardProvisional("write-back gate refused the reset");
+      await releaseClaim("write-back gate refused the reset");
       throw err;
     }
     // A transport failure can happen after the PATCH left. Keep the stored copy:
-    // if the reset did land, it is the only record of the password.
+    // if the reset did land, it is the only record of the password. The claim is
+    // released so the override can be run again, as the answer says.
     log.error({ err, pendingSecretId, secretName: newSecretRef.secretName }, "break-glass: admin-override reset outcome unknown — replacement kept in the store; run the override again");
+    await releaseClaim("reset outcome unknown");
     return {
       ok: false,
       status: 502,
@@ -1013,9 +1083,11 @@ export async function performBreakGlassAdminOverride(
     if (resetFailureIsDefinite(write)) {
       log.error({ pendingSecretId, status: write.status, errorType: write.errorType }, "break-glass: admin-override tenant reset refused (credential not changed)");
       await discardProvisional(`tenant reset refused (${write.status})`);
+      await releaseClaim(`tenant reset refused (${write.status})`);
       return { ok: false, status: 502, error: "Failed to reset the tenant credential", detail: write.errorType };
     }
     log.error({ pendingSecretId, status: write.status, errorType: write.errorType, secretName: newSecretRef.secretName }, "break-glass: admin-override reset outcome unknown — replacement kept in the store; run the override again");
+    await releaseClaim(`reset outcome unknown (${write.status})`);
     return {
       ok: false,
       status: 502,
@@ -1031,9 +1103,18 @@ export async function performBreakGlassAdminOverride(
   const oldPendingSecretId = pendingSecretId;
   let newPendingSecretId = 0;
   const recordReplacement = () => db.transaction(async (tx) => {
-    await tx.update(breakGlassPendingSecretsTable)
-      .set({ status: "superseded_by_reset" })
-      .where(eq(breakGlassPendingSecretsTable.id, oldPendingSecretId));
+    // #4040 — supersede only the row this call claimed. If the claim was taken over
+    // (stale), the whole transaction rolls back rather than record a second
+    // replacement beside the one the other override is issuing.
+    const superseded = await tx.update(breakGlassPendingSecretsTable)
+      .set({ status: "superseded_by_reset", resetClaimToken: null })
+      .where(and(
+        eq(breakGlassPendingSecretsTable.id, oldPendingSecretId),
+        eq(breakGlassPendingSecretsTable.status, "reset_in_progress"),
+        eq(breakGlassPendingSecretsTable.resetClaimToken, claimToken),
+      ))
+      .returning({ id: breakGlassPendingSecretsTable.id });
+    if (superseded.length === 0) throw new OverrideClaimLostError();
 
     const [created] = await tx.insert(breakGlassPendingSecretsTable).values({
       runId: ctx.secret.runId,
@@ -1056,9 +1137,24 @@ export async function performBreakGlassAdminOverride(
       newPendingSecretId,
     });
   });
+  const claimLost = (): AdminOverrideResult => {
+    // Another override took this row over after its claim went stale, and will
+    // reset the tenant itself. This reset landed first, so its stored copy is kept.
+    log.error(
+      { pendingSecretId, secretName: newSecretRef.secretName },
+      "break-glass: admin-override RESET LANDED but its claim was taken over before the replacement was recorded — the other override's reset is the one that will stand",
+    );
+    return {
+      ok: false,
+      status: 500,
+      error: "The tenant credential was reset, but another override took this secret over before the replacement could be recorded. Let that override finish before re-inviting anyone.",
+      detail: "claim_lost",
+    };
+  };
   try {
     await recordReplacement();
   } catch (firstErr) {
+    if (firstErr instanceof OverrideClaimLostError) return claimLost();
     log.warn({ err: firstErr, pendingSecretId }, "break-glass: admin-override could not record the replacement after the reset — retrying once");
     try {
       const [already] = await db.select({ id: breakGlassPendingSecretsTable.id })
@@ -1068,15 +1164,18 @@ export async function performBreakGlassAdminOverride(
       if (already) newPendingSecretId = already.id;
       else await recordReplacement();
     } catch (err) {
+      if (err instanceof OverrideClaimLostError) return claimLost();
       // The tenant holds the new password and so does the store; only the row is
       // missing. The vault copy is NOT purged — it is the one place the live
-      // credential exists. The old row is left overridable on purpose: marking it
-      // superseded with no successor would remove the only way to recover through
-      // the platform, and the database just refused a write anyway.
+      // credential exists. The old row is handed back as overridable on purpose:
+      // marking it superseded with no successor would remove the only way to
+      // recover through the platform, and the database just refused a write anyway
+      // (if the release fails too, the claim goes stale and can be taken over).
       log.error(
         { err, pendingSecretId, secretName: newSecretRef.secretName },
         "break-glass: admin-override RESET LANDED but the replacement could not be recorded — the credential is held only in the store under secretName; run the override again",
       );
+      await releaseClaim("replacement could not be recorded");
       return {
         ok: false,
         status: 500,
