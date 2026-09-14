@@ -130,10 +130,50 @@ cd C:\wt\1234-my-feature
 node scripts/dev-server/request-restart.mjs --agent 1234-my-feature
 ```
 
-`request-restart.mjs` returns only once your commit is **live and confirmed** on
-the dev-server checkout (or it reports an honest failure — merge conflict,
-timeout, etc.). Then run your tests via `shaneapp://runTest` as usual (which also
-targets Dev/local).
+`request-restart.mjs` returns once your commit is merged and confirmed in the
+`C:\dev-server` **mirror** (or it reports an honest failure — merge conflict,
+timeout, etc.), and then **verifies it is live where traffic is actually served**.
+Then run your tests via `shaneapp://runTest` as usual (which also targets
+Dev/local).
+
+### Merged is not live — the serving-checkout check (Git #4033)
+
+`C:\dev-server` (`config.serverWorktree`) is only a merge mirror; nothing serves
+from it. The dev ports are served from `config.servingRoot` — the main checkout
+BuildConsole launches `dev-all.mjs` from (#1395) — which the restart refreshes by
+fast-forwarding it to `origin/main`. #4033 was a restart reporting `ready:true`
+while `:8080` kept serving a checkout that never received the commit: the ff was
+skipped (local-only commits), the api-server was rebuilt from the stale tree, and
+`ready` only meant "the port accepts TCP" — satisfied by the *old* process before
+kill-port even ran.
+
+`serving-checkout.mjs` now checks the live processes, not config:
+
+* the commit is an ancestor of the serving checkout's `HEAD` (so it must be on
+  `origin/main` — push before requesting a restart);
+* the pid listening on each service port is attributed, through its real parent
+  chain, to the `<root>\scripts\dev-all.mjs` that launched it, and that root must be
+  `servingRoot`;
+* the api-server was started (per the serving checkout's reflog at the process's
+  creation time) from a `HEAD` with no api-affecting changes since;
+* after a rebuild, a *new* process holds the api port (the wait no longer returns on
+  the old one).
+
+Exit codes: `0` merged and verified live (or a deferred Build Set member), `1` not
+merged, **`3` merged but NOT live** — the output lists exactly why; never report a
+change as verified via live curl on exit 3. The same check runs standalone before
+any live-curl claim:
+
+```
+node scripts/dev-server/serving-checkout.mjs --commit <sha>   # exit 0 live, 3 not
+```
+
+A serving checkout that can't fast-forward now names its local-only commits in the
+skip reason. When every one of them is already on `origin/main` (same file content,
+or same patch per `git cherry`), the refresh moves it with `git reset --keep
+origin/main`, which refuses rather than touch an uncommitted change in a file the
+move would rewrite. Commits that exist only locally are never discarded — the
+refresh skips and says which commits block it.
 
 ### The coalescing contract
 
@@ -533,7 +573,10 @@ node scripts/check-schema-drift.selftest.mjs
 | `restart-hold.mjs` | **Git #1855** — bounded advisory restart holds a long-running agent task can take so the coordinator's next restart waits, briefly, for it to clear. CLI (`acquire`/`renew`/`release`/`status`) + `.d.mts` types for TS callers. |
 | `api-fetch.mjs` | **Git #1855** — `fetchResilient()`, a retry-aware `fetch()` wrapper that reads the coordinator's real state (`describeRestartState`) to distinguish an in-progress restart from a genuine failure, instead of guessing off a raw `TypeError: fetch failed`. `.d.mts` types for TS callers. |
 | `service-targeting.mjs` | **Selective service targeting** — pure (git-only) planner: classify a set's combined changed-file footprint into services and decide rebuild/start/stop/keep per service. |
-| `request-restart.mjs` | **Agent entrypoint** — the coalescing algorithm, and the `--buildSet` deferred-restart path. |
+| `request-restart.mjs` | **Agent entrypoint** — the coalescing algorithm, and the `--buildSet` deferred-restart path. Exits 3 when merged but not live on the serving checkout (Git #4033). |
+| `refresh-main-server.mjs` | **Git #1395** — the real restart action: ff the serving checkout to `origin/main` (or, **Git #4033**, reconcile it with `reset --keep` when its local-only commits are already upstream), rebuild the api-server, start needed front-ends, then verify. |
+| `serving-checkout.mjs` | **Git #4033** — verifies the checkout that was refreshed is the one actually bound to the service ports: port → pid → parent `dev-all.mjs` → root, commit containment, api staleness from the reflog, fresh listener after a rebuild. CLI exits 0 live / 3 not. |
+| `serving-checkout.selftest.mjs` | **Git #4033** — throwaway repos + synthetic process tables: wrong-checkout port holder, stale api, old listener surviving a rebuild, missing commit, and divergence reconciliation (unpushed commit refused and named; upstream-equivalent commit reconciled; unrelated dirty file carried over; conflicting dirty file refuses). |
 | `push-blocked-bookend.mjs` | **Git #3628** — reads a worktree's own committed `build-journal/{issue}.md` at HEAD (not `origin/main`) and, only when its effective `**Status:**` says BLOCKED, pushes that HEAD directly to `origin/main` (one fetch+rebase retry if main moved). Fixes a self-blocked session's 🛑 BLOCKED bookend stranding on its agent branch — `request-restart.mjs` above only ever publishes into the local dev-server checkout, never origin. Called by `WorktreeProvisionService.PushBlockedBookendIfAnyAsync` at reap time as a backstop; a session should still push its own BLOCKED bookend itself (CLAUDE.md's "blocked" flow). |
 | `status.mjs` | Diagnostic: current state + exact log paths. |
 | `provision-worktree.mjs` | Create an isolated agent worktree off origin/main. |
@@ -557,7 +600,9 @@ node scripts/check-schema-drift.selftest.mjs
 `DEV_ALL_LOG_DIR`, `DEV_API_PORT` (default 8080), `DEV_SERVER_STALE_LOCK_MS`,
 `DEV_SERVER_MAX_WAIT_MS`, `DEV_ALL_LOG_MAX_BYTES`,
 `DEV_SERVER_FAKE_RESTART=1` (record restarts instead of touching a real process
-— used by selftest / dry runs).
+— used by selftest / dry runs). `DEV_SERVER_SERVING_ROOT` (checkout that serves the
+dev ports; default the main repo root), `DEV_SERVER_API_RESTART_TIMEOUT_MS` (default
+240s — how long a refresh waits for a new process to take the api port).
 
 Build Sets: `DEV_BUILD_SET` (set name — presence switches `request-restart.mjs`
 into the deferred-restart path), `DEV_BUILD_SET_MEMBER` (this member's key),

@@ -11,6 +11,15 @@
 //
 // Defaults: --commit = HEAD of the cwd, --agent = host+pid, --worktree = cwd.
 //
+// Exit codes (Git #4033):
+//   0  merged, and verified live on the checkout actually serving the dev ports
+//      (or a build-set member whose restart is still deferred -- nothing to verify)
+//   1  not merged (conflict / timeout / unresolvable commit)
+//   3  merged into the C:\dev-server mirror but NOT live where traffic is served --
+//      the output names why. Never report a change as "verified via live curl"
+//      on exit 3.
+//   2  crashed
+//
 // The coalescing contract (matches how CI batches commits landing mid-build):
 //
 //   * If the commit is ALREADY an ancestor of the server HEAD, it's live. We
@@ -40,6 +49,7 @@ import {
 } from "./queue.mjs";
 import { runCycle, runSetMemberCycle } from "./coordinator.mjs";
 import { refreshMainServer } from "./refresh-main-server.mjs";
+import { verifyServingCheckout, describeVerification } from "./serving-checkout.mjs";
 import { existsSync } from "node:fs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -87,7 +97,31 @@ function makeRestart(config) {
   return refreshMainServer;
 }
 
+/**
+ * Git #4033: merge + restart, then PROVE the commit is live on the checkout that
+ * actually serves the dev ports. `landed` only ever meant "merged into the
+ * C:\dev-server mirror" -- which reported success while :8080 kept serving a
+ * checkout that never received the commit. `live` answers the real question.
+ */
 export async function requestRestart(opts = {}) {
+  const res = await mergeAndRestart(opts);
+  if (!res.landed) return res;
+  const config = loadConfig({ cwd: opts.worktree || process.cwd() });
+  if (res.buildSet && !res.restarted) {
+    return { ...res, live: null, liveNote: "restart deferred until the whole build set completes -- serving checkout not verified yet" };
+  }
+  if (config.fakeRestart) {
+    return { ...res, live: null, liveNote: "fake restart (selftest) -- serving checkout not verified" };
+  }
+  // A restart this call ran already verified with the stronger freshness check
+  // (listener created after the rebuild spawn) -- reuse it when it covered this
+  // commit; every other path (joined, already merged) is verified now.
+  const own = res.liveVerification?.commits?.some((c) => c.commit === res.commit) ? res.liveVerification : null;
+  const v = own || verifyServingCheckout(config, { commits: [res.commit] });
+  return { ...res, live: v.verified, servingRoot: v.servingRoot, servingHead: v.head, liveVerification: v };
+}
+
+async function mergeAndRestart(opts = {}) {
   const cwd = opts.worktree || process.cwd();
   const config = loadConfig({ cwd });
   const W = config.serverWorktree;
@@ -173,7 +207,7 @@ export async function requestRestart(opts = {}) {
       joined: true,
       commit,
       serverHead: revParse(W, "HEAD"),
-      note: "commit already live in the dev-server checkout; joined without a new restart",
+      note: "commit already merged into the dev-server mirror; joined without a new restart (liveness on the serving checkout is verified separately)",
     };
   }
 
@@ -218,6 +252,7 @@ export async function requestRestart(opts = {}) {
           restarted: record.restarted,
           cycleId: record.cycleId,
           serverHead: record.serverHeadFinal,
+          liveVerification: record.restart?.live || null,
           batchSize: record.batchSize,
           commit,
         };
@@ -280,13 +315,20 @@ if (isMain) {
           }
         } else if (res.landed) {
           console.log(
-            `[dev-server] OK  commit ${c} is live${res.restarted ? " (restarted)" : res.joined ? " (joined an in-flight/complete cycle -- no extra restart)" : ""}. server HEAD ${shortSha(res.serverHead)}`
+            `[dev-server] OK  commit ${c} merged into the dev-server mirror${res.restarted ? " (restarted)" : res.joined ? " (joined an in-flight/complete cycle -- no extra restart)" : ""}. mirror HEAD ${shortSha(res.serverHead)}`
           );
         } else {
           console.error(`[dev-server] FAILED  commit ${c}: ${res.error || (res.conflict ? "merge conflict" : "not landed")}`);
         }
+        if (res.landed && res.live === false) {
+          console.error(
+            `[dev-server] NOT LIVE  commit ${c} is merged, but the checkout serving the dev ports does not serve it -- do not report it as verified live. ${describeVerification(res.liveVerification)}`
+          );
+        } else if (res.landed && res.live === true) {
+          console.log(`[dev-server] ${describeVerification(res.liveVerification)}`);
+        }
       }
-      process.exit(res.landed ? 0 : 1);
+      process.exit(!res.landed ? 1 : res.live === false ? 3 : 0);
     })
     .catch((err) => {
       console.error(`[dev-server] ERROR ${err.stack || err}`);
