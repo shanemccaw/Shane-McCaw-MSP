@@ -91,6 +91,33 @@ namespace BuildConsole
             string? protocolUri = e.Args?.FirstOrDefault(a =>
                 a != null && a.StartsWith(Services.ShaneAppProtocol.Scheme + "://", StringComparison.OrdinalIgnoreCase));
 
+            // ── Git #4070 — Windows file-association launch ────────────────────────────
+            // Double-clicking a file whose extension Shane has associated with
+            // BuildConsole.exe (via Windows' own Default Apps, done manually per
+            // extension — not a shaneapp:// URI) hands us a BARE FILE PATH as the sole
+            // argument, e.g. `BuildConsole.exe "C:\path\to\file.tsx"`. Recognize that
+            // shape and synthesize the same shaneapp://openfile URI a protocol courier
+            // would have sent, so every branch below (forward-to-a-running-instance,
+            // the single-instance guard's protocol carve-out, the cold-start
+            // PendingProtocolUri stash) applies completely unchanged — no duplicate
+            // logic. Deliberately extension-agnostic: gated on "is this a real,
+            // existing file" rather than a hardcoded extension allowlist, since Shane
+            // adds Windows file associations over time and this must not need a
+            // matching code change per extension.
+            if (protocolUri == null && e.Args != null && e.Args.Length == 1 && !IsKnownLaunchFlag(e.Args[0]))
+            {
+                string candidate = e.Args[0];
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(candidate) && File.Exists(candidate))
+                    {
+                        string fullPath = Path.GetFullPath(candidate);
+                        protocolUri = $"{Services.ShaneAppProtocol.Scheme}://openfile?ref={Uri.EscapeDataString(fullPath)}";
+                    }
+                }
+                catch { /* malformed/inaccessible path — not a file-association launch, fall through untouched */ }
+            }
+
             // ── Single-instance guard (Git #2141) ─────────────────────────────────────
             // EMERGENCY hard guard: a second FULL BuildConsole.exe launch on top of Shane's
             // live session directly interrupts his active work (this exe manages his real
@@ -205,6 +232,26 @@ namespace BuildConsole
 
             // Catch unobserved async Task exceptions
             TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
+        }
+
+        /// <summary>
+        /// Git #4070 — true when <paramref name="arg"/> is one of the app's own recognized
+        /// launch flags (checked against the same flag names <see cref="Services.InstanceMode"/>
+        /// and <see cref="Services.AppMode"/> parse themselves), so the file-association branch
+        /// above can never mistake a real launch flag for a file path. Deliberately narrow: only
+        /// the flag's bare name is checked here (not "does the file exist"), so a coincidentally
+        /// named file (e.g. a file literally called "dev" with no extension) is still excluded —
+        /// exactly the collision this guard exists to prevent.
+        /// </summary>
+        private static bool IsKnownLaunchFlag(string? arg)
+        {
+            if (string.IsNullOrWhiteSpace(arg)) return false;
+            string flag = arg.Trim().TrimStart('/', '-');
+            if (flag.Equals("agent", StringComparison.OrdinalIgnoreCase)) return true;
+            if (flag.Equals("dev", StringComparison.OrdinalIgnoreCase)) return true;
+            if (flag.Equals("instance", StringComparison.OrdinalIgnoreCase)) return true;
+            if (flag.StartsWith("instance=", StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
         }
 
         /// <summary>

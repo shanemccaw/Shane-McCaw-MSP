@@ -11231,6 +11231,27 @@ namespace BuildConsole
                     return;
                 }
 
+                // openFile → Git #4070: a Windows file-association double-click (or a cold-start
+                // drain of the same) synthesized this URI in App.OnStartup from a bare file-path
+                // argument. req.Ref is the full path, already percent-decoded by
+                // ShaneAppProtocol.ParseQuery. Reuses the SAME OpenFileTab(string) the Explorer
+                // pane already calls — no new tab/editor/highlighting work, per the issue's own
+                // explicit scope — then brings the window forward exactly like 'activate' does.
+                if (string.Equals(req.Action, "openFile", StringComparison.OrdinalIgnoreCase))
+                {
+                    BuildConsole.Services.ActivityLog.Log(ch,
+                        $"Routing action 'openFile' to OpenFileTab (src='{src}', ref='{req.Ref ?? "(none)"}').");
+                    if (string.IsNullOrWhiteSpace(req.Ref) || !System.IO.File.Exists(req.Ref))
+                    {
+                        BuildConsole.Services.ActivityLog.Log(ch,
+                            $"openFile: path missing or no longer exists ('{req.Ref}') — nothing to open.");
+                        return;
+                    }
+                    OpenFileTab(req.Ref!);
+                    ActivateMainWindowFromProtocol();
+                    return;
+                }
+
                 // runTest / uiTest → run a whole test manifest IN-PROCESS through the same
                 // RunManifestAsync pipeline Play Test uses (MainWindow.ShaneAppRunTest.cs).
                 if (string.Equals(req.Action, "runTest", StringComparison.OrdinalIgnoreCase) ||
@@ -11333,7 +11354,7 @@ namespace BuildConsole
                 if (!string.Equals(req.Action, "executeSql", StringComparison.OrdinalIgnoreCase))
                 {
                     BuildConsole.Services.ActivityLog.Log(ch,
-                        $"Unsupported action '{req.Action}' — only executeSql / runTest / uiTest / runPowerShell / runScan / executeScan / executeCmdlet / deployPsExecution / psExecutionRevision / reportProgress / activate are handled. Ignoring.");
+                        $"Unsupported action '{req.Action}' — only executeSql / runTest / uiTest / runPowerShell / runScan / executeScan / executeCmdlet / deployPsExecution / psExecutionRevision / reportProgress / activate / openFile are handled. Ignoring.");
                     return;
                 }
 

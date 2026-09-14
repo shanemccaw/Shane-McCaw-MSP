@@ -197,7 +197,9 @@ namespace BuildConsole.Services
                 : (string.IsNullOrWhiteSpace(req.Ref) ? "shaneapp-executeSql.result.json" : req.Ref + ".result.json");
 
         private static string CanonicalizeAction(string host) =>
-            string.Equals(host, "executesql", StringComparison.OrdinalIgnoreCase) ? "executeSql" : host;
+            string.Equals(host, "executesql", StringComparison.OrdinalIgnoreCase) ? "executeSql" :
+            string.Equals(host, "openfile", StringComparison.OrdinalIgnoreCase) ? "openFile" :
+            host;
 
         /// <summary>
         /// Minimal query-string parser — deliberately no System.Web dependency
