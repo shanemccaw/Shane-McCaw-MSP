@@ -1,18 +1,36 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 
-interface Testimonial {
+type TestimonialKind = "testimonial" | "feedback" | "suggestion";
+
+interface ProjectClosureTestimonial {
+  source: "project_closure";
   id: number;
   projectId: number;
   projectTitle: string;
   projectType: string;
-  feedback: string | null;
-  permissionGranted: boolean;
-  signedAt: string;
-  requestedAt: string;
+  kind: "testimonial";
+  body: string | null;
+  permissionToPublish: boolean;
+  createdAt: string | null;
   clientName: string | null;
   clientEmail: string | null;
 }
+
+interface CustomerTestimonial {
+  source: "customer_testimonial";
+  id: number;
+  customerId: number;
+  customerName: string | null;
+  kind: TestimonialKind;
+  body: string | null;
+  permissionToPublish: boolean;
+  createdAt: string | null;
+  clientName: string | null;
+  clientEmail: string | null;
+}
+
+type AdminTestimonialRow = ProjectClosureTestimonial | CustomerTestimonial;
 
 function ProjectTypeBadge({ type }: { type: string }) {
   const map: Record<string, string> = {
@@ -25,28 +43,45 @@ function ProjectTypeBadge({ type }: { type: string }) {
   return <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${cls}`}>{label}</span>;
 }
 
+function SourceBadge({ row }: { row: AdminTestimonialRow }) {
+  if (row.source === "project_closure") {
+    return (
+      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/100/15 text-blue-400">
+        Project Closure
+      </span>
+    );
+  }
+  const kindLabel = row.kind.charAt(0).toUpperCase() + row.kind.slice(1);
+  return (
+    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-teal-500/15 text-teal-400">
+      Portal {kindLabel}
+    </span>
+  );
+}
+
 export default function TestimonialsPage() {
   const { fetchWithAuth } = useAuth();
-  const [items, setItems] = useState<Testimonial[]>([]);
+  const [items, setItems] = useState<AdminTestimonialRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchWithAuth("/api/admin/closures/signed")
+    fetchWithAuth("/api/admin/testimonials/all")
       .then(r => r.json())
-      .then(d => setItems(d as Testimonial[]))
+      .then(d => setItems(d as AdminTestimonialRow[]))
       .catch(() => null)
       .finally(() => setLoading(false));
   }, [fetchWithAuth]);
 
-  const published = items.filter(i => i.permissionGranted && i.feedback?.trim());
-  const signedOff = items.filter(i => !i.permissionGranted || !i.feedback?.trim());
+  const published = items.filter(i => i.permissionToPublish && i.body?.trim());
+  const awaitingPermission = items.filter(i => !i.permissionToPublish && i.body?.trim());
+  const signedOff = items.filter(i => !i.body?.trim());
 
   return (
     <div className="p-4 sm:p-6 max-w-4xl">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-foreground">Testimonials</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Signed project closures. Entries with permission granted appear on the public website.
+          Signed project closures and standing portal submissions. Entries with permission granted appear on the public website.
         </p>
       </div>
 
@@ -61,8 +96,8 @@ export default function TestimonialsPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
             </svg>
           </div>
-          <p className="text-sm font-semibold text-foreground">No signed closures yet</p>
-          <p className="text-xs text-muted-foreground mt-1">Request a closure sign-off from a project's detail page to get started.</p>
+          <p className="text-sm font-semibold text-foreground">No testimonials yet</p>
+          <p className="text-xs text-muted-foreground mt-1">Request a closure sign-off from a project's detail page, or wait for a customer to submit one from the portal.</p>
         </div>
       ) : (
         <div className="space-y-8">
@@ -76,12 +111,18 @@ export default function TestimonialsPage() {
               </div>
               <div className="space-y-4">
                 {published.map(item => (
-                  <div key={item.id} className="bg-card border border-border rounded-xl p-5 space-y-3">
+                  <div key={`${item.source}-${item.id}`} className="bg-card border border-border rounded-xl p-5 space-y-3">
                     <div className="flex items-start justify-between gap-3 flex-wrap">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-sm font-bold text-foreground">{item.projectTitle}</p>
-                          <ProjectTypeBadge type={item.projectType} />
+                          <p className="text-sm font-bold text-foreground">
+                            {item.source === "project_closure" ? item.projectTitle : (item.customerName ?? "Unknown customer")}
+                          </p>
+                          {item.source === "project_closure" ? (
+                            <ProjectTypeBadge type={item.projectType} />
+                          ) : (
+                            <SourceBadge row={item} />
+                          )}
                           <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-400 bg-green-500/10 border border-green-500/20 rounded-full px-2 py-0.5">
                             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
                             Published
@@ -91,13 +132,62 @@ export default function TestimonialsPage() {
                           <p className="text-xs text-muted-foreground">{item.clientName} {item.clientEmail ? `· ${item.clientEmail}` : ""}</p>
                         )}
                       </div>
-                      <p className="text-xs text-muted-foreground flex-shrink-0">
-                        Signed {new Date(item.signedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                      </p>
+                      {item.createdAt && (
+                        <p className="text-xs text-muted-foreground flex-shrink-0">
+                          {item.source === "project_closure" ? "Signed" : "Submitted"} {new Date(item.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        </p>
+                      )}
                     </div>
-                    {item.feedback && (
+                    {item.body && (
                       <blockquote className="border-l-4 border-primary pl-4 text-sm text-foreground/80 italic leading-relaxed">
-                        "{item.feedback}"
+                        "{item.body}"
+                      </blockquote>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {awaitingPermission.length > 0 && (
+            <section>
+              <div className="flex items-center gap-2 mb-4">
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
+                <h2 className="text-sm font-bold uppercase tracking-wider text-foreground">
+                  Awaiting Permission ({awaitingPermission.length})
+                </h2>
+              </div>
+              <div className="space-y-4">
+                {awaitingPermission.map(item => (
+                  <div key={`${item.source}-${item.id}`} className="bg-card border border-border rounded-xl p-5 space-y-3">
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-bold text-foreground">
+                            {item.source === "project_closure" ? item.projectTitle : (item.customerName ?? "Unknown customer")}
+                          </p>
+                          {item.source === "project_closure" ? (
+                            <ProjectTypeBadge type={item.projectType} />
+                          ) : (
+                            <SourceBadge row={item} />
+                          )}
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400">
+                            No Publish Permission
+                          </span>
+                        </div>
+                        {item.clientName && (
+                          <p className="text-xs text-muted-foreground">{item.clientName} {item.clientEmail ? `· ${item.clientEmail}` : ""}</p>
+                        )}
+                      </div>
+                      {item.createdAt && (
+                        <p className="text-xs text-muted-foreground flex-shrink-0">
+                          {item.source === "project_closure" ? "Signed" : "Submitted"} {new Date(item.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        </p>
+                      )}
+                    </div>
+                    {item.body && (
+                      <blockquote className="border-l-4 border-border pl-4 text-sm text-foreground/80 italic leading-relaxed">
+                        "{item.body}"
                       </blockquote>
                     )}
                   </div>
@@ -116,19 +206,27 @@ export default function TestimonialsPage() {
               </div>
               <div className="space-y-3">
                 {signedOff.map(item => (
-                  <div key={item.id} className="bg-accent border border-border rounded-xl p-4 flex items-center justify-between gap-4 flex-wrap">
+                  <div key={`${item.source}-${item.id}`} className="bg-accent border border-border rounded-xl p-4 flex items-center justify-between gap-4 flex-wrap">
                     <div className="space-y-0.5">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-semibold text-foreground">{item.projectTitle}</p>
-                        <ProjectTypeBadge type={item.projectType} />
+                        <p className="text-sm font-semibold text-foreground">
+                          {item.source === "project_closure" ? item.projectTitle : (item.customerName ?? "Unknown customer")}
+                        </p>
+                        {item.source === "project_closure" ? (
+                          <ProjectTypeBadge type={item.projectType} />
+                        ) : (
+                          <SourceBadge row={item} />
+                        )}
                       </div>
                       {item.clientName && (
                         <p className="text-xs text-muted-foreground">{item.clientName}</p>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(item.signedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                    </p>
+                    {item.createdAt && (
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(item.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
