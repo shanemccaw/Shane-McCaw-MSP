@@ -926,7 +926,7 @@ namespace BuildConsole.Services
             {
                 Id = reader.GetInt32(0),
                 EntryUuid = reader.GetString(1),
-                PageId = reader.GetInt32(2),
+                PageId = reader.IsDBNull(2) ? 0 : reader.GetInt32(2),
                 BaseUrl = reader.GetString(3),
                 PagePath = reader.GetString(4),
                 Title = reader.GetString(5),
