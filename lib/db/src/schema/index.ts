@@ -1649,21 +1649,86 @@ export type CustomerTestimonial = typeof customerTestimonialsTable.$inferSelect;
 export const CUSTOMER_TESTIMONIAL_KINDS = ["testimonial", "feedback", "suggestion"] as const;
 export type CustomerTestimonialKind = typeof CUSTOMER_TESTIMONIAL_KINDS[number];
 
-// Audit Log — persistent chronological record of all admin and client actions
+// Audit Log — persistent, append-only chronological record of platform actions.
+//
+// Immutable by design (#1946 question D, confirmed 2026-09-14): the append-only
+// pattern proven by #1503's `cr_events` — there is NO update or delete route against
+// this table anywhere in the repo, only inserts and reads. See
+// `docs/audit-log-model-4044.md` for the immutability contract and where the trail
+// under this (new) model begins.
+
+// Real actor model (#4044 / #1946). `actorRole` was a two-value enum ["admin","client"];
+// a platform with MSP operators, service accounts, platform admins and agents (#1931)
+// cannot honestly answer "who did this" against two values. This is the real closed set
+// of principals. `system` is retained only for genuinely unattended actions with no real
+// principal (a cron sweep, a lifecycle transition) — never as a catch-all where a real
+// actor exists (#1946 standing constraint). `microsoft` is an external Microsoft
+// Graph-initiated change. The first four historical values (admin/client) plus the
+// already-in-flight msp/customer/system/microsoft usages are all preserved, so the 179
+// existing call sites keep working unchanged (migrated, not reinterpreted — #1946 F).
+export const AUDIT_ACTOR_ROLES = [
+  "admin",           // platform / MSP administrator (legacy value, retained)
+  "client",          // customer-portal user (legacy value, retained)
+  "customer",        // customer-tenant principal acting in their own tenant
+  "msp",             // MSP operator acting on a customer's behalf
+  "platform_admin",  // platform-level administrator (distinct from a customer admin)
+  "service_account", // non-human service principal
+  "agent",           // automation agent (#1931) — indistinguishable in trail except by name
+  "microsoft",       // external Microsoft Graph-initiated change
+  "system",          // genuinely unattended action with no real principal (never a catch-all)
+] as const;
+export type AuditActorRole = typeof AUDIT_ACTOR_ROLES[number];
+
+// Enumerable action catalogue (#4044 / #1946). `actionType` stays an open detail string
+// (the specific verb, ~175 real values, some passed as variables at the call site — it is
+// NOT hardened into a closed union, which would break those sites). Filterability comes
+// from this coarse, closed operation-class enum — the same class of fix as #1826's
+// `notifications.category`, and the M365-unified-audit-log analogue of `RecordType`. A
+// filterable audit log works against this dimension, not against free text. Ordinary reads
+// are deliberately absent: per the settled read boundary (#1946, 2026-09-14) only
+// privileged / cross-boundary reads are audited, and those are `access`, not `read`.
+export const AUDIT_ACTION_CATEGORIES = [
+  "create",   // a record/entity was created
+  "update",   // a record/entity was modified
+  "delete",   // a record/entity was deleted (soft or hard)
+  "action",   // an operation with no single CRUD target (scan, execute, approve, reject, restore, promote)
+  "settings", // a configuration / preference / policy change
+  "auth",     // authentication & session lifecycle (login, logout, password, MFA, session revoke, token issue)
+  "access",   // a privileged / cross-boundary access event (break-glass, operator reading a customer's data, export/download)
+  "security", // a security-consequential grant/revoke (consent, credential, role grant)
+  "system",   // a platform-lifecycle action attributed to no real principal
+] as const;
+export type AuditActionCategory = typeof AUDIT_ACTION_CATEGORIES[number];
+
 export const auditLogsTable = pgTable("audit_logs", {
   id: serial("id").primaryKey(),
   actorUserId: integer("actor_user_id").references(() => usersTable.id, { onDelete: "set null" }),
   actorName: text("actor_name").notNull(),
-  actorRole: text("actor_role", { enum: ["admin", "client"] }).notNull(),
+  actorRole: text("actor_role", { enum: AUDIT_ACTOR_ROLES }).notNull(),
   actionType: text("action_type").notNull(),
+  // Coarse, filterable operation class (nullable: existing rows predate the catalogue and are
+  // NOT backfilled — #1946 F — so a NULL here means "logged before the catalogue landed").
+  actionCategory: text("action_category", { enum: AUDIT_ACTION_CATEGORIES }),
   entityType: text("entity_type").notNull(),
   entityId: text("entity_id"),
   entityLabel: text("entity_label"),
+  // Person-scoped subject (references users.id). Retained for backward compatibility with the
+  // 179 existing call sites; superseded for scoping purposes by `tenantId` below.
   clientId: integer("client_id").references(() => usersTable.id, { onDelete: "set null" }),
+  // Real tenant scoping (#4044 / #1946): a customer-facing audit log scopes to the customer's
+  // tenant, not to a single person — the same defect #1923 records for status reports. References
+  // tenants.id (users.tenant_id → tenants.id is the JWT customerId bridge). Nullable: not every
+  // audited action is tenant-scoped (platform-wide admin actions have no tenant), and existing
+  // rows are not backfilled.
+  tenantId: integer("tenant_id").references(() => tenantsTable.id, { onDelete: "set null" }),
   projectId: integer("project_id").references(() => projectsTable.id, { onDelete: "set null" }),
   metadata: jsonb("metadata").$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("audit_logs_action_category_idx").on(t.actionCategory),
+  index("audit_logs_action_type_idx").on(t.actionType),
+  index("audit_logs_tenant_id_idx").on(t.tenantId),
+]);
 
 export type InsertAuditLog = typeof auditLogsTable.$inferInsert;
 export type AuditLog = typeof auditLogsTable.$inferSelect;
