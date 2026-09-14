@@ -14,10 +14,16 @@
  *   POST   /api/msp/:mspId/customers/:customerId/retainer/periods/:periodKey/close       — close an ended period
  *   POST   /api/msp/:mspId/customers/:customerId/retainer/periods/:periodKey/reopen      — reopen a closed period (MSP admin)
  *   POST   /api/msp/:mspId/customers/:customerId/retainer/periods/:periodKey/adjustments — adjust a CLOSED period, with a mandatory reason (#4026)
+ *   GET    /api/msp/:mspId/retainer/pending                                         — the tracker byproduct hook's approval queue (#4098)
+ *   POST   /api/msp/:mspId/retainer/pending/:entryId/approve                        — approve a queued entry into the ledger, with a mandatory reason (#4098)
+ *   POST   /api/msp/:mspId/retainer/pending/:entryId/reject                         — reject a queued entry, with a mandatory reason (#4098)
  *
  * Auth: `requireCapability("ladder.msp-operator")` + `requireMspScope("params")`;
  * reopen and adjustments require `ladder.msp-admin` — reopen undoes a lock
- * another operator set, and adjustments deliberately bypass that lock.
+ * another operator set, and adjustments deliberately bypass that lock. The
+ * pending-entry approve/reject routes are `ladder.msp-admin` too, for the same
+ * reason: approving a queued entry writes into a CLOSED period, the same
+ * deliberate-override shape as `.../adjustments`.
  * Every route then confirms the customer is a tenant of `:mspId` (IDOR guard,
  * same as msp-staff.ts), and every entry lookup matches customer AND MSP.
  *
@@ -32,12 +38,17 @@
  * Period close: writes `retainer_period_closes` with a frozen bucket snapshot.
  * While closed, log/adjust/delete into that period answer 409 — same lock,
  * shared via `lib/retainer-ledger-lock.ts`, also honored by AdminV2's own
- * writers (`routes/admin-retainer.ts`, Git #4026, no bypass). The ONE way to
- * change a closed period's hours is the `.../adjustments` route above, which
- * requires a reason and writes a `retainer_adjustment_notes` row. Every ledger
- * write runs under a per-customer transaction-scoped advisory lock, so a write
- * can't slip into a period between the closed-check and a concurrent close.
- * Closing has no billing side effect — it records and locks, nothing is charged.
+ * writers (`routes/admin-retainer.ts`, Git #4026, no bypass) AND by the tracker
+ * byproduct hook (`lib/retainer-work-logger.ts`, Git #4098 — its own gap: it
+ * fires outside any route, so it was never wired into the lock at all). The
+ * ways to change a closed period's hours are the `.../adjustments` route above
+ * (a direct, reasoned MSP-admin override) and the pending-entry approve route
+ * below (a reasoned MSP-admin approval of a byproduct the hook queued instead
+ * of writing past the lock) — both write a `retainer_adjustment_notes` row.
+ * Every ledger write runs under a per-customer transaction-scoped advisory
+ * lock, so a write can't slip into a period between the closed-check and a
+ * concurrent close. Closing has no billing side effect — it records and locks,
+ * nothing is charged.
  *
  * Hours cross the wire as decimal HOURS (1.5), stored as integer MINUTES.
  */
@@ -50,11 +61,14 @@ import {
   retainerWorkLogTable,
   retainerPeriodClosesTable,
   retainerAdjustmentNotesTable,
+  retainerPendingEntriesTable,
   tenantsTable,
   tenantSubscriptionsTable,
   mspAuditLogsTable,
   RETAINER_WORK_STATES,
   RETAINER_ADJUSTMENT_ACTIONS,
+  RETAINER_PENDING_ENTRY_STATUSES,
+  type RetainerPendingEntryStatus,
 } from "@workspace/db";
 import { and, eq, desc, inArray } from "drizzle-orm";
 import { z } from "zod";
@@ -139,6 +153,36 @@ async function resolveCustomerOrRespond(req: Request, res: Response) {
     return null;
   }
   return { mspId, customerId, customerName: customer.name };
+}
+
+/**
+ * A `retainer_pending_entries` row → wire (Git #4098). Local to this router —
+ * the pending-entry review surface is MSP Console-only, unlike
+ * `entryToWire`/`bucketToWire`/`adjustmentNoteToWire`, which AdminV2 and the
+ * customer portal also render.
+ */
+function pendingEntryToWire(row: typeof retainerPendingEntriesTable.$inferSelect) {
+  return {
+    id: row.id,
+    customerId: row.customerId,
+    periodKey: row.periodKey,
+    week: row.weekLabel,
+    item: row.item,
+    hours: minutesToHours(row.minutes),
+    minutes: row.minutes,
+    pillar: row.pillar,
+    finding: row.finding,
+    outcome: row.outcome,
+    source: row.source,
+    sourceRefId: row.sourceRefId,
+    occurredAt: row.occurredAt instanceof Date ? row.occurredAt.toISOString() : row.occurredAt,
+    status: row.status,
+    reviewedByUserId: row.reviewedByUserId,
+    reviewedAt: row.reviewedAt instanceof Date ? row.reviewedAt.toISOString() : row.reviewedAt,
+    reviewReason: row.reviewReason,
+    workLogEntryId: row.workLogEntryId,
+    createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
+  };
 }
 
 function closeToWire(row: CloseRow) {
@@ -869,6 +913,241 @@ router.post(
       });
     } catch (err) {
       sendLedgerError(res, err, log, "POST /msp/:mspId/customers/:customerId/retainer/periods/:periodKey/adjustments failed", "Failed to adjust closed period");
+    }
+  },
+);
+
+// ── GET /msp/:mspId/retainer/pending ───────────────────────────────────────────
+// The tracker byproduct hook's approval queue (Git #4098, follow-up to #4026):
+// logRetainerWorkFromTracker queues here instead of silently writing past the
+// period-close lock, or silently skipping, when its target period is closed.
+// MSP-wide by default; `?customerId=` narrows to one customer. `?status=`
+// defaults to "pending" (the review queue's normal shape) but accepts
+// "approved"/"rejected" to read the decided history.
+router.get(
+  "/msp/:mspId/retainer/pending",
+  requireCapability("ladder.msp-operator"),
+  requireMspScope("params"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = parseId(req.params.mspId);
+      if (mspId == null) {
+        res.status(400).json({ error: "Invalid mspId" });
+        return;
+      }
+      let customerIdParam: number | null = null;
+      if (req.query.customerId != null) {
+        customerIdParam = parseId(req.query.customerId);
+        if (customerIdParam == null) {
+          res.status(400).json({ error: "Invalid customerId" });
+          return;
+        }
+      }
+      const statusParam = typeof req.query.status === "string" ? req.query.status : "pending";
+      if (!(RETAINER_PENDING_ENTRY_STATUSES as readonly string[]).includes(statusParam)) {
+        res.status(400).json({ error: `Invalid status filter. One of: ${RETAINER_PENDING_ENTRY_STATUSES.join(", ")}` });
+        return;
+      }
+
+      const conditions = [
+        eq(retainerPendingEntriesTable.mspId, mspId),
+        eq(retainerPendingEntriesTable.status, statusParam as RetainerPendingEntryStatus),
+      ];
+      if (customerIdParam != null) conditions.push(eq(retainerPendingEntriesTable.customerId, customerIdParam));
+
+      const rows = await db
+        .select()
+        .from(retainerPendingEntriesTable)
+        .where(and(...conditions))
+        .orderBy(desc(retainerPendingEntriesTable.createdAt));
+
+      const customerIds = [...new Set(rows.map((r) => r.customerId))];
+      const names = customerIds.length
+        ? await db.select({ id: tenantsTable.id, name: tenantsTable.customerName }).from(tenantsTable).where(inArray(tenantsTable.id, customerIds))
+        : [];
+      const nameById = new Map(names.map((n) => [n.id, n.name]));
+
+      res.json({ entries: rows.map((r) => ({ ...pendingEntryToWire(r), customerName: nameById.get(r.customerId) ?? null })) });
+    } catch (err) {
+      log.error({ err }, "GET /msp/:mspId/retainer/pending failed");
+      res.status(500).json({ error: "Failed to load pending retainer entries" });
+    }
+  },
+);
+
+// ── POST /msp/:mspId/retainer/pending/:entryId/approve|reject (ladder.msp-admin, #4098) ─
+const reviewSchema = z.object({
+  reason: z.string().trim().min(1, "A reason is required"),
+});
+
+async function loadPendingForReview(mspId: number, entryId: number, res: Response) {
+  const [pending] = await db
+    .select()
+    .from(retainerPendingEntriesTable)
+    .where(and(eq(retainerPendingEntriesTable.id, entryId), eq(retainerPendingEntriesTable.mspId, mspId)))
+    .limit(1);
+  if (!pending) {
+    res.status(404).json({ error: "Pending entry not found" });
+    return null;
+  }
+  if (pending.status !== "pending") {
+    res.status(409).json({ error: `Entry is already ${pending.status}.` });
+    return null;
+  }
+  const customer = await findMspCustomer(mspId, pending.customerId);
+  if (!customer) {
+    res.status(404).json({ error: "Customer not found" });
+    return null;
+  }
+  return { pending, customer };
+}
+
+router.post(
+  "/msp/:mspId/retainer/pending/:entryId/approve",
+  requireCapability("ladder.msp-admin"),
+  requireMspScope("params"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = parseId(req.params.mspId);
+      const entryId = parseId(req.params.entryId);
+      if (mspId == null || entryId == null) {
+        res.status(400).json({ error: "Invalid mspId or entry id" });
+        return;
+      }
+      const parsed = reviewSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: zodMessage(parsed.error) });
+        return;
+      }
+      const { reason } = parsed.data;
+
+      const loaded = await loadPendingForReview(mspId, entryId, res);
+      if (!loaded) return;
+      const { pending, customer } = loaded;
+
+      const result = await withLedgerLock(pending.customerId, async (tx) => {
+        // Approval writes the same real row the tracker hook would have
+        // written directly, had the period been open — landing now under a
+        // human's explicit, reasoned decision instead. Whether the period is
+        // still closed at approval time doesn't matter: the reason IS the
+        // deliberate override, same shape as the `.../adjustments` route.
+        const [entry] = await tx
+          .insert(retainerWorkLogTable)
+          .values({
+            customerId: pending.customerId,
+            mspId: pending.mspId,
+            periodMonth: pending.periodKey,
+            weekLabel: pending.weekLabel,
+            item: pending.item,
+            minutes: pending.minutes,
+            pillar: pending.pillar,
+            finding: pending.finding,
+            outcome: pending.outcome,
+            state: "closed",
+            source: pending.source,
+            sourceRefId: pending.sourceRefId,
+            loggedByUserId: pending.loggedByUserId,
+            occurredAt: pending.occurredAt,
+          })
+          .onConflictDoNothing({
+            target: [retainerWorkLogTable.source, retainerWorkLogTable.sourceRefId],
+          })
+          .returning();
+
+        const workLogEntryId = entry?.id ?? null;
+
+        await tx.insert(retainerAdjustmentNotesTable).values({
+          customerId: pending.customerId,
+          mspId: pending.mspId,
+          periodKey: pending.periodKey,
+          workLogEntryId,
+          action: "create",
+          reason,
+          item: pending.item,
+          beforeMinutes: null,
+          afterMinutes: pending.minutes,
+          createdByUserId: req.user?.id ?? null,
+        });
+
+        const [updated] = await tx
+          .update(retainerPendingEntriesTable)
+          .set({
+            status: "approved",
+            reviewedByUserId: req.user?.id ?? null,
+            reviewedAt: new Date(),
+            reviewReason: reason,
+            workLogEntryId,
+          })
+          .where(and(eq(retainerPendingEntriesTable.id, pending.id), eq(retainerPendingEntriesTable.status, "pending")))
+          .returning();
+        if (!updated) throw new LedgerConflict(409, "Entry was already reviewed by someone else.");
+
+        return { updated, entry };
+      });
+
+      await audit(req, { mspId, customerId: pending.customerId, customerName: customer.name }, "RETAINER_PENDING_ENTRY_APPROVED", "retainer_pending_entry", String(pending.id), {
+        periodKey: pending.periodKey,
+        reason,
+        workLogEntryId: result.updated.workLogEntryId,
+      });
+      log.info({ mspId, customerId: pending.customerId, entryId: pending.id }, "msp retainer pending entry approved");
+      res.json({
+        entry: { ...pendingEntryToWire(result.updated), customerName: customer.name },
+        ledgerEntry: result.entry ? { ...entryToWire(result.entry), periodClosed: true } : null,
+      });
+    } catch (err) {
+      sendLedgerError(res, err, log, "POST /msp/:mspId/retainer/pending/:entryId/approve failed", "Failed to approve entry");
+    }
+  },
+);
+
+router.post(
+  "/msp/:mspId/retainer/pending/:entryId/reject",
+  requireCapability("ladder.msp-admin"),
+  requireMspScope("params"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = parseId(req.params.mspId);
+      const entryId = parseId(req.params.entryId);
+      if (mspId == null || entryId == null) {
+        res.status(400).json({ error: "Invalid mspId or entry id" });
+        return;
+      }
+      const parsed = reviewSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: zodMessage(parsed.error) });
+        return;
+      }
+      const { reason } = parsed.data;
+
+      const loaded = await loadPendingForReview(mspId, entryId, res);
+      if (!loaded) return;
+      const { pending, customer } = loaded;
+
+      const [updated] = await db
+        .update(retainerPendingEntriesTable)
+        .set({
+          status: "rejected",
+          reviewedByUserId: req.user?.id ?? null,
+          reviewedAt: new Date(),
+          reviewReason: reason,
+        })
+        .where(and(eq(retainerPendingEntriesTable.id, pending.id), eq(retainerPendingEntriesTable.status, "pending")))
+        .returning();
+      if (!updated) {
+        res.status(409).json({ error: "Entry was already reviewed by someone else." });
+        return;
+      }
+
+      await audit(req, { mspId, customerId: pending.customerId, customerName: customer.name }, "RETAINER_PENDING_ENTRY_REJECTED", "retainer_pending_entry", String(pending.id), {
+        periodKey: pending.periodKey,
+        reason,
+      });
+      log.info({ mspId, customerId: pending.customerId, entryId: pending.id }, "msp retainer pending entry rejected");
+      res.json({ entry: { ...pendingEntryToWire(updated), customerName: customer.name } });
+    } catch (err) {
+      log.error({ err }, "POST /msp/:mspId/retainer/pending/:entryId/reject failed");
+      res.status(500).json({ error: "Failed to reject entry" });
     }
   },
 );

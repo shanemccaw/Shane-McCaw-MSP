@@ -23,6 +23,7 @@ import {
   retainerWorkLogTable,
   retainerPeriodClosesTable,
   retainerAdjustmentNotesTable,
+  retainerPendingEntriesTable,
   mspAuditLogsTable,
 } from "@workspace/db";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
@@ -95,6 +96,7 @@ describe.skipIf(!process.env.DATABASE_URL)("MSP Console retainer hours — live 
 
   afterAll(async () => {
     await db.delete(mspAuditLogsTable).where(eq(mspAuditLogsTable.mspId, mspId));
+    await db.delete(retainerPendingEntriesTable).where(eq(retainerPendingEntriesTable.customerId, customerId));
     await db.delete(retainerAdjustmentNotesTable).where(eq(retainerAdjustmentNotesTable.customerId, customerId));
     await db.delete(retainerPeriodClosesTable).where(eq(retainerPeriodClosesTable.customerId, customerId));
     await db.delete(retainerWorkLogTable).where(eq(retainerWorkLogTable.customerId, customerId));
@@ -341,6 +343,128 @@ describe.skipIf(!process.env.DATABASE_URL)("MSP Console retainer hours — live 
     expect(patchClosed.status).toBe(404);
   });
 
+  let pendingEntryId: number;
+
+  it("logRetainerWorkFromTracker queues into retainer_pending_entries instead of writing past the closed period's lock (#4098)", async () => {
+    const { logRetainerWorkFromTracker } = await import("../lib/retainer-work-logger.ts");
+    const created = await logRetainerWorkFromTracker({
+      customerId,
+      mspId,
+      source: "change_control",
+      sourceRefId: 555111,
+      item: "Closed a change request while June was locked",
+      occurredAt: new Date("2026-06-18T10:00:00Z"),
+    });
+    expect(created).toBe(true);
+
+    const rows = await db.select().from(retainerPendingEntriesTable).where(eq(retainerPendingEntriesTable.customerId, customerId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ periodKey: JUNE, status: "pending", source: "change_control", sourceRefId: 555111 });
+    pendingEntryId = rows[0].id;
+
+    // The real ledger must NOT have gained a row for this sourceRefId — it's queued, not written.
+    const ledgerRows = await db.select().from(retainerWorkLogTable).where(eq(retainerWorkLogTable.sourceRefId, 555111));
+    expect(ledgerRows).toHaveLength(0);
+  });
+
+  it("re-firing the hook for the same tracked item is a no-op, not a double-queue (#4098)", async () => {
+    const { logRetainerWorkFromTracker } = await import("../lib/retainer-work-logger.ts");
+    const created = await logRetainerWorkFromTracker({
+      customerId,
+      mspId,
+      source: "change_control",
+      sourceRefId: 555111,
+      item: "Re-closed the same change request",
+      occurredAt: new Date("2026-06-18T10:00:00Z"),
+    });
+    expect(created).toBe(false);
+    const rows = await db.select().from(retainerPendingEntriesTable).where(eq(retainerPendingEntriesTable.customerId, customerId));
+    expect(rows).toHaveLength(1);
+  });
+
+  it("GET /msp/:mspId/retainer/pending lists it, scoped to this MSP and filterable by customer (#4098)", async () => {
+    const res = await request(app).get(`/api/msp/${mspId}/retainer/pending`).set("Authorization", `Bearer ${operator}`);
+    expect(res.status).toBe(200);
+    expect(res.body.entries).toHaveLength(1);
+    expect(res.body.entries[0]).toMatchObject({ id: pendingEntryId, customerId, status: "pending", periodKey: JUNE });
+
+    const filtered = await request(app)
+      .get(`/api/msp/${mspId}/retainer/pending?customerId=${otherCustomerId}`)
+      .set("Authorization", `Bearer ${operator}`);
+    expect(filtered.status).toBe(200);
+    expect(filtered.body.entries).toHaveLength(0);
+  });
+
+  it("approving/rejecting a pending entry requires ladder.msp-admin and a non-empty reason (#4098)", async () => {
+    const byOperator = await request(app)
+      .post(`/api/msp/${mspId}/retainer/pending/${pendingEntryId}/approve`)
+      .set("Authorization", `Bearer ${operator}`)
+      .send({ reason: "ok" });
+    expect(byOperator.status).toBe(403);
+
+    const noReason = await request(app)
+      .post(`/api/msp/${mspId}/retainer/pending/${pendingEntryId}/approve`)
+      .set("Authorization", `Bearer ${admin}`)
+      .send({});
+    expect(noReason.status).toBe(400);
+
+    const emptyReason = await request(app)
+      .post(`/api/msp/${mspId}/retainer/pending/${pendingEntryId}/reject`)
+      .set("Authorization", `Bearer ${admin}`)
+      .send({ reason: "   " });
+    expect(emptyReason.status).toBe(400);
+  });
+
+  it("approves a pending entry: writes the real ledger row + a retainer_adjustment_notes reason (#4098)", async () => {
+    const res = await request(app)
+      .post(`/api/msp/${mspId}/retainer/pending/${pendingEntryId}/approve`)
+      .set("Authorization", `Bearer ${admin}`)
+      .send({ reason: "Confirmed the change request was real, backfilling into June" });
+    expect(res.status).toBe(200);
+    expect(res.body.entry).toMatchObject({ id: pendingEntryId, status: "approved" });
+    expect(res.body.ledgerEntry).toMatchObject({ periodMonth: JUNE, source: "change_control", sourceRefId: 555111, periodClosed: true });
+
+    const notes = await db.select().from(retainerAdjustmentNotesTable).where(eq(retainerAdjustmentNotesTable.periodKey, JUNE));
+    expect(notes.some((n) => n.reason.includes("Confirmed the change request was real"))).toBe(true);
+
+    // Re-reviewing an already-decided entry answers 409, not a double-write.
+    const again = await request(app)
+      .post(`/api/msp/${mspId}/retainer/pending/${pendingEntryId}/approve`)
+      .set("Authorization", `Bearer ${admin}`)
+      .send({ reason: "again" });
+    expect(again.status).toBe(409);
+  });
+
+  it("rejects a pending entry: marks it rejected, never touches the ledger (#4098)", async () => {
+    const { logRetainerWorkFromTracker } = await import("../lib/retainer-work-logger.ts");
+    await logRetainerWorkFromTracker({
+      customerId,
+      mspId,
+      source: "remediation_tracker",
+      sourceRefId: 555222,
+      item: "Another closed-period byproduct",
+      occurredAt: new Date("2026-06-19T10:00:00Z"),
+    });
+    const [row] = await db.select().from(retainerPendingEntriesTable).where(eq(retainerPendingEntriesTable.sourceRefId, 555222));
+
+    const res = await request(app)
+      .post(`/api/msp/${mspId}/retainer/pending/${row.id}/reject`)
+      .set("Authorization", `Bearer ${admin}`)
+      .send({ reason: "Not real retainer work — a test fixture entry" });
+    expect(res.status).toBe(200);
+    expect(res.body.entry.status).toBe("rejected");
+
+    const ledgerRows = await db.select().from(retainerWorkLogTable).where(eq(retainerWorkLogTable.sourceRefId, 555222));
+    expect(ledgerRows).toHaveLength(0);
+  });
+
+  it("writes an msp_audit_logs row for both pending-entry review actions (#4098)", async () => {
+    const rows = await db.select({ actionType: mspAuditLogsTable.actionType }).from(mspAuditLogsTable).where(eq(mspAuditLogsTable.mspId, mspId));
+    const actions = new Set(rows.map((r) => r.actionType));
+    expect(actions.has("RETAINER_PENDING_ENTRY_APPROVED")).toBe(true);
+    expect(actions.has("RETAINER_PENDING_ENTRY_REJECTED")).toBe(true);
+  });
+
   it("only an MSP admin can reopen; reopening unlocks the period", async () => {
     const byOperator = await request(app).post(`${base()}/periods/${JUNE}/reopen`).set("Authorization", `Bearer ${operator}`);
     expect(byOperator.status).toBe(403);
@@ -367,7 +491,8 @@ describe.skipIf(!process.env.DATABASE_URL)("MSP Console retainer hours — live 
     const res = await request(app).get(`/api/msp/${mspId}/retainer/customers`).set("Authorization", `Bearer ${operator}`);
     expect(res.status).toBe(200);
     expect(res.body.customers.map((c: { customerId: number }) => c.customerId)).toEqual([customerId]);
-    expect(res.body.customers[0]).toMatchObject({ configured: true, onRetainer: true, entryCount: 1 });
+    // mayEntryId (still open, never deleted) + the pending entry approved above (#4098) = 2.
+    expect(res.body.customers[0]).toMatchObject({ configured: true, onRetainer: true, entryCount: 2 });
   });
 
   it("isolates MSPs: a foreign operator is refused, and another MSP's customer is not found", async () => {
