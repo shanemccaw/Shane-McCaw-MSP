@@ -1,0 +1,14 @@
+{
+  "StepIndex": 12,
+  "Route": "http://localhost:5175/portal/login",
+  "Selector": "#email",
+  "Description": "input #email",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 0,
+  "Changes": [
+    "Captured DOM scope: 0 total element nodes under \u0027#email\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-14T13:33:33.1037547-04:00"
+}

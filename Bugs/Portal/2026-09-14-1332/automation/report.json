@@ -1,0 +1,686 @@
+{
+  "testName": "Issue #0 - SCRATCH, throwaway verification manifest for Git #4088 -- NOT part of the deliverable, not registered in _regression-suite.json. Credentials inlined (not {{TEST_ADMIN_EMAIL}}/{{TEST_PORTAL_EMAIL}}, which are genuinely \u003Cunset\u003E in this BuildConsole instance) against two synthetic zz-test-4088-* rows created directly in local Postgres for this run only.",
+  "productName": "Portal",
+  "sessionId": "2026-09-14-1332",
+  "startedAt": "2026-09-14T13:32:58.5738355-04:00",
+  "endedAt": "2026-09-14T13:33:41.7736951-04:00",
+  "durationSeconds": 43.2,
+  "success": true,
+  "summary": "\u2714 TEST PASSED (16/16 Steps)",
+  "urlsVisited": [
+    "http://localhost:5175/portal/login"
+  ],
+  "steps": [
+    {
+      "index": 1,
+      "action": "goto",
+      "selector": "/portal/login",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "navigation to http://localhost:5175/portal/login succeeds",
+      "actual": "succeeded",
+      "passed": true,
+      "durationMs": 717,
+      "detail": "Navigated to http://localhost:5175/portal/login",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\1.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 2,
+      "action": "expect",
+      "selector": "#email",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "#email state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 23,
+      "detail": "#email \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\2.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 3,
+      "action": "input",
+      "selector": "#email",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "input on \u0027#email\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 15,
+      "detail": "Executed input on #email",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\3.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 4,
+      "action": "input",
+      "selector": "#password",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "input on \u0027#password\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 12,
+      "detail": "Executed input on #password",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\4.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 5,
+      "action": "click",
+      "selector": "[data-testid=\u0027login-submit\u0027]",
+      "targetUrl": "http://localhost:5175/portal/",
+      "expected": "click on \u0027[data-testid=\u0027login-submit\u0027]\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 547,
+      "detail": "Executed click on [data-testid=\u0027login-submit\u0027]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\5.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 6,
+      "action": "expect",
+      "selector": "[data-testid=\u0027identity-interstitial-card\u0027]",
+      "targetUrl": "http://localhost:5175/portal/",
+      "expected": "[data-testid=\u0027identity-interstitial-card\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 16,
+      "detail": "[data-testid=\u0027identity-interstitial-card\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\6.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 7,
+      "action": "expect",
+      "selector": "[data-testid=\u0027identity-interstitial-role\u0027]",
+      "targetUrl": "http://localhost:5175/portal/",
+      "expected": "[data-testid=\u0027identity-interstitial-role\u0027] state == \u0027visible\u0027; textContains any of [\u0022MSP Operator\u0022]",
+      "actual": "found=True, visible=True; text=\u0022This is the customer portal. Your session carries the MSP Operator role, whose home is the Admin Panel. Nothing here is broken \u2014 you are just in the customer-facing half of the platform.\u0022",
+      "passed": true,
+      "durationMs": 13,
+      "detail": "[data-testid=\u0027identity-interstitial-role\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained \u0022MSP Operator\u0022",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\7.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 8,
+      "action": "click",
+      "selector": "[data-testid=\u0027identity-interstitial-accept\u0027]",
+      "targetUrl": "http://localhost:5175/portal/",
+      "expected": "click on \u0027[data-testid=\u0027identity-interstitial-accept\u0027]\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 69,
+      "detail": "Executed click on [data-testid=\u0027identity-interstitial-accept\u0027]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\8.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 9,
+      "action": "expect",
+      "selector": "[data-testid=\u0027overview-notifications-chip\u0027]",
+      "targetUrl": "http://localhost:5175/portal/",
+      "expected": "[data-testid=\u0027overview-notifications-chip\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 11,
+      "detail": "[data-testid=\u0027overview-notifications-chip\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\9.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 10,
+      "action": "goto",
+      "selector": "/portal/login",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "navigation to http://localhost:5175/portal/login succeeds",
+      "actual": "succeeded",
+      "passed": true,
+      "durationMs": 921,
+      "detail": "Navigated to http://localhost:5175/portal/login",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\10.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 11,
+      "action": "expect",
+      "selector": "#email",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "#email state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 11,
+      "detail": "#email \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\11.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 12,
+      "action": "input",
+      "selector": "#email",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "input on \u0027#email\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 10,
+      "detail": "Executed input on #email",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\12.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 13,
+      "action": "input",
+      "selector": "#password",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "input on \u0027#password\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 10,
+      "detail": "Executed input on #password",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\13.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 14,
+      "action": "click",
+      "selector": "[data-testid=\u0027login-submit\u0027]",
+      "targetUrl": "http://localhost:5175/portal/",
+      "expected": "click on \u0027[data-testid=\u0027login-submit\u0027]\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 888,
+      "detail": "Executed click on [data-testid=\u0027login-submit\u0027]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\14.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 15,
+      "action": "expect",
+      "selector": "[data-testid=\u0027identity-interstitial-card\u0027]",
+      "targetUrl": "http://localhost:5175/portal/",
+      "expected": "[data-testid=\u0027identity-interstitial-card\u0027] state == \u0027absent\u0027",
+      "actual": "found=False, visible=False",
+      "passed": true,
+      "durationMs": 31,
+      "detail": "[data-testid=\u0027identity-interstitial-card\u0027] \u2014 state \u0027absent\u0027 matched (found=False, visible=False)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\15.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 16,
+      "action": "expect",
+      "selector": "[data-testid=\u0027overview-notifications-chip\u0027]",
+      "targetUrl": "http://localhost:5175/portal/",
+      "expected": "[data-testid=\u0027overview-notifications-chip\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 26,
+      "detail": "[data-testid=\u0027overview-notifications-chip\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\16.png",
+      "domSnapshotPath": null
+    }
+  ],
+  "consoleErrors": [],
+  "apiFailures": [
+    {
+      "name": "post-api-auth-refresh",
+      "method": "POST",
+      "requestUrl": "http://localhost:5175/api/auth/refresh",
+      "statusCode": 401,
+      "durationMs": 0,
+      "reason": "HTTP 401",
+      "timestamp": "2026-09-14T13:33:13.7268860-04:00"
+    },
+    {
+      "name": "get-api-portal-dashboard",
+      "method": "GET",
+      "requestUrl": "http://localhost:5175/api/portal/dashboard",
+      "statusCode": 400,
+      "durationMs": 0,
+      "reason": "HTTP 400",
+      "timestamp": "2026-09-14T13:33:25.6640308-04:00"
+    },
+    {
+      "name": "get-api-portal-customer-timeline",
+      "method": "GET",
+      "requestUrl": "http://localhost:5175/api/portal/customer/timeline?limit=8",
+      "statusCode": 400,
+      "durationMs": 0,
+      "reason": "HTTP 400",
+      "timestamp": "2026-09-14T13:33:25.7115525-04:00"
+    },
+    {
+      "name": "get-api-portal-sop-runs",
+      "method": "GET",
+      "requestUrl": "http://localhost:5175/api/portal/sop-runs",
+      "statusCode": 403,
+      "durationMs": 0,
+      "reason": "HTTP 403",
+      "timestamp": "2026-09-14T13:33:25.7159060-04:00"
+    },
+    {
+      "name": "get-api-portal-runbooks",
+      "method": "GET",
+      "requestUrl": "http://localhost:5175/api/portal/runbooks",
+      "statusCode": 403,
+      "durationMs": 0,
+      "reason": "HTTP 403",
+      "timestamp": "2026-09-14T13:33:25.7196432-04:00"
+    },
+    {
+      "name": "get-api-portal-pillars",
+      "method": "GET",
+      "requestUrl": "http://localhost:5175/api/portal/pillars",
+      "statusCode": 403,
+      "durationMs": 0,
+      "reason": "HTTP 403",
+      "timestamp": "2026-09-14T13:33:25.7228841-04:00"
+    },
+    {
+      "name": "get-api-portal-scan-status",
+      "method": "GET",
+      "requestUrl": "http://localhost:5175/api/portal/scan-status",
+      "statusCode": 403,
+      "durationMs": 0,
+      "reason": "HTTP 403",
+      "timestamp": "2026-09-14T13:33:25.7261386-04:00"
+    },
+    {
+      "name": "post-api-auth-refresh",
+      "method": "POST",
+      "requestUrl": "http://localhost:5175/api/auth/refresh",
+      "statusCode": 401,
+      "durationMs": 0,
+      "reason": "HTTP 401",
+      "timestamp": "2026-09-14T13:33:29.7025235-04:00"
+    }
+  ],
+  "executedCommands": [],
+  "screenshotPaths": [
+    "screenshots/screenshot-01.png",
+    "screenshots/screenshot-02.png",
+    "screenshots/screenshot-03.png",
+    "screenshots/screenshot-04.png",
+    "screenshots/screenshot-05.png",
+    "screenshots/screenshot-06.png",
+    "screenshots/screenshot-07.png",
+    "screenshots/screenshot-08.png",
+    "screenshots/screenshot-09.png",
+    "screenshots/screenshot-10.png",
+    "screenshots/screenshot-11.png",
+    "screenshots/screenshot-12.png",
+    "screenshots/screenshot-13.png",
+    "screenshots/screenshot-14.png",
+    "screenshots/screenshot-15.png",
+    "screenshots/screenshot-16.png"
+  ],
+  "screenshotDiffs": [
+    {
+      "StepIndex": 1,
+      "StepLabel": "goto /portal/login",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\1.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\4088-live-verify\\1.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 2,
+      "StepLabel": "expect #email",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\2.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\4088-live-verify\\2.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 3,
+      "StepLabel": "input #email",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\3.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\4088-live-verify\\3.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 4,
+      "StepLabel": "input #password",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\4.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\4088-live-verify\\4.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 5,
+      "StepLabel": "click [data-testid=\u0027login-submit\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\5.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\4088-live-verify\\5.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 6,
+      "StepLabel": "expect [data-testid=\u0027identity-interstitial-card\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\6.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\4088-live-verify\\6.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 7,
+      "StepLabel": "expect [data-testid=\u0027identity-interstitial-role\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\7.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\4088-live-verify\\7.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 8,
+      "StepLabel": "click [data-testid=\u0027identity-interstitial-accept\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\8.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\4088-live-verify\\8.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 9,
+      "StepLabel": "expect [data-testid=\u0027overview-notifications-chip\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\9.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\4088-live-verify\\9.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 10,
+      "StepLabel": "goto /portal/login",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\10.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\4088-live-verify\\10.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 11,
+      "StepLabel": "expect #email",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\11.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\4088-live-verify\\11.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 12,
+      "StepLabel": "input #email",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\12.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\4088-live-verify\\12.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 13,
+      "StepLabel": "input #password",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\13.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\4088-live-verify\\13.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 14,
+      "StepLabel": "click [data-testid=\u0027login-submit\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\14.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\4088-live-verify\\14.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 15,
+      "StepLabel": "expect [data-testid=\u0027identity-interstitial-card\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\15.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\4088-live-verify\\15.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 16,
+      "StepLabel": "expect [data-testid=\u0027overview-notifications-chip\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260914133248\\screenshots\\16.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\4088-live-verify\\16.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    }
+  ],
+  "domDiffs": [
+    {
+      "StepIndex": 1,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "/portal/login",
+      "Description": "goto /portal/login",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [],
+      "SnapshotPath": "dom/dom-step-01.json",
+      "Timestamp": "2026-09-14T13:33:13.9868891-04:00"
+    },
+    {
+      "StepIndex": 2,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "#email",
+      "Description": "expect #email",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027#email\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-02.json",
+      "Timestamp": "2026-09-14T13:33:15.6082152-04:00"
+    },
+    {
+      "StepIndex": 3,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "#email",
+      "Description": "input #email",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027#email\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-03.json",
+      "Timestamp": "2026-09-14T13:33:17.1865203-04:00"
+    },
+    {
+      "StepIndex": 4,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "#password",
+      "Description": "input #password",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027#password\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-04.json",
+      "Timestamp": "2026-09-14T13:33:18.7417295-04:00"
+    },
+    {
+      "StepIndex": 5,
+      "Route": "http://localhost:5175/portal/",
+      "Selector": "[data-testid=\u0027login-submit\u0027]",
+      "Description": "click [data-testid=\u0027login-submit\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 28,
+      "Changes": [
+        "Captured DOM scope: 28 total element nodes under \u0027[data-testid=\u0027login-submit\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-05.json",
+      "Timestamp": "2026-09-14T13:33:20.8583894-04:00"
+    },
+    {
+      "StepIndex": 6,
+      "Route": "http://localhost:5175/portal/",
+      "Selector": "[data-testid=\u0027identity-interstitial-card\u0027]",
+      "Description": "expect [data-testid=\u0027identity-interstitial-card\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 3,
+      "Changes": [
+        "Captured DOM scope: 3 total element nodes under \u0027[data-testid=\u0027identity-interstitial-card\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-06.json",
+      "Timestamp": "2026-09-14T13:33:22.438085-04:00"
+    },
+    {
+      "StepIndex": 7,
+      "Route": "http://localhost:5175/portal/",
+      "Selector": "[data-testid=\u0027identity-interstitial-role\u0027]",
+      "Description": "expect [data-testid=\u0027identity-interstitial-role\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 1,
+      "Changes": [
+        "Captured DOM scope: 1 total element nodes under \u0027[data-testid=\u0027identity-interstitial-role\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-07.json",
+      "Timestamp": "2026-09-14T13:33:24.0299007-04:00"
+    },
+    {
+      "StepIndex": 8,
+      "Route": "http://localhost:5175/portal/",
+      "Selector": "[data-testid=\u0027identity-interstitial-accept\u0027]",
+      "Description": "click [data-testid=\u0027identity-interstitial-accept\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 99,
+      "Changes": [
+        "Captured DOM scope: 99 total element nodes under \u0027[data-testid=\u0027identity-interstitial-accept\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-08.json",
+      "Timestamp": "2026-09-14T13:33:25.8271005-04:00"
+    },
+    {
+      "StepIndex": 9,
+      "Route": "http://localhost:5175/portal/",
+      "Selector": "[data-testid=\u0027overview-notifications-chip\u0027]",
+      "Description": "expect [data-testid=\u0027overview-notifications-chip\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 2,
+      "Changes": [
+        "Captured DOM scope: 2 total element nodes under \u0027[data-testid=\u0027overview-notifications-chip\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-09.json",
+      "Timestamp": "2026-09-14T13:33:27.4135458-04:00"
+    },
+    {
+      "StepIndex": 10,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "/portal/login",
+      "Description": "goto /portal/login",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [],
+      "SnapshotPath": "dom/dom-step-10.json",
+      "Timestamp": "2026-09-14T13:33:29.9668279-04:00"
+    },
+    {
+      "StepIndex": 11,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "#email",
+      "Description": "expect #email",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027#email\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-11.json",
+      "Timestamp": "2026-09-14T13:33:31.5284954-04:00"
+    },
+    {
+      "StepIndex": 12,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "#email",
+      "Description": "input #email",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027#email\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-12.json",
+      "Timestamp": "2026-09-14T13:33:33.1037547-04:00"
+    },
+    {
+      "StepIndex": 13,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "#password",
+      "Description": "input #password",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027#password\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-13.json",
+      "Timestamp": "2026-09-14T13:33:34.6859401-04:00"
+    },
+    {
+      "StepIndex": 14,
+      "Route": "http://localhost:5175/portal/",
+      "Selector": "[data-testid=\u0027login-submit\u0027]",
+      "Description": "click [data-testid=\u0027login-submit\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 95,
+      "Changes": [
+        "Captured DOM scope: 95 total element nodes under \u0027[data-testid=\u0027login-submit\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-14.json",
+      "Timestamp": "2026-09-14T13:33:37.2650954-04:00"
+    },
+    {
+      "StepIndex": 15,
+      "Route": "http://localhost:5175/portal/",
+      "Selector": "[data-testid=\u0027identity-interstitial-card\u0027]",
+      "Description": "expect [data-testid=\u0027identity-interstitial-card\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 263,
+      "Changes": [
+        "Captured DOM scope: 263 total element nodes under \u0027[data-testid=\u0027identity-interstitial-card\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-15.json",
+      "Timestamp": "2026-09-14T13:33:38.9353215-04:00"
+    },
+    {
+      "StepIndex": 16,
+      "Route": "http://localhost:5175/portal/",
+      "Selector": "[data-testid=\u0027overview-notifications-chip\u0027]",
+      "Description": "expect [data-testid=\u0027overview-notifications-chip\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 2,
+      "Changes": [
+        "Captured DOM scope: 2 total element nodes under \u0027[data-testid=\u0027overview-notifications-chip\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-16.json",
+      "Timestamp": "2026-09-14T13:33:40.5512934-04:00"
+    }
+  ],
+  "recommendations": "All automated UI steps passed. Review baseline screenshots for visual drift."
+}

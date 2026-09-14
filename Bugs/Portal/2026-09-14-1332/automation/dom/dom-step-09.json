@@ -1,0 +1,14 @@
+{
+  "StepIndex": 9,
+  "Route": "http://localhost:5175/portal/",
+  "Selector": "[data-testid=\u0027overview-notifications-chip\u0027]",
+  "Description": "expect [data-testid=\u0027overview-notifications-chip\u0027]",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 2,
+  "Changes": [
+    "Captured DOM scope: 2 total element nodes under \u0027[data-testid=\u0027overview-notifications-chip\u0027]\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-14T13:33:27.4135458-04:00"
+}

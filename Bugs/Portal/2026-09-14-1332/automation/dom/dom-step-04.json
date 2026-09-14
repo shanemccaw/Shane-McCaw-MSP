@@ -1,0 +1,14 @@
+{
+  "StepIndex": 4,
+  "Route": "http://localhost:5175/portal/login",
+  "Selector": "#password",
+  "Description": "input #password",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 0,
+  "Changes": [
+    "Captured DOM scope: 0 total element nodes under \u0027#password\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-14T13:33:18.7417295-04:00"
+}

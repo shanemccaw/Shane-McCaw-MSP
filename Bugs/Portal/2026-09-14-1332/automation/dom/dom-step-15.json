@@ -1,0 +1,14 @@
+{
+  "StepIndex": 15,
+  "Route": "http://localhost:5175/portal/",
+  "Selector": "[data-testid=\u0027identity-interstitial-card\u0027]",
+  "Description": "expect [data-testid=\u0027identity-interstitial-card\u0027]",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 263,
+  "Changes": [
+    "Captured DOM scope: 263 total element nodes under \u0027[data-testid=\u0027identity-interstitial-card\u0027]\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-14T13:33:38.9353215-04:00"
+}
