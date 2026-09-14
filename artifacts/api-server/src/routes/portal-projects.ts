@@ -180,4 +180,37 @@ router.get("/portal/projects/:id", requireAuth, async (req: Request, res: Respon
   res.json({ project, steps, tasks, previewTasks, documents, updates, statusReports, pendingStatusReport: pendingStatusReport ?? null, contract, contracts, appliedCoupon, closure });
 });
 
+// POST /api/portal/projects/:id/closure — the customer signs off on the closure
+// request the admin side already created (admin-projects.ts's
+// POST /admin/projects/:id/closure-request). This route only ever UPDATES that
+// existing project_closures row — it never inserts one (#4058).
+router.post("/portal/projects/:id/closure", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid project ID" }); return; }
+
+  const isAdmin = req.user!.role === "admin";
+  const siblingIds = isAdmin ? [] : await resolveSiblingUserIds(userId);
+  const [project] = await db.select().from(projectsTable)
+    .where(isAdmin ? eq(projectsTable.id, id) : and(eq(projectsTable.id, id), inArray(projectsTable.clientUserId, siblingIds)));
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+  const [closure] = await db.select().from(projectClosuresTable).where(eq(projectClosuresTable.projectId, id));
+  if (!closure) { res.status(404).json({ error: "No closure request found for this project" }); return; }
+  if (closure.signedAt) { res.status(409).json({ error: "This closure has already been signed" }); return; }
+
+  const signatureDataUrl = typeof req.body?.signatureDataUrl === "string" ? req.body.signatureDataUrl.trim() : "";
+  if (!signatureDataUrl) { res.status(400).json({ error: "A signature is required" }); return; }
+  const permissionGranted = req.body?.permissionGranted === true;
+  const feedback = typeof req.body?.feedback === "string" && req.body.feedback.trim() ? req.body.feedback.trim() : null;
+
+  const [updated] = await db.update(projectClosuresTable)
+    .set({ signatureDataUrl, permissionGranted, feedback, signedAt: new Date(), signerUserId: userId })
+    .where(eq(projectClosuresTable.projectId, id))
+    .returning();
+
+  log.info({ projectId: id, signerUserId: userId }, "Project closure signed by customer");
+  res.json(updated);
+});
+
 export default router;
