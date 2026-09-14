@@ -1,0 +1,83 @@
+{
+  "issue": 3995,
+  "feature": "Email Authentication Setup (#1654, part of #1485) — the real artifacts/portal '/email-auth-setup' page (src/pages/email-auth-setup.tsx), wired to GET /api/portal/email-auth-status via emailAuthSetupLive.ts, per Design/portal/design_handoff_full_site/docs/email-authentication-setup-contract-pack.md and the landed 'Email Authentication Setup.dc.html' export. This manifest replaces the old test-manifests/copilot-readiness/email-auth-setup.json, which covered the retired msp-portal's branded /portal/:slug/email-auth-setup route (a different app, different login flow, different data-testids) — that page and its route no longer exist. Also covers the new in-portal nav entry added to ChecklistItemCard.tsx: a 'Setup instructions' link that appears on the remediation checklist row for check key exchange:dkim-spf-dmarc-status.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING_COMMIT",
+
+  "notes": [
+    "WHAT THIS MANIFEST CAN AND CANNOT ASSERT: the testbed portal account's real SPF/DKIM/DMARC configuration state is whatever it genuinely is at run time, not something this manifest controls. apiTests assert the CONTRACT (200, `checked` is a boolean, and the response always carries all five keys) rather than a specific true/false value for any one record. uiSteps assert the page's always-present elements (the state line, the header) rather than which dataState (checked/not-checked/read-failed) or which protocol cards happen to render — that is genuinely state-dependent per the route's own tri-state contract (pack §4).",
+    "shaneapp://runTest hits the DEPLOYED build (or the dev-server checkout's merged HEAD), not this worktree directly — these assertions only go green once this session's commit is merged/deployed.",
+    "REAL RUN ATTEMPTED THIS SESSION (shaneapp://runTest, 2026-09-14, worktree C:\\wt\\3995-q2675): the trigger DID fire and returned a real result (2/9 passed), but BuildConsole resolved `test-manifests/` against its own dev-server checkout, which still had the OLD, pre-#3995 copilot-readiness/email-auth-setup.json file this build deletes/replaces (`manifestPath` in the result literally read `test-manifests/copilot-readiness/email-auth-setup.json`, targeting the retired msp-portal's branded `/portal/:slug/login` route and `#email`/`#password` selectors, which do not exist in this rebuild). This is the same class of structural gap portal/config-state.json and portal/change-control.json's own notes already document: the merge-back/dev-server-restart cycle had not yet picked up this session's commit at run time. Separately and also real: TEST_PORTAL_EMAIL/PASSWORD/SLUG were unresolved in this environment (BuildConsole Settings > Test Environment Variables not populated for this run), which is why even the AUTH-GATE-1-shaped 401 step (renamed here) was the only apiTest to pass. Verified instead by: `artifacts/portal` tsc --noEmit clean (0 errors) and `vite build` clean against the new page/hook/route/nav-entry, plus direct reading of portal-email-auth-status.ts confirming it is unchanged from the contract pack this page is wired against. Re-run this manifest via shaneapp://runTest once the dev-server checkout has merged this commit and the env vars are populated.",
+    "OUT OF SCOPE, confirmed via #1654/#1041's own explicit list: no DNS registrar writes, no New-DkimSigningConfig/Set-DkimSigningConfig execution, no ps-execution container calls. Nothing in this manifest exercises a write path because the page itself has none — pure read.",
+    "There is no ?tenantId= param on this route by design (portal-email-auth-status.ts's own header) — scoping is entirely from the JWT customerId claim.",
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD — the same testbed portal account other artifacts/portal manifests (e.g. portal/change-control.json) use."
+  ],
+
+  "apiTests": [
+    {
+      "name": "AUTH-GATE-1 — GET /api/portal/email-auth-status with no Authorization header returns 401",
+      "method": "GET",
+      "path": "/api/portal/email-auth-status",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "SETUP — log in as the designated testbed portal account to obtain a real bearer; extract it as {{authToken}}",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "A1 — an authenticated GET returns 200 with the real `checked` boolean (tri-state contract, pack §4) — never a fixture substitution",
+      "method": "GET",
+      "path": "/api/portal/email-auth-status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.checked", "exists": true },
+      "extract": { "as": "emailAuthChecked", "jsonPath": "$.checked" }
+    },
+    {
+      "name": "A2 — `collectedAt` key is always present (string when checked, null when never scanned) — regression guard against silently dropping the field",
+      "method": "GET",
+      "path": "/api/portal/email-auth-status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.collectedAt", "exists": true }
+    }
+  ],
+
+  "uiSteps": [
+    { "action": "goto", "target": "/login" },
+    {
+      "name": "WAIT for the login form to hydrate before typing.",
+      "action": "expect",
+      "selector": "[data-testid='login-email']",
+      "state": "visible"
+    },
+    { "action": "input", "selector": "[data-testid='login-email']", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "[data-testid='login-password']", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    {
+      "name": "Login — CRITICAL: a failed login makes the downstream page-load assertion meaningless, so the run ABORTS here immediately on failure.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true,
+      "captureResponse": {
+        "urlPattern": "/api/auth/login",
+        "expect": { "status": 200 }
+      }
+    },
+    {
+      "name": "Navigate to the real portal Email Authentication Setup page.",
+      "action": "goto",
+      "target": "/email-auth-setup"
+    },
+    {
+      "name": "The page's own heading renders regardless of which dataState (checked/not-checked/read-failed) this run lands in — a real DOM-text assertion (CLAUDE.md's textContains discipline), not a captureResponse.",
+      "action": "expect",
+      "selector": "[data-testid='email-auth-setup-page']",
+      "state": "visible",
+      "textContains": "Email authentication",
+      "critical": true
+    }
+  ]
+}

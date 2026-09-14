@@ -12,6 +12,7 @@ import SupportPage from "@/pages/support";
 import AccountSecurityPage from "@/pages/account-security";
 import BillingPage from "@/pages/billing";
 import ConfigStatePage from "@/pages/config-state";
+import EmailAuthSetupPage from "@/pages/email-auth-setup";
 import LoginPage from "@/pages/login";
 import ForgotPasswordPage from "@/pages/forgot-password";
 import ResetPasswordPage from "@/pages/reset-password";
@@ -88,6 +89,7 @@ function ProtectedRoutes() {
           <Route path="/account-security" component={AccountSecurityPage} />
           <Route path="/billing" component={BillingPage} />
           <Route path="/config-state" component={ConfigStatePage} />
+          <Route path="/email-auth-setup" component={EmailAuthSetupPage} />
           <Route path="/notification-preferences" component={NotificationPreferencesPage} />
           <Route path="/webhooks" component={WebhooksPage} />
           <Route path="/sops" component={SopsPage} />

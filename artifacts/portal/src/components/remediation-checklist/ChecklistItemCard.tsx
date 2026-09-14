@@ -43,6 +43,15 @@ type DialogKind = "affordance" | "reveal" | "raise" | "decline" | null;
 
 const STATEMENT_MAX = 2000;
 
+/**
+ * The one check key `/email-auth-setup` (Git #3995) reads
+ * (`exchange:dkim-spf-dmarc-status`, per its own contract pack). When this
+ * checklist item is that check, it gets a real in-portal "Setup
+ * instructions" link alongside the existing admin-centre affordance — the
+ * step-by-step SPF/DKIM/DMARC page, not a duplicate of it.
+ */
+const EMAIL_AUTH_CHECK_KEY = "exchange:dkim-spf-dmarc-status";
+
 export function ChecklistItemCard({
   item,
   findingCapability,
@@ -127,6 +136,15 @@ export function ChecklistItemCard({
           </span>
         )}
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          {item.checkKey === EMAIL_AUTH_CHECK_KEY && (
+            <Link
+              href="/email-auth-setup"
+              className="text-[11.5px] font-semibold text-primary hover:underline"
+              data-testid={`checklist-email-auth-setup-${item.checkKey}`}
+            >
+              Setup instructions →
+            </Link>
+          )}
           <Button size="sm" variant={item.fixRoute === "admin_center_only" ? "outline" : "default"} onClick={openPrimary} data-testid={`checklist-primary-${item.checkKey}`}>
             {primaryLabel}
           </Button>
