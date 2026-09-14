@@ -2,10 +2,12 @@
   "issue": 4003,
   "feature": "Documents (#4003, Feature #1658) -- the real customer-facing Documents page in artifacts/portal (/documents), wired against the 6 authenticated portal-documents.ts endpoints (reports, insights-documents, view, pdf, share, report download) -- see Design/portal/design_handoff_full_site/docs/documents-contract-pack.md. No fixture module: every row on screen comes from these endpoints. The public share-viewer route (/shared-documents/:shareToken) is owned by shared-document-public.tsx (#4001, Feature #1663) and is not covered by this manifest.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "TBD-fill-at-DONE",
+  "lastVerifiedAgainstCommit": "bc083d755",
 
   "notes": [
     "WHAT THIS COVERS: the honest-empty list contract for both real endpoints -- contract pack §5 -- and that the page renders that state without fabricating data.",
+
+    "VERIFICATION STATUS AT lastVerifiedAgainstCommit: written but NOT yet executed end-to-end via shaneapp://runTest -- BuildConsole's own checkout (which runTest reads manifests from) was confirmed 35 commits behind origin/main at build time (Git #3059, a known, documented, self-resolving staleness condition -- three real runTest attempts against this file and a sanity check against the already-merged my-architect.json manifest all returned the same real, diagnosed 'checkout is N commits behind origin/main' error, not a resolution-logic bug). What WAS live-verified directly against the running dev api-server (:8080) and portal front-end (:5175) in this session: GET /api/portal/reports and GET /api/portal/insights-documents both return a real 401 with no bearer (matches A3's assertion); GET /portal/documents on the front-end returns a real 200 (route mounts, no 404); `tsc --noEmit` and `vite build` both pass clean against the same commit. A1/A2/A4/A5 (the bearer-gated assertions) and UI1/UI2 were not independently re-run outside the runTest harness -- the next session that touches this manifest should run it via shaneapp://runTest once BuildConsole's checkout has caught up, and update this note with the real pass/fail result.",
 
     "REAL LOCAL DB STATE AT THIS BUILD: `reports` and `insights_generated_documents` are both 0 rows across every tenant (confirmed via direct query against DATABASE_URL). A1/A2 below assert the real, honest empty-array response this produces on the testbed account, not a placeholder standing in for real data. Once either table has real rows for the testbed tenant, this manifest should be extended with a non-empty-list assertion (status badges, gated View/PDF/Share buttons per doc.status/docType).",
 
