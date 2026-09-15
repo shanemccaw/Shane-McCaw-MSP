@@ -216,3 +216,55 @@ export async function verifyTenantConsentWithMicrosoft(
   }
   return result;
 }
+
+export type DomainTenantResult =
+  | { ok: true; tenantId: string }
+  /** Microsoft has no Entra tenant for this domain (AADSTS90002 and kin). */
+  | { ok: false; reason: "not_entra_domain"; detail: string }
+  /** Network fault or an unparseable discovery document — never evidence either way. */
+  | { ok: false; reason: "unverifiable"; detail: string };
+
+const DOMAIN_RE = /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
+
+/**
+ * Resolves the Entra tenant GUID that owns a DNS domain (Git #4227), from
+ * Microsoft's public OpenID discovery document for that domain — the `issuer`
+ * is `https://login.microsoftonline.com/<tenant-guid>/v2.0`. Unauthenticated,
+ * read-only, and answered by Microsoft rather than by anything the caller sent,
+ * which is what makes it usable as a binding: the MSP mailbox connector records
+ * this GUID when its consent state is minted and refuses a callback naming any
+ * other tenant.
+ */
+export async function resolveEntraTenantForDomain(domain: string): Promise<DomainTenantResult> {
+  const d = domain.trim().toLowerCase();
+  if (!DOMAIN_RE.test(d)) {
+    return { ok: false, reason: "not_entra_domain", detail: "not a valid domain name" };
+  }
+
+  let res: globalThis.Response;
+  try {
+    res = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(d)}/v2.0/.well-known/openid-configuration`);
+  } catch (err) {
+    return { ok: false, reason: "unverifiable", detail: `discovery endpoint unreachable: ${(err as Error).message}` };
+  }
+
+  if (!res.ok) {
+    const text = await res.text();
+    const detail = `${res.status} ${text.slice(0, 300)}`;
+    if (res.status >= 500) return { ok: false, reason: "unverifiable", detail };
+    return { ok: false, reason: "not_entra_domain", detail };
+  }
+
+  let issuer = "";
+  try {
+    const doc = (await res.json()) as { issuer?: unknown };
+    issuer = typeof doc.issuer === "string" ? doc.issuer : "";
+  } catch {
+    return { ok: false, reason: "unverifiable", detail: "discovery document was not JSON" };
+  }
+  const tenantId = issuer.match(/^https:\/\/login\.microsoftonline\.com\/([0-9a-f-]{36})\/v2\.0\/?$/i)?.[1];
+  if (!tenantId || !GUID_RE.test(tenantId)) {
+    return { ok: false, reason: "unverifiable", detail: `discovery issuer carried no tenant GUID: ${issuer.slice(0, 120)}` };
+  }
+  return { ok: true, tenantId: tenantId.toLowerCase() };
+}

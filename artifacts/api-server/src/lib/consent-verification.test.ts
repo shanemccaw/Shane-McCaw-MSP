@@ -13,7 +13,7 @@ vi.mock("./logger.ts", () => {
   return { logger };
 });
 
-import { verifyTenantConsentWithMicrosoft, classifyTokenError } from "./consent-verification.ts";
+import { verifyTenantConsentWithMicrosoft, classifyTokenError, resolveEntraTenantForDomain } from "./consent-verification.ts";
 
 const TENANT = "c4c814d4-3afe-441e-9145-62461d0a4fd3";
 const FABRICATED = "ef825402-eae9-4b6f-8bd8-8b7e674ecfdd";
@@ -139,5 +139,38 @@ describe("classifyTokenError", () => {
     expect(classifyTokenError(400, "invalid_grant AADSTS65001: consent not granted")).toBe("not_consented");
     expect(classifyTokenError(401, "invalid_client AADSTS7000222: expired client secret")).toBe("unverifiable");
     expect(classifyTokenError(503, "service unavailable")).toBe("unverifiable");
+  });
+});
+
+// #4227 — shapes captured live 2026-09-15: mccawsoft2.onmicrosoft.com's discovery
+// document, and AADSTS90002 (invalid_tenant) for a domain with no Entra tenant.
+describe("resolveEntraTenantForDomain", () => {
+  it("reads the tenant GUID from the discovery document's issuer", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ issuer: `https://login.microsoftonline.com/${TENANT.toUpperCase()}/v2.0` }), { status: 200 }),
+    );
+    await expect(resolveEntraTenantForDomain("MCCAWSOFT2.onmicrosoft.com")).resolves.toEqual({ ok: true, tenantId: TENANT });
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "https://login.microsoftonline.com/mccawsoft2.onmicrosoft.com/v2.0/.well-known/openid-configuration",
+    );
+  });
+
+  it("reports a domain Microsoft has no tenant for as not_entra_domain", async () => {
+    fetchMock.mockResolvedValueOnce(errorResponse(400, "invalid_tenant", "AADSTS90002: Tenant 'nonexistent-zzq9.com' not found."));
+    await expect(resolveEntraTenantForDomain("nonexistent-zzq9.com")).resolves.toMatchObject({ ok: false, reason: "not_entra_domain" });
+  });
+
+  it("never sends a malformed domain to Microsoft", async () => {
+    await expect(resolveEntraTenantForDomain("common/../x")).resolves.toMatchObject({ ok: false, reason: "not_entra_domain" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("treats a network fault, a 5xx or an issuer with no GUID as unverifiable", async () => {
+    fetchMock.mockRejectedValueOnce(new Error("ECONNRESET"));
+    await expect(resolveEntraTenantForDomain("contoso.com")).resolves.toMatchObject({ ok: false, reason: "unverifiable" });
+    fetchMock.mockResolvedValueOnce(new Response("down", { status: 503 }));
+    await expect(resolveEntraTenantForDomain("contoso.com")).resolves.toMatchObject({ ok: false, reason: "unverifiable" });
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ issuer: "https://login.microsoftonline.com/{tenantid}/v2.0" }), { status: 200 }));
+    await expect(resolveEntraTenantForDomain("contoso.com")).resolves.toMatchObject({ ok: false, reason: "unverifiable" });
   });
 });

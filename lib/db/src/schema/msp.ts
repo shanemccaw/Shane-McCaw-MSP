@@ -2101,6 +2101,11 @@ export const mspMailboxConsentStatesTable = pgTable("msp_mailbox_consent_states"
   mailboxUpn: text("mailbox_upn").notNull(),
   // Display name for the "From" header
   fromDisplayName: text("from_display_name").notNull(),
+  // Git #4227: the Entra tenant GUID that owns mailboxUpn's domain, resolved from
+  // Microsoft when the state is minted. The callback refuses any `tenant` query
+  // parameter that differs, and the connector is activated against this value,
+  // never the unsigned one. Null only on rows minted before #4227 — refused.
+  expectedTenantId: text("expected_tenant_id"),
   // Which portal path to redirect to after consent
   returnPath: text("return_path"),
   requestedByUserId: integer("requested_by_user_id"),

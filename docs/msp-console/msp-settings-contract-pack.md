@@ -185,12 +185,15 @@ multi-tenant app uses `client_credentials` after consent (`:1252-1253`).
 **`POST /connector/mailbox/connect`** (`:1299-1347`) — body `mailboxConnectSchema` (`:1293-1297`):
 `{ mailboxUpn: email, fromDisplayName: string(2-120), returnPath?: string }`. 503s
 `"Multi-tenant app credentials not configured..."` if `mtAppCredentialsPresent()` is false
-(`:1303-1306`) — a real, reachable degraded state, not hypothetical. Mints a `state` token
-(32 random bytes hex), stores it in `mspMailboxConsentStatesTable` with a **10-minute** expiry
-(`:1314-1325`), builds the admin-consent URL via `buildAdminConsentUrl("common", state,
-callbackUrl, MT_APP_CLIENT_ID)` (`graph.ts:571`, called `:1335`) — **tenant hint is always
-`"common"`**, not the MSP's own tenant, so the admin authenticates with whatever tenant they're
-signed into. Returns `{ consentUrl, state, expiresAt }` (`:1346`). Audit:
+(`:1303-1306`) — a real, reachable degraded state, not hypothetical. **#4227:** resolves the
+Entra tenant GUID that owns `mailboxUpn`'s domain from Microsoft's public OpenID discovery
+document (`resolveEntraTenantForDomain`, `lib/consent-verification.ts`) — `400` if the domain is
+not a Microsoft 365 domain, `503` if Microsoft is unreachable, `409` if that tenant is a customer
+of a different MSP. Mints a `state` token (32 random bytes hex), stores it in
+`mspMailboxConsentStatesTable` with a **10-minute** expiry and that GUID as
+`expectedTenantId`, builds the admin-consent URL via `buildAdminConsentUrl(expectedTenantId,
+state, callbackUrl, MT_APP_CLIENT_ID)` — the tenant hint is the mailbox's own tenant (was
+`"common"` before #4227). Returns `{ consentUrl, state, expiresAt }`. Audit:
 `mailbox_connector.connect.initiated` (`:1337-1344`).
 
 **`GET /connector/mailbox/callback`** (`:1350-1431`) — **the one unauthenticated route in this
@@ -203,7 +206,12 @@ module** (no `requireCapability` guard at all, Microsoft calls it directly). Thr
    `admin_consent !== "true"`: `400` plain-text, no redirect.
 3. **Success** (`:1375-1430`) — validates the state token is unused and unexpired
    (`isNull(usedAt)`, `gte(expiresAt, now)`, `:1377-1387`), 400s `"...expired or has already been
-   used"` otherwise (`:1389-1393`); burns the token (`:1396-1399`); upserts
+   used"` otherwise (`:1389-1393`). **#4227:** refuses (`400`, state burned, nothing activated)
+   unless `tenant` equals the state's `expectedTenantId` (`bindMailboxCallbackTenant`; a state
+   with no `expectedTenantId` is refused too), refuses (`409`) a tenant registered as another
+   MSP's customer, and requires Microsoft to confirm the read app's consent **with `Mail.Send`**
+   (`verifyTenantConsentWithMicrosoft(..., { requireAnyRole: ["Mail.Send"] })`, #4197/#4227). The
+   connector's `tenantId` is the bound GUID, never the query string. Then burns the token; upserts
    `mspMailboxConnectorsTable` keyed on `mspId` (unique, `:1414-1425`) — a second consent for the
    same MSP **overwrites** the prior mailbox/tenant, it does not add a second connector; redirects
    to `${portalBase}${returnPath}?mailbox_consent=success` (`:1430`), `returnPath` defaulting to

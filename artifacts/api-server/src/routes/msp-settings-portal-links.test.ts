@@ -67,7 +67,7 @@ vi.mock("@workspace/db", () => {
   return {
     db: mockDb,
     mspsTable: table("msps"),
-    tenantsTable: table("tenants"),
+    tenantsTable: { __table: "tenants", id: "id", mspId: "msp_id", tenantId: "tenant_id" },
     mspStaffCustomerScopesTable: table("mspStaffCustomerScopes"),
     mspServiceAccountsTable: table("mspServiceAccounts"),
     mspConnectorConfigsTable: table("mspConnectorConfigs"),
@@ -121,9 +121,15 @@ vi.mock("../lib/graph.ts", () => ({
 // #4197: the mailbox callback confirms the tenant's consent with Microsoft
 // before activating the connector — "confirmed" here, refused in its own case.
 const verifyConsentMock = vi.fn().mockResolvedValue({ ok: true, roles: ["Mail.Send"] });
+// #4227: the connect route resolves the mailbox domain's tenant from Microsoft.
+const resolveDomainMock = vi.fn();
 vi.mock("../lib/consent-verification.ts", () => ({
   verifyTenantConsentWithMicrosoft: (...args: unknown[]) => verifyConsentMock(...args),
+  resolveEntraTenantForDomain: (...args: unknown[]) => resolveDomainMock(...args),
 }));
+
+const MSP_TENANT = "c4c814d4-3afe-441e-9145-62461d0a4fd3";
+const OTHER_TENANT = "0a361ab2-9e85-4bbf-8b75-c1ebf042dfba";
 
 vi.mock("../lib/logger.ts", () => {
   const child = vi.fn(() => ({
@@ -136,7 +142,7 @@ vi.mock("../lib/logger.ts", () => {
   return { logger: { child, info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } };
 });
 
-import router from "./msp-settings.ts";
+import router, { bindMailboxCallbackTenant } from "./msp-settings.ts";
 import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
 import { sendEmailFromTemplate } from "../lib/mailer.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
@@ -168,6 +174,8 @@ describe("msp-settings.ts portal links (#154)", () => {
     mockSelectResultsQueue = [];
     mockDefaultSelectResult = [];
     insertCalls.length = 0;
+    verifyConsentMock.mockResolvedValue({ ok: true, roles: ["Mail.Send"] });
+    resolveDomainMock.mockResolvedValue({ ok: true, tenantId: MSP_TENANT });
   });
 
   it("POST /msp/settings/users/:userId/reset-password builds the reset link off getMspPortalBaseUrl(), not the /crm base", async () => {
@@ -229,14 +237,16 @@ describe("msp-settings.ts portal links (#154)", () => {
         mspId: 7,
         mailboxUpn: "mailbox@example.com",
         fromDisplayName: "Support",
+        expectedTenantId: MSP_TENANT,
         requestedByUserId: 1,
         returnPath: "/settings/connector",
       }],
+      [], // no other MSP's customer carries this tenant
     ];
 
     const res = await request(app)
       .get("/api/msp/settings/connector/mailbox/callback")
-      .query({ tenant: "tenant-guid", admin_consent: "true", state });
+      .query({ tenant: MSP_TENANT.toUpperCase(), admin_consent: "true", state });
 
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe("https://msp-portal.test/portal/settings/connector?mailbox_consent=success");
@@ -247,14 +257,123 @@ describe("msp-settings.ts portal links (#154)", () => {
     verifyConsentMock.mockResolvedValueOnce({ ok: false, reason: "tenant_not_found", detail: "400 AADSTS90002" });
     const state = "abc123";
     mockSelectResultsQueue = [
-      [{ state, mspId: 7, mailboxUpn: "mailbox@example.com", fromDisplayName: "Support", requestedByUserId: 1, returnPath: "/settings/connector" }],
+      [{ state, mspId: 7, mailboxUpn: "mailbox@example.com", fromDisplayName: "Support", expectedTenantId: MSP_TENANT, requestedByUserId: 1, returnPath: "/settings/connector" }],
+      [],
     ];
 
     const res = await request(app)
       .get("/api/msp/settings/connector/mailbox/callback")
-      .query({ tenant: "ef825402-eae9-4b6f-8bd8-8b7e674ecfdd", admin_consent: "true", state });
+      .query({ tenant: MSP_TENANT, admin_consent: "true", state });
 
     expect(res.status).toBe(400);
     expect(res.headers.location).toBeUndefined();
+  });
+
+  const stateRow = (overrides: Record<string, unknown> = {}) => ({
+    state: "abc123", mspId: 7, mailboxUpn: "mailbox@example.com", fromDisplayName: "Support",
+    expectedTenantId: MSP_TENANT, requestedByUserId: 1, returnPath: "/settings/connector", ...overrides,
+  });
+
+  it("GET .../connector/mailbox/callback REFUSES a real consented tenant other than the mailbox's own, before asking Microsoft (#4227)", async () => {
+    mockSelectResultsQueue = [[stateRow()]];
+
+    const res = await request(app)
+      .get("/api/msp/settings/connector/mailbox/callback")
+      .query({ tenant: OTHER_TENANT, admin_consent: "true", state: "abc123" });
+
+    expect(res.status).toBe(400);
+    expect(res.headers.location).toBeUndefined();
+    expect(verifyConsentMock).not.toHaveBeenCalled();
+    expect(insertCalls).toHaveLength(0);
+  });
+
+  it("GET .../connector/mailbox/callback REFUSES a state minted with no tenant binding (#4227)", async () => {
+    mockSelectResultsQueue = [[stateRow({ expectedTenantId: null })]];
+
+    const res = await request(app)
+      .get("/api/msp/settings/connector/mailbox/callback")
+      .query({ tenant: MSP_TENANT, admin_consent: "true", state: "abc123" });
+
+    expect(res.status).toBe(400);
+    expect(verifyConsentMock).not.toHaveBeenCalled();
+    expect(insertCalls).toHaveLength(0);
+  });
+
+  it("GET .../connector/mailbox/callback REFUSES the mailbox's tenant when it is another MSP's customer (#4227)", async () => {
+    mockSelectResultsQueue = [[stateRow()], [{ id: 99, mspId: 8 }]];
+
+    const res = await request(app)
+      .get("/api/msp/settings/connector/mailbox/callback")
+      .query({ tenant: MSP_TENANT, admin_consent: "true", state: "abc123" });
+
+    expect(res.status).toBe(409);
+    expect(verifyConsentMock).not.toHaveBeenCalled();
+    expect(insertCalls).toHaveLength(0);
+  });
+
+  it("GET .../connector/mailbox/callback requires Mail.Send and activates against the bound tenant, not the query string (#4227)", async () => {
+    mockSelectResultsQueue = [[stateRow()], []];
+
+    await request(app)
+      .get("/api/msp/settings/connector/mailbox/callback")
+      .query({ tenant: MSP_TENANT.toUpperCase(), admin_consent: "true", state: "abc123" });
+
+    expect(verifyConsentMock).toHaveBeenCalledWith(
+      MSP_TENANT,
+      expect.objectContaining({ app: "read", resource: "graph", requireAnyRole: ["Mail.Send"] }),
+    );
+    expect(insertCalls).toHaveLength(1);
+    expect((insertCalls[0].values as any).tenantId).toBe(MSP_TENANT);
+  });
+
+  it("GET .../connector/mailbox/callback REFUSES a consent that lacks Mail.Send (#4227)", async () => {
+    verifyConsentMock.mockResolvedValueOnce({ ok: false, reason: "no_permissions", detail: "none of the required permissions (Mail.Send) granted on graph" });
+    mockSelectResultsQueue = [[stateRow()], []];
+
+    const res = await request(app)
+      .get("/api/msp/settings/connector/mailbox/callback")
+      .query({ tenant: MSP_TENANT, admin_consent: "true", state: "abc123" });
+
+    expect(res.status).toBe(400);
+    expect(res.text).toContain("permission to send mail");
+    expect(insertCalls).toHaveLength(0);
+  });
+
+  it("POST .../connector/mailbox/connect records the mailbox domain's tenant on the state and hints consent at it (#4227)", async () => {
+    mockSelectResultsQueue = [[]]; // no other MSP's customer carries this tenant
+
+    const res = await request(app)
+      .post("/api/msp/settings/connector/mailbox/connect")
+      .set("Authorization", `Bearer ${makeMspAdminToken(7)}`)
+      .send({ mailboxUpn: "support@mccawsoft2.onmicrosoft.com", fromDisplayName: "Support" });
+
+    expect(res.status).toBe(200);
+    expect(resolveDomainMock).toHaveBeenCalledWith("mccawsoft2.onmicrosoft.com");
+    const stateInsert = insertCalls.find((c) => (c.values as any)?.state);
+    expect((stateInsert!.values as any).expectedTenantId).toBe(MSP_TENANT);
+  });
+
+  it("POST .../connector/mailbox/connect refuses a non-Microsoft domain and another MSP's customer tenant (#4227)", async () => {
+    resolveDomainMock.mockResolvedValueOnce({ ok: false, reason: "not_entra_domain", detail: "400 AADSTS90002" });
+    const notEntra = await request(app)
+      .post("/api/msp/settings/connector/mailbox/connect")
+      .set("Authorization", `Bearer ${makeMspAdminToken(7)}`)
+      .send({ mailboxUpn: "support@example.com", fromDisplayName: "Support" });
+    expect(notEntra.status).toBe(400);
+
+    mockSelectResultsQueue = [[{ id: 99, mspId: 8 }]];
+    const foreign = await request(app)
+      .post("/api/msp/settings/connector/mailbox/connect")
+      .set("Authorization", `Bearer ${makeMspAdminToken(7)}`)
+      .send({ mailboxUpn: "support@mccawsoft2.onmicrosoft.com", fromDisplayName: "Support" });
+    expect(foreign.status).toBe(409);
+    expect(insertCalls.filter((c) => (c.values as any)?.state)).toHaveLength(0);
+  });
+
+  it("bindMailboxCallbackTenant compares case-insensitively and fails closed (#4227)", () => {
+    expect(bindMailboxCallbackTenant(MSP_TENANT, MSP_TENANT.toUpperCase())).toEqual({ ok: true, tenantId: MSP_TENANT });
+    expect(bindMailboxCallbackTenant(MSP_TENANT, OTHER_TENANT)).toEqual({ ok: false, reason: "tenant_mismatch" });
+    expect(bindMailboxCallbackTenant(MSP_TENANT, undefined)).toEqual({ ok: false, reason: "tenant_mismatch" });
+    expect(bindMailboxCallbackTenant(null, MSP_TENANT)).toEqual({ ok: false, reason: "unbound_state" });
   });
 });
