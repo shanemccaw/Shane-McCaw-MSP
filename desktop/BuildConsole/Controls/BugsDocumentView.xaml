@@ -12,10 +12,10 @@
         <StackPanel Grid.Row="0" Margin="0,0,0,16">
             <DockPanel Margin="0,0,0,10">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="🐞" FontSize="18" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                    <TextBlock Text="Bug Tracker" FontSize="18" FontWeight="Bold" Foreground="{StaticResource MauveBrush}" VerticalAlignment="Center"/>
+                    <TextBlock Text="🐞" FontSize="{StaticResource HeaderFontSize}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="Bug Tracker" FontSize="{StaticResource HeaderFontSize}" FontWeight="Bold" Foreground="{StaticResource MauveBrush}" VerticalAlignment="Center"/>
                     <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="6,2" Margin="12,0,0,0" VerticalAlignment="Center">
-                        <TextBlock x:Name="TxtBugCount" Text="0 Bugs" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}"/>
+                        <TextBlock x:Name="TxtBugCount" Text="0 Bugs" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}"/>
                     </Border>
                 </StackPanel>
 
@@ -30,7 +30,7 @@
                 <WrapPanel VerticalAlignment="Center">
                     <!-- Status Filters (Open default) -->
                     <StackPanel Orientation="Horizontal" Margin="0,0,16,0" VerticalAlignment="Center">
-                        <TextBlock Text="Status:" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock Text="Status:" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
                         <RadioButton x:Name="RadioFilterOpen" Content="Open Only" IsChecked="True" GroupName="StatusFilter" Margin="0,0,8,0" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Checked="Filter_Changed"/>
                         <RadioButton x:Name="RadioFilterVerifying" Content="Verifying" GroupName="StatusFilter" Margin="0,0,8,0" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Checked="Filter_Changed"/>
                         <RadioButton x:Name="RadioFilterClosed" Content="Closed" GroupName="StatusFilter" Margin="0,0,8,0" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Checked="Filter_Changed"/>
@@ -39,26 +39,26 @@
 
                     <!-- Design Filter (Git #3982 — independent of status, shows every is_design=true row regardless of Open/Verifying/Closed) -->
                     <StackPanel Orientation="Horizontal" Margin="0,0,16,0" VerticalAlignment="Center">
-                        <CheckBox x:Name="ChkDesignOnly" Content="Design Only" Foreground="{StaticResource TextBrush}" FontSize="11" VerticalAlignment="Center"
+                        <CheckBox x:Name="ChkDesignOnly" Content="Design Only" Foreground="{StaticResource TextBrush}" FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center"
                                   ToolTip="Show every bug flagged Design, regardless of status" Checked="Filter_Changed" Unchecked="Filter_Changed"/>
                     </StackPanel>
 
                     <!-- Site Dropdown -->
                     <StackPanel Orientation="Horizontal" Margin="0,0,16,0" VerticalAlignment="Center">
-                        <TextBlock Text="Site:" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                        <ComboBox x:Name="ComboSiteFilter" Width="140" Height="26" FontSize="11" SelectionChanged="Filter_Changed"/>
+                        <TextBlock Text="Site:" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <ComboBox x:Name="ComboSiteFilter" Width="140" Height="26" FontSize="{StaticResource CaptionFontSize}" SelectionChanged="Filter_Changed"/>
                     </StackPanel>
 
                     <!-- Epic Dropdown -->
                     <StackPanel Orientation="Horizontal" Margin="0,0,16,0" VerticalAlignment="Center">
-                        <TextBlock Text="Epic:" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                        <ComboBox x:Name="ComboEpicFilter" Width="140" Height="26" FontSize="11" SelectionChanged="Filter_Changed"/>
+                        <TextBlock Text="Epic:" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <ComboBox x:Name="ComboEpicFilter" Width="140" Height="26" FontSize="{StaticResource CaptionFontSize}" SelectionChanged="Filter_Changed"/>
                     </StackPanel>
 
                     <!-- Search Box -->
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="Search:" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                        <TextBox x:Name="TxtSearch" Width="180" Height="26" FontSize="11" VerticalContentAlignment="Center" TextChanged="Filter_Changed" Padding="4,0"/>
+                        <TextBlock Text="Search:" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBox x:Name="TxtSearch" Width="180" Height="26" FontSize="{StaticResource CaptionFontSize}" VerticalContentAlignment="Center" TextChanged="Filter_Changed" Padding="4,0"/>
                     </StackPanel>
                 </WrapPanel>
             </Border>
@@ -75,7 +75,7 @@
             <!-- Left: Grouped Bug List -->
             <Border Grid.Column="0" Background="{StaticResource MantleBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="6" Padding="8">
                 <DockPanel>
-                    <TextBlock Text="Bugs Grouped by Site / Epic" DockPanel.Dock="Top" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource Subtext0Brush}" Margin="4,0,0,8"/>
+                    <TextBlock Text="Bugs Grouped by Site / Epic" DockPanel.Dock="Top" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource Subtext0Brush}" Margin="4,0,0,8"/>
                     
                     <ListBox x:Name="LstBugs" Background="Transparent" BorderThickness="0" SelectionChanged="LstBugs_SelectionChanged">
                         <ListBox.ItemTemplate>
@@ -91,32 +91,32 @@
                                         <!-- Header Row: Bug #, Git Issue #, Status & Severity Badges -->
                                         <DockPanel Grid.Row="0" Margin="0,0,0,4">
                                             <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
-                                                <TextBlock Text="{Binding BugNumber, StringFormat='BUG-{0}'}" FontWeight="Bold" FontSize="12" Foreground="{StaticResource MauveBrush}" Margin="0,0,8,0"/>
+                                                <TextBlock Text="{Binding BugNumber, StringFormat='BUG-{0}'}" FontWeight="Bold" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource MauveBrush}" Margin="0,0,8,0"/>
                                                 
                                                 <!-- Git Issue Tag -->
                                                 <Border Background="{StaticResource BlueBrush}" CornerRadius="3" Padding="4,1" Margin="0,0,6,0" Visibility="{Binding HasGitIssue, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                    <TextBlock Text="{Binding GitIssueNumber, StringFormat='#{0}'}" FontSize="10" FontWeight="Bold" Foreground="{StaticResource CrustBrush}"/>
+                                                    <TextBlock Text="{Binding GitIssueNumber, StringFormat='#{0}'}" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource CrustBrush}"/>
                                                 </Border>
 
                                                 <!-- Severity Badge -->
                                                 <Border Background="{StaticResource PeachBrush}" CornerRadius="3" Padding="4,1">
-                                                    <TextBlock Text="{Binding Severity}" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource CrustBrush}"/>
+                                                    <TextBlock Text="{Binding Severity}" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource CrustBrush}"/>
                                                 </Border>
                                             </StackPanel>
 
                                             <!-- Status Badge -->
                                             <Border DockPanel.Dock="Right" Background="{StaticResource GreenBrush}" CornerRadius="3" Padding="6,2" HorizontalAlignment="Right">
-                                                <TextBlock Text="{Binding Status}" FontSize="10" FontWeight="Bold" Foreground="{StaticResource CrustBrush}"/>
+                                                <TextBlock Text="{Binding Status}" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource CrustBrush}"/>
                                             </Border>
                                         </DockPanel>
 
                                         <!-- Title / Summary -->
-                                        <TextBlock Grid.Row="1" Text="{Binding DisplayTitle}" FontSize="12.5" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis" Margin="0,0,0,4"/>
+                                        <TextBlock Grid.Row="1" Text="{Binding DisplayTitle}" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis" Margin="0,0,0,4"/>
 
                                         <!-- Subtitle: Site / Epic & Date -->
                                         <DockPanel Grid.Row="2">
-                                            <TextBlock Text="{Binding SiteEpicSummary}" FontSize="10.5" Foreground="{StaticResource Subtext0Brush}"/>
-                                            <TextBlock Text="{Binding CreatedAt, StringFormat='{}{0:yyyy-MM-dd HH:mm}'}" DockPanel.Dock="Right" HorizontalAlignment="Right" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                                            <TextBlock Text="{Binding SiteEpicSummary}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
+                                            <TextBlock Text="{Binding CreatedAt, StringFormat='{}{0:yyyy-MM-dd HH:mm}'}" DockPanel.Dock="Right" HorizontalAlignment="Right" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                                         </DockPanel>
                                     </Grid>
                                 </Border>
@@ -134,7 +134,7 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel x:Name="PnlDetailContainer">
                         <!-- Empty State when nothing selected -->
-                        <TextBlock x:Name="TxtEmptyDetail" Text="Select a bug from the list to review details and re-run test verification." FontSize="12" Foreground="{StaticResource Subtext0Brush}" HorizontalAlignment="Center" Margin="0,60,0,0"/>
+                        <TextBlock x:Name="TxtEmptyDetail" Text="Select a bug from the list to review details and re-run test verification." FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" HorizontalAlignment="Center" Margin="0,60,0,0"/>
 
                         <!-- Bug Detail Content -->
                         <StackPanel x:Name="PnlBugDetails" Visibility="Collapsed">
@@ -149,12 +149,12 @@
                                         <Button x:Name="BtnReject" Content="✕ Reject" Style="{StaticResource SecondaryButton}" Padding="10,6" Click="BtnReject_Click" Margin="0,0,8,0" ToolTip="Verifying only — reopens and sends the real evidence to chat (never touches GitHub)"/>
                                         <Button x:Name="BtnReopen" Content="Re-open" Style="{StaticResource SecondaryButton}" Padding="10,6" Click="BtnReopen_Click" Margin="0,0,8,0" ToolTip="Closed only"/>
                                         <Button x:Name="BtnMarkNotABug" Content="Not a Bug" Style="{StaticResource SecondaryButton}" Padding="10,6" Click="BtnMarkNotABug_Click" Margin="0,0,8,0"/>
-                                        <CheckBox x:Name="ChkIsDesign" Content="Design Issue" Foreground="{StaticResource TextBrush}" FontSize="11" VerticalAlignment="Center" Checked="ChkIsDesign_Changed" Unchecked="ChkIsDesign_Changed"/>
+                                        <CheckBox x:Name="ChkIsDesign" Content="Design Issue" Foreground="{StaticResource TextBrush}" FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center" Checked="ChkIsDesign_Changed" Unchecked="ChkIsDesign_Changed"/>
                                     </StackPanel>
 
                                     <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center">
-                                        <TextBlock Text="Git Issue #:" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                        <TextBox x:Name="TxtGitIssueInput" Width="70" Height="26" FontSize="11" VerticalContentAlignment="Center" Padding="4,0" Margin="0,0,6,0"/>
+                                        <TextBlock Text="Git Issue #:" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                        <TextBox x:Name="TxtGitIssueInput" Width="70" Height="26" FontSize="{StaticResource CaptionFontSize}" VerticalContentAlignment="Center" Padding="4,0" Margin="0,0,6,0"/>
                                         <Button x:Name="BtnSaveGitIssue" Content="Save" Style="{StaticResource SecondaryButton}" Padding="8,4" Click="BtnSaveGitIssue_Click"/>
                                     </StackPanel>
                                 </DockPanel>
@@ -163,35 +163,35 @@
                             <!-- Bug Title & Badges Header -->
                             <StackPanel Margin="0,0,0,16">
                                 <DockPanel Margin="0,0,0,6">
-                                    <TextBlock x:Name="TxtDetailBugNum" Text="BUG-0" FontSize="16" FontWeight="Bold" Foreground="{StaticResource MauveBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    <TextBlock x:Name="TxtDetailBugNum" Text="BUG-0" FontSize="{StaticResource SubHeaderFontSize}" FontWeight="Bold" Foreground="{StaticResource MauveBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                     <Border x:Name="BdrDetailSeverity" Background="{StaticResource PeachBrush}" CornerRadius="4" Padding="6,2" VerticalAlignment="Center" Margin="0,0,8,0">
-                                        <TextBlock x:Name="TxtDetailSeverity" Text="BUG" FontSize="10" FontWeight="Bold" Foreground="{StaticResource CrustBrush}"/>
+                                        <TextBlock x:Name="TxtDetailSeverity" Text="BUG" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource CrustBrush}"/>
                                     </Border>
                                     <Border x:Name="BdrDetailStatus" Background="{StaticResource GreenBrush}" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
-                                        <TextBlock x:Name="TxtDetailStatus" Text="OPEN" FontSize="10" FontWeight="Bold" Foreground="{StaticResource CrustBrush}"/>
+                                        <TextBlock x:Name="TxtDetailStatus" Text="OPEN" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource CrustBrush}"/>
                                     </Border>
                                 </DockPanel>
 
-                                <TextBlock x:Name="TxtDetailTitle" Text="Bug Title" FontSize="15" FontWeight="Bold" Foreground="{StaticResource TextBrush}" TextWrapping="Wrap" Margin="0,0,0,6"/>
-                                <TextBlock x:Name="TxtDetailMeta" Text="Site / Epic details" FontSize="11.5" Foreground="{StaticResource Subtext1Brush}"/>
-                                <TextBlock x:Name="TxtDetailResolution" Text="" FontSize="11" FontStyle="Italic" Foreground="{StaticResource Subtext1Brush}" TextWrapping="Wrap" Margin="0,4,0,0" Visibility="Collapsed"/>
+                                <TextBlock x:Name="TxtDetailTitle" Text="Bug Title" FontSize="{StaticResource SubHeaderFontSize}" FontWeight="Bold" Foreground="{StaticResource TextBrush}" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                                <TextBlock x:Name="TxtDetailMeta" Text="Site / Epic details" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"/>
+                                <TextBlock x:Name="TxtDetailResolution" Text="" FontSize="{StaticResource CaptionFontSize}" FontStyle="Italic" Foreground="{StaticResource Subtext1Brush}" TextWrapping="Wrap" Margin="0,4,0,0" Visibility="Collapsed"/>
                             </StackPanel>
 
                             <!-- Status/Verification Banner -->
                             <Border x:Name="BdrBanner" Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="10,8" Margin="0,0,0,16" Visibility="Collapsed">
-                                <TextBlock x:Name="TxtBanner" Text="" FontSize="11.5" Foreground="{StaticResource TextBrush}" TextWrapping="Wrap"/>
+                                <TextBlock x:Name="TxtBanner" Text="" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextBrush}" TextWrapping="Wrap"/>
                             </Border>
 
                             <!-- Markdown Notes / Summary -->
-                            <TextBlock Text="Notes / Summary" FontSize="12" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
+                            <TextBlock Text="Notes / Summary" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
                             <Border Background="{StaticResource BaseBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,14">
-                                <TextBox x:Name="TxtDetailNotes" IsReadOnly="True" TextWrapping="Wrap" Background="Transparent" BorderThickness="0" Foreground="{StaticResource TextBrush}" FontSize="12"/>
+                                <TextBox x:Name="TxtDetailNotes" IsReadOnly="True" TextWrapping="Wrap" Background="Transparent" BorderThickness="0" Foreground="{StaticResource TextBrush}" FontSize="{StaticResource CaptionFontSize}"/>
                             </Border>
 
                             <!-- Steps to Reproduce -->
-                            <TextBlock Text="Steps to Reproduce" FontSize="12" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
+                            <TextBlock Text="Steps to Reproduce" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
                             <Border Background="{StaticResource BaseBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,14">
-                                <TextBox x:Name="TxtDetailSteps" IsReadOnly="True" TextWrapping="Wrap" Background="Transparent" BorderThickness="0" Foreground="{StaticResource TextBrush}" FontSize="11.5"/>
+                                <TextBox x:Name="TxtDetailSteps" IsReadOnly="True" TextWrapping="Wrap" Background="Transparent" BorderThickness="0" Foreground="{StaticResource TextBrush}" FontSize="{StaticResource CaptionFontSize}"/>
                             </Border>
 
                             <!-- Expected vs Actual -->
@@ -202,24 +202,24 @@
                                 </Grid.ColumnDefinitions>
 
                                 <StackPanel Grid.Column="0" Margin="0,0,6,0">
-                                    <TextBlock Text="Expected Behavior" FontSize="11.5" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
+                                    <TextBlock Text="Expected Behavior" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
                                     <Border Background="{StaticResource BaseBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="4" Padding="8" Height="70">
-                                        <TextBox x:Name="TxtDetailExpected" IsReadOnly="True" TextWrapping="Wrap" Background="Transparent" BorderThickness="0" Foreground="{StaticResource TextBrush}" FontSize="11"/>
+                                        <TextBox x:Name="TxtDetailExpected" IsReadOnly="True" TextWrapping="Wrap" Background="Transparent" BorderThickness="0" Foreground="{StaticResource TextBrush}" FontSize="{StaticResource CaptionFontSize}"/>
                                     </Border>
                                 </StackPanel>
 
                                 <StackPanel Grid.Column="1" Margin="6,0,0,0">
-                                    <TextBlock Text="Actual Behavior" FontSize="11.5" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
+                                    <TextBlock Text="Actual Behavior" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
                                     <Border Background="{StaticResource BaseBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="4" Padding="8" Height="70">
-                                        <TextBox x:Name="TxtDetailActual" IsReadOnly="True" TextWrapping="Wrap" Background="Transparent" BorderThickness="0" Foreground="{StaticResource TextBrush}" FontSize="11"/>
+                                        <TextBox x:Name="TxtDetailActual" IsReadOnly="True" TextWrapping="Wrap" Background="Transparent" BorderThickness="0" Foreground="{StaticResource TextBrush}" FontSize="{StaticResource CaptionFontSize}"/>
                                     </Border>
                                 </StackPanel>
                             </Grid>
 
                             <!-- Diagnostics / Reproduction Events -->
-                            <TextBlock Text="Automated Reproduction &amp; Diagnostics" FontSize="12" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
+                            <TextBlock Text="Automated Reproduction &amp; Diagnostics" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
                             <Border Background="{StaticResource BaseBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,14">
-                                <TextBox x:Name="TxtDetailDiagnostics" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Subtext1Brush}" FontSize="11"/>
+                                <TextBox x:Name="TxtDetailDiagnostics" IsReadOnly="True" TextWrapping="Wrap" FontFamily="{StaticResource MonospaceFontFamily}" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Subtext1Brush}" FontSize="{StaticResource CaptionFontSize}"/>
                             </Border>
                         </StackPanel>
                     </StackPanel>
