@@ -92,6 +92,14 @@
     <SolidColorBrush x:Key="StatusWarningWashLightBrush"  Color="#1AD4A56C"/>
     <SolidColorBrush x:Key="StatusWarningWashMediumBrush" Color="#33D4A56C"/>
 
+    <!-- Same wash treatment for Running (Perf ms pill) and the neutral
+         TextSecondaryColor (Events/A11y/DOM Delta pills), replacing the
+         remaining raw hex literals in TestModeDiagnosticsPanel.xaml (Git #4201). -->
+    <SolidColorBrush x:Key="StatusRunningWashLightBrush"   Color="#1A79B3C8"/>
+    <SolidColorBrush x:Key="StatusRunningWashMediumBrush"  Color="#3379B3C8"/>
+    <SolidColorBrush x:Key="TextSecondaryWashLightBrush"   Color="#1A8B949E"/>
+    <SolidColorBrush x:Key="TextSecondaryWashMediumBrush"  Color="#338B949E"/>
+
     <!-- Git #4210 — HomeView's status-badge backgrounds. These are opaque
          solids, not compositable washes like the ones immediately above, so
          they're distinct brushes rather than a reuse of StatusXWashBrush at

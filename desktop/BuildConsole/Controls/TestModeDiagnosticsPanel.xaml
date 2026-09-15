@@ -109,7 +109,7 @@
                         <!-- Telemetry Badge Pills -->
                         <WrapPanel Margin="0,0,0,10">
                             <!-- Errors -->
-                            <Border Background="#1ADC8A8A" BorderBrush="#40DC8A8A" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="0,0,4,4">
+                            <Border Background="{StaticResource StatusErrorWashLightBrush}" BorderBrush="{StaticResource StatusErrorWashMediumBrush}" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="0,0,4,4">
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                     <TextBlock Text="&#xE783;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusErrorBrush}" Margin="0,0,3,0"/>
                                     <TextBlock x:Name="TxtTelemetryErrors" Text="0 errors" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusErrorBrush}"/>
@@ -117,7 +117,7 @@
                             </Border>
 
                             <!-- Net Fail -->
-                            <Border Background="#1AD4A56C" BorderBrush="#40D4A56C" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="0,0,4,4">
+                            <Border Background="{StaticResource StatusWarningWashLightBrush}" BorderBrush="{StaticResource StatusWarningWashMediumBrush}" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="0,0,4,4">
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                     <TextBlock Text="&#xE945;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusWarningBrush}" Margin="0,0,3,0"/>
                                     <TextBlock x:Name="TxtTelemetryNetFail" Text="0 net fail" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusWarningBrush}"/>
@@ -125,7 +125,7 @@
                             </Border>
 
                             <!-- Perf ms -->
-                            <Border Background="#1A79B3C8" BorderBrush="#4079B3C8" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="0,0,4,4">
+                            <Border Background="{StaticResource StatusRunningWashLightBrush}" BorderBrush="{StaticResource StatusRunningWashMediumBrush}" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="0,0,4,4">
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                     <TextBlock Text="&#xE916;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusRunningBrush}" Margin="0,0,3,0"/>
                                     <TextBlock x:Name="TxtTelemetryPerf" Text="-- ms" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusRunningBrush}"/>
@@ -133,7 +133,7 @@
                             </Border>
 
                             <!-- Events -->
-                            <Border Background="#1A8B949E" BorderBrush="#408B949E" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="0,0,4,4">
+                            <Border Background="{StaticResource TextSecondaryWashLightBrush}" BorderBrush="{StaticResource TextSecondaryWashMediumBrush}" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="0,0,4,4">
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                     <TextBlock Text="&#xE9D9;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,3,0"/>
                                     <TextBlock x:Name="TxtTelemetryEvents" Text="0 events" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}"/>
@@ -141,12 +141,12 @@
                             </Border>
 
                             <!-- A11y -->
-                            <Border Background="#1A8B949E" BorderBrush="#408B949E" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="0,0,4,4">
+                            <Border Background="{StaticResource TextSecondaryWashLightBrush}" BorderBrush="{StaticResource TextSecondaryWashMediumBrush}" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="0,0,4,4">
                                 <TextBlock x:Name="TxtTelemetryA11y" Text="a11y 0" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}"/>
                             </Border>
 
                             <!-- DOM Delta -->
-                            <Border Background="#1A8B949E" BorderBrush="#408B949E" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="0,0,4,4">
+                            <Border Background="{StaticResource TextSecondaryWashLightBrush}" BorderBrush="{StaticResource TextSecondaryWashMediumBrush}" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="0,0,4,4">
                                 <TextBlock x:Name="TxtTelemetryDomMut" Text="DOM Δ 0" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}"/>
                             </Border>
 
