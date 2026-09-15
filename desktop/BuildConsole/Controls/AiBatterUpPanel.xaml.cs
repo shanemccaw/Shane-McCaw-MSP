@@ -394,47 +394,24 @@ namespace BuildConsole.Controls
                 .ToList();
         }
 
-        /// <summary>Git #4146 — one entry in the Epic filter dropdown. <see cref="IsAll"/> is the
-        /// "All Epics" default (matches every row, no filtering); otherwise <see cref="EpicNumber"/>
-        /// (null for the real "No Epic" group) is what <see cref="RenderFilteredRows"/> filters on.</summary>
-        private readonly struct EpicFilterOption
-        {
-            public bool IsAll { get; init; }
-            public int? EpicNumber { get; init; }
-            public string Label { get; init; }
-        }
-
         /// <summary>
-        /// Git #4146 — rebuilds CmbEpicFilter's items from the distinct Epics actually present in
-        /// <see cref="_allRows"/> (same order/grouping as <see cref="GroupByEpic"/>, so the dropdown
-        /// always matches what RowsList can actually group into), with a real "All Epics" default
-        /// first. Preserves the currently-selected Epic across a refresh if it's still present;
-        /// falls back to "All Epics" otherwise (e.g. that Epic's last row just left the queue).
+        /// Git #4146 / #4164 — rebuilds CmbEpicFilter's items from the distinct Epics actually
+        /// present in <see cref="_allRows"/> (same order/grouping as <see cref="GroupByEpic"/>, so
+        /// the dropdown always matches what RowsList can actually group into), with a real
+        /// "All Epics" default first, via the shared <see cref="EpicFilterHelper"/> (also used by
+        /// WhatsRemainingPanel). Preserves the currently-selected Epic across a refresh if it's
+        /// still present; falls back to "All Epics" otherwise (e.g. that Epic's last row just left
+        /// the queue).
         /// </summary>
         private void PopulateEpicFilterOptions()
         {
             var previouslySelected = CmbEpicFilter.SelectedItem is EpicFilterOption prev ? prev : (EpicFilterOption?)null;
 
-            var options = new List<EpicFilterOption>
-            {
-                new() { IsAll = true, EpicNumber = null, Label = "All Epics" },
-            };
-            options.AddRange(GroupByEpic(_allRows).Select(g => new EpicFilterOption
-            {
-                IsAll = false,
-                EpicNumber = g.EpicNumber,
-                Label = g.Label,
-            }));
+            var options = EpicFilterHelper.BuildOptions(
+                GroupByEpic(_allRows).Select(g => (g.EpicNumber, g.Label)));
 
             CmbEpicFilter.ItemsSource = options;
-
-            int indexToSelect = 0;
-            if (previouslySelected is { IsAll: false } sel)
-            {
-                int found = options.FindIndex(o => !o.IsAll && o.EpicNumber == sel.EpicNumber);
-                if (found >= 0) indexToSelect = found;
-            }
-            CmbEpicFilter.SelectedIndex = indexToSelect;
+            CmbEpicFilter.SelectedIndex = EpicFilterHelper.ResolveSelectedIndex(options, previouslySelected);
         }
 
         /// <summary>Git #4146 — the Epic filter dropdown combines AND-wise with TxtFilter's text

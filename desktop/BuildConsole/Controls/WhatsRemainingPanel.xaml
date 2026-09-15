@@ -12,6 +12,13 @@
         title/board Status — a document, not a card-shell UI like the queue panels), each Epic
         group carrying the same #4146 per-group "copy Git #n list" convenience
         (EpicGroupHeaderHelper, shared with AiBatterUpPanel).
+
+        Git #4164 — Shane: "I need to filter by the Epic, Batter Up, Park, Crashed, AI Batter
+        Up, etc." Two real filter controls, both AND-combined and both built from the actual
+        distinct data in the currently-loaded rows, never a hardcoded list: CmbEpicFilter (same
+        real shape as AiBatterUpPanel's #4146 dropdown, via the shared EpicFilterHelper) and
+        StatusFilterHost (a real toggle-chip row over the distinct BoardStatus values present —
+        chips built in code-behind to match this panel's plain-document style).
     -->
     <DockPanel Background="{StaticResource MantleBrush}" LastChildFill="True">
 
@@ -19,6 +26,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
@@ -31,14 +39,34 @@
                        Foreground="{StaticResource Subtext0Brush}" FontSize="11.5"
                        VerticalAlignment="Center" Text=""/>
 
-            <Button x:Name="BtnRefresh" Grid.Column="2"
+            <!-- Git #4164 — populated in code-behind (PopulateEpicFilterOptions) from the distinct
+                 Epics actually present in _allRows via the shared EpicFilterHelper (#4146's own
+                 shape). Combines AND-wise with the status chips — see ApplyFilters. -->
+            <ComboBox x:Name="CmbEpicFilter" Grid.Column="2"
+                      Width="130" Height="22" FontSize="11"
+                      Margin="10,0,0,0"
+                      VerticalContentAlignment="Center"
+                      Visibility="Collapsed"
+                      DisplayMemberPath="Label"
+                      SelectionChanged="CmbEpicFilter_SelectionChanged"/>
+
+            <Button x:Name="BtnRefresh" Grid.Column="3"
                     Style="{StaticResource IconButton}"
                     ToolTip="Refresh from the local mirror"
                     Click="BtnRefresh_Click"
+                    Margin="8,0,0,0"
                     Padding="6,4">
                 <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
             </Button>
         </Grid>
+
+        <!-- Git #4164 — real toggle chips, one per distinct BoardStatus value actually present in
+             _allRows (built in code-behind — BuildStatusFilterChips), never a hardcoded status
+             list. No chip selected (the default) shows every status; selecting one or more narrows
+             to just those, AND-combined with CmbEpicFilter above. -->
+        <WrapPanel x:Name="StatusFilterHost" DockPanel.Dock="Top"
+                   Margin="14,0,14,6"
+                   Visibility="Collapsed"/>
 
         <TextBlock x:Name="TxtEmpty" DockPanel.Dock="Top" Margin="14,4,14,10"
                    Foreground="{StaticResource Subtext0Brush}" FontSize="11.5"
