@@ -143,34 +143,132 @@
                           Background="{StaticResource Surface0Brush}"
                           ShowsPreview="False"/>
 
-            <!-- ── Middle Panel (Issue Grid Placeholder) ── -->
+            <!-- ── Middle Panel (Interactive DAG Graph) ── -->
             <Border Grid.Column="2"
                     Background="{StaticResource BaseBrush}">
-                <Grid Margin="12">
+                <Grid Margin="10,8">
                     <Grid.RowDefinitions>
+                        <!-- Middle Panel Graph Toolbar -->
                         <RowDefinition Height="Auto"/>
+                        <!-- Interactive Canvas Area -->
                         <RowDefinition Height="*"/>
+                        <!-- Graph Footer Legend -->
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <DockPanel Grid.Row="0" Margin="0,0,0,12">
-                        <TextBlock Text="Issue Grid Placeholder"
-                                   FontWeight="SemiBold"
-                                   FontSize="13"
-                                   Foreground="{StaticResource Subtext1Brush}"/>
+                    <!-- Graph Header & Toolbar -->
+                    <DockPanel Grid.Row="0" Margin="0,0,0,8" LastChildFill="True">
+                        <!-- Left Title & Filter Info -->
+                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                            <TextBlock Text="DEPENDENCY GRAPH"
+                                       FontWeight="Bold"
+                                       FontSize="12"
+                                       Foreground="{StaticResource TextBrush}"
+                                       VerticalAlignment="Center"/>
+                            <Border x:Name="GraphInfoBadge"
+                                    Background="{StaticResource Surface0Brush}"
+                                    CornerRadius="4"
+                                    Padding="6,2"
+                                    Margin="8,0,0,0"
+                                    VerticalAlignment="Center">
+                                <TextBlock x:Name="TxtGraphFilterInfo"
+                                           Text="All Issues"
+                                           FontSize="11"
+                                           Foreground="{StaticResource Subtext0Brush}"/>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- Right Controls: Chain Mode Segmented Toggle & Filters -->
+                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <!-- Chain Mode Segmented Toggle -->
+                            <Border Background="{StaticResource MantleBrush}" CornerRadius="4" Padding="2" Margin="0,0,8,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="BtnChainFull"
+                                            Content="Full Chain"
+                                            Style="{StaticResource SurfaceButton}"
+                                            Padding="6,2" FontSize="11"
+                                            Click="ChainMode_Click" Tag="FullChain"/>
+                                    <Button x:Name="BtnChainBlockers"
+                                            Content="Blockers"
+                                            Style="{StaticResource SurfaceButton}"
+                                            Padding="6,2" FontSize="11" Margin="2,0,0,0"
+                                            Click="ChainMode_Click" Tag="BlockersOnly"/>
+                                    <Button x:Name="BtnChainDependents"
+                                            Content="Dependents"
+                                            Style="{StaticResource SurfaceButton}"
+                                            Padding="6,2" FontSize="11" Margin="2,0,0,0"
+                                            Click="ChainMode_Click" Tag="DependentsOnly"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Bucket Filter -->
+                            <ComboBox x:Name="CmbBucketFilter" Width="100" Margin="0,0,6,0" SelectionChanged="GraphFilter_Changed">
+                                <ComboBoxItem Content="All Buckets" IsSelected="True"/>
+                                <ComboBoxItem Content="Batter Up"/>
+                                <ComboBoxItem Content="In Progress"/>
+                                <ComboBoxItem Content="Backlog"/>
+                                <ComboBoxItem Content="Done"/>
+                            </ComboBox>
+
+                            <!-- Build Status Filter -->
+                            <ComboBox x:Name="CmbBuildFilter" Width="100" Margin="0,0,6,0" SelectionChanged="GraphFilter_Changed">
+                                <ComboBoxItem Content="All Builds" IsSelected="True"/>
+                                <ComboBoxItem Content="success"/>
+                                <ComboBoxItem Content="failed"/>
+                                <ComboBoxItem Content="running"/>
+                                <ComboBoxItem Content="queued"/>
+                            </ComboBox>
+
+                            <!-- Reset Filters -->
+                            <Button x:Name="BtnResetGraphFilters"
+                                    Content="Reset"
+                                    Style="{StaticResource SurfaceButton}"
+                                    Padding="8,3" FontSize="11"
+                                    Click="BtnResetGraphFilters_Click"/>
+                        </StackPanel>
                     </DockPanel>
 
+                    <!-- Graph Canvas Area -->
                     <Border Grid.Row="1"
                             BorderBrush="{StaticResource Surface0Brush}"
                             BorderThickness="1"
                             CornerRadius="6"
-                            Background="{StaticResource Surface0Brush}"
-                            Opacity="0.4"
-                            Padding="16">
-                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <TextBlock Text="&#xE8A5;" FontFamily="Segoe MDL2 Assets" FontSize="36" Foreground="{StaticResource BlueBrush}" HorizontalAlignment="Center" Margin="0,0,0,10"/>
-                            <TextBlock Text="Issue Grid Placeholder" FontWeight="SemiBold" FontSize="14" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
-                            <TextBlock x:Name="TxtMiddleFilterState" Text="Middle Panel Container (Filter Active)" FontSize="11" Foreground="{StaticResource Subtext0Brush}" HorizontalAlignment="Center" Margin="0,4,0,0"/>
-                        </StackPanel>
+                            Background="{StaticResource MantleBrush}"
+                            ClipToBounds="True">
+                        <ScrollViewer x:Name="GraphScrollViewer"
+                                      HorizontalScrollBarVisibility="Auto"
+                                      VerticalScrollBarVisibility="Auto"
+                                      Focusable="True">
+                            <Canvas x:Name="GraphCanvas"
+                                    Width="1600" Height="1000"
+                                    Background="Transparent"
+                                    MouseDown="GraphCanvas_MouseDown"/>
+                        </ScrollViewer>
+                    </Border>
+
+                    <!-- Graph Legend Footer -->
+                    <Border Grid.Row="2" Margin="0,6,0,0" Padding="6,4" Background="{StaticResource CrustBrush}" CornerRadius="4">
+                        <DockPanel LastChildFill="True">
+                            <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                                <TextBlock Text="Legend:" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,8,0"/>
+                                <Border Background="{StaticResource RedBrush}" Width="10" Height="10" CornerRadius="2" Margin="0,0,4,0"/>
+                                <TextBlock Text="Hard Block" FontSize="11" Foreground="{StaticResource TextBrush}" Margin="0,0,12,0"/>
+                                <Border Background="{StaticResource YellowBrush}" Width="10" Height="10" CornerRadius="2" Margin="0,0,4,0"/>
+                                <TextBlock Text="Soft Block" FontSize="11" Foreground="{StaticResource TextBrush}" Margin="0,0,12,0"/>
+                                <Border Background="{StaticResource GreenBrush}" Width="10" Height="10" CornerRadius="2" Margin="0,0,4,0"/>
+                                <TextBlock Text="Resolved (Closed)" FontSize="11" Foreground="{StaticResource TextBrush}" Margin="0,0,12,0"/>
+                                <Border Background="{StaticResource BlueBrush}" Width="10" Height="10" CornerRadius="2" Margin="0,0,4,0"/>
+                                <TextBlock Text="Build" FontSize="11" Foreground="{StaticResource TextBrush}" Margin="0,0,12,0"/>
+                                <Border Background="{StaticResource MauveBrush}" Width="10" Height="10" CornerRadius="2" Margin="0,0,4,0"/>
+                                <TextBlock Text="AI/Agent" FontSize="11" Foreground="{StaticResource TextBrush}"/>
+                            </StackPanel>
+                            <TextBlock x:Name="TxtGraphStatusSummary"
+                                       DockPanel.Dock="Right"
+                                       HorizontalAlignment="Right"
+                                       Text="0 Nodes • 0 Edges"
+                                       FontSize="11"
+                                       Foreground="{StaticResource Overlay0Brush}"/>
+                        </DockPanel>
                     </Border>
                 </Grid>
             </Border>

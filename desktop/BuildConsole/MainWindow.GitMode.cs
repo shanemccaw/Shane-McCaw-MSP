@@ -93,7 +93,7 @@ namespace BuildConsole
             if (GitModeContainer != null)
             {
                 GitModeContainer.Visibility = Visibility.Visible;
-                _ = GitModeContainer.RefreshTreeAsync();
+                _ = GitModeContainer.RefreshAllAsync();
             }
 
             // Update persistent settings state
