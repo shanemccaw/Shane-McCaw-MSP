@@ -72,7 +72,12 @@
 // Drizzle schema graph; this middleware needs the decision function and the ladder
 // transcription and nothing else. Importing the leaves keeps the DB-touching half out
 // of every module graph that reaches `requireRole` — which is all of them.
-import { evaluateCapability, type RbacDecision, type RbacFeatureMapping } from "@workspace/db/rbac/evaluate";
+import {
+  evaluateCapability,
+  type RbacDecision,
+  type RbacEvaluationInput,
+  type RbacFeatureMapping,
+} from "@workspace/db/rbac/evaluate";
 import {
   LEGACY_ROLE_ORDER,
   effectiveLegacyRole,
@@ -280,6 +285,28 @@ export async function roleClearsLadderCapability(
   heldRole: string | null | undefined,
   capabilityKey: string,
 ): Promise<LadderOutcome> {
+  const prepared = await ladderEvaluationInput(heldRole, capabilityKey);
+  if (prepared.kind === "unavailable") return prepared;
+
+  const decision = evaluateCapability(prepared.input);
+  return decision.allowed ? { kind: "allow", decision } : { kind: "deny", decision };
+}
+
+/**
+ * The evaluator input a `ladder.*` decision is made from — resolved, not yet decided.
+ *
+ * Split out of `roleClearsLadderCapability` for #4192: `requireAccess` hands this
+ * input to `evaluateAccess()` (which composes it with the tier half) rather than
+ * taking an already-made allow/deny. Both paths build the input HERE, so the gate
+ * and the composed gate cannot resolve a principal differently.
+ */
+export async function ladderEvaluationInput(
+  heldRole: string | null | undefined,
+  capabilityKey: string,
+): Promise<
+  | { readonly kind: "ready"; readonly input: RbacEvaluationInput }
+  | { readonly kind: "unavailable"; readonly reason: string }
+> {
   const floor = ladderCapabilityRole(capabilityKey);
   if (!floor) {
     log.error(
@@ -305,15 +332,16 @@ export async function roleClearsLadderCapability(
   // returns `unset` — default deny, which is what roleIndex() === -1 produced.
   const heldRoleId = isLegacyRole(heldRole) ? snapshot.roleIdByRung.get(heldRole) : undefined;
 
-  const decision = evaluateCapability({
-    system: "msp",
-    capability: capabilityKey,
-    roleIds: heldRoleId ? [heldRoleId] : [],
-    mappings: snapshot.mappings,
-    orgId: null,
-  });
-
-  return decision.allowed ? { kind: "allow", decision } : { kind: "deny", decision };
+  return {
+    kind: "ready",
+    input: {
+      system: "msp",
+      capability: capabilityKey,
+      roleIds: heldRoleId ? [heldRoleId] : [],
+      mappings: snapshot.mappings,
+      orgId: null,
+    },
+  };
 }
 
 /**

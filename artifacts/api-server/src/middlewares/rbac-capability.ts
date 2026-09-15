@@ -63,7 +63,7 @@
  * from the outside otherwise, and that is what makes a cutover undiagnosable.
  */
 
-import { evaluateCapability, type RbacFeatureMapping } from "@workspace/db/rbac/evaluate";
+import { evaluateCapability, type RbacEvaluationInput, type RbacFeatureMapping } from "@workspace/db/rbac/evaluate";
 import { isKnownCapability, type RbacSystem } from "@workspace/db/rbac/capabilities";
 import {
   LEGACY_ROLE_ORDER,
@@ -174,6 +174,31 @@ export async function userHasCapability(
   system: RbacSystem,
   capability: string,
 ): Promise<CapabilityOutcome> {
+  const prepared = await capabilityEvaluationInput(user, system, capability);
+  if (prepared.kind === "unavailable") return prepared;
+
+  const decision = evaluateCapability(prepared.input);
+  return decision.allowed ? { kind: "allow" } : { kind: "deny" };
+}
+
+/**
+ * The evaluator input a non-ladder capability decision is made from — resolved, not
+ * yet decided.
+ *
+ * Split out of `userHasCapability` for #4192: `requireAccess` hands this input to
+ * `evaluateAccess()` (which composes it with the tier half) and needs the full
+ * `RbacDecision` for its audit line, not only allow/deny. Both paths resolve the
+ * principal HERE — the claim's rung plus the live `cap.*` grants, read every call —
+ * so the two gates cannot disagree about who a caller is.
+ */
+export async function capabilityEvaluationInput(
+  user: Pick<AuthUser, "id" | "role" | "mspRole" | "mspId" | "customerId">,
+  system: RbacSystem,
+  capability: string,
+): Promise<
+  | { readonly kind: "ready"; readonly input: RbacEvaluationInput }
+  | { readonly kind: "unavailable"; readonly reason: string }
+> {
   if (!isKnownCapability(system, capability)) {
     log.error({ system, capability }, "userHasCapability was asked about an uncatalogued capability — failing closed");
     return { kind: "unavailable", reason: `unknown capability "${system}:${capability}"` };
@@ -204,8 +229,7 @@ export async function userHasCapability(
     return { kind: "unavailable", reason: "rbac_model_unseeded" };
   }
 
-  const decision = evaluateCapability({ system, capability, roleIds, mappings, orgId });
-  return decision.allowed ? { kind: "allow" } : { kind: "deny" };
+  return { kind: "ready", input: { system, capability, roleIds, mappings, orgId } };
 }
 
 /**
