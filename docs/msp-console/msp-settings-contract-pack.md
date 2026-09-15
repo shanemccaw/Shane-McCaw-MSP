@@ -177,14 +177,15 @@ multi-tenant app uses `client_credentials` after consent (`:1252-1253`).
 | Field | Type | Line |
 |---|---|---|
 | `connected` | `boolean` (`!!row?.isActive`) | `1285` |
-| `mtAppConfigured` | `boolean` (`mtAppCredentialsPresent()`, `graph.ts:167`) | `1286` |
+| `mailboxSendAppConfigured` | `boolean` (`mailboxSendAppCredentialsPresent()`, `lib/mailbox-send-app.ts`) — **#4241:** the dedicated mailbox-send app registration, replacing `mtAppConfigured` (the shared read app) | — |
+| `ownTenantRecorded` | `boolean` (`!!msps.entra_tenant_id`) — **#4241:** every send is refused while this is false (#4242) | — |
 | `connector` | `MailboxConnector \| null` — `{ connectorId, tenantId, mailboxUpn, fromDisplayName, isActive, consentedAt, revokedAt, updatedAt }` | `1287`, cols `1262-1269` |
 | `automatedCustomerEmailsEnabled` | `boolean` (from `mspsTable`, default `true` if row missing) | `1288` |
 | `writeBackEnabled` | `boolean` (from `mspsTable`, default `false` if row missing) | `1289` |
 
 **`POST /connector/mailbox/connect`** (`:1299-1347`) — body `mailboxConnectSchema` (`:1293-1297`):
 `{ mailboxUpn: email, fromDisplayName: string(2-120), returnPath?: string }`. 503s
-`"Multi-tenant app credentials not configured..."` if `mtAppCredentialsPresent()` is false
+`"Mailbox send app not configured..."` if `mailboxSendAppCredentialsPresent()` is false (#4241; was the read app's `mtAppCredentialsPresent()`)
 (`:1303-1306`) — a real, reachable degraded state, not hypothetical. **#4227:** resolves the
 Entra tenant GUID that owns `mailboxUpn`'s domain from Microsoft's public OpenID discovery
 document (`resolveEntraTenantForDomain`, `lib/consent-verification.ts`) — `400` if the domain is
@@ -576,10 +577,12 @@ scope, not an oversight).
 - **Group B connector, no row yet** → real, documented defaults (`connectorMode: "delegated"`,
   everything else off/null) — not an error, the common first-visit state for any MSP that hasn't
   configured a connector (§1b).
-- **Group C mailbox, `mtAppConfigured: false`** → `POST /connect` 503s outright; `GET /mailbox`
+- **Group C mailbox, `mailboxSendAppConfigured: false`** → `POST /connect` 503s outright; `GET /mailbox`
   still returns a valid (all-false) status object — the UI should distinguish "not configured
-  platform-wide" (mtAppConfigured false, nothing an MSP admin can do) from "not yet connected by
-  this MSP" (mtAppConfigured true, connector null).
+  platform-wide" (mailboxSendAppConfigured false, nothing an MSP admin can do) from "not yet connected by
+  this MSP" (mailboxSendAppConfigured true, connector null). `ownTenantRecorded: false` is a third
+  state: a connector may exist, but `sendMailViaGraphForMsp` refuses every send until a platform
+  admin records `msps.entra_tenant_id` (#4241/#4242).
 - **Group H billing, no subscription row** → `null`, not a 404 — genuinely valid for an MSP that
   predates Stripe billing or is on a manually-managed plan.
 - **Group H billing, no Stripe key configured platform-wide** → `503` from the portal-session

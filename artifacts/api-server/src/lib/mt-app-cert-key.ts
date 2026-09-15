@@ -18,8 +18,12 @@
 
 const ENV_VAR = "MT_APP_CERT_PRIVATE_KEY";
 
-/** Decode a raw `MT_APP_CERT_PRIVATE_KEY` value (base64-of-PEM or legacy PEM) to PEM text. */
-export function decodeMtAppCertPrivateKey(raw: string): string {
+/**
+ * Decode a raw certificate private key env value (base64-of-PEM or legacy PEM) to PEM
+ * text. `envVar` only names the variable in errors — the dedicated mailbox-send app's
+ * `MAILBOX_SEND_APP_CERT_PRIVATE_KEY` (Git #4241) uses this same wire format.
+ */
+export function decodeMtAppCertPrivateKey(raw: string, envVar: string = ENV_VAR): string {
   const value = raw.trim();
   if (value.includes("-----BEGIN")) {
     return value.replace(/\\n/g, "\n");
@@ -27,14 +31,14 @@ export function decodeMtAppCertPrivateKey(raw: string): string {
   const compact = value.replace(/\s+/g, "");
   if (!compact || !/^[A-Za-z0-9+/]+={0,2}$/.test(compact)) {
     throw new Error(
-      `${ENV_VAR} is neither a PEM nor a base64-encoded PEM. Expected a single-line ` +
+      `${envVar} is neither a PEM nor a base64-encoded PEM. Expected a single-line ` +
         "base64 encoding of the private key PEM (Git #4156).",
     );
   }
   const pem = Buffer.from(compact, "base64").toString("utf8");
   if (!pem.includes("-----BEGIN")) {
     throw new Error(
-      `${ENV_VAR} base64-decodes but the result is not a PEM (no -----BEGIN marker). ` +
+      `${envVar} base64-decodes but the result is not a PEM (no -----BEGIN marker). ` +
         "Expected base64 of the full PEM text, markers and newlines included (Git #4156).",
     );
   }
@@ -43,7 +47,12 @@ export function decodeMtAppCertPrivateKey(raw: string): string {
 
 /** Read and decode `MT_APP_CERT_PRIVATE_KEY` from the environment; undefined when unset/empty. */
 export function readMtAppCertPrivateKeyPem(env: NodeJS.ProcessEnv = process.env): string | undefined {
-  const raw = env[ENV_VAR];
+  return readCertPrivateKeyPem(ENV_VAR, env);
+}
+
+/** Read and decode any certificate private key env var in the #4156 format; undefined when unset/empty. */
+export function readCertPrivateKeyPem(envVar: string, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const raw = env[envVar];
   if (!raw || !raw.trim()) return undefined;
-  return decodeMtAppCertPrivateKey(raw);
+  return decodeMtAppCertPrivateKey(raw, envVar);
 }

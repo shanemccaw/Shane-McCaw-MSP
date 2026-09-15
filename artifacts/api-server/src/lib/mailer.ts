@@ -2,7 +2,8 @@ import { db, emailTemplatesTable, emailEventsTable, clientHealthHistoryTable, ms
 import { eq, desc } from "drizzle-orm";
 import { logger } from "./logger.ts";
 const log = logger.child({ channel: "comms.email" });
-import { graphCredentialsPresent, sendMailViaGraph, sendMailViaGraphForMsp, mtAppCredentialsPresent, ConsentRevokedError } from "./graph.ts";
+import { graphCredentialsPresent, sendMailViaGraph, sendMailViaGraphForMsp, ConsentRevokedError } from "./graph.ts";
+import { mailboxSendAppCredentialsPresent } from "./mailbox-send-app.ts";
 import { computeTenantHealthVars } from "./tenant-signals.ts";
 import { getMspPortalBaseUrl } from "./portal-url.ts";
 
@@ -413,11 +414,13 @@ export async function sendEmailForMspOrThrow(
   const html = opts?.skipWrapper ? bodyHtml : await brandedEmail(bodyHtml);
 
   // ── Path 1: MSP-owned mailbox (preferred) ────────────────────────────────────
-  if (mtAppCredentialsPresent()) {
+  // #4241: gated on the dedicated mailbox-send app, not the shared read app.
+  if (mailboxSendAppCredentialsPresent()) {
     const connector = await getMspMailboxConnector(mspId);
     if (connector) {
       try {
         await sendMailViaGraphForMsp({
+          mspId,
           mspTenantId: connector.tenantId,
           fromMailboxUpn: connector.mailboxUpn,
           fromDisplayName: connector.fromDisplayName,

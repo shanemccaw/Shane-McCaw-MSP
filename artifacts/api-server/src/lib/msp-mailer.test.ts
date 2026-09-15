@@ -29,7 +29,6 @@ vi.mock("./graph.ts", () => ({
   graphCredentialsPresent: vi.fn(),
   sendMailViaGraph: vi.fn(),
   sendMailViaGraphForMsp: vi.fn(),
-  mtAppCredentialsPresent: vi.fn(),
   ConsentRevokedError: class ConsentRevokedError extends Error {
     tenantId: string;
     constructor(tenantId: string) {
@@ -38,6 +37,10 @@ vi.mock("./graph.ts", () => ({
       this.tenantId = tenantId;
     }
   },
+}));
+
+vi.mock("./mailbox-send-app.ts", () => ({
+  mailboxSendAppCredentialsPresent: vi.fn(),
 }));
 
 // Module code takes its own child logger off the shared `logger` singleton, so the mock
@@ -67,6 +70,7 @@ import {
 } from "./mailer.ts";
 
 import * as graphMod from "./graph.ts";
+import * as mailboxSendAppMod from "./mailbox-send-app.ts";
 import { db } from "@workspace/db";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -137,8 +141,8 @@ describe("getMspMailboxConnector", () => {
 describe("sendEmailForMspOrThrow — connected mailbox (Path 1)", () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
-  it("routes through MSP mailbox when connector exists and MT app is configured", async () => {
-    vi.mocked(graphMod.mtAppCredentialsPresent).mockReturnValue(true);
+  it("routes through MSP mailbox when connector exists and the mailbox send app is configured (#4241)", async () => {
+    vi.mocked(mailboxSendAppMod.mailboxSendAppCredentialsPresent).mockReturnValue(true);
 
     let callCount = 0;
     vi.mocked(db.select).mockImplementation(() => {
@@ -156,6 +160,7 @@ describe("sendEmailForMspOrThrow — connected mailbox (Path 1)", () => {
 
     expect(graphMod.sendMailViaGraphForMsp).toHaveBeenCalledWith(
       expect.objectContaining({
+        mspId: 1,
         mspTenantId: "tenant-xyz",
         fromMailboxUpn: "mail@acme.com",
         fromDisplayName: "Acme IT",
@@ -171,7 +176,7 @@ describe("sendEmailForMspOrThrow — consent revoked (deactivate + fallback)", (
   beforeEach(() => { vi.clearAllMocks(); });
 
   it("deactivates connector and falls back to platform mailbox on ConsentRevokedError", async () => {
-    vi.mocked(graphMod.mtAppCredentialsPresent).mockReturnValue(true);
+    vi.mocked(mailboxSendAppMod.mailboxSendAppCredentialsPresent).mockReturnValue(true);
     vi.mocked(graphMod.graphCredentialsPresent).mockReturnValue(true);
     process.env.GRAPH_MAIL_USER_ID = "platform@shanemccaw.com";
 
@@ -210,7 +215,7 @@ describe("sendEmailForMspOrThrow — no connector (display-name fallback)", () =
   beforeEach(() => { vi.clearAllMocks(); });
 
   it("uses platform mailbox with MSP name override when no connector exists", async () => {
-    vi.mocked(graphMod.mtAppCredentialsPresent).mockReturnValue(true);
+    vi.mocked(mailboxSendAppMod.mailboxSendAppCredentialsPresent).mockReturnValue(true);
     vi.mocked(graphMod.graphCredentialsPresent).mockReturnValue(true);
     process.env.GRAPH_MAIL_USER_ID = "platform@shanemccaw.com";
 
@@ -242,7 +247,7 @@ describe("sendEmailForMspOrThrow — no transport", () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
   it("throws when no Graph credentials are configured at all", async () => {
-    vi.mocked(graphMod.mtAppCredentialsPresent).mockReturnValue(false);
+    vi.mocked(mailboxSendAppMod.mailboxSendAppCredentialsPresent).mockReturnValue(false);
     vi.mocked(graphMod.graphCredentialsPresent).mockReturnValue(false);
     delete process.env.GRAPH_MAIL_USER_ID;
 

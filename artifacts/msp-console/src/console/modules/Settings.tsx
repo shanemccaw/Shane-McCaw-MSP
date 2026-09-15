@@ -476,8 +476,11 @@ function MailboxTab() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
       <Card title="Outbound mailbox" note="The Microsoft 365 mailbox the platform sends customer email from.">
-        {!s.mtAppConfigured && (
-          <ErrorPanel error={new MspSettingsApiError(503, "The platform's multi-tenant app credentials are not configured — connecting a mailbox is not available until a platform admin sets that up.")} />
+        {!s.mailboxSendAppConfigured && (
+          <ErrorPanel error={new MspSettingsApiError(503, "The platform's mailbox send app is not configured — connecting a mailbox is not available until a platform admin sets that up.")} />
+        )}
+        {s.mailboxSendAppConfigured && !s.ownTenantRecorded && (
+          <ErrorPanel error={new MspSettingsApiError(409, "Your organisation's own Microsoft 365 tenant has not been recorded yet — email will not be sent from a connected mailbox until a platform admin records it.")} />
         )}
         <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
           <Pill label={s.connected ? "Connected" : "Not connected"} tone={s.connected ? signal.ok : signal.neutral} />
@@ -500,7 +503,7 @@ function MailboxTab() {
               </Field>
             </div>
             <div>
-              <Btn label="Connect mailbox" onClick={connect} pending={connectMutation.isPending} disabled={!s.mtAppConfigured || !mailboxUpn.trim() || !fromDisplayName.trim()} />
+              <Btn label="Connect mailbox" onClick={connect} pending={connectMutation.isPending} disabled={!s.mailboxSendAppConfigured || !mailboxUpn.trim() || !fromDisplayName.trim()} />
             </div>
             <span style={{ fontSize: 10.5, color: text.faint, textWrap: "pretty" }}>
               Opens Microsoft's admin-consent screen in a new tab. No client secret is ever stored — the platform's app uses client-credentials after consent.

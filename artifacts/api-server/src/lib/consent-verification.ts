@@ -36,10 +36,12 @@
  */
 
 import { logger } from "./logger.ts";
+import { mailboxSendAppClientAuthParams, mailboxSendAppCredentialsPresent } from "./mailbox-send-app.ts";
 
 const log = logger.child({ channel: "auth" });
 
-export type ConsentApp = "read" | "write";
+/** `mailbox` is the dedicated mailbox-send registration (#4241, ./mailbox-send-app.ts). */
+export type ConsentApp = "read" | "write" | "mailbox";
 
 /** Resource whose app roles a consent covers. */
 export type ConsentResource = "graph" | "sharepoint";
@@ -74,10 +76,17 @@ export type ConsentVerificationResult =
 
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function appCredentials(app: ConsentApp): { clientId?: string; clientSecret?: string } {
-  return app === "write"
-    ? { clientId: process.env.MT_APP_WRITE_CLIENT_ID, clientSecret: process.env.MT_APP_WRITE_CLIENT_SECRET }
-    : { clientId: process.env.MT_APP_CLIENT_ID, clientSecret: process.env.MT_APP_CLIENT_SECRET };
+/** Client-authentication fields for the token request, or null when the app is not configured. */
+function appClientAuthParams(app: ConsentApp, tenantId: string): Record<string, string> | null {
+  if (app === "mailbox") {
+    // Secret or certificate assertion — the dedicated app supports both.
+    return mailboxSendAppCredentialsPresent() ? mailboxSendAppClientAuthParams(tenantId) : null;
+  }
+  const { clientId, clientSecret } =
+    app === "write"
+      ? { clientId: process.env.MT_APP_WRITE_CLIENT_ID, clientSecret: process.env.MT_APP_WRITE_CLIENT_SECRET }
+      : { clientId: process.env.MT_APP_CLIENT_ID, clientSecret: process.env.MT_APP_CLIENT_SECRET };
+  return clientId && clientSecret ? { client_id: clientId, client_secret: clientSecret } : null;
 }
 
 function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
@@ -115,8 +124,13 @@ async function attempt(
   app: ConsentApp,
   resource: ConsentResource,
 ): Promise<ConsentVerificationResult> {
-  const { clientId, clientSecret } = appCredentials(app);
-  if (!clientId || !clientSecret) {
+  let clientAuth: Record<string, string> | null;
+  try {
+    clientAuth = appClientAuthParams(app, tenantId);
+  } catch (err) {
+    return { ok: false, reason: "unverifiable", detail: `${app} app credentials unusable: ${(err as Error).message}` };
+  }
+  if (!clientAuth) {
     return { ok: false, reason: "unverifiable", detail: `${app} app credentials not configured` };
   }
 
@@ -127,8 +141,7 @@ async function attempt(
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: "client_credentials",
-        client_id: clientId,
-        client_secret: clientSecret,
+        ...clientAuth,
         scope: RESOURCE_SCOPE[resource],
       }).toString(),
     });

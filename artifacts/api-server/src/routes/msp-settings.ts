@@ -92,7 +92,8 @@ const log = logger.child({ channel: "tenant.msp-admin" });
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { setSecretValue, getSecretMetadata } from "../lib/azure-keyvault.ts";
 import { getStripeKey } from "../lib/stripe.ts";
-import { buildAdminConsentUrl, mtAppCredentialsPresent } from "../lib/graph.ts";
+import { buildAdminConsentUrl } from "../lib/graph.ts";
+import { mailboxSendAppClientId, mailboxSendAppCredentialsPresent, MAILBOX_SEND_APP_NOT_CONFIGURED } from "../lib/mailbox-send-app.ts";
 import { verifyTenantConsentWithMicrosoft, resolveEntraTenantForDomain } from "../lib/consent-verification.ts";
 import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
 import { sendEmailForMsp, emailButton, brandedEmail, sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer.ts";
@@ -1442,8 +1443,11 @@ router.put("/msp/settings/agreement-template", requireCapability("ladder.msp-adm
 //   4. Microsoft redirects to /mailbox/callback — server burns state, upserts connector.
 //   5. MSP is redirected back to the portal Settings page.
 //
-// No client secret is stored. The platform MT app's client_credentials grant is used
-// after admin consent is granted for the MSP's tenant with Mail.Send scope.
+// No client secret is stored. The DEDICATED mailbox-send app registration (#4241,
+// lib/mailbox-send-app.ts — MAILBOX_SEND_APP_*) is consented and used, never the
+// shared read app every customer tenant consents to for scanning. Its
+// client_credentials grant is used after admin consent with Mail.Send on the MSP's
+// own tenant, and every send re-checks the token's tenant against msps.entra_tenant_id.
 //
 // Tenant binding (#4227): the connector is bound to the Entra tenant that owns the
 // mailbox's domain, resolved from Microsoft at step 2 and recorded on the state. The
@@ -1531,6 +1535,7 @@ router.get("/msp/settings/connector/mailbox", requireCapability("ladder.msp-admi
     .select({
       automatedCustomerEmailsEnabled: mspsTable.automatedCustomerEmailsEnabled,
       writeBackEnabled: mspsTable.writeBackEnabled,
+      entraTenantId: mspsTable.entraTenantId,
     })
     .from(mspsTable)
     .where(eq(mspsTable.id, mspId))
@@ -1538,7 +1543,9 @@ router.get("/msp/settings/connector/mailbox", requireCapability("ladder.msp-admi
 
   res.json({
     connected: !!(row?.isActive),
-    mtAppConfigured: mtAppCredentialsPresent(),
+    mailboxSendAppConfigured: mailboxSendAppCredentialsPresent(),
+    // #4241: sends are refused until this is recorded (by a platform admin, #4242).
+    ownTenantRecorded: !!msp?.entraTenantId,
     connector: row ?? null,
     automatedCustomerEmailsEnabled: msp?.automatedCustomerEmailsEnabled ?? true,
     writeBackEnabled: msp?.writeBackEnabled ?? false,
@@ -1555,8 +1562,8 @@ router.post("/msp/settings/connector/mailbox/connect", requireCapability("ladder
   const mspId = resolveMspIdStrict(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
-  if (!mtAppCredentialsPresent()) {
-    apiError(res, 503, "Multi-tenant app credentials not configured (MT_APP_CLIENT_ID / MT_APP_CLIENT_SECRET). Contact the platform admin.");
+  if (!mailboxSendAppCredentialsPresent()) {
+    apiError(res, 503, `${MAILBOX_SEND_APP_NOT_CONFIGURED}. Contact the platform admin.`);
     return;
   }
 
@@ -1632,7 +1639,8 @@ router.post("/msp/settings/connector/mailbox/connect", requireCapability("ladder
 
   // The mailbox's own tenant as the hint (#4227), so the admin signs in to the
   // one organisation the callback will accept rather than whichever is cached.
-  const consentUrl = buildAdminConsentUrl(owner.tenantId, state, callbackUrl, process.env.MT_APP_CLIENT_ID ?? "");
+  // #4241: consent is for the dedicated mailbox-send app, not the read app.
+  const consentUrl = buildAdminConsentUrl(owner.tenantId, state, callbackUrl, mailboxSendAppClientId() ?? "");
 
   await writeAuditLog({
     req,
@@ -1759,8 +1767,9 @@ router.get("/msp/settings/connector/mailbox/callback", async (req: Request, res:
   // includes Mail.Send — the one permission sendMailViaGraphForMsp needs; a
   // connector without it is activated only to fail on every send. Runs before
   // the state burn, so a platform-side fault leaves the same link retryable.
+  // #4241: verified against the dedicated mailbox-send app the consent URL named.
   const verification = await verifyTenantConsentWithMicrosoft(boundTenantId, {
-    app: "read",
+    app: "mailbox",
     resource: "graph",
     requireAnyRole: MAILBOX_REQUIRED_ROLES,
   });

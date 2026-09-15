@@ -109,7 +109,10 @@ export interface MailboxConnector {
 
 export interface MailboxStatus {
   readonly connected: boolean;
-  readonly mtAppConfigured: boolean;
+  /** The dedicated mailbox-send app registration (#4241) is configured on the platform. */
+  readonly mailboxSendAppConfigured: boolean;
+  /** msps.entra_tenant_id is set (#4242); mailbox sends are refused until it is (#4241). */
+  readonly ownTenantRecorded: boolean;
   readonly connector: MailboxConnector | null;
   readonly automatedCustomerEmailsEnabled: boolean;
   readonly writeBackEnabled: boolean;

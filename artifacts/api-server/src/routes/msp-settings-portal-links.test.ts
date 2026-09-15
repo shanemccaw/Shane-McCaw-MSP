@@ -113,9 +113,16 @@ vi.mock("../lib/stripe.ts", () => ({
   getStripeKey: vi.fn().mockReturnValue(null),
 }));
 
+const buildAdminConsentUrlMock = vi.fn().mockReturnValue("https://login.microsoftonline.com/common/adminconsent?test=1");
 vi.mock("../lib/graph.ts", () => ({
-  buildAdminConsentUrl: vi.fn().mockReturnValue("https://login.microsoftonline.com/common/adminconsent?test=1"),
-  mtAppCredentialsPresent: vi.fn().mockReturnValue(true),
+  buildAdminConsentUrl: (...args: unknown[]) => buildAdminConsentUrlMock(...args),
+}));
+
+// #4241: the connector consents and verifies against the dedicated mailbox-send app.
+vi.mock("../lib/mailbox-send-app.ts", () => ({
+  mailboxSendAppCredentialsPresent: vi.fn().mockReturnValue(true),
+  mailboxSendAppClientId: vi.fn().mockReturnValue("mailbox-send-app-client-id"),
+  MAILBOX_SEND_APP_NOT_CONFIGURED: "Mailbox send app not configured",
 }));
 
 // #4197: the mailbox callback confirms the tenant's consent with Microsoft
@@ -320,7 +327,7 @@ describe("msp-settings.ts portal links (#154)", () => {
 
     expect(verifyConsentMock).toHaveBeenCalledWith(
       MSP_TENANT,
-      expect.objectContaining({ app: "read", resource: "graph", requireAnyRole: ["Mail.Send"] }),
+      expect.objectContaining({ app: "mailbox", resource: "graph", requireAnyRole: ["Mail.Send"] }),
     );
     expect(insertCalls).toHaveLength(1);
     expect((insertCalls[0].values as any).tenantId).toBe(MSP_TENANT);
@@ -351,6 +358,8 @@ describe("msp-settings.ts portal links (#154)", () => {
     expect(resolveDomainMock).toHaveBeenCalledWith("mccawsoft2.onmicrosoft.com");
     const stateInsert = insertCalls.find((c) => (c.values as any)?.state);
     expect((stateInsert!.values as any).expectedTenantId).toBe(MSP_TENANT);
+    // #4241: the consent URL names the dedicated mailbox-send app, never MT_APP_CLIENT_ID.
+    expect(buildAdminConsentUrlMock).toHaveBeenLastCalledWith(MSP_TENANT, expect.any(String), expect.any(String), "mailbox-send-app-client-id");
   });
 
   it("POST .../connector/mailbox/connect refuses a non-Microsoft domain and another MSP's customer tenant (#4227)", async () => {
