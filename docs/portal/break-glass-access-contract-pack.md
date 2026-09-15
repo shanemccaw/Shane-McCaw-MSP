@@ -157,6 +157,7 @@ Response — one of two shapes:
 | `pending` | `true` | literal |
 | `pendingSecretId` | `number` | `secret.id` |
 | `status` | `"pending_delivery"` | `secret.status` (only value reachable here — see §6 enum) |
+| `breakGlassAccountId` | `string \| null` | `secret.breakGlassAccountId` (Git #4139) — the break-glass account (Entra object id or UPN) bound to the secret row since #4015; `null` on rows predating it. An identifier, not the credential. Served only after the caller also passes `assertCustomerAccess` on `secret.customerId` (404 otherwise), since the row's customer comes from the gate's configurable `customerIdField` rather than `payload.customerId`. Same value the MSP console detail read serves (§3.3) |
 | `credentialUncertainAt` | `Date` (ISO string over the wire) `| null` | `secret.credentialUncertainAt` (Git #4041) — non-null while invites and reveals refuse pending a re-run admin-override (§2.6). Also served on `GET /api/portal/break-glass` handoffs and on the MSP console list/detail reads (§3.1, §3.3) |
 | `attempts` | array | see below |
 

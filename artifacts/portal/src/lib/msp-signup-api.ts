@@ -10,12 +10,14 @@
  * Note on the platform agreement: `/api/platform/agreement/*` (current,
  * acceptance-status, accept) and the admin CRUD that published a version
  * were deleted by Git #3412 ("no longer needed per Shane", 2026-09-10) —
- * a week after this pack certified them live. There is no way left to
- * publish a version, and the one row that ever existed
- * (`platform_agreements.id=1`, version "Test") was never published. This
- * module deliberately has no function for that endpoint group; signup.tsx
- * renders the "no agreement published" state as a permanent, real fact
- * rather than polling a route that no longer exists.
+ * a week after this pack certified them live. Git #4048 restored the
+ * admin-publish path (`platform-agreements.ts`, the admin page, its nav
+ * entry), so publishing a version is possible again — but no version has
+ * actually been published yet (the one row that ever existed,
+ * `platform_agreements.id=1` version "Test", was never published). This
+ * module still has no function for that endpoint group; signup.tsx
+ * renders the "no agreement published" state as the current, real fact
+ * rather than polling for one.
  */
 
 export class MspSignupApiError extends Error {

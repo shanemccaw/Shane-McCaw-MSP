@@ -1,6 +1,6 @@
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
-import { ConsentOnboardingShell, ConsentCard } from "@/components/consent/ConsentOnboardingShell";
+import { ConsentOnboardingShell, ConsentCard, ConsentLedger } from "@/components/consent/ConsentOnboardingShell";
 
 /**
  * Identity interstitial (Feature #1650, Git #3993; originally Git #1296).
@@ -96,6 +96,7 @@ export default function PortalIdentityInterstitialPage({ onContinue }: { onConti
           </Button>
         </div>
       </ConsentCard>
+      <ConsentLedger />
     </ConsentOnboardingShell>
   );
 }

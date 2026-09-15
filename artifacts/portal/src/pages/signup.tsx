@@ -32,15 +32,16 @@ interface CompanyDetails {
  * ever apply once a platform agreement is published. `GET
  * /api/platform/agreement/current` (and the admin UI that would publish one)
  * were deleted by Git #3412 ("no longer needed per Shane", 2026-09-10) — a
- * week after this Feature's own contract pack certified them live. The one
- * `platform_agreements` row that has ever existed was never published, and
- * there is no way left to publish one, so the "no agreement published"
- * banner below is not a placeholder for a state this page will later poll —
- * it is the permanent, real state, exactly as the design's own ledger names
- * it. `agreementVersion`/`agreementId`/`checkboxConfirmed` are therefore
- * never sent; the server's own gate (msp-signup.ts:150-196, unaffected by
- * #3412 — it queries the table directly) sees no current agreement and
- * proceeds, the same real no-op the design describes.
+ * week after this Feature's own contract pack certified them live. Git #4048
+ * restored the admin-publish path (`platform-agreements.ts`, the admin page,
+ * its nav entry), so a version can be published again — but no version has
+ * actually been published yet (the one `platform_agreements` row that has
+ * ever existed was never published), so the "no agreement published" banner
+ * below still reflects the current, real state rather than a state this page
+ * polls for. `agreementVersion`/`agreementId`/`checkboxConfirmed` are
+ * therefore never sent; the server's own gate (msp-signup.ts:150-196,
+ * unaffected by #3412 — it queries the table directly) sees no current
+ * agreement and proceeds, the same real no-op the design describes.
  */
 export default function SignupPage() {
   const [tiers, setTiers] = useState<SignupTier[]>([]);

@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
 import { useParams } from "wouter";
 import { Loader2 } from "lucide-react";
-import { ConsentOnboardingShell, ConsentCard } from "@/components/consent/ConsentOnboardingShell";
+import { ConsentOnboardingShell, ConsentCard, ConsentLedger } from "@/components/consent/ConsentOnboardingShell";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   fetchOnboardingLink,
   startOnboardingConsent,
+  fetchCatalogServices,
+  serviceIsFree,
   type OnboardingLinkResult,
+  type CatalogService,
 } from "@/lib/consent-onboarding-api";
 
 const GONE_COPY: Record<Exclude<OnboardingLinkResult["state"], "valid">, { title: string; body: string; code: string }> = {
@@ -60,6 +63,7 @@ export default function OnboardingLinkPage() {
   const [result, setResult] = useState<OnboardingLinkResult | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [service, setService] = useState<CatalogService | null>(null);
 
   async function connect() {
     if (!token || connecting) return;
@@ -92,6 +96,18 @@ export default function OnboardingLinkPage() {
     };
   }, [token]);
 
+  const linkServiceId = result?.state === "valid" ? result.link.serviceId : null;
+  useEffect(() => {
+    if (!linkServiceId) return;
+    let cancelled = false;
+    void fetchCatalogServices().then((all) => {
+      if (!cancelled && all) setService(all.find((s) => s.id === linkServiceId) ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [linkServiceId]);
+
   if (!result) {
     return (
       <ConsentOnboardingShell stateLine="Public · reading invitation">
@@ -120,6 +136,7 @@ export default function OnboardingLinkPage() {
             </Button>
           </div>
         </ConsentCard>
+        <ConsentLedger />
       </ConsentOnboardingShell>
     );
   }
@@ -146,6 +163,21 @@ export default function OnboardingLinkPage() {
             <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">For</span>
             <span className="text-[12.5px] text-foreground">{link.customerEmail}</span>
             <span className="text-[10.5px] text-muted-foreground">pre-filled by your provider</span>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Service</span>
+            <span className="text-[12.5px] text-foreground">
+              {link.serviceId ? (service ? service.name : "Loading…") : "Not specified"}
+            </span>
+            <span className="text-[10.5px] text-muted-foreground">
+              {link.serviceId
+                ? service
+                  ? serviceIsFree(service)
+                    ? "free offering"
+                    : "priced per seat, agreed with your provider"
+                  : ""
+                : "your provider will confirm pricing directly"}
+            </span>
           </div>
           <div className="flex flex-col gap-0.5">
             <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Link expires</span>
@@ -184,6 +216,7 @@ export default function OnboardingLinkPage() {
           </Button>
         </div>
       </ConsentCard>
+      <ConsentLedger />
     </ConsentOnboardingShell>
   );
 }
