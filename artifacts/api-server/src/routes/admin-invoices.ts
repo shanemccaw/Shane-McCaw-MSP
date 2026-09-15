@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, invoicesTable, usersTable } from "@workspace/db";
 import { eq, and, asc, desc } from "drizzle-orm";
+import { z } from "zod";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
 import { createAuditLog } from "../lib/audit.ts";
@@ -12,6 +13,31 @@ import fs from "fs";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "admin.invoices" });
+
+// Shane's decision (2026-09-14, #4109 issue body — mirrored onto AdminV2 by
+// #4117): a SENT invoice (status in due/paid/overdue) is never edited in
+// place, by a PlatformAdmin any more than by an MSP operator. The only path
+// forward once sent is POST .../revise (mandatory reason, new versioned row,
+// prior row marked `superseded`) — see routes/msp-invoices.ts for the model
+// this mirrors and lib/db/migrations/manual/2026-09-14-invoice-versioned-reissue-4109.sql
+// for the columns it reuses.
+const SENT_STATUSES = ["due", "paid", "overdue"] as const;
+
+function zodMessage(error: z.ZodError): string {
+  return error.issues.map((i) => i.message).join("; ");
+}
+
+const reviseSchema = z.object({
+  reason: z.string().trim().min(1, "A reason is required to revise a sent invoice"),
+  amount: z.number().positive().optional(),
+  description: z.string().trim().max(4000).nullable().optional(),
+  dueDate: z.string().datetime().nullable().optional(),
+  currency: z.string().trim().min(1).max(10).optional(),
+  invoiceType: z.enum(["instant", "retainer"]).optional(),
+  couponCode: z.string().trim().max(100).nullable().optional(),
+  discountAmount: z.number().nonnegative().nullable().optional(),
+  projectId: z.number().int().positive().nullable().optional(),
+});
 
 const UPLOADS_BASE = process.env.UPLOADS_DIR
   ? path.resolve(process.env.UPLOADS_DIR)
@@ -143,6 +169,13 @@ router.patch("/admin/invoices/:id", requireAdmin, async (req: Request, res: Resp
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
+  const [existing] = await db.select({ status: invoicesTable.status }).from(invoicesTable).where(eq(invoicesTable.id, id)).limit(1);
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (existing.status !== "draft") {
+    res.status(409).json({ error: "Invoice has been sent and can no longer be edited directly — use revise instead" });
+    return;
+  }
+
   const { status, dueDate } = req.body as { status?: string; dueDate?: string };
   const updates: Partial<typeof invoicesTable.$inferInsert & { updatedAt: Date }> = { updatedAt: new Date() };
   if (status !== undefined) {
@@ -171,6 +204,95 @@ router.patch("/admin/invoices/:id", requireAdmin, async (req: Request, res: Resp
   res.json(updated);
 });
 
+// ── POST /admin/invoices/:id/revise ──────────────────────────────────────────
+// Sent (due/paid/overdue) only. Requires a reason. Creates a new version row,
+// marks the prior row superseded. 409 on a draft — use PATCH for those.
+// Mirrors routes/msp-invoices.ts's .../revise (#4109); see that file's header
+// for the full versioning model.
+router.post("/admin/invoices/:id/revise", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const parsed = reviseSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: zodMessage(parsed.error) }); return; }
+  const d = parsed.data;
+
+  try {
+    const [existing] = await db.select().from(invoicesTable).where(eq(invoicesTable.id, id)).limit(1);
+    if (!existing) { res.status(404).json({ error: "Invoice not found" }); return; }
+    if (!(SENT_STATUSES as readonly string[]).includes(existing.status)) {
+      res.status(409).json({ error: "Only a sent invoice (due/paid/overdue) can be revised — a draft should be updated directly" });
+      return;
+    }
+
+    const [superseded] = await db
+      .update(invoicesTable)
+      .set({ status: "superseded", updatedAt: new Date() })
+      .where(eq(invoicesTable.id, existing.id))
+      .returning();
+
+    const [revised] = await db.insert(invoicesTable).values({
+      clientUserId: existing.clientUserId,
+      projectId: d.projectId !== undefined ? d.projectId : existing.projectId,
+      invoiceNumber: existing.invoiceNumber,
+      description: d.description !== undefined ? d.description : existing.description,
+      amount: d.amount !== undefined ? Math.round(d.amount * 100) : existing.amount,
+      currency: d.currency ?? existing.currency,
+      status: "due",
+      dueDate: d.dueDate !== undefined ? (d.dueDate ? new Date(d.dueDate) : null) : existing.dueDate,
+      invoiceType: d.invoiceType ?? existing.invoiceType,
+      couponCode: d.couponCode !== undefined ? d.couponCode : existing.couponCode,
+      discountAmount: d.discountAmount !== undefined
+        ? (d.discountAmount != null ? String(d.discountAmount) : null)
+        : existing.discountAmount,
+      version: existing.version + 1,
+      supersedesInvoiceId: existing.id,
+      revisionReason: d.reason,
+    }).returning();
+
+    void createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.name ?? req.user!.email,
+      actorRole: "admin",
+      actionType: "invoice_revised",
+      entityType: "invoice",
+      entityId: revised.id,
+      entityLabel: revised.invoiceNumber,
+      clientId: revised.clientUserId,
+      metadata: {
+        reason: d.reason,
+        supersedesInvoiceId: superseded.id,
+        previousVersion: superseded.version,
+        newVersion: revised.version,
+        amount: (revised.amount / 100).toFixed(2),
+        actorSurface: "admin",
+      },
+    });
+
+    void uploadInvoiceToSharePoint(revised.id);
+    // Same customer-facing notification #4116 specified for the MSP-console
+    // revise path — the surface that made the change doesn't change what the
+    // customer sees.
+    void createNotification({
+      title: "Your invoice was updated, see what changed",
+      body: `Invoice ${revised.invoiceNumber}. Reason: ${d.reason}`,
+      notifType: "invoice",
+      category: "invoice",
+      linkPath: `/billing/invoices/${revised.id}`,
+      recipient: { type: "customer_user", userId: revised.clientUserId },
+    });
+
+    log.info({ invoiceId: id, revisedId: revised.id, version: revised.version }, "admin invoice revised");
+    res.status(201).json({
+      superseded: { ...superseded, amount: (superseded.amount / 100).toFixed(2) },
+      revised: { ...revised, amount: (revised.amount / 100).toFixed(2) },
+    });
+  } catch (err) {
+    log.error({ err, id }, "POST admin invoice revise failed");
+    res.status(500).json({ error: "Failed to revise invoice" });
+  }
+});
+
 router.delete("/admin/invoices/:id", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
@@ -179,9 +301,8 @@ router.delete("/admin/invoices/:id", requireAdmin, async (req: Request, res: Res
   // this DELETE previously removed an invoice regardless of status, which
   // could destroy a customer's already-issued (or already-paid) bill with no
   // trace. Draft-only, same rule the new MSP-console surface enforces
-  // (routes/msp-invoices.ts). The broader "AdminV2 should also gain a real
-  // revise-with-reason path instead of just blocking delete" is filed
-  // separately — see the sibling finding issue under #1692.
+  // (routes/msp-invoices.ts). #4117 completed the picture by giving PATCH the
+  // same gate and adding POST .../revise above.
   const [existing] = await db.select({ status: invoicesTable.status }).from(invoicesTable).where(eq(invoicesTable.id, id)).limit(1);
   if (!existing) { res.status(404).json({ error: "Invoice not found" }); return; }
   if (existing.status !== "draft") {
