@@ -122,6 +122,11 @@ export const MSP_PAGES: LeafPage[] = [
   // board (`ProjectDetail.tsx`, fixed pipeline, #3433's target).
   { id: "projects", label: "Projects", icon: "kanban" },
   { id: "policy", label: "Policy engine", icon: "shield-check" },
+  // Microsoft Changes (Git #2600, Feature #1688) — authoring is universal
+  // (once per announcement, applied to every tenant, #1532), same
+  // "Operations, not per-tenant" reasoning as everything else on this list;
+  // the per-tenant resolution/routing review happens inside the page itself.
+  { id: "m365changes", label: "Microsoft Changes", icon: "megaphone" },
   { id: "staff", label: "Staff Roster", icon: "user-plus" },
   { id: "acctsec", label: "Account Security", icon: "key-round" },
   // Consent and Onboarding (Git #2627, README screen 64) — its routes resolve
@@ -164,7 +169,7 @@ const msp = (id: string): LeafPage => {
 export const MSP_GROUPS: Group[] = [
   {
     id: "delivery", label: "Client Delivery", icon: "briefcase",
-    children: ["timeline", "sales", "sla", "sops", "config", "policy", "reports"].map(msp),
+    children: ["timeline", "sales", "sla", "sops", "config", "policy", "m365changes", "reports"].map(msp),
   },
   {
     id: "access", label: "Access & Accounts", icon: "shield",

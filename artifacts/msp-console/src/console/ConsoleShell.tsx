@@ -62,6 +62,7 @@ import { LaunchControl } from "./modules/LaunchControl";
 import { AzureCredential } from "./modules/AzureCredential";
 import { Projects } from "./modules/Projects";
 import { RequestsAndSupportChat } from "./modules/RequestsAndSupportChat";
+import { MicrosoftChanges } from "@/modules/microsoft-changes/MicrosoftChanges";
 
 function roleLabelFor(p: MspUserProfile): string {
   if (p.mspRole === "PlatformAdmin") return "PlatformAdmin — full access";
@@ -481,6 +482,13 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "msp" && sel.page === "policy") {
     return <PolicyEngine />;
+  }
+  if (sel.kind === "msp" && sel.page === "m365changes") {
+    // Microsoft Changes (#2600, Feature #1688) — the "propose but no CR yet"
+    // branch links out to a specific tenant's Change Control register, the
+    // same tenant-page navigation Projects/ActivityTimeline/ExecutiveView
+    // already use above.
+    return <MicrosoftChanges onOpenTenantPage={(tenant, page) => navigate({ kind: "page", tenant, page })} />;
   }
   if (sel.kind === "msp" && sel.page === "consent") {
     return <ConsentOnboarding />;

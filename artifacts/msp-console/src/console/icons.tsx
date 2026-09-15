@@ -69,6 +69,8 @@ import {
   Cloud,
   // Projects — Simple Kanban (#2621)
   Kanban,
+  // Microsoft Changes (#2600)
+  Megaphone,
   type LucideIcon,
 } from "lucide-react";
 
@@ -252,6 +254,8 @@ const REGISTRY: Record<string, LucideIcon> = {
   cloud: Cloud,
   // Projects — Simple Kanban (#2621)
   kanban: Kanban,
+  // Microsoft Changes (#2600)
+  megaphone: Megaphone,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});

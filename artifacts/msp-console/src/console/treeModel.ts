@@ -474,6 +474,16 @@ export function pageMeta(sel: Selection, customers: DirectoryCustomer[]): PageMe
         note: "Every generated document, every custom canvas, and the schedules nothing yet executes.",
       };
     }
+    // Microsoft Changes (#2600) — no design export exists for this screen
+    // (see the module's own in-app banner); eyebrow/note are authored here,
+    // not lifted from a `.dc.html` logic class.
+    if (sel.page === "m365changes") {
+      return {
+        eyebrow: "MICROSOFT CHANGES",
+        title: "Interpret, resolve, route",
+        note: "Author what a Microsoft change means once, review the real per-tenant counts it produces, and review the routing decision it drives.",
+      };
+    }
     // #4012 — Audit Log's title is the design's own exact copy
     // (`Audit Log.dc.html`'s logic class, the unfiltered `title` branch).
     if (sel.page === "audit") {
