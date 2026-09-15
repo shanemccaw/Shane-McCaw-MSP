@@ -474,6 +474,18 @@ namespace BuildConsole.Services
         private static Task<List<GitBoardIssue>?> TryGetAllIssuesLocalOnlyAsync()
             => GitHubIssueMirror.TryGetBoardIssuesAsync(openOnly: false);
 
+        /// <summary>Git #4190 — how many real issues a milestone/epic completeness check tolerates
+        /// missing from the local mirror before it fails the scope closed. Investigating a real live
+        /// gap on milestone #5 (2 of 2392 real issues briefly unmirrored) found both were issues
+        /// created within the hour before the check ran — the incremental sync genuinely caught up
+        /// on its own by the next tick, with no code-level sync bug involved. A strict `< realTotal`
+        /// comparison fails the WHOLE scope closed for that kind of harmless, self-resolving lag, not
+        /// just a real stuck gap. 2 is a deliberately small, considered tolerance — big enough to
+        /// absorb "an issue landed seconds ago and hasn't synced yet," nowhere near big enough to
+        /// blunt Git #3577's fail-closed intent for a genuinely broken sync (see the bounded check in
+        /// <see cref="CheckMilestoneCompletenessAsync"/> and <see cref="CheckEpicCompleteness"/>).</summary>
+        private const int CompletenessGapTolerance = 2;
+
         /// <summary>Git #3577 (comparison fixed under Git #3712) — the real completeness cross-check
         /// for a MILESTONE scope: the count of <paramref name="mirrored"/> rows whose OWN GitHub
         /// milestone field is <paramref name="milestoneNumber"/> against <c>bt_milestone_mirror</c>'s
@@ -487,7 +499,10 @@ namespace BuildConsole.Services
         /// (Git #2543 transitively-inherited) value, a strict superset for any milestone with sub-issues
         /// that inherit it. Comparing inherited-vs-own let the gate pass while genuinely missing rows —
         /// measured live: +139 on milestone #5, +132 on #16, +124 on #11 (mirrored count read HIGHER
-        /// than real even with the mirror fully synced). Comparing own-vs-own here is the fix.</summary>
+        /// than real even with the mirror fully synced). Comparing own-vs-own here is the fix.
+        ///
+        /// Git #4190 — the gap only fails closed past <see cref="CompletenessGapTolerance"/>, not on
+        /// any nonzero gap. See that constant's own doc for why.</summary>
         private static async Task<MirrorCompleteness> CheckMilestoneCompletenessAsync(int milestoneNumber, IReadOnlyList<GitBoardIssue> mirrored)
         {
             var infos = await GitHubIssueMirror.TryGetMilestoneInfosAsync();
@@ -498,9 +513,16 @@ namespace BuildConsole.Services
 
             int realTotal = real.OpenIssues + real.ClosedIssues;
             int mirroredTotal = mirrored.Count(i => i.OwnMilestoneNumber == milestoneNumber);
-            if (mirroredTotal < realTotal)
+            int gap = realTotal - mirroredTotal;
+            if (gap > CompletenessGapTolerance)
                 return MirrorCompleteness.Incomplete(
-                    $"historical data not yet fully synced for this milestone — {mirroredTotal} of {realTotal} real issue(s) mirrored locally (Git #3577's own backfill-completion follow-up covers closing this gap).");
+                    $"historical data not yet fully synced for this milestone — {mirroredTotal} of {realTotal} real issue(s) mirrored locally " +
+                    $"(gap of {gap} exceeds the {CompletenessGapTolerance}-issue tolerance; Git #3577's own backfill-completion follow-up covers closing this gap).");
+
+            if (gap > 0)
+                ActivityLog.Log("git-board.data",
+                    $"milestone #{milestoneNumber} completeness: {mirroredTotal} of {realTotal} real issue(s) mirrored — " +
+                    $"gap of {gap} tolerated (Git #4190, tolerance {CompletenessGapTolerance}), charted anyway.");
 
             return MirrorCompleteness.Ok;
         }
@@ -516,7 +538,16 @@ namespace BuildConsole.Services
         /// mirror's own descendant walk. If every node in the tree has ALL its real direct children
         /// mirrored, the whole transitive subtree is genuinely complete by induction — built up from
         /// GitHub's own real per-node count, not a re-derivation of the same (possibly incomplete)
-        /// data. One short-of-real node anywhere in the tree fails the whole scope closed.</summary>
+        /// data.
+        ///
+        /// Git #4190 — same tolerance treatment as <see cref="CheckMilestoneCompletenessAsync"/>, but
+        /// applied to the SUM of every node's own deficit across the whole subtree, not per node. A
+        /// per-node tolerance would compound across a large tree (tolerating 2 missing issues at each
+        /// of, say, 500 nodes could silently pass a subtree missing up to 1000 real issues) — the
+        /// opposite of the deliberately small, bounded gap Git #4190 asks for. Walking the whole tree
+        /// and tolerating at most <see cref="CompletenessGapTolerance"/> missing issues total keeps the
+        /// bound identical in spirit to the milestone check regardless of how many nodes the epic
+        /// has.</summary>
         private static (bool Complete, string? Reason) CheckEpicCompleteness(int epicNumber, IReadOnlyList<GitBoardIssue> mirrored)
         {
             var byNumber = GitBoardIssueFilters.BuildByNumberLookup(mirrored);
@@ -539,6 +570,8 @@ namespace BuildConsole.Services
             var visited = new HashSet<int> { epicNumber };
             var queue = new Queue<GitBoardIssue>();
             queue.Enqueue(root);
+            int totalGap = 0;
+            string? worstReason = null;
             while (queue.Count > 0)
             {
                 var node = queue.Dequeue();
@@ -546,11 +579,13 @@ namespace BuildConsole.Services
                 int mirroredDirectChildren = childNumbers.TryGetValue(node.Number, out var kids)
                     ? kids.Count(byNumber.ContainsKey)
                     : 0;
-                if (mirroredDirectChildren < realDirectChildren)
+                int nodeGap = realDirectChildren - mirroredDirectChildren;
+                if (nodeGap > 0)
                 {
-                    return (false,
+                    totalGap += nodeGap;
+                    worstReason ??=
                         $"issue #{node.Number} \"{node.Title}\" has {mirroredDirectChildren} of its real {realDirectChildren} " +
-                        "direct sub-issue(s) mirrored locally — the epic's transitive subtree isn't fully synced yet (Git #3577).");
+                        "direct sub-issue(s) mirrored locally";
                 }
                 if (kids != null)
                 {
@@ -561,6 +596,17 @@ namespace BuildConsole.Services
                     }
                 }
             }
+
+            if (totalGap > CompletenessGapTolerance)
+                return (false,
+                    $"{worstReason} — the epic's transitive subtree has {totalGap} real issue(s) missing across its nodes, " +
+                    $"exceeding the {CompletenessGapTolerance}-issue tolerance — not fully synced yet (Git #3577/#4190).");
+
+            if (totalGap > 0)
+                ActivityLog.Log("git-board.data",
+                    $"epic #{epicNumber} completeness: {totalGap} real issue(s) missing across its subtree — " +
+                    $"gap tolerated (Git #4190, tolerance {CompletenessGapTolerance}), charted anyway.");
+
             return (true, null);
         }
 
