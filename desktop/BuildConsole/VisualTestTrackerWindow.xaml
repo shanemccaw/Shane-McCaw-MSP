@@ -43,10 +43,10 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Column="0" Text="&#x1F4F7;" FontSize="13"
+                    <TextBlock Grid.Column="0" Text="&#x1F4F7;" FontSize="{StaticResource CaptionFontSize}"
                                Margin="0,0,6,0" VerticalAlignment="Center"/>
                     <TextBlock Grid.Column="1" Text="Visual Test Tracker"
-                               FontSize="12" FontWeight="SemiBold"
+                               FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                VerticalAlignment="Center"
                                Foreground="{StaticResource TextBrush}"/>
 
@@ -54,7 +54,7 @@
                     <Button x:Name="BtnApiHelper" Grid.Column="2"
                             Content="⚡ API Helper"
                             Style="{StaticResource IconButton}"
-                            FontSize="10"
+                            FontSize="{StaticResource CaptionFontSize}"
                             Padding="5,2,5,2"
                             Margin="0,0,3,0"
                             Foreground="{StaticResource AccentBrush}"
@@ -65,7 +65,7 @@
                     <Button x:Name="BtnPinCorner" Grid.Column="3"
                             Content="📌 Pin"
                             Style="{StaticResource IconButton}"
-                            FontSize="10"
+                            FontSize="{StaticResource CaptionFontSize}"
                             Padding="5,2,5,2"
                             Margin="0,0,3,0"
                             ToolTip="Cycle pin window to screen corner (Ctrl+Shift+P)"
@@ -75,7 +75,7 @@
                     <Button x:Name="BtnHudOptions" Grid.Column="4"
                             Content="🎛 HUD"
                             Style="{StaticResource IconButton}"
-                            FontSize="10"
+                            FontSize="{StaticResource CaptionFontSize}"
                             Padding="5,2,5,2"
                             Margin="0,0,3,0"
                             ToolTip="Toggle HUD transparency slider and auto-hide settings"
@@ -85,7 +85,7 @@
                     <Button x:Name="BtnToggleCollapse" Grid.Column="5"
                             Content="▲ Mini"
                             Style="{StaticResource IconButton}"
-                            FontSize="10"
+                            FontSize="{StaticResource CaptionFontSize}"
                             Padding="5,2,5,2"
                             Margin="0,0,3,0"
                             ToolTip="Toggle compact mini-bar / full workspace (Ctrl+Shift+M)"
@@ -95,7 +95,7 @@
                     <Button x:Name="BtnClose" Grid.Column="6"
                             Content="&#x2715;"
                             Style="{StaticResource IconButton}"
-                            FontSize="10"
+                            FontSize="{StaticResource CaptionFontSize}"
                             Padding="4,2,4,2"
                             ToolTip="Close (reopen from ActivityBar)"
                             Click="BtnClose_Click"/>
@@ -117,7 +117,7 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Column="0" Text="Opacity:" FontSize="9" Foreground="{StaticResource Subtext1Brush}"
+                    <TextBlock Grid.Column="0" Text="Opacity:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"
                                VerticalAlignment="Center" Margin="0,0,6,0"/>
 
                     <Slider x:Name="SliderOpacity" Grid.Column="1"
@@ -128,12 +128,12 @@
                             ValueChanged="SliderOpacity_ValueChanged"/>
 
                     <TextBlock x:Name="TxtOpacityPercent" Grid.Column="2"
-                               Text="100%" FontSize="9" FontFamily="Consolas"
+                               Text="100%" FontSize="{StaticResource MonospaceFontSize}" FontFamily="{StaticResource MonospaceFontFamily}"
                                Foreground="{StaticResource TextBrush}"
                                VerticalAlignment="Center" Margin="0,0,12,0"/>
 
                     <CheckBox x:Name="ChkAutoHide" Grid.Column="3"
-                              Content="Auto-hide when idle" FontSize="9"
+                              Content="Auto-hide when idle" FontSize="{StaticResource CaptionFontSize}"
                               Foreground="{StaticResource Subtext1Brush}"
                               VerticalAlignment="Center"
                               ToolTip="Dims HUD to 20% when mouse is idle for 3s, wakes up on hover"
@@ -171,7 +171,7 @@
 
                             <TextBlock x:Name="SessionIndicatorText" Grid.Column="0"
                                        Text="No tracked tab active — navigate a watched tab"
-                                       FontSize="11" FontFamily="Consolas" FontWeight="SemiBold"
+                                       FontSize="{StaticResource MonospaceFontSize}" FontFamily="{StaticResource MonospaceFontFamily}" FontWeight="SemiBold"
                                        TextTrimming="CharacterEllipsis"
                                        Foreground="{StaticResource TextBrush}"
                                        VerticalAlignment="Center"/>
@@ -179,7 +179,7 @@
                             <!-- Quick Copy URL Button -->
                             <Button x:Name="BtnCopyUrl" Grid.Column="1"
                                     Content="🔗" Style="{StaticResource IconButton}"
-                                    FontSize="9" Width="18" Height="18" Padding="0" Margin="4,0,4,0"
+                                    FontSize="{StaticResource CaptionFontSize}" Width="18" Height="18" Padding="0" Margin="4,0,4,0"
                                     ToolTip="Copy active page URL (Ctrl+Shift+U)"
                                     Click="BtnCopyUrl_Click"/>
                         </Grid>
@@ -192,7 +192,7 @@
                                     ToolTip="Click to toggle Page time vs Session time"
                                     Click="BtnToggleTimerMode_Click">
                                 <TextBlock x:Name="SessionTimerText"
-                                           Text="⏱ 00:00" FontSize="10" FontWeight="SemiBold"
+                                           Text="⏱ 00:00" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                            Foreground="{StaticResource AccentBrush}"/>
                             </Button>
 
@@ -201,7 +201,7 @@
                             <Button x:Name="BtnEndSessionSync"
                                     Content="🚀 End Session &amp; Sync"
                                     Style="{StaticResource IconButton}"
-                                    FontSize="9" FontWeight="Bold"
+                                    FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                     Padding="5,2,5,2" Margin="0,0,3,0"
                                     Foreground="{StaticResource AccentBrush}"
                                     ToolTip="Finalize session, save all artifacts under /Bugs/&lt;ProductName&gt;/&lt;SessionId&gt;/, and commit &amp; push to Git for Claude integration"
@@ -210,7 +210,7 @@
                             <Button x:Name="BtnNewSession"
                                     Content="▶ New Session"
                                     Style="{StaticResource IconButton}"
-                                    FontSize="9" Padding="5,2,5,2" Margin="0,0,3,0"
+                                    FontSize="{StaticResource CaptionFontSize}" Padding="5,2,5,2" Margin="0,0,3,0"
                                     Foreground="{StaticResource AccentBrush}"
                                     ToolTip="Archive current session and start a fresh test session for this page"
                                     Click="BtnNewSession_Click"/>
@@ -219,7 +219,7 @@
                             <Button x:Name="BtnSessionHistory"
                                     Content="📜 History"
                                     Style="{StaticResource IconButton}"
-                                    FontSize="9" Padding="5,2,5,2" Margin="0,0,3,0"
+                                    FontSize="{StaticResource CaptionFontSize}" Padding="5,2,5,2" Margin="0,0,3,0"
                                     ToolTip="View all past testing sessions, duration, and audit logs"
                                     Click="BtnSessionHistory_Click"/>
 
@@ -227,7 +227,7 @@
                             <Button x:Name="BtnClearSession"
                                     Content="🧹 Clear"
                                     Style="{StaticResource IconButton}"
-                                    FontSize="9" Padding="4,2,4,2"
+                                    FontSize="{StaticResource CaptionFontSize}" Padding="4,2,4,2"
                                     ToolTip="Clear current session draft fields, staged screenshots, and telemetry"
                                     Click="BtnClearSession_Click"/>
                         </StackPanel>
@@ -244,7 +244,7 @@
                         <CheckBox x:Name="GoodCheckBox" Grid.Column="0"
                                   Content="Good (confirmed clean)"
                                   Foreground="{StaticResource TextBrush}"
-                                  FontSize="10" Margin="0,0,10,0"
+                                  FontSize="{StaticResource CaptionFontSize}" Margin="0,0,10,0"
                                   IsEnabled="False"
                                   Checked="GoodCheckBox_Changed"
                                   Unchecked="GoodCheckBox_Changed"/>
@@ -252,11 +252,11 @@
                         <CheckBox x:Name="ChkAutoClear" Grid.Column="1"
                                   Content="Auto-clear on new session"
                                   Foreground="{StaticResource Subtext1Brush}"
-                                  FontSize="10" IsChecked="False"
+                                  FontSize="{StaticResource CaptionFontSize}" IsChecked="False"
                                   ToolTip="When enabled, starting a new session clears drafts automatically"/>
 
                         <TextBlock x:Name="InlineMessage" Grid.Column="2"
-                                   FontSize="10" TextTrimming="CharacterEllipsis"
+                                   FontSize="{StaticResource CaptionFontSize}" TextTrimming="CharacterEllipsis"
                                    HorizontalAlignment="Right"
                                    VerticalAlignment="Center"
                                    Margin="6,0,0,0"
@@ -287,18 +287,18 @@
                             </Grid.ColumnDefinitions>
 
                             <TextBlock Grid.Column="0" Text="LOG ISSUE / BUG ENTRY"
-                                       FontSize="10" FontWeight="Bold"
+                                       FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                        Foreground="{StaticResource AccentBrush}"
                                        VerticalAlignment="Center"/>
 
                             <TextBlock x:Name="AutoSaveIndicator" Grid.Column="1"
-                                       Text="✓ Saved" FontSize="9"
+                                       Text="✓ Saved" FontSize="{StaticResource CaptionFontSize}"
                                        Foreground="{StaticResource Subtext1Brush}"
                                        Margin="0,0,8,0" VerticalAlignment="Center"/>
 
                             <!-- Severity Selector -->
                             <ComboBox x:Name="CmbSeverity" Grid.Column="2" Height="22" Width="105"
-                                      FontSize="10" Background="{StaticResource Surface0Brush}"
+                                      FontSize="{StaticResource CaptionFontSize}" Background="{StaticResource Surface0Brush}"
                                       Foreground="{StaticResource TextBrush}"
                                       BorderBrush="{StaticResource Surface1Brush}"
                                       SelectionChanged="CmbSeverity_SelectionChanged">
@@ -322,12 +322,12 @@
                             <!-- Page Notes vs Global Notes Tab Selector -->
                             <StackPanel Grid.Column="0" Orientation="Horizontal">
                                 <Button x:Name="BtnTabNotesPage" Content="📄 Page Notes"
-                                        Style="{StaticResource IconButton}" FontSize="9" FontWeight="SemiBold"
+                                        Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                         Padding="5,1,5,1" Margin="0,0,2,0" Foreground="{StaticResource AccentBrush}"
                                         Click="BtnTabNotes_Click" Tag="page"
                                         ToolTip="Notes scoped to this specific page/route"/>
                                 <Button x:Name="BtnTabNotesGlobal" Content="🌐 Global Notes"
-                                        Style="{StaticResource IconButton}" FontSize="9"
+                                        Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}"
                                         Padding="5,1,5,1" Foreground="{StaticResource Subtext1Brush}"
                                         Click="BtnTabNotes_Click" Tag="global"
                                         ToolTip="Global scratchpad shared across all pages and sessions"/>
@@ -335,17 +335,17 @@
 
                             <!-- Markdown Formatting Controls -->
                             <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="4,0,4,0">
-                                <Button Content="B" FontWeight="Bold" Style="{StaticResource IconButton}" FontSize="9" Width="18" Height="18" Padding="0" Margin="0,0,1,0" Click="BtnMdFormat_Click" Tag="bold" ToolTip="Bold (**text**)"/>
-                                <Button Content="I" FontStyle="Italic" Style="{StaticResource IconButton}" FontSize="9" Width="18" Height="18" Padding="0" Margin="0,0,1,0" Click="BtnMdFormat_Click" Tag="italic" ToolTip="Italic (*text*)"/>
-                                <Button Content="`" FontFamily="Consolas" Style="{StaticResource IconButton}" FontSize="9" Width="18" Height="18" Padding="0" Margin="0,0,1,0" Click="BtnMdFormat_Click" Tag="code" ToolTip="Inline code (`code`)"/>
-                                <Button Content="•" Style="{StaticResource IconButton}" FontSize="10" Width="18" Height="18" Padding="0" Margin="0,0,1,0" Click="BtnMdFormat_Click" Tag="list" ToolTip="Bullet list (- item)"/>
-                                <Button Content="🔗" Style="{StaticResource IconButton}" FontSize="8" Width="18" Height="18" Padding="0" Margin="0,0,1,0" Click="BtnMdFormat_Click" Tag="link" ToolTip="Insert link [title](url)"/>
-                                <Button x:Name="BtnTogglePreview" Content="👁" Style="{StaticResource IconButton}" FontSize="9" Width="18" Height="18" Padding="0" Click="BtnTogglePreview_Click" ToolTip="Toggle Markdown Preview"/>
+                                <Button Content="B" FontWeight="Bold" Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Width="18" Height="18" Padding="0" Margin="0,0,1,0" Click="BtnMdFormat_Click" Tag="bold" ToolTip="Bold (**text**)"/>
+                                <Button Content="I" FontStyle="Italic" Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Width="18" Height="18" Padding="0" Margin="0,0,1,0" Click="BtnMdFormat_Click" Tag="italic" ToolTip="Italic (*text*)"/>
+                                <Button Content="`" FontFamily="{StaticResource MonospaceFontFamily}" Style="{StaticResource IconButton}" FontSize="{StaticResource MonospaceFontSize}" Width="18" Height="18" Padding="0" Margin="0,0,1,0" Click="BtnMdFormat_Click" Tag="code" ToolTip="Inline code (`code`)"/>
+                                <Button Content="•" Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Width="18" Height="18" Padding="0" Margin="0,0,1,0" Click="BtnMdFormat_Click" Tag="list" ToolTip="Bullet list (- item)"/>
+                                <Button Content="🔗" Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Width="18" Height="18" Padding="0" Margin="0,0,1,0" Click="BtnMdFormat_Click" Tag="link" ToolTip="Insert link [title](url)"/>
+                                <Button x:Name="BtnTogglePreview" Content="👁" Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Width="18" Height="18" Padding="0" Click="BtnTogglePreview_Click" ToolTip="Toggle Markdown Preview"/>
                             </StackPanel>
 
                             <!-- Auto-Link Shots Checkbox -->
                             <CheckBox x:Name="AutoLinkShotsCheckBox" Grid.Column="2"
-                                      Content="Auto-link shots" FontSize="9"
+                                      Content="Auto-link shots" FontSize="{StaticResource CaptionFontSize}"
                                       Foreground="{StaticResource Subtext1Brush}"
                                       IsChecked="True" VerticalAlignment="Center"
                                       ToolTip="Automatically insert markdown link in notes when capturing screenshots"/>
@@ -361,7 +361,7 @@
                                  Foreground="{StaticResource TextBrush}"
                                  BorderBrush="{StaticResource Surface1Brush}"
                                  BorderThickness="1"
-                                 FontSize="11"
+                                 FontSize="{StaticResource CaptionFontSize}"
                                  Padding="5"
                                  IsEnabled="False"
                                  TextChanged="Field_TextChanged"
@@ -379,7 +379,7 @@
                                 Margin="0,0,0,2">
                             <ScrollViewer VerticalScrollBarVisibility="Auto">
                                 <TextBlock x:Name="NotesPreviewText"
-                                           FontSize="11"
+                                           FontSize="{StaticResource CaptionFontSize}"
                                            Foreground="{StaticResource TextBrush}"
                                            TextWrapping="Wrap"/>
                             </ScrollViewer>
@@ -392,11 +392,11 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
 
-                            <TextBlock Text="🏷 Tags:" FontSize="10" Foreground="{StaticResource Subtext1Brush}"
+                            <TextBlock Text="🏷 Tags:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"
                                        VerticalAlignment="Center" Margin="0,0,4,0"/>
 
                             <TextBox x:Name="TagsBox" Grid.Column="1"
-                                     Height="22" FontSize="10"
+                                     Height="22" FontSize="{StaticResource CaptionFontSize}"
                                      Background="{StaticResource Surface0Brush}"
                                      Foreground="{StaticResource TextBrush}"
                                      BorderBrush="{StaticResource Surface1Brush}"
@@ -409,18 +409,18 @@
 
                         <!-- Quick Tag Chips Strip -->
                         <WrapPanel Margin="0,0,0,4">
-                            <Button Content="+ #Auth" Style="{StaticResource IconButton}" FontSize="9" Padding="4,1,4,1" Margin="0,0,3,2" Click="QuickTag_Click" Tag="Auth"/>
-                            <Button Content="+ #UI" Style="{StaticResource IconButton}" FontSize="9" Padding="4,1,4,1" Margin="0,0,3,2" Click="QuickTag_Click" Tag="UI"/>
-                            <Button Content="+ #API" Style="{StaticResource IconButton}" FontSize="9" Padding="4,1,4,1" Margin="0,0,3,2" Click="QuickTag_Click" Tag="API"/>
-                            <Button Content="+ #Checkout" Style="{StaticResource IconButton}" FontSize="9" Padding="4,1,4,1" Margin="0,0,3,2" Click="QuickTag_Click" Tag="Checkout"/>
-                            <Button Content="+ #Performance" Style="{StaticResource IconButton}" FontSize="9" Padding="4,1,4,1" Margin="0,0,3,2" Click="QuickTag_Click" Tag="Performance"/>
-                            <Button Content="+ #Form" Style="{StaticResource IconButton}" FontSize="9" Padding="4,1,4,1" Margin="0,0,3,2" Click="QuickTag_Click" Tag="Form"/>
+                            <Button Content="+ #Auth" Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Padding="4,1,4,1" Margin="0,0,3,2" Click="QuickTag_Click" Tag="Auth"/>
+                            <Button Content="+ #UI" Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Padding="4,1,4,1" Margin="0,0,3,2" Click="QuickTag_Click" Tag="UI"/>
+                            <Button Content="+ #API" Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Padding="4,1,4,1" Margin="0,0,3,2" Click="QuickTag_Click" Tag="API"/>
+                            <Button Content="+ #Checkout" Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Padding="4,1,4,1" Margin="0,0,3,2" Click="QuickTag_Click" Tag="Checkout"/>
+                            <Button Content="+ #Performance" Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Padding="4,1,4,1" Margin="0,0,3,2" Click="QuickTag_Click" Tag="Performance"/>
+                            <Button Content="+ #Form" Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Padding="4,1,4,1" Margin="0,0,3,2" Click="QuickTag_Click" Tag="Form"/>
                         </WrapPanel>
 
                         <!-- Structured Fields Expander (Steps to Reproduce, Expected vs Actual) -->
                         <Expander x:Name="DetailsExpander"
                                   Header="Detailed Fields (Steps to Reproduce, Expected vs Actual)"
-                                  FontSize="10" Foreground="{StaticResource Subtext1Brush}"
+                                  FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"
                                   Margin="0,0,0,4" IsExpanded="False">
                             <StackPanel Margin="0,3,0,1">
                                 <!-- Steps Header with Quick Add Step and Import Auto Steps -->
@@ -430,17 +430,17 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
 
-                                    <TextBlock Text="Steps to Reproduce:" FontSize="9" FontWeight="SemiBold"
+                                    <TextBlock Text="Steps to Reproduce:" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                                Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
 
                                     <StackPanel Grid.Column="1" Orientation="Horizontal">
                                         <Button x:Name="BtnAddStep" Content="+ Add Step"
-                                                Style="{StaticResource IconButton}" FontSize="9" Padding="4,1,4,1" Margin="0,0,3,0"
+                                                Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Padding="4,1,4,1" Margin="0,0,3,0"
                                                 Foreground="{StaticResource AccentBrush}"
                                                 ToolTip="Increment and append the next numbered step"
                                                 Click="BtnAddStep_Click"/>
                                         <Button x:Name="BtnImportAutoSteps" Content="📥 Import Auto Steps"
-                                                Style="{StaticResource IconButton}" FontSize="9" Padding="4,1,4,1"
+                                                Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Padding="4,1,4,1"
                                                 Foreground="{StaticResource StatusSuccessBrush}"
                                                 ToolTip="Import captured user clicks, inputs, and actions into editable steps"
                                                 Click="BtnImportAutoSteps_Click"/>
@@ -453,7 +453,7 @@
                                          Background="{StaticResource Surface0Brush}"
                                          Foreground="{StaticResource TextBrush}"
                                          BorderBrush="{StaticResource Surface1Brush}"
-                                         FontSize="10" Padding="4"
+                                         FontSize="{StaticResource CaptionFontSize}" Padding="4"
                                          IsEnabled="False"
                                          TextChanged="Field_TextChanged"
                                          ToolTip="Numbered steps (e.g. 1. Go to /login&#x0a;2. Click Sign In)"/>
@@ -466,7 +466,7 @@
                                     </Grid.ColumnDefinitions>
 
                                     <StackPanel Grid.Column="0">
-                                        <TextBlock Text="Expected Behavior:" FontSize="9" FontWeight="SemiBold"
+                                        <TextBlock Text="Expected Behavior:" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                                    Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
                                         <TextBox x:Name="ExpectedBox" Height="36"
                                                  AcceptsReturn="True" TextWrapping="Wrap"
@@ -474,13 +474,13 @@
                                                  Background="{StaticResource Surface0Brush}"
                                                  Foreground="{StaticResource TextBrush}"
                                                  BorderBrush="{StaticResource Surface1Brush}"
-                                                 FontSize="10" Padding="4"
+                                                 FontSize="{StaticResource CaptionFontSize}" Padding="4"
                                                  IsEnabled="False"
                                                  TextChanged="Field_TextChanged"/>
                                     </StackPanel>
 
                                     <StackPanel Grid.Column="2">
-                                        <TextBlock Text="Actual Behavior:" FontSize="9" FontWeight="SemiBold"
+                                        <TextBlock Text="Actual Behavior:" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                                    Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
                                         <TextBox x:Name="ActualBox" Height="36"
                                                  AcceptsReturn="True" TextWrapping="Wrap"
@@ -488,7 +488,7 @@
                                                  Background="{StaticResource Surface0Brush}"
                                                  Foreground="{StaticResource TextBrush}"
                                                  BorderBrush="{StaticResource Surface1Brush}"
-                                                 FontSize="10" Padding="4"
+                                                 FontSize="{StaticResource CaptionFontSize}" Padding="4"
                                                  IsEnabled="False"
                                                  TextChanged="Field_TextChanged"/>
                                     </StackPanel>
@@ -505,49 +505,49 @@
                                 </Grid.ColumnDefinitions>
 
                                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock x:Name="TelemetryConsoleBadge" Text="🔴 0 errors" FontSize="9"
+                                    <TextBlock x:Name="TelemetryConsoleBadge" Text="🔴 0 errors" FontSize="{StaticResource CaptionFontSize}"
                                                Foreground="{StaticResource Subtext1Brush}" Margin="0,0,3,0"
                                                ToolTip="Console errors, warnings, and unhandled exceptions in WebView2"/>
                                     <Button x:Name="BtnCopyConsoleErrors" Content="📋 Errors"
-                                            Style="{StaticResource IconButton}" FontSize="8"
+                                            Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}"
                                             Padding="3,1,3,1" Margin="0,0,6,0"
                                             Foreground="{StaticResource StatusWarningBrush}"
                                             ToolTip="Copy all captured console errors &amp; stack traces (Ctrl+Shift+C)"
                                             Click="BtnCopyConsoleErrors_Click"/>
-                                    <TextBlock x:Name="TelemetryNetworkBadge" Text="⚡ 0 net fail" FontSize="9"
+                                    <TextBlock x:Name="TelemetryNetworkBadge" Text="⚡ 0 net fail" FontSize="{StaticResource CaptionFontSize}"
                                                Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0"
                                                ToolTip="HTTP 4xx/5xx network failures and API requests"/>
-                                    <TextBlock x:Name="TelemetryPerfBadge" Text="⏱ 0ms" FontSize="9"
+                                    <TextBlock x:Name="TelemetryPerfBadge" Text="⏱ 0ms" FontSize="{StaticResource CaptionFontSize}"
                                                Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0"
                                                ToolTip="Page load time and Largest Contentful Paint (LCP)"/>
-                                    <TextBlock x:Name="TelemetryEventsBadge" Text="👣 0 events" FontSize="9"
+                                    <TextBlock x:Name="TelemetryEventsBadge" Text="👣 0 events" FontSize="{StaticResource CaptionFontSize}"
                                                Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0"
                                                ToolTip="Recent user interaction events recorded"/>
                                     <Button x:Name="BtnA11yAudit" Content="♿ a11y (0)"
-                                            Style="{StaticResource IconButton}" FontSize="8"
+                                            Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}"
                                             Padding="3,1,3,1" Margin="0,0,4,0"
                                             Foreground="{StaticResource AccentBrush}"
                                             ToolTip="Run in-page WCAG 2.1 AA accessibility audit (missing alt, contrast, ARIA)"
                                             Click="BtnA11yAudit_Click"/>
                                     <Button x:Name="BtnDomChanges" Content="⚡ DOM Δ (0)"
-                                            Style="{StaticResource IconButton}" FontSize="8"
+                                            Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}"
                                             Padding="3,1,3,1" Margin="0,0,4,0"
                                             Foreground="{StaticResource TextBrush}"
                                             ToolTip="Toggle real-time DOM mutation tracking &amp; highlight outlines"
                                             Click="BtnDomChanges_Click"/>
                                     <Button x:Name="BtnDevToolsRunner" Content="💻 Runner"
-                                            Style="{StaticResource IconButton}" FontSize="8"
+                                            Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}"
                                             Padding="3,1,3,1" Margin="0,0,6,0"
                                             Foreground="{StaticResource AccentBrush}"
                                             ToolTip="Open DevTools Command &amp; Network API Runner"
                                             Click="BtnDevToolsRunner_Click"/>
-                                    <TextBlock x:Name="TelemetryCdpBadge" Text="🌐 CDP Active" FontSize="9"
+                                    <TextBlock x:Name="TelemetryCdpBadge" Text="🌐 CDP Active" FontSize="{StaticResource CaptionFontSize}"
                                                Foreground="{StaticResource AccentBrush}"
                                                ToolTip="Chrome DevTools Protocol actively capturing engine console, network, and error events"/>
                                 </StackPanel>
 
                                 <TextBlock x:Name="TelemetryEnvBadge" Grid.Column="1"
-                                           Text="Auto-Metadata Ready" FontSize="9"
+                                           Text="Auto-Metadata Ready" FontSize="{StaticResource CaptionFontSize}"
                                            Foreground="{StaticResource AccentBrush}"
                                            VerticalAlignment="Center"
                                            ToolTip="URL, OS, Viewport, User Agent, Title auto-collected on save"/>
@@ -571,7 +571,7 @@
                             <Button x:Name="BtnCaptureFull" Grid.Column="0"
                                     Content="📷 Full"
                                     Style="{StaticResource SecondaryButton}"
-                                    FontSize="10" Padding="1,4,1,4"
+                                    FontSize="{StaticResource CaptionFontSize}" Padding="1,4,1,4"
                                     IsEnabled="False"
                                     ToolTip="Capture full scrollable WebView2 page (Ctrl+Shift+F)"
                                     Click="BtnCaptureFull_Click"/>
@@ -579,7 +579,7 @@
                             <Button x:Name="BtnCaptureRegion" Grid.Column="2"
                                     Content="✂ Region"
                                     Style="{StaticResource SecondaryButton}"
-                                    FontSize="10" Padding="1,4,1,4"
+                                    FontSize="{StaticResource CaptionFontSize}" Padding="1,4,1,4"
                                     IsEnabled="False"
                                     ToolTip="Select and crop on-screen region (Ctrl+Shift+S)"
                                     Click="BtnCaptureRegion_Click"/>
@@ -587,7 +587,7 @@
                             <Button x:Name="BtnCaptureWpfWindow" Grid.Column="4"
                                     Content="🪟 HUD"
                                     Style="{StaticResource SecondaryButton}"
-                                    FontSize="10" Padding="1,4,1,4"
+                                    FontSize="{StaticResource CaptionFontSize}" Padding="1,4,1,4"
                                     IsEnabled="False"
                                     ToolTip="Capture full WPF window with HUD and overlays (Ctrl+Shift+W)"
                                     Click="BtnCaptureWpfWindow_Click"/>
@@ -595,7 +595,7 @@
                             <Button x:Name="BtnVisualDiff" Grid.Column="6"
                                     Content="⚖️ Diff"
                                     Style="{StaticResource SecondaryButton}"
-                                    FontSize="10" Padding="1,4,1,4"
+                                    FontSize="{StaticResource CaptionFontSize}" Padding="1,4,1,4"
                                     IsEnabled="False"
                                     ToolTip="Compare screenshots across builds &amp; baselines (side-by-side, swipe slider, diff heatmap)"
                                     Click="BtnVisualDiff_Click"/>
@@ -603,7 +603,7 @@
                             <Button x:Name="BtnInspectDom" Grid.Column="8"
                                     Content="🔍 Inspect"
                                     Style="{StaticResource SecondaryButton}"
-                                    FontSize="10" Padding="1,4,1,4"
+                                    FontSize="{StaticResource CaptionFontSize}" Padding="1,4,1,4"
                                     IsEnabled="False"
                                     ToolTip="Interactive DOM element inspector (Ctrl+Shift+I)"
                                     Click="BtnInspectDom_Click"/>
@@ -626,21 +626,21 @@
                                     </Grid.ColumnDefinitions>
 
                                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="DOM:" FontSize="9" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,0,4,0"/>
-                                        <TextBlock x:Name="TxtDomElementTag" Text="&lt;BUTTON&gt;" FontSize="9" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,4,0"/>
-                                        <TextBlock x:Name="TxtDomDimensions" Text="120 × 36 px" FontSize="9" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0"/>
-                                        <TextBlock x:Name="TxtDomA11yBadge" Text="♿ a11y: OK" FontSize="8" FontWeight="SemiBold" Foreground="{StaticResource LightGreenBrush}" VerticalAlignment="Center"/>
+                                        <TextBlock Text="DOM:" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,0,4,0"/>
+                                        <TextBlock x:Name="TxtDomElementTag" Text="&lt;BUTTON&gt;" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,4,0"/>
+                                        <TextBlock x:Name="TxtDomDimensions" Text="120 × 36 px" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0"/>
+                                        <TextBlock x:Name="TxtDomA11yBadge" Text="♿ a11y: OK" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource LightGreenBrush}" VerticalAlignment="Center"/>
                                     </StackPanel>
 
                                     <Button x:Name="BtnDomReinspect" Grid.Column="1"
                                             Content="🔍 Pick Another" Style="{StaticResource IconButton}"
-                                            FontSize="8" Padding="4,1,4,1" Margin="0,0,3,0"
+                                            FontSize="{StaticResource CaptionFontSize}" Padding="4,1,4,1" Margin="0,0,3,0"
                                             ToolTip="Select another element to inspect"
                                             Click="BtnDomReinspect_Click"/>
 
                                     <Button x:Name="BtnDomClose" Grid.Column="2"
                                             Content="✕" Style="{StaticResource IconButton}"
-                                            FontSize="9" Width="16" Height="16" Padding="0"
+                                            FontSize="{StaticResource CaptionFontSize}" Width="16" Height="16" Padding="0"
                                             ToolTip="Close DOM Inspector"
                                             Click="BtnDomClose_Click"/>
                                 </Grid>
@@ -654,7 +654,7 @@
                                     </Grid.ColumnDefinitions>
 
                                     <TextBox x:Name="TxtDomSelector" Grid.Column="0"
-                                             IsReadOnly="True" FontSize="9" FontFamily="Consolas"
+                                             IsReadOnly="True" FontSize="{StaticResource MonospaceFontSize}" FontFamily="{StaticResource MonospaceFontFamily}"
                                              Background="{StaticResource BaseBrush}" Foreground="{StaticResource TextBrush}"
                                              BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1"
                                              Padding="3,2,3,2"
@@ -662,13 +662,13 @@
 
                                     <Button x:Name="BtnCopyDomSelector" Grid.Column="1"
                                             Content="📋 Sel" Style="{StaticResource IconButton}"
-                                            FontSize="8" Padding="4,1,4,1" Margin="3,0,0,0"
+                                            FontSize="{StaticResource CaptionFontSize}" Padding="4,1,4,1" Margin="3,0,0,0"
                                             ToolTip="Copy CSS selector to clipboard"
                                             Click="BtnCopyDomSelector_Click"/>
 
                                     <Button x:Name="BtnCopyDomBoth" Grid.Column="2"
                                             Content="📋 Copy Both" Style="{StaticResource IconButton}"
-                                            FontSize="8" Padding="4,1,4,1" Margin="3,0,0,0"
+                                            FontSize="{StaticResource CaptionFontSize}" Padding="4,1,4,1" Margin="3,0,0,0"
                                             Foreground="{StaticResource AccentBrush}"
                                             ToolTip="Copy both selector and full HTML together to clipboard"
                                             Click="BtnCopyDomBoth_Click"/>
@@ -677,7 +677,7 @@
                                 <!-- OuterHTML Preview Block -->
                                 <TextBox x:Name="TxtDomOuterHtml"
                                          IsReadOnly="True" Height="36" AcceptsReturn="True" TextWrapping="Wrap"
-                                         VerticalScrollBarVisibility="Auto" FontSize="9" FontFamily="Consolas"
+                                         VerticalScrollBarVisibility="Auto" FontSize="{StaticResource MonospaceFontSize}" FontFamily="{StaticResource MonospaceFontFamily}"
                                          Background="{StaticResource BaseBrush}" Foreground="{StaticResource Subtext1Brush}"
                                          BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1"
                                          Padding="3,2,3,2" Margin="0,0,0,4"
@@ -695,19 +695,19 @@
 
                                     <Button x:Name="BtnInsertDomToSteps" Grid.Column="0"
                                             Content="+ Add to Repro Steps" Style="{StaticResource IconButton}"
-                                            FontSize="8" Padding="3,2,3,2" Foreground="{StaticResource AccentBrush}"
+                                            FontSize="{StaticResource CaptionFontSize}" Padding="3,2,3,2" Foreground="{StaticResource AccentBrush}"
                                             ToolTip="Insert interaction step with this element into Steps to Reproduce"
                                             Click="BtnInsertDomToSteps_Click"/>
 
                                     <Button x:Name="BtnInsertDomToNotes" Grid.Column="2"
                                             Content="+ Add to Notes" Style="{StaticResource IconButton}"
-                                            FontSize="8" Padding="3,2,3,2" Foreground="{StaticResource TextBrush}"
+                                            FontSize="{StaticResource CaptionFontSize}" Padding="3,2,3,2" Foreground="{StaticResource TextBrush}"
                                             ToolTip="Insert selector and details into Notes"
                                             Click="BtnInsertDomToNotes_Click"/>
 
                                     <Button x:Name="BtnCopyDomHtml" Grid.Column="4"
                                             Content="📋 HTML" Style="{StaticResource IconButton}"
-                                            FontSize="8" Padding="4,2,4,2"
+                                            FontSize="{StaticResource CaptionFontSize}" Padding="4,2,4,2"
                                             ToolTip="Copy Outer HTML"
                                             Click="BtnCopyDomHtml_Click"/>
                                 </Grid>
@@ -728,19 +728,19 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="♿ a11y Audit:" FontSize="9" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,0,6,0"/>
-                                        <TextBlock x:Name="TxtA11ySummaryCounts" Text="0 Issues" FontSize="9" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                                        <TextBlock Text="♿ a11y Audit:" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,0,6,0"/>
+                                        <TextBlock x:Name="TxtA11ySummaryCounts" Text="0 Issues" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
                                     </StackPanel>
                                     <Button x:Name="BtnCloseA11yDrawer" Grid.Column="1" Content="✕" Style="{StaticResource IconButton}"
-                                            FontSize="9" Width="16" Height="16" Padding="0" Click="BtnCloseA11yDrawer_Click"/>
+                                            FontSize="{StaticResource CaptionFontSize}" Width="16" Height="16" Padding="0" Click="BtnCloseA11yDrawer_Click"/>
                                 </Grid>
 
                                 <!-- Category Filter Chips -->
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                    <Button x:Name="BtnFilterA11yAll" Content="All" Style="{StaticResource IconButton}" FontSize="8" Padding="4,1" Margin="0,0,3,0" Click="BtnFilterA11y_Click" Tag="All"/>
-                                    <Button x:Name="BtnFilterA11yAlt" Content="Missing Alt (0)" Style="{StaticResource IconButton}" FontSize="8" Padding="4,1" Margin="0,0,3,0" Click="BtnFilterA11y_Click" Tag="MissingAlt"/>
-                                    <Button x:Name="BtnFilterA11yContrast" Content="Contrast (0)" Style="{StaticResource IconButton}" FontSize="8" Padding="4,1" Margin="0,0,3,0" Click="BtnFilterA11y_Click" Tag="Contrast"/>
-                                    <Button x:Name="BtnFilterA11yAria" Content="ARIA (0)" Style="{StaticResource IconButton}" FontSize="8" Padding="4,1" Click="BtnFilterA11y_Click" Tag="Aria"/>
+                                    <Button x:Name="BtnFilterA11yAll" Content="All" Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Padding="4,1" Margin="0,0,3,0" Click="BtnFilterA11y_Click" Tag="All"/>
+                                    <Button x:Name="BtnFilterA11yAlt" Content="Missing Alt (0)" Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Padding="4,1" Margin="0,0,3,0" Click="BtnFilterA11y_Click" Tag="MissingAlt"/>
+                                    <Button x:Name="BtnFilterA11yContrast" Content="Contrast (0)" Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Padding="4,1" Margin="0,0,3,0" Click="BtnFilterA11y_Click" Tag="Contrast"/>
+                                    <Button x:Name="BtnFilterA11yAria" Content="ARIA (0)" Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Padding="4,1" Click="BtnFilterA11y_Click" Tag="Aria"/>
                                 </StackPanel>
 
                                 <!-- Violations Scroll Area -->
@@ -758,13 +758,13 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <Button x:Name="BtnAddA11yToBug" Grid.Column="0" Content="+ Add to Bug Report" Style="{StaticResource IconButton}"
-                                            FontSize="8" Padding="4,2" Foreground="{StaticResource AccentBrush}" Click="BtnAddA11yToBug_Click"
+                                            FontSize="{StaticResource CaptionFontSize}" Padding="4,2" Foreground="{StaticResource AccentBrush}" Click="BtnAddA11yToBug_Click"
                                             ToolTip="Add detected accessibility violations into the active bug report draft"/>
                                     <Button x:Name="BtnToggleA11yMarkers" Grid.Column="1" Content="👁️ Markers" Style="{StaticResource IconButton}"
-                                            FontSize="8" Padding="4,2" Margin="3,0,0,0" Click="BtnToggleA11yMarkers_Click"
+                                            FontSize="{StaticResource CaptionFontSize}" Padding="4,2" Margin="3,0,0,0" Click="BtnToggleA11yMarkers_Click"
                                             ToolTip="Toggle on-page violation badge overlays"/>
                                     <Button x:Name="BtnRescanA11y" Grid.Column="2" Content="🔄 Rescan" Style="{StaticResource IconButton}"
-                                            FontSize="8" Padding="4,2" Margin="3,0,0,0" Click="BtnRescanA11y_Click"
+                                            FontSize="{StaticResource CaptionFontSize}" Padding="4,2" Margin="3,0,0,0" Click="BtnRescanA11y_Click"
                                             ToolTip="Rerun accessibility audit"/>
                                 </Grid>
                             </StackPanel>
@@ -784,18 +784,18 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="⚡ DOM Changes:" FontSize="9" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,0,6,0"/>
-                                        <TextBlock x:Name="TxtDomChangesSummary" Text="0 mutations" FontSize="9" Foreground="{StaticResource TextBrush}"/>
+                                        <TextBlock Text="⚡ DOM Changes:" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,0,6,0"/>
+                                        <TextBlock x:Name="TxtDomChangesSummary" Text="0 mutations" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextBrush}"/>
                                     </StackPanel>
                                     <Button x:Name="BtnCloseDomChangesDrawer" Grid.Column="1" Content="✕" Style="{StaticResource IconButton}"
-                                            FontSize="9" Width="16" Height="16" Padding="0" Click="BtnCloseDomChangesDrawer_Click"/>
+                                            FontSize="{StaticResource CaptionFontSize}" Width="16" Height="16" Padding="0" Click="BtnCloseDomChangesDrawer_Click"/>
                                 </Grid>
 
                                 <!-- Snapshot & Diff Actions -->
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                    <Button x:Name="BtnDomTakeSnapshot" Content="📸 Baseline Snapshot" Style="{StaticResource IconButton}" FontSize="8" Padding="4,1" Margin="0,0,3,0" Click="BtnDomTakeSnapshot_Click" ToolTip="Record current DOM state as baseline"/>
-                                    <Button x:Name="BtnDomDiffSnapshot" Content="🔍 Diff Snapshot" Style="{StaticResource IconButton}" FontSize="8" Padding="4,1" Margin="0,0,3,0" Click="BtnDomDiffSnapshot_Click" ToolTip="Check differences since baseline snapshot"/>
-                                    <Button x:Name="BtnClearDomChanges" Content="🗑️ Clear" Style="{StaticResource IconButton}" FontSize="8" Padding="4,1" Click="BtnClearDomChanges_Click" ToolTip="Clear recorded mutation history"/>
+                                    <Button x:Name="BtnDomTakeSnapshot" Content="📸 Baseline Snapshot" Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Padding="4,1" Margin="0,0,3,0" Click="BtnDomTakeSnapshot_Click" ToolTip="Record current DOM state as baseline"/>
+                                    <Button x:Name="BtnDomDiffSnapshot" Content="🔍 Diff Snapshot" Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Padding="4,1" Margin="0,0,3,0" Click="BtnDomDiffSnapshot_Click" ToolTip="Check differences since baseline snapshot"/>
+                                    <Button x:Name="BtnClearDomChanges" Content="🗑️ Clear" Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Padding="4,1" Click="BtnClearDomChanges_Click" ToolTip="Clear recorded mutation history"/>
                                 </StackPanel>
 
                                 <!-- Mutations Scroll Area -->
@@ -806,7 +806,7 @@
                                 </Border>
 
                                 <Button x:Name="BtnAddDomChangesToSteps" Content="+ Add Mutations to Repro Steps" Style="{StaticResource IconButton}"
-                                        FontSize="8" Padding="4,2" Foreground="{StaticResource AccentBrush}" Click="BtnAddDomChangesToSteps_Click"
+                                        FontSize="{StaticResource CaptionFontSize}" Padding="4,2" Foreground="{StaticResource AccentBrush}" Click="BtnAddDomChangesToSteps_Click"
                                         ToolTip="Appends captured DOM changes to the reproduction steps"/>
                             </StackPanel>
                         </Border>
@@ -828,20 +828,20 @@
                                     </Grid.ColumnDefinitions>
 
                                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="💻 DevTools Runner" FontSize="10" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,0,6,0"/>
-                                        <TextBlock Text="(Fast JS &amp; API Shortcut)" FontSize="8" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
+                                        <TextBlock Text="💻 DevTools Runner" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,0,6,0"/>
+                                        <TextBlock Text="(Fast JS &amp; API Shortcut)" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
                                     </StackPanel>
 
                                     <Button x:Name="BtnOpenFullDevTools" Grid.Column="1"
                                             Content="🛠 Full DevTools" Style="{StaticResource IconButton}"
-                                            FontSize="8" Padding="4,1,4,1" Margin="0,0,4,0"
+                                            FontSize="{StaticResource CaptionFontSize}" Padding="4,1,4,1" Margin="0,0,4,0"
                                             Foreground="{StaticResource TextBrush}"
                                             ToolTip="Open native Chromium DevTools window (DevTools remains fully available and unmodified)"
                                             Click="BtnOpenFullDevTools_Click"/>
 
                                     <Button x:Name="BtnCloseDevToolsRunner" Grid.Column="2"
                                             Content="✕" Style="{StaticResource IconButton}"
-                                            FontSize="9" Width="16" Height="16" Padding="0"
+                                            FontSize="{StaticResource CaptionFontSize}" Width="16" Height="16" Padding="0"
                                             ToolTip="Close Runner Drawer"
                                             Click="BtnCloseDevToolsRunner_Click"/>
                                 </Grid>
@@ -856,12 +856,12 @@
 
                                     <Button x:Name="BtnRunnerModeConsole" Grid.Column="0"
                                             Content="💻 JS Console" Style="{StaticResource SecondaryButton}"
-                                            FontSize="8" Padding="2,2,2,2" FontWeight="SemiBold"
+                                            FontSize="{StaticResource CaptionFontSize}" Padding="2,2,2,2" FontWeight="SemiBold"
                                             Click="BtnRunnerModeConsole_Click"/>
 
                                     <Button x:Name="BtnRunnerModeNetwork" Grid.Column="2"
                                             Content="🌐 Network / API" Style="{StaticResource IconButton}"
-                                            FontSize="8" Padding="2,2,2,2"
+                                            FontSize="{StaticResource CaptionFontSize}" Padding="2,2,2,2"
                                             Click="BtnRunnerModeNetwork_Click"/>
                                 </Grid>
 
@@ -875,21 +875,21 @@
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
 
-                                        <TextBlock Grid.Column="0" Text="Preset:" FontSize="8" Foreground="{StaticResource Subtext1Brush}"
+                                        <TextBlock Grid.Column="0" Text="Preset:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"
                                                    VerticalAlignment="Center" Margin="0,0,4,0"/>
 
                                         <ComboBox x:Name="CboConsolePresets" Grid.Column="1"
-                                                  FontSize="8" FontFamily="Consolas" Height="20"
+                                                  FontSize="{StaticResource MonospaceFontSize}" FontFamily="{StaticResource MonospaceFontFamily}" Height="20"
                                                   SelectionChanged="CboConsolePresets_SelectionChanged"
                                                   ToolTip="Select a common JavaScript console command preset"/>
 
-                                        <TextBlock Grid.Column="2" Text="↑/↓ for History" FontSize="7"
+                                        <TextBlock Grid.Column="2" Text="↑/↓ for History" FontSize="{StaticResource CaptionFontSize}"
                                                    Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center" Margin="4,0,0,0"/>
                                     </Grid>
 
                                     <!-- Command Input -->
                                     <TextBox x:Name="TxtConsoleCommand"
-                                             Height="42" FontSize="9" FontFamily="Consolas"
+                                             Height="42" FontSize="{StaticResource MonospaceFontSize}" FontFamily="{StaticResource MonospaceFontFamily}"
                                              AcceptsReturn="True" TextWrapping="Wrap"
                                              Background="{StaticResource BaseBrush}" Foreground="{StaticResource TextBrush}"
                                              BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1"
@@ -906,13 +906,13 @@
 
                                         <Button x:Name="BtnRunConsoleCommand" Grid.Column="0"
                                                 Content="▶ Run Command (Enter)" Style="{StaticResource PrimaryButton}"
-                                                FontSize="8" Padding="6,2,6,2" FontWeight="SemiBold"
+                                                FontSize="{StaticResource BodyFontSize}" Padding="6,2,6,2" FontWeight="SemiBold"
                                                 Click="BtnRunConsoleCommand_Click"
                                                 ToolTip="Execute JavaScript in the page context and capture return value and logs"/>
 
                                         <Button x:Name="BtnClearConsoleCommand" Grid.Column="1"
                                                 Content="🗑 Clear" Style="{StaticResource IconButton}"
-                                                FontSize="8" Padding="4,2,4,2" Margin="3,0,0,0"
+                                                FontSize="{StaticResource CaptionFontSize}" Padding="4,2,4,2" Margin="3,0,0,0"
                                                 Click="BtnClearConsoleCommand_Click"
                                                 ToolTip="Clear command input"/>
                                     </Grid>
@@ -928,15 +928,15 @@
                                         </Grid.ColumnDefinitions>
 
                                         <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                            <TextBlock Text="Detected:" FontSize="8" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,3,0"/>
-                                            <TextBlock x:Name="TxtDetectedType" Text="[Raw URL / Path]" FontSize="8" FontWeight="Bold"
+                                            <TextBlock Text="Detected:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,3,0"/>
+                                            <TextBlock x:Name="TxtDetectedType" Text="[Raw URL / Path]" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                                        Foreground="{StaticResource AccentBrush}"/>
                                         </StackPanel>
 
                                         <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                            <TextBlock Text="Method:" FontSize="8" Foreground="{StaticResource Subtext1Brush}"
+                                            <TextBlock Text="Method:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"
                                                        VerticalAlignment="Center" Margin="0,0,3,0"/>
-                                            <ComboBox x:Name="CboApiMethod" FontSize="8" Height="19" Width="68">
+                                            <ComboBox x:Name="CboApiMethod" FontSize="{StaticResource CaptionFontSize}" Height="19" Width="68">
                                                 <ComboBoxItem Content="Auto" IsSelected="True"/>
                                                 <ComboBoxItem Content="GET"/>
                                                 <ComboBoxItem Content="POST"/>
@@ -949,7 +949,7 @@
 
                                     <!-- API Snippet Input (curl, fetch, URL, path, JSON) -->
                                     <TextBox x:Name="TxtApiSnippet"
-                                             Height="42" FontSize="9" FontFamily="Consolas"
+                                             Height="42" FontSize="{StaticResource MonospaceFontSize}" FontFamily="{StaticResource MonospaceFontFamily}"
                                              AcceptsReturn="True" TextWrapping="Wrap"
                                              Background="{StaticResource BaseBrush}" Foreground="{StaticResource TextBrush}"
                                              BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1"
@@ -963,10 +963,10 @@
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="Payload:" FontSize="8" Foreground="{StaticResource Subtext1Brush}"
+                                        <TextBlock Grid.Column="0" Text="Payload:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"
                                                    VerticalAlignment="Center" Margin="0,0,4,0"/>
                                         <TextBox x:Name="TxtApiPayload" Grid.Column="1"
-                                                 Height="20" FontSize="8" FontFamily="Consolas"
+                                                 Height="20" FontSize="{StaticResource MonospaceFontSize}" FontFamily="{StaticResource MonospaceFontFamily}"
                                                  Background="{StaticResource BaseBrush}" Foreground="{StaticResource TextBrush}"
                                                  BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1"
                                                  Padding="3,1,3,1"
@@ -982,13 +982,13 @@
 
                                         <Button x:Name="BtnExecuteApi" Grid.Column="0"
                                                 Content="▶ Execute API Call" Style="{StaticResource PrimaryButton}"
-                                                FontSize="8" Padding="6,2,6,2" FontWeight="SemiBold"
+                                                FontSize="{StaticResource BodyFontSize}" Padding="6,2,6,2" FontWeight="SemiBold"
                                                 Click="BtnExecuteApi_Click"
                                                 ToolTip="Execute API call inside the page context (inherits session cookies, tokens &amp; CORS)"/>
 
                                         <Button x:Name="BtnClearApiSnippet" Grid.Column="1"
                                                 Content="🗑 Clear" Style="{StaticResource IconButton}"
-                                                FontSize="8" Padding="4,2,4,2" Margin="3,0,0,0"
+                                                FontSize="{StaticResource CaptionFontSize}" Padding="4,2,4,2" Margin="3,0,0,0"
                                                 Click="BtnClearApiSnippet_Click"
                                                 ToolTip="Clear API input"/>
                                     </Grid>
@@ -1008,32 +1008,32 @@
                                             <!-- Result Tabs -->
                                             <StackPanel Grid.Column="0" Orientation="Horizontal">
                                                 <Button x:Name="BtnTabConsole" Content="Console" Style="{StaticResource SecondaryButton}"
-                                                        FontSize="7" Padding="4,1,4,1" Margin="0,0,2,0" Tag="Console"
+                                                        FontSize="{StaticResource CaptionFontSize}" Padding="4,1,4,1" Margin="0,0,2,0" Tag="Console"
                                                         Click="BtnResultTab_Click"/>
                                                 <Button x:Name="BtnTabJson" Content="JSON" Style="{StaticResource IconButton}"
-                                                        FontSize="7" Padding="4,1,4,1" Margin="0,0,2,0" Tag="Json"
+                                                        FontSize="{StaticResource CaptionFontSize}" Padding="4,1,4,1" Margin="0,0,2,0" Tag="Json"
                                                         Click="BtnResultTab_Click"/>
                                                 <Button x:Name="BtnTabRaw" Content="Raw" Style="{StaticResource IconButton}"
-                                                        FontSize="7" Padding="4,1,4,1" Margin="0,0,2,0" Tag="Raw"
+                                                        FontSize="{StaticResource CaptionFontSize}" Padding="4,1,4,1" Margin="0,0,2,0" Tag="Raw"
                                                         Click="BtnResultTab_Click"/>
                                                 <Button x:Name="BtnTabHeaders" Content="Headers" Style="{StaticResource IconButton}"
-                                                        FontSize="7" Padding="4,1,4,1" Margin="0,0,2,0" Tag="Headers"
+                                                        FontSize="{StaticResource CaptionFontSize}" Padding="4,1,4,1" Margin="0,0,2,0" Tag="Headers"
                                                         Click="BtnResultTab_Click"/>
                                                 <Button x:Name="BtnTabTiming" Content="Timing" Style="{StaticResource IconButton}"
-                                                        FontSize="7" Padding="4,1,4,1" Tag="Timing"
+                                                        FontSize="{StaticResource CaptionFontSize}" Padding="4,1,4,1" Tag="Timing"
                                                         Click="BtnResultTab_Click"/>
                                             </StackPanel>
 
                                             <!-- Status Summary Badge -->
                                             <TextBlock x:Name="TxtRunnerStatus" Grid.Column="1"
-                                                       Text="Ready" FontSize="8"
+                                                       Text="Ready" FontSize="{StaticResource CaptionFontSize}"
                                                        HorizontalAlignment="Right" VerticalAlignment="Center"
                                                        Foreground="{StaticResource Subtext1Brush}"/>
                                         </Grid>
 
                                         <!-- Result Display Area -->
                                         <TextBox x:Name="TxtRunnerResult"
-                                                 Height="100" FontSize="8" FontFamily="Consolas"
+                                                 Height="100" FontSize="{StaticResource MonospaceFontSize}" FontFamily="{StaticResource MonospaceFontFamily}"
                                                  IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
                                                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
                                                  Background="{StaticResource CrustBrush}" Foreground="{StaticResource TextBrush}"
@@ -1052,20 +1052,20 @@
 
                                     <Button x:Name="BtnAttachResultToBug" Grid.Column="0"
                                             Content="📎 Attach Result to Bug Report" Style="{StaticResource IconButton}"
-                                            FontSize="8" Padding="4,2,4,2" FontWeight="SemiBold"
+                                            FontSize="{StaticResource CaptionFontSize}" Padding="4,2,4,2" FontWeight="SemiBold"
                                             Foreground="{StaticResource AccentBrush}"
                                             Click="BtnAttachResultToBug_Click"
                                             ToolTip="Append the command/API snippet, status, headers, and output to the active bug report draft"/>
 
                                     <Button x:Name="BtnCopyRunnerResult" Grid.Column="1"
                                             Content="📋 Copy" Style="{StaticResource IconButton}"
-                                            FontSize="8" Padding="4,2,4,2" Margin="3,0,0,0"
+                                            FontSize="{StaticResource CaptionFontSize}" Padding="4,2,4,2" Margin="3,0,0,0"
                                             Click="BtnCopyRunnerResult_Click"
                                             ToolTip="Copy displayed result tab text to clipboard"/>
 
                                     <Button x:Name="BtnClearRunnerResult" Grid.Column="2"
                                             Content="🗑" Style="{StaticResource IconButton}"
-                                            FontSize="8" Padding="4,2,4,2" Margin="3,0,0,0"
+                                            FontSize="{StaticResource CaptionFontSize}" Padding="4,2,4,2" Margin="3,0,0,0"
                                             Click="BtnClearRunnerResult_Click"
                                             ToolTip="Clear result output"/>
                                 </Grid>
@@ -1079,7 +1079,7 @@
                                 CornerRadius="4" Padding="4" Margin="0,2,0,5"
                                 Visibility="Collapsed">
                             <StackPanel>
-                                <TextBlock Text="ATTACHMENTS FOR THIS ENTRY:" FontSize="9" FontWeight="SemiBold"
+                                <TextBlock Text="ATTACHMENTS FOR THIS ENTRY:" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                            Foreground="{StaticResource Subtext1Brush}" Margin="2,0,0,4"/>
                                 <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
                                     <StackPanel x:Name="StagedThumbnailsPanel" Orientation="Horizontal"/>
@@ -1099,7 +1099,7 @@
                                     Style="{StaticResource PrimaryButton}"
                                     Padding="10,5,10,5"
                                     FontWeight="SemiBold"
-                                    FontSize="11"
+                                    FontSize="{StaticResource BodyFontSize}"
                                     IsEnabled="False"
                                     Click="BtnSaveEntry_Click"/>
 
@@ -1107,7 +1107,7 @@
                                     Content="Clear"
                                     Style="{StaticResource IconButton}"
                                     Padding="8,5,8,5" Margin="4,0,0,0"
-                                    FontSize="10"
+                                    FontSize="{StaticResource CaptionFontSize}"
                                     ToolTip="Reset current entry notes &amp; attachments"
                                     Click="BtnClearDraft_Click"/>
                         </Grid>
@@ -1131,23 +1131,23 @@
 
                         <TextBlock x:Name="BugCountHeader" Grid.Column="0"
                                    Text="BUG LIST (0)"
-                                   FontSize="10" FontWeight="Bold"
+                                   FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                    Foreground="{StaticResource Subtext1Brush}"
                                    VerticalAlignment="Center"/>
 
                         <!-- Filter buttons (All / Open / Verifying / Closed) -->
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
                             <Button x:Name="BtnFilterAll" Content="All"
-                                    Style="{StaticResource IconButton}" FontSize="9" Padding="4,1,4,1" Margin="0,0,2,0"
+                                    Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Padding="4,1,4,1" Margin="0,0,2,0"
                                     Click="BtnFilter_Click" Tag="All"/>
                             <Button x:Name="BtnFilterOpen" Content="Open"
-                                    Style="{StaticResource IconButton}" FontSize="9" Padding="4,1,4,1" Margin="0,0,2,0"
+                                    Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Padding="4,1,4,1" Margin="0,0,2,0"
                                     Click="BtnFilter_Click" Tag="Open"/>
                             <Button x:Name="BtnFilterVerifying" Content="Verifying"
-                                    Style="{StaticResource IconButton}" FontSize="9" Padding="4,1,4,1" Margin="0,0,2,0"
+                                    Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Padding="4,1,4,1" Margin="0,0,2,0"
                                     Click="BtnFilter_Click" Tag="Verifying"/>
                             <Button x:Name="BtnFilterClosed" Content="Closed"
-                                    Style="{StaticResource IconButton}" FontSize="9" Padding="4,1,4,1"
+                                    Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Padding="4,1,4,1"
                                     Click="BtnFilter_Click" Tag="Closed"/>
                         </StackPanel>
 
@@ -1156,14 +1156,14 @@
                             <Button x:Name="BtnExportJson"
                                     Content="📦 Export to /Bugs/"
                                     Style="{StaticResource IconButton}"
-                                    FontSize="9" Padding="5,2,5,2" Margin="0,0,4,0"
+                                    FontSize="{StaticResource CaptionFontSize}" Padding="5,2,5,2" Margin="0,0,4,0"
                                     Foreground="{StaticResource AccentBrush}"
                                     ToolTip="Export bug reports to local repo /Bugs/ (MSP_Console, Portal, Admin-Panel, Marketing, etc.) as JSON"
                                     Click="BtnExportJson_Click"/>
                             <Button x:Name="BtnCopyAllMarkdown"
                                     Content="📋 Copy Report"
                                     Style="{StaticResource IconButton}"
-                                    FontSize="9" Padding="5,2,5,2"
+                                    FontSize="{StaticResource CaptionFontSize}" Padding="5,2,5,2"
                                     ToolTip="Copy Markdown bug report of all entries on this page"
                                     Click="BtnCopyAllMarkdown_Click"/>
                         </StackPanel>
@@ -1176,7 +1176,7 @@
 
                     <TextBlock x:Name="BugListEmptyText" Grid.Row="1"
                                Margin="8,16,8,8"
-                               FontSize="11"
+                               FontSize="{StaticResource CaptionFontSize}"
                                TextWrapping="Wrap"
                                TextAlignment="Center"
                                Foreground="{StaticResource Subtext1Brush}"
