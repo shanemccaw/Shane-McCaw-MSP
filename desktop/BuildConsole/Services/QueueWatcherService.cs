@@ -1056,7 +1056,10 @@ namespace BuildConsole.Services
             if (!BuildConsoleSettings.Load().EnforceWorktreeIsolation) return;
             if ((DateTime.UtcNow - _lastWorktreeSweepUtc).TotalMinutes < 5) return;
             _lastWorktreeSweepUtc = DateTime.UtcNow;
-            _ = WorktreeCleanupService.SweepWorktreesAsync(force: false, dryRun: false);
+            // Git #4244 — pass this instance's own live worktree paths so the sweep can never
+            // remove one out from under a build we know is running right now, even if the
+            // registry's own ownership hand-off (creatorPid re-stamp) hasn't landed yet.
+            _ = WorktreeCleanupService.SweepWorktreesAsync(force: false, dryRun: false, protectPaths: GetRunningWorktreePaths());
         }
 
         /// <summary>Git #2796 — throttled periodic repo housekeeping (at most once every 6 hours),
@@ -2873,10 +2876,23 @@ namespace BuildConsole.Services
             // Git #1371 — re-point the worktree's owner pid from the launcher (BuildConsole) to
             // the freshly-started build process, so the cleanup sweep retains the worktree exactly
             // while THIS build runs and can reclaim it (after a grace period) once the build exits.
+            //
+            // Git #4244 — AWAITED, not fire-and-forget: this is the actual ownership hand-off the
+            // periodic sweep's creatorPid/pidAlive check relies on, and a re-dispatch into an
+            // EXISTING worktree is exactly the case with the least slack before the next sweep
+            // tick. A fire-and-forget call here could still be in flight (or lost entirely, e.g. if
+            // BuildConsole itself restarts a moment later) when the sweep runs, leaving the registry
+            // record pointed at whatever pid provisioning stamped it with earlier rather than this
+            // build's own long-lived process. Awaiting makes the hand-off durable before this launch
+            // is considered complete; GetRunningWorktreePaths()'s sweep-side protection (above,
+            // MaybeSweepWorktrees) is the independent second line of defense for the remaining gap
+            // between this await returning and `_running[item.Id] = entry` below.
             int launchedPid = launched.Process.Id;
             if (worktreeName != null)
             {
-                _ = WorktreeProvisionService.StampOwnerAsync(worktreeName, launchedPid);
+                var stampRes = await WorktreeProvisionService.StampOwnerAsync(worktreeName, launchedPid);
+                if (!stampRes.Ok)
+                    ActivityLog.Log("watcher", $"Queue #{item.Id}: couldn't re-stamp worktree '{worktreeName}' owner to build pid {launchedPid} ({stampRes.Error}) — the sweep's live-run protection covers this build regardless.");
             }
 
             // Git #1839 — stamp the build's pid + its process-creation time on the queue row so a
@@ -3594,6 +3610,18 @@ namespace BuildConsole.Services
         /// to enumerate off the UI thread's own call; membership itself is only ever mutated on the UI
         /// thread (see <see cref="_running"/>'s own doc comment).</summary>
         public IReadOnlyList<int> GetRunningBuildIds() => _running.Keys.ToList();
+
+        /// <summary>Git #4244 — the real, authoritative worktree paths of every build THIS instance
+        /// currently has a live process running in, straight off <see cref="_running"/> (same
+        /// membership <see cref="GetRunningBuildIds"/> reads). Passed to
+        /// <see cref="WorktreeCleanupService.SweepWorktreesAsync"/> as a defense-in-depth retention
+        /// list: the periodic sweep can then never remove a worktree BuildConsole itself knows is
+        /// live right now, regardless of whether the on-disk registry record's creatorPid/
+        /// lastActiveAt hand-off (provision-worktree.mjs's reuse path) has actually landed yet —
+        /// exactly the re-dispatch race #4244 was filed against. Null WorktreePath entries (isolation
+        /// off / explicit --cwd) are dropped.</summary>
+        public IReadOnlyList<string> GetRunningWorktreePaths() =>
+            _running.Values.Select(e => e.WorktreePath).Where(p => !string.IsNullOrWhiteSpace(p)).ToList()!;
 
         /// <summary>Gets aggregate active token count and estimated cost across all running interactive builds.</summary>
         public (long TotalTokens, double EstimatedCost, int ActiveBuildCount) GetActiveUsageSummary()

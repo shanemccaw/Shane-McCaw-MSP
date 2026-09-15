@@ -788,8 +788,18 @@ export function repoRootsForSweep(config) {
  * secondary repo ever configured/provisioned) see `repoRootsForSweep` return exactly
  * `[config.mainRepoRoot]` — identical behavior to before this change.
  *
+ * Git #4244 — `protectedPaths` (optional) is BuildConsole's own authoritative, in-process
+ * list of worktree paths it currently has a live build process running in (its `_running`
+ * dict). This is real defense-in-depth alongside the registry's `creatorPid`/`lastActiveAt`
+ * tracking: the registry can only protect a worktree if the ownership hand-off from the
+ * launcher pid to the real long-lived build pid (`StampOwnerAsync`) actually landed before
+ * this sweep runs, and a re-dispatch into an existing worktree is exactly the case where
+ * that hand-off has the least time to land. A path BuildConsole itself reports as the cwd
+ * of a build it is running right now is retained unconditionally, regardless of what the
+ * on-disk registry record says.
+ *
  * @param config      loadConfig() result
- * @param opts        { dryRun, maxAgeMs, force, all }
+ * @param opts        { dryRun, maxAgeMs, force, all, protectedPaths }
  */
 export function sweepWorktrees(config, opts = {}) {
   const dryRun = !!opts.dryRun;
@@ -797,6 +807,11 @@ export function sweepWorktrees(config, opts = {}) {
   const maxAgeMs = opts.maxAgeMs ?? (30 * 60 * 1000); // 30 min active grace period by default
   const debugMaxAgeMs = opts.debugMaxAgeMs ?? (24 * 60 * 60 * 1000); // 24h debug grace period
   const now = Date.now();
+  const protectedPaths = new Set(
+    (Array.isArray(opts.protectedPaths) ? opts.protectedPaths : [])
+      .filter(Boolean)
+      .map((p) => normalizePath(p))
+  );
 
   const repoRoots = repoRootsForSweep(config);
   // Each entry tagged with the real repoRoot `git worktree list` was run against, so an
@@ -820,6 +835,14 @@ export function sweepWorktrees(config, opts = {}) {
     const norm = normalizePath(wt.path);
     if (norm === normMain) continue; // Protected main repo
     if (norm === normServer) continue; // Protected dev-server
+
+    // Git #4244 — checked BEFORE the ownership/pid gates below: BuildConsole's own
+    // authoritative report that a build is live in this exact directory right now wins
+    // outright, regardless of what the registry record's creatorPid/lastActiveAt say.
+    if (protectedPaths.has(norm)) {
+      retained.push({ path: wt.path, reason: "protected: reported as a live build's cwd by BuildConsole (Git #4244)" });
+      continue;
+    }
 
     const rec = recordByPath.get(norm);
     // Git #3630 — the worktree's OWN real repo: its tracking record's repoRoot if one

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -34,7 +35,16 @@ namespace BuildConsole.Services
         /// </summary>
         /// <param name="force">If true, sweeps stale debug worktrees as well.</param>
         /// <param name="dryRun">If true, performs a dry-run check without deleting files.</param>
-        public static async Task<WorktreeCleanupResult> SweepWorktreesAsync(bool force = false, bool dryRun = false)
+        /// <param name="protectPaths">
+        /// Git #4244 — real defense-in-depth alongside the registry's own creatorPid/
+        /// lastActiveAt tracking: worktree paths THIS app instance knows are the cwd of a
+        /// build process it is running right now (its own in-process <c>_running</c> dict),
+        /// so a re-dispatch into an existing worktree is never swept out from under a live
+        /// session on a stale/not-yet-landed registry record alone. Null/empty is a no-op —
+        /// every other call site (the manual "Clean" button, the dry-run health check)
+        /// leaves this unset and behaves exactly as before.
+        /// </param>
+        public static async Task<WorktreeCleanupResult> SweepWorktreesAsync(bool force = false, bool dryRun = false, IEnumerable<string>? protectPaths = null)
         {
             string? repoRoot = BuildTrackerConfig.FindRepoRoot();
             if (repoRoot == null)
@@ -53,6 +63,11 @@ namespace BuildConsole.Services
             string args = $"\"{scriptPath}\" --sweep --json";
             if (force) args += " --force";
             if (dryRun) args += " --dry-run";
+            // Git #4244 — pipe-separated (Windows paths contain ':'); empty/whitespace entries
+            // dropped so a stray null/blank WorktreePath can never protect an unrelated path.
+            var protectList = protectPaths?.Where(p => !string.IsNullOrWhiteSpace(p)).ToList();
+            if (protectList != null && protectList.Count > 0)
+                args += $" --protect \"{string.Join("|", protectList)}\"";
 
             var result = await RunScriptAsync(repoRoot, args, "Worktree sweep");
 

@@ -9,6 +9,10 @@
 //
 //   # Sweep all orphaned, inactive, or expired worktrees
 //   node scripts/dev-server/cleanup-worktree.mjs --sweep [--force] [--all] [--max-age <ms>] [--dry-run] [--json]
+//     [--protect <path1>|<path2>|...]   Git #4244 — pipe-separated worktree paths the
+//                                       caller (BuildConsole) knows are the cwd of a
+//                                       live build process RIGHT NOW; retained
+//                                       unconditionally regardless of registry state.
 //
 //   # Mark a crashed/failed worktree as stale for debugging
 //   node scripts/dev-server/cleanup-worktree.mjs --mark-stale <name-or-path> --reason "type error in build"
@@ -43,6 +47,10 @@ function parseArgs(argv) {
     else if (t === "--all") a.all = true;
     else if (t === "--dry-run") a.dryRun = true;
     else if (t === "--max-age") a.maxAgeMs = Number(argv[++i]);
+    // Git #4244 — BuildConsole's own live worktree paths (its in-process `_running`
+    // dict), pipe-separated since Windows paths contain ':' and ',' can appear in a
+    // custom --path. Unconditionally retained by the sweep regardless of registry state.
+    else if (t === "--protect") a.protect = (argv[++i] || "").split("|").filter(Boolean);
     else a._.push(t);
   }
   return a;
@@ -111,6 +119,7 @@ export async function runCleanupCli(args) {
       dryRun: args.dryRun,
       force: args.force || args.all,
       maxAgeMs: args.maxAgeMs,
+      protectedPaths: args.protect,
     });
     if (args.json) {
       console.log(JSON.stringify(res, null, 2));

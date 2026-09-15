@@ -47,7 +47,7 @@ async function main() {
   process.env.DEV_SERVER_BASE_REF = "HEAD";
 
   const { loadConfig } = await import("./config.mjs");
-  const { sweepWorktrees, worktreeLastActivityMs } = await import("./worktree-lifecycle.mjs");
+  const { sweepWorktrees, worktreeLastActivityMs, registerWorktree } = await import("./worktree-lifecycle.mjs");
 
   try {
     // --- Build a real repo with a real agent/* worktree, no tracking record. ---
@@ -102,6 +102,45 @@ async function main() {
     const s3 = sweepWorktrees(config, { dryRun: true, maxAgeMs: 1, force: true });
     ok(inList(s3.removed, liveWt),
       "a force/--all sweep still reclaims the work-bearing worktree — no permanent leak (#2537 preserved)");
+
+    // --- Git #4244 — a re-dispatched build's worktree, exactly the profile that got swept
+    //     live: a registry record with a DEAD creatorPid (the prior dispatch's process is long
+    //     gone), no recent on-disk activity (the mtime-based #2537 fallback aged out too), and a
+    //     CLEAN tree (no uncommitted work for #1958's retain-for-resume to catch either) — i.e.
+    //     every existing retention signal genuinely says "orphaned". BuildConsole's own
+    //     protectedPaths report (its authoritative in-process _running list) must retain it
+    //     anyway, since it's the real defense-in-depth this fix adds. ---
+    const redispatchWt = path.join(tmpRoot, "wt-redispatch-4244");
+    git(repo, ["worktree", "add", "-q", "-b", "agent/redispatch-4244", redispatchWt, "HEAD"]);
+    // A pid guaranteed not alive right now. The real assertion here is about protectedPaths
+    // overriding a DEAD/absent pid, not about exercising pidAlive() itself (already covered by
+    // lock.mjs's own tests) — an out-of-realistic-range pid is a stable, portable stand-in.
+    const deadPid = 999999;
+    registerWorktree(config, {
+      name: "redispatch-4244",
+      path: redispatchWt,
+      branch: "agent/redispatch-4244",
+      creatorPid: deadPid,
+    });
+    // Backdate the record so it's past every existing grace window (createdAt/lastActiveAt both
+    // stale) and clear of the freshly-written liveWt's activity above.
+    const { updateWorktreeRecord } = await import("./worktree-lifecycle.mjs");
+    updateWorktreeRecord(config, redispatchWt, { createdAt: Date.now() - 60 * 60 * 1000 });
+
+    // maxAgeMs: 1 — the `git worktree add` above just wrote fresh mtimes into this worktree's
+    // own .git dir, so the #2537 on-disk-activity grace fallback would otherwise retain it on
+    // that basis alone; aging it out here isolates the actual signal this test cares about
+    // (dead pid + protectedPaths), matching how the #1958 case above ages liveWt the same way.
+    const s4 = sweepWorktrees(config, { dryRun: true, maxAgeMs: 1 }); // no protectedPaths — control run
+    ok(inList(s4.removed, redispatchWt),
+      "control: with no protectedPaths, the dead-pid/no-activity/clean-tree worktree IS a removal candidate");
+
+    const s5 = sweepWorktrees(config, { dryRun: true, maxAgeMs: 1, protectedPaths: [redispatchWt] });
+    const r5 = s5.retained.find((r) => norm(path.resolve(r.path)) === norm(path.resolve(redispatchWt)));
+    ok(r5 && /4244/.test(r5.reason || ""),
+      "Git #4244: a worktree BuildConsole reports as a live build's cwd is RETAINED regardless of dead creatorPid/no activity");
+    ok(!inList(s5.removed, redispatchWt),
+      "Git #4244: the protected worktree is NOT a removal candidate");
 
     console.log(failures === 0 ? "\nAll worktree-sweep self-tests passed." : `\n${failures} assertion(s) FAILED.`);
   } finally {
