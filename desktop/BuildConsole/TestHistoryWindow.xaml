@@ -349,7 +349,7 @@
 
                     <!-- No Selection State -->
                     <StackPanel x:Name="PanelNoSelection" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="40">
-                        <TextBlock Text="📊" FontSize="42" HorizontalAlignment="Center" Margin="0,0,0,12"/>
+                        <TextBlock Text="📊" FontSize="{StaticResource DisplayIconFontSize}" HorizontalAlignment="Center" Margin="0,0,0,12"/>
                         <TextBlock Text="Select a test run to inspect details"
                                    FontSize="{StaticResource SubHeaderFontSize}" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}"
                                    HorizontalAlignment="Center" Margin="0,0,0,6"/>
