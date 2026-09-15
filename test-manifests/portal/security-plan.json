@@ -2,7 +2,7 @@
   "issue": 3027,
   "feature": "Security Plan (#3027, Feature #1495) -- the real customer-facing Security Plan page in artifacts/portal (/security-plan), wired to GET /api/portal/security-plan, GET /api/portal/security-plan/versions, GET /api/portal/security-plan/versions/current, POST /api/portal/security-plan/versions/:versionUid/sign, and the new GET /api/portal/security-plan/drift (added this build, reusing security-plan-drift.ts's own computeSecurityPlanDrift) -- see docs/portal/security-plan-contract-pack.md. No fixture module: every row on screen comes from these endpoints.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "TBD-fill-at-DONE",
+  "lastVerifiedAgainstCommit": "6bf9d1215",
 
   "notes": [
     "WHAT THIS COVERS: the plan-of-record honest-null contract (assembledPlan: null when nothing has ever been signed), the review-before-sign tri-state on GET .../versions/current (404 never-sealed / 200 unsigned / 200 signed), the new GET .../drift endpoint's honest hasLastSignedVersion:false when there is no baseline yet, and the sign route's real guardrails (400 on a too-short name, 404 on a versionUid belonging to another tenant or that does not exist).",
