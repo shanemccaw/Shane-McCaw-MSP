@@ -44,7 +44,7 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="Build Watch" Margin="12,0,0,0"
-                           VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
+                           VerticalAlignment="Center" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                            Foreground="{StaticResource Subtext1Brush}"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
                     <!-- Git #1632 — manual "Recheck closures" trigger: a genuine one-click
@@ -83,12 +83,12 @@
             <!-- Header: title + live counts + colour legend -->
             <Grid Grid.Row="0" Margin="2,0,2,8">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="&#x1F5A5;" FontSize="16" Margin="0,0,8,0"
+                    <TextBlock Text="&#x1F5A5;" FontSize="{StaticResource SubHeaderFontSize}" Margin="0,0,8,0"
                                VerticalAlignment="Center"/>
-                    <TextBlock Text="Build Watch" FontSize="15" FontWeight="SemiBold"
+                    <TextBlock Text="Build Watch" FontSize="{StaticResource SubHeaderFontSize}" FontWeight="SemiBold"
                                VerticalAlignment="Center"
                                Foreground="{StaticResource TextBrush}"/>
-                    <TextBlock x:Name="Subtitle" Margin="12,0,0,0" FontSize="12"
+                    <TextBlock x:Name="Subtitle" Margin="12,0,0,0" FontSize="{StaticResource CaptionFontSize}"
                                VerticalAlignment="Center"
                                Foreground="{StaticResource Subtext1Brush}"/>
                 </StackPanel>
@@ -96,17 +96,17 @@
                             VerticalAlignment="Center">
                     <Ellipse Width="10" Height="10" Margin="0,0,4,0"
                              Fill="{StaticResource StatusSuccessBrush}" VerticalAlignment="Center"/>
-                    <TextBlock Text="done" Margin="0,0,12,0" FontSize="11"
+                    <TextBlock Text="done" Margin="0,0,12,0" FontSize="{StaticResource CaptionFontSize}"
                                VerticalAlignment="Center"
                                Foreground="{StaticResource Subtext1Brush}"/>
                     <Ellipse Width="10" Height="10" Margin="0,0,4,0"
                              Fill="{StaticResource StatusErrorBrush}" VerticalAlignment="Center"/>
-                    <TextBlock Text="failed" Margin="0,0,12,0" FontSize="11"
+                    <TextBlock Text="failed" Margin="0,0,12,0" FontSize="{StaticResource CaptionFontSize}"
                                VerticalAlignment="Center"
                                Foreground="{StaticResource Subtext1Brush}"/>
                     <Ellipse Width="10" Height="10" Margin="0,0,4,0"
                              Fill="{StaticResource BlueBrush}" VerticalAlignment="Center"/>
-                    <TextBlock Text="running" FontSize="11"
+                    <TextBlock Text="running" FontSize="{StaticResource CaptionFontSize}"
                                VerticalAlignment="Center"
                                Foreground="{StaticResource Subtext1Brush}"/>
                 </StackPanel>
@@ -119,7 +119,7 @@
                     BorderThickness="1" CornerRadius="4"
                     Padding="8,5" Margin="2,0,2,8"
                     Visibility="Collapsed">
-                <TextBlock x:Name="WaitingBanner" FontSize="12" TextWrapping="Wrap"
+                <TextBlock x:Name="WaitingBanner" FontSize="{StaticResource CaptionFontSize}" TextWrapping="Wrap"
                            Foreground="{StaticResource StatusWarningBrush}"/>
             </Border>
 
