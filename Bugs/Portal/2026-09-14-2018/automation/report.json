@@ -1,0 +1,116 @@
+{
+  "testName": "Issue #3027 - Security Plan (#3027, Feature #1495) -- the real customer-facing Security Plan page in artifacts/portal (/security-plan), wired to GET /api/portal/security-plan, GET /api/portal/security-plan/versions, GET /api/portal/security-plan/versions/current, POST /api/portal/security-plan/versions/:versionUid/sign, and the new GET /api/portal/security-plan/drift (added this build, reusing security-plan-drift.ts\u0027s own computeSecurityPlanDrift) -- see docs/portal/security-plan-contract-pack.md. No fixture module: every row on screen comes from these endpoints.",
+  "productName": "Portal",
+  "sessionId": "2026-09-14-2018",
+  "startedAt": "2026-09-14T20:18:21.2575958-04:00",
+  "endedAt": "2026-09-14T20:18:28.9872861-04:00",
+  "durationSeconds": 7.73,
+  "success": true,
+  "summary": "\u2714 TEST PASSED (2/2 Steps)",
+  "urlsVisited": [
+    "http://localhost:5175/portal/security-plan"
+  ],
+  "steps": [
+    {
+      "index": 1,
+      "action": "goto",
+      "selector": "/portal/security-plan",
+      "targetUrl": "http://localhost:5175/portal/security-plan",
+      "expected": "navigation to http://localhost:5175/portal/security-plan succeeds",
+      "actual": "succeeded",
+      "passed": true,
+      "durationMs": 920,
+      "detail": "Navigated to http://localhost:5175/portal/security-plan",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\3027-20260914201819\\screenshots\\1.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 2,
+      "action": "expect",
+      "selector": "body",
+      "targetUrl": "http://localhost:5175/portal/security-plan",
+      "expected": "body state == \u0027visible\u0027; textContains any of [\u0022Sign in required\u0022]",
+      "actual": "found=True, visible=True; text=\u0022Sign in required You need to be signed in to view the customer portal. Go to sign in \u2192\u0022",
+      "passed": true,
+      "durationMs": 24,
+      "detail": "body \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained \u0022Sign in required\u0022",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\3027-20260914201819\\screenshots\\2.png",
+      "domSnapshotPath": null
+    }
+  ],
+  "consoleErrors": [],
+  "apiFailures": [
+    {
+      "name": "post-api-auth-refresh",
+      "method": "POST",
+      "requestUrl": "http://localhost:5175/api/auth/refresh",
+      "statusCode": 401,
+      "durationMs": 0,
+      "reason": "HTTP 401",
+      "timestamp": "2026-09-14T20:18:22.7258788-04:00"
+    },
+    {
+      "name": "post-api-auth-refresh",
+      "method": "POST",
+      "requestUrl": "http://localhost:5175/api/auth/refresh",
+      "statusCode": 401,
+      "durationMs": 0,
+      "reason": "HTTP 401",
+      "timestamp": "2026-09-14T20:18:25.7440032-04:00"
+    }
+  ],
+  "executedCommands": [],
+  "screenshotPaths": [
+    "screenshots/screenshot-01.png",
+    "screenshots/screenshot-02.png"
+  ],
+  "screenshotDiffs": [
+    {
+      "StepIndex": 1,
+      "StepLabel": "goto /portal/security-plan",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\3027-20260914201819\\screenshots\\1.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\security-plan\\1.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 2,
+      "StepLabel": "expect body",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\3027-20260914201819\\screenshots\\2.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\security-plan\\2.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    }
+  ],
+  "domDiffs": [
+    {
+      "StepIndex": 1,
+      "Route": "http://localhost:5175/portal/security-plan",
+      "Selector": "/portal/security-plan",
+      "Description": "goto /portal/security-plan",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [],
+      "SnapshotPath": "dom/dom-step-01.json",
+      "Timestamp": "2026-09-14T20:18:26.0873378-04:00"
+    },
+    {
+      "StepIndex": 2,
+      "Route": "http://localhost:5175/portal/security-plan",
+      "Selector": "body",
+      "Description": "expect body",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 8,
+      "Changes": [
+        "Captured DOM scope: 8 total element nodes under \u0027body\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-02.json",
+      "Timestamp": "2026-09-14T20:18:27.764243-04:00"
+    }
+  ],
+  "recommendations": "All automated UI steps passed. Review baseline screenshots for visual drift."
+}
