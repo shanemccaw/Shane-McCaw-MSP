@@ -535,6 +535,31 @@ namespace BuildConsole.Controls
             }
         }
 
+        /// <summary>Git #4160 — the "Element Screenshot Attached" pill on a saved bug card had no click
+        /// handler at all. Reuses the existing <see cref="ScreenshotGalleryWindow"/> (Git #966) rather
+        /// than writing a new viewer — passes every screenshot on the bug so Prev/Next navigates them.</summary>
+        private void BugScreenshotPill_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not FrameworkElement fe || fe.DataContext is not BugCardViewModel bug) return;
+            var shots = bug.Screenshots
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Select(p => new UiScreenshotCapture { FilePath = p, StepLabel = bug.Notes })
+                .ToList();
+            if (shots.Count == 0) return;
+
+            new ScreenshotGalleryWindow(shots) { Owner = Window.GetWindow(this) }.Show();
+        }
+
+        /// <summary>Git #4160 — same real gap on the staged-screenshot thumbnails, before a bug is saved.</summary>
+        private void StagedScreenshotThumb_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not FrameworkElement fe || fe.DataContext is not StagedScreenshotItem item) return;
+            if (string.IsNullOrWhiteSpace(item.FilePath)) return;
+
+            var shots = new List<UiScreenshotCapture> { new UiScreenshotCapture { FilePath = item.FilePath, StepLabel = item.FileName } };
+            new ScreenshotGalleryWindow(shots) { Owner = Window.GetWindow(this) }.Show();
+        }
+
         // ═══════════════════════════════════════════════════════════════════
         // Save Bug Entry
         // ═══════════════════════════════════════════════════════════════════

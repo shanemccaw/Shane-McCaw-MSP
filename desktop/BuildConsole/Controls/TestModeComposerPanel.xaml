@@ -351,7 +351,8 @@
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
                                             <Border Background="{StaticResource Surface0Brush}" BorderBrush="{StaticResource Surface1Brush}"
-                                                    BorderThickness="1" CornerRadius="4" Padding="6,3" Margin="0,0,6,0">
+                                                    BorderThickness="1" CornerRadius="4" Padding="6,3" Margin="0,0,6,0"
+                                                    Cursor="Hand" MouseLeftButtonDown="StagedScreenshotThumb_Click" ToolTip="Click to view screenshot">
                                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                                     <TextBlock Text="🖼" FontSize="9" Margin="0,0,4,0"/>
                                                     <TextBlock Text="{Binding FileName}" FontSize="9.5" FontFamily="Consolas" MaxWidth="120" TextTrimming="CharacterEllipsis"/>
@@ -464,7 +465,8 @@
                                                     </StackPanel>
 
                                                     <!-- Screenshot Badge if present -->
-                                                    <Border Background="#1A38BDF8" BorderBrush="#4038BDF8" BorderThickness="1" CornerRadius="4" Padding="5,2" Margin="0,0,0,4" HorizontalAlignment="Left" Visibility="{Binding HasScreenshotVisibility}">
+                                                    <Border Background="#1A38BDF8" BorderBrush="#4038BDF8" BorderThickness="1" CornerRadius="4" Padding="5,2" Margin="0,0,0,4" HorizontalAlignment="Left" Visibility="{Binding HasScreenshotVisibility}"
+                                                            Cursor="Hand" MouseLeftButtonDown="BugScreenshotPill_Click" ToolTip="Click to view attached screenshot(s)">
                                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                                             <TextBlock Text="🖼" FontSize="9" Margin="0,0,4,0"/>
                                                             <TextBlock Text="Element Screenshot Attached" FontSize="8.5" FontWeight="SemiBold" Foreground="#38BDF8"/>

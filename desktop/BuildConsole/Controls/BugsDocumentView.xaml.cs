@@ -17,6 +17,13 @@ namespace BuildConsole.Controls
         private VisualTestTrackerEntry? _selectedEntry;
         private bool _suppressDesignCheckboxEvent;
 
+        /// <summary>Git #4160 — false until the constructor finishes. WPF's XamlObjectWriter assigns
+        /// named (x:Name) fields in document order as it parses; RadioFilterOpen is IsChecked="True" by
+        /// default and is declared before LstBugs in BugsDocumentView.xaml, so its Checked event (wired
+        /// to Filter_Changed → ApplyFilters) fires mid-InitializeComponent, while LstBugs is still null.
+        /// Filter_Changed no-ops until this flips true at the end of the constructor.</summary>
+        private bool _initialized;
+
         /// <summary>Git #3982 — Reject packages the entry's real evidence (screenshots, console/network
         /// logs, repro steps — via <see cref="VisualTestTrackerEntry.ToMarkdown"/>, the same builder
         /// already used for GitHub/Jira-ready export) and raises this instead of calling GitHub. The
@@ -28,6 +35,7 @@ namespace BuildConsole.Controls
         public BugsDocumentView()
         {
             InitializeComponent();
+            _initialized = true;
         }
 
         public void Initialize(VisualTestTrackerStore store, Action<string>? navigateToUrlHandler = null)
@@ -169,6 +177,7 @@ namespace BuildConsole.Controls
 
         private void Filter_Changed(object sender, RoutedEventArgs e)
         {
+            if (!_initialized) return;
             ApplyFilters();
         }
 
