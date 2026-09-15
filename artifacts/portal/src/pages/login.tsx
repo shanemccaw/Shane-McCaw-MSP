@@ -17,6 +17,14 @@ interface Banner {
   wire?: string;
 }
 
+const MFA_FACTS = [
+  "An authenticator code is reusable within its window and proves possession of the shared secret. A bypass code is single-use and proves an administrator vouched for you.",
+  "Bypass consumption is atomic: the used-at stamp only writes where it was still null, so two requests presenting the same code cannot both succeed.",
+  "Every accepted bypass writes an audit entry before the session is issued. TOTP does not — the session's own login method records it instead.",
+  "This screen never mints bypass codes. They are issued separately by an MSP administrator on your account.",
+  "Both paths end in the same place: one shared session-issuing tail returning accessToken, refreshToken, refreshExpiresAt and the user payload, stamped totp or bypass.",
+];
+
 /**
  * Auth — Sign in (#2991, Feature #1648). Wired to POST /api/auth/login
  * (auth.ts:321-418) per docs/portal/auth-core-contract-pack.md §1. The MFA challenge
@@ -155,6 +163,27 @@ export default function LoginPage() {
   if (phase === "mfa") {
     return (
       <AuthPageShell title="Verify it is you" subtitle="Password accepted · this challenge expires in 10 minutes">
+        {!mfaMethods.includes("totp") ? (
+          <Card className="flex flex-col gap-2.5 border-status-amber/35 bg-status-amber/[0.06] p-5">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-status-amber">Not wired yet</span>
+            <span className="text-sm font-bold tracking-tight text-foreground">
+              This account's only enrolled method is one this screen cannot challenge
+            </span>
+            <span className="text-xs leading-relaxed text-muted-foreground">
+              Your enrolled methods are <strong className="text-foreground">{mfaMethods.join(", ") || "sms"}</strong> —
+              no authenticator app, so there is no code for the form below to check. The send-an-SMS endpoint is real
+              and live on the backend; no portal screen has ever called it, and passkey verification has no caller
+              either. Until one does, an SMS-only or passkey-only account cannot finish signing in with a code.
+            </span>
+            <span className="text-xs leading-relaxed text-muted-foreground">
+              The honest route today is an emergency bypass code, which your MSP administrator mints for you, or{" "}
+              <Link href="/sign-in-help" className="font-semibold text-primary hover:underline">
+                sign-in help
+              </Link>
+              .
+            </span>
+          </Card>
+        ) : null}
         <Card className="flex flex-col gap-4 p-5">
           <Tabs value={mfaTab} onValueChange={(v) => setMfaTab(v as "totp" | "bypass")}>
             <TabsList className="w-full">
@@ -210,6 +239,18 @@ export default function LoginPage() {
               : "Using a bypass code is recorded against your account and visible to your administrator."}
           </p>
         </Card>
+
+        <div className="flex flex-col gap-2.5 rounded-xl border border-border bg-card/40 p-4">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            How the two codes differ
+          </span>
+          {MFA_FACTS.map((f, i) => (
+            <div key={i} className="flex items-start gap-2.5">
+              <span className="mt-1.5 size-[5px] flex-none rounded-full bg-muted-foreground" />
+              <span className="min-w-0 text-xs text-muted-foreground">{f}</span>
+            </div>
+          ))}
+        </div>
       </AuthPageShell>
     );
   }
