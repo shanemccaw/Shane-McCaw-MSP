@@ -151,9 +151,9 @@ export default function OverviewPage() {
       title: "Risk acceptances waiting for your signature",
       ink: "#f8fafc",
       action: "Review and sign",
-      href: comingSoonHref("Risk Register", "module"),
+      href: "/risk-register",
       alt: "Risk register",
-      altHref: comingSoonHref("Risk Register", "module"),
+      altHref: "/risk-register",
     });
   }
   if (d && d.overviewCounts.remediationInProgress > 0) {
@@ -166,27 +166,27 @@ export default function OverviewPage() {
       action: "Open tracker",
       href: "/remediation-tracking",
       alt: "Policy decisions",
-      altHref: comingSoonHref("Policy Decisions", "module"),
+      altHref: "/policy-decisions",
     });
   }
 
   const comingRows = d
     ? [
-        { count: d.overviewCounts.microsoftChangesThisWeek, label: "Microsoft changes this week", href: comingSoonHref("Microsoft Changes", "module"), color: BLU },
+        { count: d.overviewCounts.microsoftChangesThisWeek, label: "Microsoft changes this week", href: "/microsoft-changes", color: BLU },
         { count: d.overviewCounts.changeScheduleThisWeek, label: "Change windows this week", href: "/change-control", color: "#00B4D8" },
-        { count: d.overviewCounts.policiesExpiringSoon, label: "Policies due for review", href: comingSoonHref("Policy Decisions", "module"), color: AMB },
+        { count: d.overviewCounts.policiesExpiringSoon, label: "Policies due for review", href: "/policy-decisions", color: AMB },
       ].filter((r) => r.count > 0)
     : [];
 
   const portalCounts = d
     ? [
         { value: d.overviewCounts.raciPendingAcceptance, label: "RACI roles awaiting you", href: "/ownership", ink: VIO },
-        { value: d.overviewCounts.rbdWaiting, label: "Risk decisions waiting", href: comingSoonHref("Risk Register", "module"), ink: AMB },
-        { value: d.overviewCounts.rbdActive, label: "Risk acceptances active", href: comingSoonHref("Risk Register", "module"), ink: NEUTRAL },
-        { value: d.overviewCounts.microsoftChangesThisWeek, label: "MS changes this week", href: comingSoonHref("Microsoft Changes", "module"), ink: BLU },
+        { value: d.overviewCounts.rbdWaiting, label: "Risk decisions waiting", href: "/risk-register", ink: AMB },
+        { value: d.overviewCounts.rbdActive, label: "Risk acceptances active", href: "/risk-register", ink: NEUTRAL },
+        { value: d.overviewCounts.microsoftChangesThisWeek, label: "MS changes this week", href: "/microsoft-changes", ink: BLU },
         { value: d.overviewCounts.changeScheduleThisWeek, label: "Change windows this week", href: "/change-control", ink: BLU },
         { value: d.overviewCounts.remediationInProgress, label: "Remediation outstanding", href: "/remediation-tracking", ink: RED },
-        { value: d.overviewCounts.policiesExpiringSoon, label: "Policies due for review", href: comingSoonHref("Policy Decisions", "module"), ink: AMB },
+        { value: d.overviewCounts.policiesExpiringSoon, label: "Policies due for review", href: "/policy-decisions", ink: AMB },
       ]
     : [];
 
