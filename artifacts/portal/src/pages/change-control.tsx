@@ -38,24 +38,6 @@ import {
 } from "@/lib/change-control-api";
 import { cn } from "@/lib/utils";
 
-const NOT_BUILT = [
-  {
-    title: "Rollback as an inverse change",
-    tag: "MSP-SIDE ONLY",
-    now: "The rollback affordance appears on an implemented change and no rollback route exists on the portal. Execution records, planned-versus-actual and rollback as an inverse change are real on your MSP's console.",
-  },
-  {
-    title: "Moving a booked change",
-    tag: "NO ROUTE",
-    now: "New bookings are checked for collisions and window coverage, and blocked-by dependencies are shown — but an already-raised change cannot be moved from here.",
-  },
-  {
-    title: "CAB, execution and post-implementation review",
-    tag: "MSP-SIDE ONLY",
-    now: "CAB membership, meetings, agendas and review close codes exist on your MSP's console. A review reaches this page only as an event on the change's timeline.",
-  },
-];
-
 export default function ChangeControlPage() {
   const { user } = useAuth();
   const register = useChangeControlRegister();
@@ -155,8 +137,6 @@ export default function ChangeControlPage() {
               value={stats.nextWindowCount}
               sub={stats.nextWindowLabel}
               note={stats.nextWindowDateOrdered ? "The earliest upcoming booked instant, and how many changes share it." : "No open change carries a real instant."}
-              tag={stats.nextWindowDateOrdered ? "DATE-ORDERED" : "STRING-GROUPED †"}
-              tagGood={stats.nextWindowDateOrdered}
             />
             <StatTile
               label={`Emergency · ${stats.emergencyLookbackDays} days`}
@@ -164,13 +144,11 @@ export default function ChangeControlPage() {
               sub={`${stats.snapshotsHeld} ${stats.snapshotsHeld === 1 ? "snapshot" : "snapshots"} held`}
               amber={stats.emergencyCount > 0}
               note={`Emergency changes raised in the last ${stats.emergencyLookbackDays} days. Snapshots are kept ${stats.snapshotRetentionDays} days.`}
-              tag="SUBSTITUTE METRIC †"
             />
           </div>
           <span className="-mt-1.5 block max-w-[840px] text-[10.5px] leading-relaxed text-muted-foreground/70">
-            † Next window is chronological only when an open change carries a real booked instant;
-            otherwise it falls back to grouping identical window text. Snapshots held measures
-            retention from when a change was raised, since the executed-at stamp is still free text.
+            Snapshots held measures retention from when a change was raised, since the executed-at
+            stamp is still free text.
           </span>
         </>
       )}
@@ -248,28 +226,6 @@ export default function ChangeControlPage() {
 
       {!isLoading && !isFail && <PolicySection settings={settings} />}
 
-      <Card className="bg-muted/5">
-        <CardContent className="flex flex-col gap-2.5 pt-6">
-          <div className="flex items-baseline gap-2.5">
-            <span className="text-[13px] font-semibold text-foreground">Not on this page yet</span>
-            <span className="text-[11px] text-muted-foreground">what the module still owes you</span>
-          </div>
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-            {NOT_BUILT.map((s) => (
-              <div key={s.title} className="flex flex-col gap-1.5 rounded-lg border border-dashed border-muted-foreground/30 p-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-[12.5px] font-semibold text-foreground">{s.title}</span>
-                  <Badge variant="outline" className="ml-auto border-status-amber/40 text-[9.5px] text-status-amber">
-                    {s.tag}
-                  </Badge>
-                </div>
-                <span className="text-[11.5px] leading-relaxed text-muted-foreground">{s.now}</span>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
       <RaiseChangeDialog open={wizardOpen} onOpenChange={setWizardOpen} />
       <ChangeActionDialog target={actionTarget} onOpenChange={(open) => !open && setActionTarget(null)} />
     </div>
@@ -281,16 +237,12 @@ function StatTile({
   value,
   sub,
   note,
-  tag,
-  tagGood,
   amber,
 }: {
   label: string;
   value: number;
   sub?: string;
   note: string;
-  tag?: string;
-  tagGood?: boolean;
   amber?: boolean;
 }) {
   return (
@@ -302,11 +254,6 @@ function StatTile({
           {sub && <span className="text-[11.5px] text-muted-foreground">{sub}</span>}
         </div>
         <span className="text-[10.5px] leading-relaxed text-muted-foreground">{note}</span>
-        {tag && (
-          <Badge variant="outline" className={cn("w-fit text-[9.5px] tracking-wider", tagGood ? "border-status-green/35 text-status-green" : "border-status-amber/40 text-status-amber")}>
-            {tag}
-          </Badge>
-        )}
       </CardContent>
     </Card>
   );

@@ -550,6 +550,19 @@
                                            Foreground="{StaticResource Subtext0Brush}"/>
                             </StackPanel>
                         </Button>
+                        <!-- Git #4149 — Shane: "I can see 73 items remaining but no real clear
+                             view into what they are." Opens/focuses the read-only What's
+                             Remaining document tab (every open issue in the active milestone,
+                             grouped by resolved top Epic). No live count badge — this is a
+                             viewer, not a queue needing a persistent count. -->
+                        <Button x:Name="BtnWhatsRemaining"
+                                AutomationProperties.AutomationId="BtnWhatsRemaining"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="What's Remaining"
+                                Click="BtnWhatsRemaining_Click"
+                                Padding="6,4">
+                            <TextBlock Text="📋" FontSize="12" VerticalAlignment="Center"/>
+                        </Button>
                         <!-- Git #3700 (sub-issue of Feature #1788) — persistent "Ask Shane" counter:
                              every real, open issue currently sitting in the board's "Ask Shane"
                              status, needing Shane's own decision. Collapsed entirely at zero (not a

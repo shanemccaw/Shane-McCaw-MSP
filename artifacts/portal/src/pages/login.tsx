@@ -76,6 +76,17 @@ export default function LoginPage() {
           body: "Ten attempts per fifteen minutes per IP in production. Wait a few minutes and try again, or use sign-in help.",
           wire: "429 · loginLimiter",
         });
+      } else if (
+        err instanceof AuthApiError &&
+        err.status === 401 &&
+        err.message === "No password set for this account. Check your email for a setup link."
+      ) {
+        setBanner({
+          tone: "destructive",
+          title: "You haven't set a password yet",
+          body: "Use the invite link we emailed you to set one up, or request a new link below.",
+          wire: "401 { error } · auth.ts:397-399",
+        });
       } else {
         setBanner({
           tone: "destructive",

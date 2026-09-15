@@ -1,0 +1,53 @@
+<UserControl x:Class="BuildConsole.Controls.WhatsRemainingPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:BuildConsole.Controls"
+             MinWidth="320">
+
+    <!--
+        Git #4149 — Shane: "I can see 73 items remaining but no real clear view into what they
+        are. The Git Board is very difficult... I don't want to fix that." A new, simple,
+        READ-ONLY document tab: every real open issue in the active milestone that counts toward
+        Home's own "remaining" figure, grouped by resolved top Epic, each row plain (number/
+        title/board Status — a document, not a card-shell UI like the queue panels), each Epic
+        group carrying the same #4146 per-group "copy Git #n list" convenience
+        (EpicGroupHeaderHelper, shared with AiBatterUpPanel).
+    -->
+    <DockPanel Background="{StaticResource MantleBrush}" LastChildFill="True">
+
+        <Grid DockPanel.Dock="Top" Margin="14,10,14,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0" Text="📋 What's Remaining"
+                       FontWeight="SemiBold" FontSize="14"
+                       Foreground="{StaticResource TextBrush}"
+                       VerticalAlignment="Center"/>
+
+            <TextBlock x:Name="TxtCount" Grid.Column="1" Margin="10,0,0,0"
+                       Foreground="{StaticResource Subtext0Brush}" FontSize="11.5"
+                       VerticalAlignment="Center" Text=""/>
+
+            <Button x:Name="BtnRefresh" Grid.Column="2"
+                    Style="{StaticResource IconButton}"
+                    ToolTip="Refresh from the local mirror"
+                    Click="BtnRefresh_Click"
+                    Padding="6,4">
+                <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
+            </Button>
+        </Grid>
+
+        <TextBlock x:Name="TxtEmpty" DockPanel.Dock="Top" Margin="14,4,14,10"
+                   Foreground="{StaticResource Subtext0Brush}" FontSize="11.5"
+                   TextWrapping="Wrap" Text=""
+                   Visibility="Collapsed"/>
+
+        <ScrollViewer x:Name="RowsScroller" VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="RowsList" Margin="10,0,10,10"/>
+        </ScrollViewer>
+
+    </DockPanel>
+</UserControl>

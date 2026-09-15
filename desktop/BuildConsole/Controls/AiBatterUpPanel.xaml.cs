@@ -443,56 +443,12 @@ namespace BuildConsole.Controls
 
         /// <summary>Git #3336 — a real, bold section header naming the resolved Epic (or "No Epic")
         /// a following block of rows/cards belongs to. Git #4146 — now a header row with a real
-        /// copy button alongside the label, wrapping the label TextBlock instead of returning it
-        /// directly so it stays a single child RenderFilteredRows can add to RowsList unchanged.</summary>
-        private static UIElement BuildEpicGroupHeader(EpicRowGroup group)
-        {
-            var grid = new Grid { Margin = new Thickness(4, 10, 0, 4) };
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-            var label = new TextBlock
-            {
-                Text = group.Label,
-                FontSize = 11,
-                FontWeight = FontWeights.Bold,
-                Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
-                VerticalAlignment = VerticalAlignment.Center,
-            };
-            Grid.SetColumn(label, 0);
-            grid.Children.Add(label);
-
-            // Git #4146 — same IconButton copy-button pattern SettingsTabView.xaml.cs's per-row
-            // copy button uses (📋 content, IconButton style, Clipboard.SetText + ToastEngine).
-            var copyBtn = new Button
-            {
-                Content = "📋",
-                ToolTip = $"Copy \"Git #\" list for {group.Label}",
-                Style = (Style)Application.Current.FindResource("IconButton"),
-                Padding = new Thickness(5, 1, 5, 1),
-                FontSize = 9.5,
-                VerticalAlignment = VerticalAlignment.Center,
-            };
-            copyBtn.Click += (_, _) =>
-            {
-                var lines = new List<string> { "Check AI Batter Up for your issues:" };
-                lines.AddRange(group.Rows.Select(r => $"Git #{r.Number}"));
-                try
-                {
-                    Clipboard.SetText(string.Join(Environment.NewLine, lines));
-                    ToastEngine.Success("Copied",
-                        $"Copied {group.Rows.Count} issue number(s) for {group.Label}.");
-                }
-                catch (Exception ex)
-                {
-                    ToastEngine.Error("Copy", $"Couldn't copy: {ex.Message}");
-                }
-            };
-            Grid.SetColumn(copyBtn, 1);
-            grid.Children.Add(copyBtn);
-
-            return grid;
-        }
+        /// copy button alongside the label. Git #4149 — the actual header/copy-button build is
+        /// shared with WhatsRemainingPanel via <see cref="EpicGroupHeaderHelper"/> instead of being
+        /// re-derived per panel.</summary>
+        private static UIElement BuildEpicGroupHeader(EpicRowGroup group) =>
+            EpicGroupHeaderHelper.Build(group.Label, group.Rows.Select(r => r.Number).ToList(),
+                "Check AI Batter Up for your issues:");
 
         /// <summary>
         /// Highlights <paramref name="card"/> (restoring whatever card was previously
