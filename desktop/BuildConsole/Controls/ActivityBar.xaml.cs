@@ -44,6 +44,9 @@ namespace BuildConsole.Controls
         /// the full-width Git Doctor Editor tab (OpenGitDoctorTab), not a LeftSidebar view.</summary>
         public event EventHandler? GitDoctorRequested;
 
+        /// <summary>Raised when the Git Mode icon is clicked; MainWindow toggles Git Mode open/closed.</summary>
+        public event EventHandler? GitModeToggleRequested;
+
         public ActivityBar()
         {
             InitializeComponent();
@@ -132,6 +135,9 @@ namespace BuildConsole.Controls
         /// the sidebar's content — same shape as Sticky Notes/LinkedIn Composer above).</summary>
         private void BtnGitDoctor_Click(object sender, RoutedEventArgs e) =>
             GitDoctorRequested?.Invoke(this, EventArgs.Empty);
+
+        private void BtnGitMode_Click(object sender, RoutedEventArgs e) =>
+            GitModeToggleRequested?.Invoke(this, EventArgs.Empty);
 
         /// <summary>Host the given shelf entry rows in the anchored popout and open it.
         /// MainWindow builds each row (real icon + title + restore-on-click); the

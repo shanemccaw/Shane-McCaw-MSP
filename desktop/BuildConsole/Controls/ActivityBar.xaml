@@ -110,6 +110,15 @@
                     <TextBlock Text="&#xE95E;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource RedBrush}"/>
                 </Button>
 
+                <!-- Git Mode top-level entry (Ctrl+Shift+G) -->
+                <Button x:Name="BtnGitMode"
+                        Style="{StaticResource IconButton}"
+                        Width="48" Height="44"
+                        Click="BtnGitMode_Click"
+                        ToolTip="Git Mode (Ctrl+Shift+G)">
+                    <TextBlock Text="&#xE8D5;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource MauveBrush}"/>
+                </Button>
+
                 <!-- Separator -->
                 <Border Height="1" Background="{StaticResource Surface0Brush}" Margin="8,6"/>
 

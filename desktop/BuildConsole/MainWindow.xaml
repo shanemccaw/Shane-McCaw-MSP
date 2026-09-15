@@ -137,6 +137,7 @@
                                 <MenuItem Header="Toggle Bottom Panel" Click="ToggleBottomPanel_Click" InputGestureText="Ctrl+`"/>
                                 <Separator/>
                                 <MenuItem Header="Toggle Test Mode"    Click="MenuToggleTestMode_Click" InputGestureText="Ctrl+Shift+T"/>
+                                <MenuItem Header="Toggle Git Mode"     Click="MenuToggleGitMode_Click" InputGestureText="Ctrl+Shift+G"/>
                                 <MenuItem Header="Element Picker"      Click="MenuToggleElementPicker_Click" InputGestureText="Ctrl+Shift+W"/>
                                 <Separator/>
                                 <MenuItem Header="Reset Layout"        Click="ResetLayout_Click"/>
@@ -893,6 +894,12 @@
                                   Grid.Column="0"
                                   ShelfOpenRequested="ActivityBar_ShelfOpenRequested"
                                   ActiveViewChanged="ActivityBar_ActiveViewChanged"/>
+
+                <!-- ── Git Mode Container (3-Panel Layout & Header Bar) ── -->
+                <ctrl:GitModeContainer x:Name="GitModeContainer"
+                                       Grid.Column="1" Grid.ColumnSpan="5"
+                                       Panel.ZIndex="150"
+                                       Visibility="Collapsed"/>
 
                 <!-- ── Test Mode: Diagnostics Panel (rail 48px / expanded 300px) ── -->
                 <ctrl:TestModeDiagnosticsPanel x:Name="TestModeDiagnosticsPanel"

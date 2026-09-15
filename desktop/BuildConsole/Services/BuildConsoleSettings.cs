@@ -631,6 +631,9 @@ namespace BuildConsole.Services
         /// <summary>Global queue paused state, remembered across app restarts.</summary>
         public bool QueuePaused { get; set; } = false;
 
+        /// <summary>Git Mode state, remembered across app restarts.</summary>
+        public bool IsGitMode { get; set; } = false;
+
         /// <summary>Git #2771 — Git Board tree's "Hide Completed" toggle: when on, a top-level Epic
         /// whose real transitive leaf-issue rollup (<see cref="GitBoardIssueFilters.ComputeTransitiveLeafRollup"/>,
         /// #2739) is 100% closed is skipped from the tree entirely, along with its whole subtree.

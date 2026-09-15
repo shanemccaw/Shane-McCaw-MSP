@@ -1361,6 +1361,16 @@ namespace BuildConsole
             await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
             InitFocusMode();
 
+            // Restore persistent Git Mode state if active on last session
+            try
+            {
+                if (BuildConsole.Services.BuildConsoleSettings.Load().IsGitMode)
+                {
+                    EnterGitMode();
+                }
+            }
+            catch { /* best-effort */ }
+
             // Git #1934 safety net: if a PRIOR (pre-#1934) blocking build persisted Queue
             // clicks to the spillover file while a version Update was pending, drain and
             // re-queue them now that the Build Tracker client + panels are initialized (see
@@ -1442,6 +1452,7 @@ namespace BuildConsole
             // Git #2809 — Git Doctor opens as a full-width Editor tab, not a LeftSidebar
             // ActivityBar view; plain-Button click like Sticky Notes/LinkedIn Composer above.
             ActivityBar.GitDoctorRequested += (s, e) => OpenGitDoctorTab();
+            ActivityBar.GitModeToggleRequested += (s, e) => ToggleGitMode();
             _activeEditorPane = EditorTabs;
             // Clicking into any pane's WebView2 to type moves WPF keyboard focus
             // there without changing tab selection — walk up from the newly
@@ -1808,6 +1819,14 @@ namespace BuildConsole
             {
                 e.Handled = true;
                 ToggleTestMode();
+                return;
+            }
+
+            // Ctrl+Shift+G: Quick keyboard command to toggle Git Mode
+            if (e.Key == Key.G && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+            {
+                e.Handled = true;
+                ToggleGitMode();
                 return;
             }
 

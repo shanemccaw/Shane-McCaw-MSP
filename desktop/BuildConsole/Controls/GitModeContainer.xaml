@@ -1,0 +1,174 @@
+<UserControl x:Class="BuildConsole.Controls.GitModeContainer"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             d:DesignHeight="800" d:DesignWidth="1200"
+             Background="{StaticResource BaseBrush}">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <!-- Git Mode Header Bar -->
+            <RowDefinition Height="Auto"/>
+            <!-- 3-Panel Workspace -->
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- ── Git Mode Header Bar (Empty) ── -->
+        <Border Grid.Row="0"
+                Background="{StaticResource MantleBrush}"
+                BorderBrush="{StaticResource Surface0Brush}"
+                BorderThickness="0,0,0,1"
+                Padding="12,8">
+            <DockPanel LastChildFill="True">
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                    <Viewbox Width="18" Height="18" Margin="0,0,8,0" VerticalAlignment="Center">
+                        <Path Fill="{StaticResource MauveBrush}"
+                              Data="M21 8.25C21 6.1815 19.3185 4.5 17.25 4.5C15.1815 4.5 13.5 6.1815 13.5 8.25C13.5 10.023 14.739 11.5035 16.395 11.892C16.116 12.819 15.2655 13.5 14.25 13.5H9.75C8.9025 13.5 8.1285 13.7925 7.5 14.268V7.4235C9.21 7.0755 10.5 5.5605 10.5 3.75C10.5 1.6815 8.8185 0 6.75 0C4.6815 0 3 1.6815 3 3.75C3 5.562 4.29 7.0755 6 7.4235V16.575C4.29 16.923 3 18.438 3 20.2485C3 22.317 4.6815 23.9985 6.75 23.9985C8.8185 23.9985 10.5 22.317 10.5 20.2485C10.5 18.4755 9.261 16.995 7.605 16.6065C7.884 15.6795 8.7345 14.9985 9.75 14.9985H14.25C16.0845 14.9985 17.61 13.6725 17.931 11.9295C19.674 11.607 21 10.0845 21 8.25ZM4.5 3.75C4.5 2.5095 5.5095 1.5 6.75 1.5C7.9905 1.5 9 2.5095 9 3.75C9 4.9905 7.9905 6 6.75 6C5.5095 6 4.5 4.9905 4.5 3.75ZM9 20.25C9 21.4905 7.9905 22.5 6.75 22.5C5.5095 22.5 4.5 21.4905 4.5 20.25C4.5 19.0095 5.5095 18 6.75 18C7.9905 18 9 19.0095 9 20.25ZM17.25 10.5C16.0095 10.5 15 9.4905 15 8.25C15 7.0095 16.0095 6 17.25 6C18.4905 6 19.5 7.0095 19.5 8.25C19.5 9.4905 18.4905 10.5 17.25 10.5Z"/>
+                    </Viewbox>
+                    <TextBlock Text="GIT MODE" FontWeight="Bold" FontSize="14" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                    <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="6,2" Margin="10,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="Git Mode Header Bar" FontSize="11" Foreground="{StaticResource Subtext0Brush}"/>
+                    </Border>
+                </StackPanel>
+
+                <!-- Header right actions container (empty for now) -->
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <TextBlock Text="Empty Header Bar" FontSize="11" Foreground="{StaticResource Overlay0Brush}" VerticalAlignment="Center"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- ── 3-Panel Layout ── -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <!-- Left Panel: Epic Tree -->
+                <ColumnDefinition Width="280" MinWidth="180" x:Name="ColEpicTree"/>
+                <!-- Splitter 1 -->
+                <ColumnDefinition Width="4"/>
+                <!-- Middle Panel: Issue Grid -->
+                <ColumnDefinition Width="*" MinWidth="250" x:Name="ColIssueGrid"/>
+                <!-- Splitter 2 -->
+                <ColumnDefinition Width="4"/>
+                <!-- Right Panel: Issue Details -->
+                <ColumnDefinition Width="360" MinWidth="200" x:Name="ColIssueDetails"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- ── Left Panel (Epic Tree Placeholder) ── -->
+            <Border Grid.Column="0"
+                    Background="{StaticResource CrustBrush}"
+                    BorderBrush="{StaticResource Surface0Brush}"
+                    BorderThickness="0,0,1,0">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Grid.Row="0" Margin="0,0,0,12">
+                        <TextBlock Text="Epic Tree Placeholder"
+                                   FontWeight="SemiBold"
+                                   FontSize="13"
+                                   Foreground="{StaticResource Subtext1Brush}"/>
+                    </DockPanel>
+
+                    <Border Grid.Row="1"
+                            BorderBrush="{StaticResource Surface0Brush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Background="{StaticResource Surface0Brush}"
+                            Opacity="0.4"
+                            Padding="16">
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                            <TextBlock Text="&#xE71C;" FontFamily="Segoe MDL2 Assets" FontSize="32" Foreground="{StaticResource MauveBrush}" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+                            <TextBlock Text="Epic Tree Placeholder" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Left Panel Container" FontSize="11" Foreground="{StaticResource Subtext0Brush}" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- Splitter 1 -->
+            <GridSplitter Grid.Column="1"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          Background="{StaticResource Surface0Brush}"
+                          ShowsPreview="False"/>
+
+            <!-- ── Middle Panel (Issue Grid Placeholder) ── -->
+            <Border Grid.Column="2"
+                    Background="{StaticResource BaseBrush}">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Grid.Row="0" Margin="0,0,0,12">
+                        <TextBlock Text="Issue Grid Placeholder"
+                                   FontWeight="SemiBold"
+                                   FontSize="13"
+                                   Foreground="{StaticResource Subtext1Brush}"/>
+                    </DockPanel>
+
+                    <Border Grid.Row="1"
+                            BorderBrush="{StaticResource Surface0Brush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Background="{StaticResource Surface0Brush}"
+                            Opacity="0.4"
+                            Padding="16">
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                            <TextBlock Text="&#xE8A5;" FontFamily="Segoe MDL2 Assets" FontSize="36" Foreground="{StaticResource BlueBrush}" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+                            <TextBlock Text="Issue Grid Placeholder" FontWeight="SemiBold" FontSize="14" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Middle Panel Container" FontSize="11" Foreground="{StaticResource Subtext0Brush}" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- Splitter 2 -->
+            <GridSplitter Grid.Column="3"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          Background="{StaticResource Surface0Brush}"
+                          ShowsPreview="False"/>
+
+            <!-- ── Right Panel (Issue Details Placeholder) ── -->
+            <Border Grid.Column="4"
+                    Background="{StaticResource CrustBrush}"
+                    BorderBrush="{StaticResource Surface0Brush}"
+                    BorderThickness="1,0,0,0">
+                <Grid Margin="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Grid.Row="0" Margin="0,0,0,12">
+                        <TextBlock Text="Issue Details Placeholder"
+                                   FontWeight="SemiBold"
+                                   FontSize="13"
+                                   Foreground="{StaticResource Subtext1Brush}"/>
+                    </DockPanel>
+
+                    <Border Grid.Row="1"
+                            BorderBrush="{StaticResource Surface0Brush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Background="{StaticResource Surface0Brush}"
+                            Opacity="0.4"
+                            Padding="16">
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                            <TextBlock Text="&#xE946;" FontFamily="Segoe MDL2 Assets" FontSize="32" Foreground="{StaticResource GreenBrush}" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+                            <TextBlock Text="Issue Details Placeholder" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Right Panel Container" FontSize="11" Foreground="{StaticResource Subtext0Brush}" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+        </Grid>
+    </Grid>
+</UserControl>
