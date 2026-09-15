@@ -74,18 +74,12 @@
                         </Border>
 
                         <!-- Modified Badge -->
-                        <!-- Background/BorderBrush left as raw hex: no StatusWarningWash*Brush exists yet in Colors.xaml
-                             (only StatusSuccessWashLightBrush/WashMediumBrush have wash variants) — filed as a finding
-                             rather than substituting an inexact brush. -->
-                        <Border Background="#1AEAB308" BorderBrush="#40EAB308" BorderThickness="1" CornerRadius="4" Padding="8,4" Margin="0,0,8,0">
+                        <Border Background="{StaticResource StatusWarningWashLightBrush}" BorderBrush="{StaticResource StatusWarningWashMediumBrush}" BorderThickness="1" CornerRadius="4" Padding="8,4" Margin="0,0,8,0">
                             <TextBlock x:Name="TxtModifiedCount" Text="0 Modified" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusWarningBrush}"/>
                         </Border>
 
                         <!-- Removed Badge -->
-                        <!-- Background/BorderBrush left as raw hex: no StatusErrorWash*Brush exists yet in Colors.xaml
-                             (only StatusSuccessWashLightBrush/WashMediumBrush have wash variants) — filed as a finding
-                             rather than substituting an inexact brush. -->
-                        <Border Background="#1AEF4444" BorderBrush="#40EF4444" BorderThickness="1" CornerRadius="4" Padding="8,4">
+                        <Border Background="{StaticResource StatusErrorWashLightBrush}" BorderBrush="{StaticResource StatusErrorWashMediumBrush}" BorderThickness="1" CornerRadius="4" Padding="8,4">
                             <TextBlock x:Name="TxtRemovedCount" Text="0 Removed" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusErrorBrush}"/>
                         </Border>
                     </StackPanel>

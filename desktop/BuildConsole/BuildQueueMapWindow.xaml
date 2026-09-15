@@ -78,12 +78,9 @@
                            FontSize="{StaticResource CaptionFontSize}"
                            Foreground="{StaticResource TextBrush}"
                            TextWrapping="Wrap"/>
-                <!-- Deadlock banner — the loud, unmissable call-out for genuine cycles.
-                     Background left as raw hex: no StatusErrorWash*Brush exists yet in
-                     Colors.xaml (only StatusSuccessWashLightBrush/WashMediumBrush have wash
-                     variants) — filed as a finding rather than substituting an inexact brush. -->
+                <!-- Deadlock banner — the loud, unmissable call-out for genuine cycles. -->
                 <Border x:Name="DeadlockBanner"
-                        Background="#3A1E26"
+                        Background="{StaticResource StatusErrorWashMediumBrush}"
                         BorderBrush="{StaticResource StatusErrorBrush}"
                         BorderThickness="1"
                         CornerRadius="4"
@@ -97,12 +94,9 @@
                                Foreground="{StaticResource StatusErrorBrush}"
                                TextWrapping="Wrap"/>
                 </Border>
-                <!-- Blocker-state-unverified warning — GitHub was unreachable this pass.
-                     Background left as raw hex: no StatusWarningWash*Brush exists yet in
-                     Colors.xaml (only StatusSuccessWashLightBrush/WashMediumBrush have wash
-                     variants) — filed as a finding rather than substituting an inexact brush. -->
+                <!-- Blocker-state-unverified warning — GitHub was unreachable this pass. -->
                 <Border x:Name="UnverifiedBanner"
-                        Background="#3A3200"
+                        Background="{StaticResource StatusWarningWashMediumBrush}"
                         BorderBrush="{StaticResource StatusWarningBrush}"
                         BorderThickness="1"
                         CornerRadius="4"
