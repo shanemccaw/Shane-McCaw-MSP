@@ -9,6 +9,7 @@ import { SEVERITY_WASH, SEVERITY_WASH_ORDER } from "./severityWash";
 import { TenantStatusCard } from "./TenantStatusCard";
 import { ScanLogPanel } from "./ScanLogPanel";
 import { useScanState } from "./useScanState";
+import { TestimonialPromptBanner } from "@/components/testimonials/TestimonialPromptBanner";
 
 /**
  * Git #4004 / Shell.dc.html's own `_rz` resize handler: "measured against
@@ -40,6 +41,7 @@ function useBreadcrumb(): Breadcrumb {
   if (location === "/") return { current: "Overview" };
   if (location === "/support") return { current: "Support" };
   if (location === "/requests") return { current: "Requests" };
+  if (location === "/testimonials") return { current: "Testimonials" };
   if (location === "/my-architect") return { current: "My Architect" };
   if (location === "/break-glass" || location.startsWith("/break-glass/")) return { current: "Break-glass access" };
 
@@ -132,6 +134,7 @@ export function PortalShell({ children }: { children: ReactNode }) {
           drawerOpen={drawerOpen}
           onToggleDrawer={() => setDrawerRequested((v) => !v)}
         />
+        <TestimonialPromptBanner />
         <PillarTabStrip scores={scores} />
         <div className="relative flex min-h-0 flex-1">
           {/* Shell.dc.html: scrim sits behind the drawer, closes it on click,
