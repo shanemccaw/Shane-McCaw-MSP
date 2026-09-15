@@ -118,6 +118,13 @@ vi.mock("../lib/graph.ts", () => ({
   mtAppCredentialsPresent: vi.fn().mockReturnValue(true),
 }));
 
+// #4197: the mailbox callback confirms the tenant's consent with Microsoft
+// before activating the connector — "confirmed" here, refused in its own case.
+const verifyConsentMock = vi.fn().mockResolvedValue({ ok: true, roles: ["Mail.Send"] });
+vi.mock("../lib/consent-verification.ts", () => ({
+  verifyTenantConsentWithMicrosoft: (...args: unknown[]) => verifyConsentMock(...args),
+}));
+
 vi.mock("../lib/logger.ts", () => {
   const child = vi.fn(() => ({
     info: vi.fn(),
@@ -234,5 +241,20 @@ describe("msp-settings.ts portal links (#154)", () => {
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe("https://msp-portal.test/portal/settings/connector?mailbox_consent=success");
     expect(res.headers.location).not.toContain("/portal/portal");
+  });
+
+  it("GET .../connector/mailbox/callback REFUSES a tenant Microsoft does not confirm, without burning state or activating (#4197)", async () => {
+    verifyConsentMock.mockResolvedValueOnce({ ok: false, reason: "tenant_not_found", detail: "400 AADSTS90002" });
+    const state = "abc123";
+    mockSelectResultsQueue = [
+      [{ state, mspId: 7, mailboxUpn: "mailbox@example.com", fromDisplayName: "Support", requestedByUserId: 1, returnPath: "/settings/connector" }],
+    ];
+
+    const res = await request(app)
+      .get("/api/msp/settings/connector/mailbox/callback")
+      .query({ tenant: "ef825402-eae9-4b6f-8bd8-8b7e674ecfdd", admin_consent: "true", state });
+
+    expect(res.status).toBe(400);
+    expect(res.headers.location).toBeUndefined();
   });
 });

@@ -93,6 +93,7 @@ import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { setSecretValue, getSecretMetadata } from "../lib/azure-keyvault.ts";
 import { getStripeKey } from "../lib/stripe.ts";
 import { buildAdminConsentUrl, mtAppCredentialsPresent } from "../lib/graph.ts";
+import { verifyTenantConsentWithMicrosoft } from "../lib/consent-verification.ts";
 import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
 import { sendEmailForMsp, emailButton, brandedEmail, sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer.ts";
 import { revokeAllOtherSessions } from "../lib/session-tracking.ts";
@@ -1579,6 +1580,22 @@ router.get("/msp/settings/connector/mailbox/callback", async (req: Request, res:
   if (!stateRow) {
     log.warn({ state, tenant }, "MSP mailbox consent: state token invalid, expired, or already used");
     res.status(400).send("This consent link has expired or has already been used. Please request a new one.");
+    return;
+  }
+
+  // #4197: `tenant` and `admin_consent` are unsigned query parameters — confirm
+  // with Microsoft that this tenant is real and consented to the app before a
+  // connector is activated against it. Runs before the state burn, so a
+  // platform-side fault leaves the same link retryable.
+  const verification = await verifyTenantConsentWithMicrosoft(tenant, { app: "read", resource: "graph" });
+  if (!verification.ok) {
+    log.warn(
+      { mspId: stateRow.mspId, tenant, reason: verification.reason, detail: verification.detail },
+      "MSP mailbox consent: REFUSED — Microsoft did not confirm this tenant's admin consent; connector not activated",
+    );
+    res
+      .status(verification.reason === "unverifiable" ? 503 : 400)
+      .send("Microsoft did not confirm an approval for this organisation, so the mailbox was not connected. Please start the connection again.");
     return;
   }
 
