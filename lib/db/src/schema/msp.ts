@@ -9933,18 +9933,41 @@ export const kanbanBucketsTable = pgTable("kanban_buckets", {
   index("kanban_buckets_customer_id_idx").on(t.customerId),
 ]);
 
+// Phase 2 (Git #4240): a card optionally carries a real type + a link to the
+// standalone entity it represents — Communications Push (#3769), Training
+// Session (#3770) or Automation Registry (#3771). NULL `type` (the Phase 1
+// default) still means exactly what it always has: a plain task card, no
+// backfill of existing rows required. Each linking column is a REAL FK
+// (unlike customer_id above — all four tables live in this same schema, not
+// a separate system's id-space) with ON DELETE CASCADE matching the
+// convention kanban_cards.bucket_id already uses: a card representing a
+// now-deleted entity disappears with it. See
+// lib/db/migrations/manual/2026-09-15-kanban-card-types-4240.sql for the
+// real DDL, including the CHECK constraints that keep `type` and exactly one
+// linking column in sync at the DB level.
+export const KANBAN_CARD_TYPES = ["communications_push", "training_session", "automation_registry"] as const;
+export type KanbanCardType = (typeof KANBAN_CARD_TYPES)[number];
+
 export const kanbanCardsTable = pgTable("kanban_cards", {
   id: serial("id").primaryKey(),
   bucketId: integer("bucket_id").notNull().references(() => kanbanBucketsTable.id, { onDelete: "cascade" }),
-  // No `type` field by design — Phase 1 is plain title/description/position
-  // tasks only. See #3768's roadmap comment for Phase 2's per-type shape.
   title: text("title").notNull(),
   description: text("description"),
   position: integer("position").notNull().default(0),
+  type: text("type", { enum: KANBAN_CARD_TYPES }),
+  // Forward references (the three referenced tables are defined further down
+  // this file) — the `() => ...` thunk form defers resolution, so this is a
+  // real, valid Drizzle FK the same as bucketId's above.
+  communicationsPushId: integer("communications_push_id").references(() => communicationsPushesTable.id, { onDelete: "cascade" }),
+  trainingSessionId: integer("training_session_id").references(() => trainingSessionsTable.id, { onDelete: "cascade" }),
+  automationRegistryId: integer("automation_registry_id").references(() => automationRegistryTable.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("kanban_cards_bucket_id_idx").on(t.bucketId),
+  index("kanban_cards_communications_push_id_idx").on(t.communicationsPushId),
+  index("kanban_cards_training_session_id_idx").on(t.trainingSessionId),
+  index("kanban_cards_automation_registry_id_idx").on(t.automationRegistryId),
 ]);
 
 export const insertKanbanBucketSchema = createInsertSchema(kanbanBucketsTable).omit({ id: true, createdAt: true, updatedAt: true });
