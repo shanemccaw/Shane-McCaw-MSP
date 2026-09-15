@@ -1,11 +1,12 @@
 {
   "feature": "Accept Agreement (#4009, Feature #1649) — STUB UI PENDING DESIGN REVIEW, authorized by Shane 2026-09-15 ('a stub is better than nothing'). Standalone, authenticated gate at /portal/accept-agreement, wired to the 3 real endpoints restored by #4048 (platform-agreements.ts): GET /api/platform/agreement/current (public), GET .../acceptance-status and POST .../accept (both requireCapability('ladder.free')). Not a nav item — reached by direct link/redirect only.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "dd704577",
 
   "notes": [
     "Real, permanent common case today (contract pack §2, `Design/portal/design_handoff_full_site/docs/accept-agreement-contract-pack.md`, confirmed live against the local DB): the only `platform_agreements` row that has ever existed (id=1, version 'Test') was never published, so GET /api/platform/agreement/current genuinely returns { agreement: null } and every signed-in user's acceptance-status is { required: false, accepted: true }. The UI test below asserts the honest 'nothing to accept' state, which is the only state actually reachable in this environment without first publishing a version through the Admin Panel.",
-    "The 'needs acceptance' state (checkbox + accept flow) has no environment fixture to drive it — publishing a version is an Admin Panel action (PlatformAgreements.tsx), out of scope for this manifest. Not faked as coverage; documented honestly here rather than asserted."
+    "The 'needs acceptance' state (checkbox + accept flow) has no environment fixture to drive it — publishing a version is an Admin Panel action (PlatformAgreements.tsx), out of scope for this manifest. Not faked as coverage; documented honestly here rather than asserted.",
+    "RAN at commit dd704577 (merged live to the local dev server via request-restart.mjs before running): 11/11 steps passed, real shaneapp://runTest against the live local instance (localhost:5175/localhost:8080)."
   ],
 
   "apiTests": [
