@@ -1086,12 +1086,10 @@ function ScriptModalBody({
   }, [logLines]);
 
   const handleRun = async () => {
-    if (!fetchWithAuth || !sm.credentialId || (!sm.scriptId && !sm.runbookName)) return;
+    if (!fetchWithAuth || !sm.credentialId || !sm.scriptId) return;
     setRunning(true);
     setLogLines(["[Starting job…]"]);
     setLiveStatus("New");
-
-    const areasPayload = governanceAreas !== null && governanceAreas.length > 0 ? governanceAreas : undefined;
 
     try {
       await fetchWithAuth(`/api/admin/kanban-tasks/${taskId}`, {
@@ -1103,14 +1101,13 @@ function ScriptModalBody({
     }
 
     try {
-      const res = await fetchWithAuth("/api/admin/runbook-jobs", {
+      const res = await fetchWithAuth("/api/admin/run-script", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          libraryScriptId: sm.scriptId,
           credentialId: sm.credentialId,
-          ...(sm.scriptId ? { scriptId: sm.scriptId } : { runbookName: sm.runbookName }),
           kanbanTaskId: taskId,
-          ...(areasPayload ? { governanceAreas: areasPayload } : {}),
         }),
       });
 
@@ -1121,41 +1118,34 @@ function ScriptModalBody({
         return;
       }
 
-      const { jobId, automationRunId } = await res.json() as { jobId: string; status: string; automationRunId?: number };
+      const { jobRef } = await res.json() as { jobRef: string };
 
-      let lastSeq = -1;
       let aborted = false;
 
       const poll = async (): Promise<void> => {
         if (aborted) return;
         try {
-          const autoRunParam = automationRunId ? `&automationRunId=${automationRunId}` : "";
-          const url = `/api/admin/runbook-jobs/output?jobId=${encodeURIComponent(jobId)}&since=${lastSeq}&kanbanTaskId=${taskId}${autoRunParam}`;
-          const pollRes = await fetchWithAuth(url);
+          const pollRes = await fetchWithAuth(`/api/admin/run-script/${encodeURIComponent(jobRef)}/status`);
           if (!pollRes.ok) throw new Error("poll failed");
           const data = await pollRes.json() as {
             status: string;
-            terminal: boolean;
-            lines: Array<{ sequence: number; text: string; streamType?: string }>;
+            outputLines: string[];
           };
 
           setLiveStatus(data.status);
-          if (data.lines.length > 0) {
-            setLogLines(prev => [...prev, ...data.lines.map(l => l.text)]);
-            lastSeq = Math.max(...data.lines.map(l => l.sequence));
-          }
+          setLogLines(data.outputLines);
 
-          if (data.terminal) {
+          if (data.status !== "running") {
             setLogLines(prev => [...prev, `[Job ${data.status}]`]);
             setRunning(false);
-            onMetadataUpdate?.({ ...m, lastJobId: jobId, lastJobStatus: data.status });
+            onMetadataUpdate?.({ ...m, lastJobId: jobRef, lastJobStatus: data.status });
             return;
           }
 
           setTimeout(() => void poll(), 3000);
         } catch {
           if (!aborted) {
-            setLogLines(prev => [...prev, "[Polling error — job may still be running in Azure]"]);
+            setLogLines(prev => [...prev, "[Polling error — job may still be running]"]);
             setRunning(false);
           }
         }
