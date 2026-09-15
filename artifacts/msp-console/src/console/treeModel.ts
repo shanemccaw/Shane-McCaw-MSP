@@ -9,9 +9,9 @@
 import type { DirectoryCustomer } from "@/api/console-api";
 import type { IconName } from "./icons";
 import {
-  CHILD_GROUPS, MSP_PAGES, DEFAULT_TENANT_PAGE,
+  CHILD_GROUPS, MSP_PAGES, MSP_GROUPS, MSP_TOP_LEVEL_IDS, DEFAULT_TENANT_PAGE,
   tenantPageMeta, mspPageMeta, groupForPage,
-  type Selection,
+  type Selection, type LeafPage,
 } from "./nav";
 import { action, statusDot, text } from "./tokens";
 
@@ -20,6 +20,7 @@ export interface TreeHandlers {
   toggleTenant: (id: number) => void;
   toggleGroup: (key: string) => void;
   toggleMsp: () => void;
+  toggleMspGroup: (key: string) => void;
 }
 
 export type ChevronKind = "chevron-down" | "chevron-right" | "dot";
@@ -88,6 +89,7 @@ export function buildTreeNodes(
   openTenants: Set<number>,
   openGroups: Set<string>,
   mspOpen: boolean,
+  openMspGroups: Set<string>,
   treeQuery: string,
   h: TreeHandlers,
 ): TreeNode[] {
@@ -117,18 +119,45 @@ export function buildTreeNodes(
     click: () => h.toggleMsp(),
   });
   if (mspOpen) {
-    for (const p of MSP_PAGES) {
-      if (p.id === "settings") continue; // lives on the Consulting root above
-      if (q && !p.label.toLowerCase().includes(q)) continue;
+    const mspLeaf = (p: LeafPage, indent: number) => {
+      if (q && !p.label.toLowerCase().includes(q)) return;
       const active = mspSel === p.id;
       nodes.push({
         key: `msp:${p.id}`, label: p.label, icon: p.icon,
         iconColor: active ? "#93c5fd" : text.label, chevron: "dot", chevronVisible: false,
-        indent: 44, height: 28, fontSize: 12.5, fontWeight: active ? 600 : 500,
+        indent, height: 28, fontSize: 12.5, fontWeight: active ? 600 : 500,
         bg: active ? action.selectedRow : "transparent",
         fg: active ? "#ffffff" : text.muted, meta: "",
         click: () => h.navigate({ kind: "msp", page: p.id }),
       });
+    };
+
+    // Top-level, ungrouped Operations pages (Executive view, Projects,
+    // Retainer hours, and Workflows/Agents left out of every group per #4150).
+    for (const id of MSP_TOP_LEVEL_IDS) {
+      const p = MSP_PAGES.find((x) => x.id === id);
+      if (p) mspLeaf(p, 44);
+    }
+
+    // The three named, collapsible Operations groups (#4150) — same visual
+    // pattern CHILD_GROUPS' non-leaf groups already use per tenant.
+    for (const g of MSP_GROUPS) {
+      const gOpen = openMspGroups.has(g.id) || !!q;
+      const holdsCurrent = (g.children ?? []).some((c) => c.id === mspSel);
+      nodes.push({
+        key: `mspgroup:${g.id}`, label: g.label, icon: g.icon,
+        iconColor: holdsCurrent ? "#93c5fd" : text.label,
+        chevron: gOpen ? "chevron-down" : "chevron-right", chevronVisible: true,
+        indent: 44, height: 28, fontSize: 12.5, fontWeight: holdsCurrent || gOpen ? 600 : 500,
+        bg: holdsCurrent && !gOpen ? action.selectedRowSoft : "transparent",
+        fg: holdsCurrent || gOpen ? text.secondary : text.muted, meta: "",
+        click: () => {
+          if (gOpen) h.toggleMspGroup(g.id);
+          else h.navigate({ kind: "msp", page: (g.children ?? [])[0].id });
+        },
+      });
+      if (!gOpen) continue;
+      for (const c of g.children ?? []) mspLeaf(c, 64);
     }
   }
 

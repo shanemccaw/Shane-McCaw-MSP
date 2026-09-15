@@ -50,7 +50,7 @@ import {
   type PageMeta, type TreeHandlers,
 } from "./treeModel";
 import {
-  groupForPage, parseLocation, selectionToPath, type Selection,
+  groupForPage, groupForMspPage, parseLocation, selectionToPath, type Selection,
 } from "./nav";
 import { RiskRegister } from "@/modules/risk-register/RiskRegister";
 import { RetentionQueue } from "@/modules/retention/RetentionQueue";
@@ -96,6 +96,7 @@ export function ConsoleShell({ profile }: { profile: MspUserProfile }) {
   const [openTenants, setOpenTenants] = useState<Set<number>>(new Set());
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   const [mspOpen, setMspOpen] = useState(true);
+  const [openMspGroups, setOpenMspGroups] = useState<Set<string>>(new Set());
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const [notifsOpen, setNotifsOpen] = useState(false);
@@ -129,6 +130,13 @@ export function ConsoleShell({ profile }: { profile: MspUserProfile }) {
       });
     },
     toggleMsp: () => setMspOpen((v) => !v),
+    toggleMspGroup: (key: string) => {
+      setOpenMspGroups((prev) => {
+        const nextSet = new Set(prev);
+        if (nextSet.has(key)) nextSet.delete(key); else nextSet.add(key);
+        return nextSet;
+      });
+    },
   }), [navigate]);
 
   // Auto-expand the tenant (and owning group) for the current selection, so a
@@ -142,6 +150,12 @@ export function ConsoleShell({ profile }: { profile: MspUserProfile }) {
       if (grp) {
         const key = `${sel.tenant}:${grp.id}`;
         setOpenGroups((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
+      }
+    }
+    if (sel.kind === "msp") {
+      const grp = groupForMspPage(sel.page);
+      if (grp) {
+        setOpenMspGroups((prev) => (prev.has(grp.id) ? prev : new Set(prev).add(grp.id)));
       }
     }
     closeOverlays();
@@ -167,8 +181,8 @@ export function ConsoleShell({ profile }: { profile: MspUserProfile }) {
 
   // ── Derived view models ───────────────────────────────────────────────────
   const nodes = useMemo(
-    () => buildTreeNodes(customers, effectiveSel, openTenants, openGroups, mspOpen, treeQuery, handlers),
-    [customers, effectiveSel, openTenants, openGroups, mspOpen, treeQuery, handlers],
+    () => buildTreeNodes(customers, effectiveSel, openTenants, openGroups, mspOpen, openMspGroups, treeQuery, handlers),
+    [customers, effectiveSel, openTenants, openGroups, mspOpen, openMspGroups, treeQuery, handlers],
   );
   const railNodes = useMemo(() => buildRailNodes(customers, effectiveSel, handlers), [customers, effectiveSel, handlers]);
   const commands = useMemo(() => buildCommands(customers, handlers), [customers, handlers]);
