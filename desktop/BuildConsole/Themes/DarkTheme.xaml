@@ -108,6 +108,11 @@
     <SolidColorBrush x:Key="PeachBrushTint"    Color="#FAB387" Opacity="0.13"/> <!-- same Color as PeachBrush -->
     <SolidColorBrush x:Key="BlueBrushTint"     Color="{StaticResource AccentColor}" Opacity="0.13"/> <!-- same Color as BlueBrush -->
     <SolidColorBrush x:Key="SapphireBrushTint" Color="#74C7EC" Opacity="0.13"/> <!-- same Color as SapphireBrush -->
+    <!-- Git #4219: filed from #4177's ApiRunnerView.xaml audit — GreenBrushTint/RedBrushTint
+         didn't exist yet, so the GET/DELETE method-row washes were left as raw hex literals
+         rather than an inexact substitute. Added here, same 0.13-opacity tint pattern. -->
+    <SolidColorBrush x:Key="GreenBrushTint"    Color="#A6E3A1" Opacity="0.13"/> <!-- same Color as GreenBrush -->
+    <SolidColorBrush x:Key="RedBrushTint"      Color="#F38BA8" Opacity="0.13"/> <!-- same Color as RedBrush -->
 
     <!-- Status-semantic brushes StatusSuccessBrush/StatusErrorBrush/
          StatusWarningBrush/StatusRunningBrush are declared once, in
