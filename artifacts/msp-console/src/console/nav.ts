@@ -114,6 +114,17 @@ export const MSP_PAGES: LeafPage[] = [
   { id: "docs", label: "Documents", icon: "files" },
   { id: "connectors", label: "SharePoint connectors", icon: "plug" },
   { id: "offboarding", label: "Offboarding", icon: "log-out" },
+  // Delivery Projects (Git #4246, part of #3433) — the real, live typed-card
+  // Kanban board relocated from admin-panel's CRM (`ProjectDetail.tsx`,
+  // `Projects.tsx`). Genuinely global (fetches `/api/admin/projects` across
+  // every client, not filtered by tenant), so it sits here in Operations
+  // rather than the per-tenant `CHILD_GROUPS` tree — same placement logic as
+  // "Projects" (Simple Kanban) directly below, which is a *different* system:
+  // that one is per-customer buckets/cards (#3773); this one is a single
+  // customer's fixed-pipeline delivery project with typed task cards. Icon
+  // `layers` deliberately distinct from `kanban` (already used below) so the
+  // two don't read as the same feature in the tree.
+  { id: "delivery-projects", label: "Delivery Projects", icon: "layers" },
   // Projects (Git #2621, Feature #2561) — the design's own MSP-wide
   // Operations placement (`MSP Console.dc.html`'s `mspSel === "projects"`,
   // between Offboarding and Retainer hours). Free-form buckets/cards per
@@ -169,7 +180,7 @@ const msp = (id: string): LeafPage => {
 export const MSP_GROUPS: Group[] = [
   {
     id: "delivery", label: "Client Delivery", icon: "briefcase",
-    children: ["timeline", "sales", "sla", "sops", "config", "policy", "m365changes", "reports"].map(msp),
+    children: ["timeline", "sales", "sla", "sops", "config", "policy", "m365changes", "reports", "delivery-projects"].map(msp),
   },
   {
     id: "access", label: "Access & Accounts", icon: "shield",

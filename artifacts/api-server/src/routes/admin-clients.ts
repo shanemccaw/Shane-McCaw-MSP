@@ -18,7 +18,7 @@ import {
   clientHealthHistoryTable,
 } from "@workspace/db";
 import { eq, and, desc, count, inArray, sql, isNotNull, isNull, asc } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { requireAdmin, requireCapability } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
 import { auditPrivilegedRead } from "../lib/audit.ts";
 
@@ -538,7 +538,11 @@ router.get("/admin/clients/:id/health/summary", requireAdmin, async (req: Reques
   }
 });
 
-router.get("/admin/clients", requireAdmin, async (_req: Request, res: Response) => {
+// Re-gated ladder.msp-operator (Git #4246) — the Delivery Projects "New/Edit
+// Project" client picker (relocated to msp-console) reads this same list;
+// every other route in this file stays requireAdmin (command-center, health
+// summary, Azure credentials — genuinely admin-only client management).
+router.get("/admin/clients", requireCapability("ladder.msp-operator"), async (_req: Request, res: Response) => {
   const clients = await db.select().from(usersTable)
     .where(eq(usersTable.role, "client"))
     .orderBy(desc(usersTable.createdAt));

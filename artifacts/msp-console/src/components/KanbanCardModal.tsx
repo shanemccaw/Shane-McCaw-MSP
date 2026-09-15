@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { useLocation } from "wouter";
 import {
   Dialog,
   DialogContent,
@@ -796,7 +795,6 @@ export function KanbanCardModal(props: Props) {
 
 function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client", fetchWithAuth, onUpdate, clientId, clientName, boardTasks, onSiblingUpdate }: Props) {
   const { toast } = useToast();
-  const [, setLocation] = useLocation();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<EditForm>({ title: "", description: "", priority: "", assignedTo: "", dueDate: "" });
@@ -1176,6 +1174,9 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
             <>
               {typeCfg && <div className={`h-0.5 w-full rounded-full opacity-60 ${typeCfg.bar}`} />}
 
+              {/* No onOpenScript: admin-panel's `/command/scripts` library page (this
+                  button's original target) has no msp-console equivalent (Git #4246).
+                  The prop is optional; omitted, not stubbed. */}
               {mode !== "admin" && (
                 <TypedModalSection
                   taskType={localTask.taskType}
@@ -1186,7 +1187,6 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                   fetchWithAuth={fetchWithAuth}
                   onMetadataUpdate={handleMetadataUpdate}
                   onRunScript={linkedRunbook?.scriptId ? () => setConfirmRunOpen(true) : undefined}
-                  onOpenScript={() => setLocation("/command/scripts")}
                 />
               )}
 

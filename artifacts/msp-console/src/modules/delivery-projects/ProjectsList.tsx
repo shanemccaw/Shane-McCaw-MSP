@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -159,7 +158,6 @@ function ServiceCard({
   onDelete: () => void;
   trackColor: string;
 }) {
-  const [, navigate] = useLocation();
   const currentStep = steps.find(s => s.status === "in_progress") ?? steps.find(s => s.status === "pending");
   const completedCount = steps.filter(s => s.status === "completed").length;
   const eta = project.endDate ? new Date(project.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
@@ -228,14 +226,8 @@ function ServiceCard({
           >
             Delete
           </button>
-          {project.clientUserId && (
-            <button
-              onClick={() => navigate(`/crm/clients/${project.clientUserId}`)}
-              className="text-xs font-medium text-muted-foreground hover:text-primary transition-colors"
-            >
-              Client →
-            </button>
-          )}
+          {/* No "Client →" cross-link here (Git #4246): admin-panel's CRM client-detail
+              page (`/crm/clients/:id`) has no msp-console equivalent. */}
         </div>
         <button
           onClick={onDetails}
@@ -262,7 +254,6 @@ function RetainerCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const [, navigate] = useLocation();
   const completedSteps = steps.filter(s => s.status === "completed").length;
   const hoursBase = Math.round(project.progress * 0.4);
   const governanceScore = project.status === "completed" ? 98 : project.status === "active" ? Math.max(72, Math.round(project.progress * 0.28 + 70)) : 65;
@@ -331,14 +322,8 @@ function RetainerCard({
         <div className="flex items-center gap-3">
           <button onClick={onEdit} className="text-xs font-medium text-[#94a3b8] hover:text-white transition-colors">Edit</button>
           <button onClick={onDelete} className="text-xs font-medium text-red-400 hover:text-red-300 transition-colors">Delete</button>
-          {project.clientUserId && (
-            <button
-              onClick={() => navigate(`/crm/clients/${project.clientUserId}`)}
-              className="text-xs font-medium text-[#60a5fa]/70 hover:text-[#60a5fa] transition-colors"
-            >
-              Client →
-            </button>
-          )}
+          {/* No "Client →" cross-link here (Git #4246): admin-panel's CRM client-detail
+              page (`/crm/clients/:id`) has no msp-console equivalent. */}
         </div>
         <button
           onClick={onDetails}
@@ -485,10 +470,9 @@ const EMPTY_FORM: ProjectFormState = {
   title: "", description: "", status: "active", phase: "", progress: 0, clientUserId: "", startDate: "", endDate: "", projectType: "project", workflowTemplateId: "",
 };
 
-export default function ProjectsPage() {
+export default function ProjectsPage({ onOpenProject }: { onOpenProject: (id: number) => void }) {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
-  const [, navigate] = useLocation();
 
   const [projects, setProjects] = useState<ProjectWithSteps[]>([]);
   const [steps, setSteps] = useState<Record<number, WorkflowStep[]>>({});
@@ -919,7 +903,7 @@ export default function ProjectsPage() {
                           </td>
                           <td className="px-4 py-3.5">
                             <button
-                              onClick={() => navigate(`/crm/projects/${p.id}`)}
+                              onClick={() => onOpenProject(p.id)}
                               className="text-xs font-semibold text-primary hover:underline"
                             >
                               Details →
@@ -940,7 +924,7 @@ export default function ProjectsPage() {
                   track={track}
                   projects={byType(track.type)}
                   steps={steps}
-                  onDetails={id => navigate(`/crm/projects/${id}`)}
+                  onDetails={id => onOpenProject(id)}
                   onEdit={p => handleEdit(p)}
                   onDelete={p => setDeleteTarget(p)}
                 />

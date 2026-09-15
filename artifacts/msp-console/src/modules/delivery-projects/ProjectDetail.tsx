@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useRoute, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { formatAuditEntry, type AuditLogEntry } from "@/lib/auditFormatter";
@@ -193,7 +192,6 @@ function DraggableCard({
   const [customerViewOpen, setCustomerViewOpen] = useState(false);
   const [confirmRunOpen, setConfirmRunOpen] = useState(false);
   const [scriptRunning, setScriptRunning] = useState(() => isTaskRunning(task.id));
-  const [, setLocation] = useLocation();
 
   useEffect(() => {
     const unsubscribe = subscribeToChanges(() => {
@@ -204,7 +202,9 @@ function DraggableCard({
 
   const handleRunScript = () => { if (!scriptRunning) setConfirmRunOpen(true); };
   const handleViewResults = () => onCardClick(task);
-  const handleOpenScript = () => { setLocation("/command/scripts"); };
+  // No onOpenScript handler here (Git #4246): admin-panel's `/command/scripts`
+  // library page has no msp-console equivalent. The prop is optional on
+  // TypedCardContent, so it's simply omitted at both call sites below.
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
@@ -325,7 +325,6 @@ function DraggableCard({
               metadata={task.taskMetadata}
               onRunScript={handleRunScript}
               onViewResults={handleViewResults}
-              onOpenScript={handleOpenScript}
             />
 
             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
@@ -411,7 +410,6 @@ function DraggableCard({
                         metadata={task.taskMetadata}
                         onRunScript={handleRunScript}
                         onViewResults={handleViewResults}
-                        onOpenScript={handleOpenScript}
                       />
                     )}
                     {clientDeliverables.length > 0 && (
@@ -1008,10 +1006,7 @@ function ClosureCard({ projectId, projectStatus, fetchWithAuth, toast }: {
   );
 }
 
-export default function ProjectDetailPage() {
-  const [, params] = useRoute("/crm/projects/:id");
-  const [, navigate] = useLocation();
-  const projectId = params?.id ? parseInt(params.id, 10) : null;
+export default function ProjectDetailPage({ projectId, onBack }: { projectId: number; onBack: () => void }) {
 
   const { fetchWithAuth, accessToken } = useAuth();
   const { toast } = useToast();
@@ -1977,7 +1972,7 @@ export default function ProjectDetailPage() {
       {/* Page header */}
       <div className="mb-6">
         <button
-          onClick={() => navigate("/crm/projects")}
+          onClick={onBack}
           className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors mb-3"
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -2003,14 +1998,8 @@ export default function ProjectDetailPage() {
             </div>
             <div className="flex items-center gap-2 mt-1">
               <p className="text-sm text-muted-foreground">{clientLabel}</p>
-              {client && (
-                <button
-                  onClick={() => navigate(`/crm/clients/${client.id}`)}
-                  className="text-xs font-semibold text-primary hover:underline"
-                >
-                  Open Client →
-                </button>
-              )}
+              {/* No "Open Client →" cross-link here (Git #4246): admin-panel's CRM
+                  client-detail page (`/crm/clients/:id`) has no msp-console equivalent. */}
             </div>
             {project.description && (
               <p className="text-sm text-foreground/70 mt-1 max-w-2xl">{project.description}</p>

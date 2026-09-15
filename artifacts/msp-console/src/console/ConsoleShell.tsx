@@ -62,6 +62,7 @@ import { Overview } from "./modules/Overview";
 import { LaunchControl } from "./modules/LaunchControl";
 import { AzureCredential } from "./modules/AzureCredential";
 import { Projects } from "./modules/Projects";
+import { DeliveryProjects } from "@/modules/delivery-projects/DeliveryProjects";
 import { RequestsAndSupportChat } from "./modules/RequestsAndSupportChat";
 import { MicrosoftChanges } from "@/modules/microsoft-changes/MicrosoftChanges";
 
@@ -522,6 +523,12 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "msp" && sel.page === "retention") {
     return <RetentionQueue />;
+  }
+  if (sel.kind === "msp" && sel.page === "delivery-projects") {
+    // Delivery Projects (Git #4246, part of #3433) — the real typed-card
+    // Kanban board relocated from admin-panel. Distinct from "Projects"
+    // (Simple Kanban, #3773) below.
+    return <DeliveryProjects />;
   }
   if (sel.kind === "msp" && sel.page === "retainer") {
     // Reopen and the "adjust after close" override both require

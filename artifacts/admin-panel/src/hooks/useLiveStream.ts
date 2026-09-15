@@ -15,7 +15,9 @@ const MAX_BUFFERED_FRAMES = 200;
  * disconnected (e.g. no engine selected yet in the Engines tab picker).
  *
  * Reconnect/backoff/stale-token-guard logic mirrors the kanban-events
- * EventSource in pages/crm/ProjectDetail.tsx — same pattern, same repo.
+ * EventSource in `artifacts/msp-console/src/modules/delivery-projects/ProjectDetail.tsx`
+ * (relocated from this app's own `pages/crm/ProjectDetail.tsx`, Git #4246) —
+ * same pattern, same repo.
  */
 export function useLiveStream(channel: string | null) {
   const { accessToken } = useAuth();

@@ -16,7 +16,7 @@ import {
   powershellScriptsTable,
 } from "@workspace/db";
 import { eq, asc, inArray, desc, and, sql } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { requireAdmin, requireCapability } from "../middlewares/requireAuth.ts";
 import { classifyAndUpdateTask, classifyTaskForScriptGeneration } from "../lib/classify-task-type.ts";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "../lib/logger.ts";
@@ -26,7 +26,11 @@ const log = logger.child({ channel: "workflow.run" });
 
 const router: IRouter = Router();
 
-router.get("/admin/workflow-templates", requireAdmin, async (_req: Request, res: Response) => {
+// Re-gated ladder.msp-operator (Git #4246) — the Delivery Projects "New
+// Project" workflow-template picker (relocated to msp-console) reads this
+// same list; every other route in this file stays requireAdmin (template
+// authoring, AI-generate, asset-sets — genuinely admin-only template mgmt).
+router.get("/admin/workflow-templates", requireCapability("ladder.msp-operator"), async (_req: Request, res: Response) => {
   try {
     const templates = await db.select().from(workflowTemplatesTable).orderBy(workflowTemplatesTable.createdAt);
     res.json(templates);
