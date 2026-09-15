@@ -222,12 +222,16 @@ export function requirePlanFeature(feature: string) {
       // A feature is gated only if explicitly set to false in the tier map.
       // Missing key = not gated (available on all tiers).
       if (capabilities[feature] === false) {
+        // No `upgradeUrl` here (Git #4209): the MSP's own platform-subscription
+        // upgrade surface doesn't exist yet — msp-console's Billing screen
+        // (Design screen 23) is still blocked on a real Design export (#2608),
+        // and no client reads this field. Don't ship a link to a route that
+        // isn't mounted; add it back once that surface is real.
         res.status(402).json({
           error: `Feature "${feature}" requires a higher tier`,
           code: "UPGRADE_REQUIRED",
           feature,
           currentTier: tier.tierName,
-          upgradeUrl: "/portal/billing/upgrade",
         });
         return;
       }

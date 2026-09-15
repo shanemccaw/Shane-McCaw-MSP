@@ -62,6 +62,7 @@ import ConsentDeclinedPage from "@/pages/consent-declined";
 import ConsentTenantConflictPage from "@/pages/consent-tenant-conflict";
 import OnboardingLinkPage from "@/pages/onboarding-link";
 import PortalIdentityInterstitialPage from "@/pages/portal-identity-interstitial";
+import LiveDocumentViewerPage from "@/pages/live-document-viewer";
 
 const queryClient = new QueryClient();
 
@@ -246,6 +247,23 @@ export default function App() {
                 <Route path="/shared-documents/:shareToken" component={SharedDocumentPublicPage} />
                 <Route path="/shared-live-documents/:shareToken" component={SharedLiveDocumentsPublicPage} />
                 <Route path="/sow/:shareToken" component={MspSowPublicPage} />
+                {/*
+                  Live Document Viewer (#2825, Feature #1658) — authenticated,
+                  but deliberately standalone rather than a ProtectedRoutes
+                  entry, same reasoning as Accept Agreement above: a printed
+                  PDF should not carry PortalLayout's nav chrome. The path is
+                  load-bearing — api-server's portal-url.ts builds it exactly
+                  as `buildPrintDocumentUrl()`/`buildLiveDocumentPrintUrl()`,
+                  and it's the route headless Chromium navigates for the
+                  real PDF export (renderLiveDocumentToPdf(), html-pdf.ts).
+                  The `:slug` segment is carried for URL-shape compatibility
+                  with those two builders but unused by this page — the
+                  portal's routing is otherwise flat/slug-less (SlugProvider
+                  resolves slug from sessionStorage, not the path), and the
+                  real customer scoping comes from the session's own
+                  `req.user.customerId`, not this param.
+                */}
+                <Route path="/:slug/copilot-readiness/documents/:docType" component={LiveDocumentViewerPage} />
                 <Route>
                   <ProtectedRoutes />
                 </Route>

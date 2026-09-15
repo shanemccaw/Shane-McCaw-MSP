@@ -83,19 +83,52 @@ function flagless(rung: LegacyRole): LegacyUserRow {
 }
 
 /**
+ * #3974 (#4208) — known, deliberate real-DB overrides for the two BRAND NEW rungs
+ * (`RetainerNoConsent`/`RetainerConsented`, #3971) that `LEGACY_CAPABILITY_RULES`
+ * cannot answer correctly on its own.
+ *
+ * That transcription is pinned to code that predates both rungs entirely, so its
+ * `team.manage`/`changes.approve` rules can only fall through the same
+ * isCustomerTier/named-role catchall that already produces the #3360/#3590
+ * divergences below (`decide` returns `true` for "not one of the tiers I was
+ * written to recognise" — an allow, not a considered decision). The real seed
+ * migration (`2026-09-14-rbac-retainer-noconsent-gating-3974.sql`) wrote explicit
+ * DENY rows into `customer_feature_role_mapping` instead, and `lib/db/src/rbac/
+ * parity-check.ts`'s `KNOWN_FAIL_CLOSED_DIVERGENCES` documents these same three
+ * shapes as the live model correctly disagreeing with the frozen transcription.
+ * This fixture must apply the same overrides so a unit test built on it agrees
+ * with the real live model, not with a rule that cannot know about a rung it
+ * predates. Keep this list in sync with `parity-check.ts`'s by hand if either
+ * changes — deliberately duplicated rather than imported, since parity-check.ts
+ * is a standalone script that opens a real DB connection at module load.
+ */
+const KNOWN_DENY_OVERRIDES: ReadonlyArray<{ system: RbacSystem; capabilityKey: string; role: LegacyRole }> = [
+  { system: "customer", capabilityKey: "team.manage", role: "RetainerNoConsent" },
+  { system: "customer", capabilityKey: "changes.approve", role: "RetainerNoConsent" },
+  { system: "customer", capabilityKey: "team.manage", role: "RetainerConsented" },
+];
+
+/**
  * The seed's mapping rows for every NON-ladder capability.
  *
- * A rung is allowed when the transcribed rule already passes it without a grant. A
- * grant role is allowed when holding it turns some rung's refusal into a pass — which
- * is how #2457 seeded each column's `cap.*` role and #3629 seeded Customer Admin and
- * Billing. Both halves come from asking the rule, so the rows cannot drift from it.
+ * A rung is allowed when the transcribed rule already passes it without a grant,
+ * and is not one of the `KNOWN_DENY_OVERRIDES` above. A grant role is allowed when
+ * holding it turns some rung's refusal into a pass — which is how #2457 seeded
+ * each column's `cap.*` role and #3629 seeded Customer Admin and Billing. All of
+ * this comes from asking the rule (plus the documented overrides), so the rows
+ * cannot silently drift from either.
  */
 function mappingRows(): RbacFeatureMapping[] {
   return LEGACY_CAPABILITY_RULES
     .filter((rule) => !rule.key.startsWith("ladder."))
     .map((rule) => {
+      const deniedRungs = new Set<LegacyRole>(
+        KNOWN_DENY_OVERRIDES.filter((o) => o.system === rule.system && o.capabilityKey === rule.key).map(
+          (o) => o.role,
+        ),
+      );
       const allow = LEGACY_ROLE_ORDER
-        .filter((rung) => rule.decide(flagless(rung)))
+        .filter((rung) => rule.decide(flagless(rung)) && !deniedRungs.has(rung))
         .map((rung) => roleId(rule.system, rung));
       for (const grant of GRANT_ROLES) {
         if (grant.system !== rule.system) continue;

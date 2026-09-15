@@ -54,6 +54,13 @@
     <SolidColorBrush x:Key="MauveBrush"    Color="#CBA6F7"/>
     <SolidColorBrush x:Key="GreenBrush"      Color="#A6E3A1"/>
     <SolidColorBrush x:Key="LightGreenBrush" Color="#A6E3A1"/> <!-- alias — used by VisualTestTrackerWindow, VisualDiffWindow, SessionSyncDialog -->
+
+    <!-- Git #4205 — low-opacity Green wash, same 20% tier + pattern as the Accent/
+         Success washes in Themes/Colors.xaml (AccentWashMediumBrush/
+         StatusSuccessWashMediumBrush). Declared here (not Colors.xaml) because it
+         derives from GreenBrush above, which is this file's own Catppuccin key, not
+         a Colors.xaml hue. -->
+    <SolidColorBrush x:Key="GreenWashMediumBrush" Color="#33A6E3A1"/>
     <SolidColorBrush x:Key="RedBrush"      Color="#F38BA8"/>
     <SolidColorBrush x:Key="PeachBrush"    Color="#FAB387"/>
     <SolidColorBrush x:Key="YellowBrush"   Color="#F9E2AF"/>
@@ -65,6 +72,21 @@
     <SolidColorBrush x:Key="FlamingoBrush"  Color="#F2CDCD"/>
     <SolidColorBrush x:Key="RosewaterBrush" Color="#F5E0DC"/>
     <SolidColorBrush x:Key="MaroonBrush"    Color="#EBA0AC"/>
+
+    <!-- Low-opacity washes for the Yellow/Red/Mauve chip/badge backgrounds
+         (Git #4206) — same 20% "Medium" wash tier already established by
+         Colors.xaml's AccentWashMediumBrush/StatusSuccessWashMediumBrush/etc,
+         just applied to these three decorative Catppuccin colors instead.
+         Declared here (not Colors.xaml, which is merged before this
+         dictionary and can't resolve YellowBrush/RedBrush/MauveBrush) for
+         ThemeEditorWindow's diagnostic chips ("⚠ Bright"/"⚠ Low CR"/
+         "⚠ Outlier") and mockup badges ("EPIC #803"), each of which pairs a
+         wash background with the matching brush as its foreground — the
+         same tint+solid-foreground pattern AccentWashMediumBrush+BlueBrush
+         already uses for the "ISSUE #2126" badge two rows down. -->
+    <SolidColorBrush x:Key="YellowWashMediumBrush" Color="#33F9E2AF"/> <!-- same Color as YellowBrush -->
+    <SolidColorBrush x:Key="RedWashMediumBrush"    Color="#33F38BA8"/> <!-- same Color as RedBrush -->
+    <SolidColorBrush x:Key="MauveWashMediumBrush"  Color="#33CBA6F7"/> <!-- same Color as MauveBrush -->
 
     <!-- ══════════════════════════════════════════════════════════════════
          PRIMARY-ACTION TINT FILLS (Git #3812) — the tint+border pattern
@@ -113,7 +135,15 @@
          in/out on hover/state use their own inline effect + storyboard so
          the shared frozen instances are never mutated.
          ══════════════════════════════════════════════════════════════════ -->
-    <!-- Depth shadows (near-black, drop below) -->
+    <!-- Depth shadows (near-black, drop below). Git #4205 — Color="#000000" on a
+         DropShadowEffect is an accepted, permanent exception to the "no raw hex"
+         rule: shadows are colorless by convention (only BlurRadius/ShadowDepth/
+         Opacity/Direction carry real design meaning), and this file — the
+         canonical theme source — already hardcodes it here, so there is no themed
+         substitute to point inline shadow literals at. MainWindow.xaml's own two
+         inline DropShadowEffect Color="#000000" literals (Quick Thought popup,
+         Tab Switcher overlay card) are left as-is under this same exception rather
+         than forced onto a resource that would just restate #000000. -->
     <DropShadowEffect x:Key="SoftRowShadow"   Color="#000000" BlurRadius="8"  ShadowDepth="1.5" Direction="270" Opacity="0.26"/>
     <DropShadowEffect x:Key="SoftCardShadow"  Color="#000000" BlurRadius="16" ShadowDepth="3"   Direction="270" Opacity="0.34"/>
 

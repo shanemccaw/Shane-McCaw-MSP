@@ -26,7 +26,7 @@
 
                         <!-- shaneapp:// protocol live execution indicator -->
                         <Border x:Name="ShaneAppIndicator"
-                                Background="#33A6E3A1"
+                                Background="{StaticResource GreenWashMediumBrush}"
                                 BorderBrush="{StaticResource StatusRunningBrush}"
                                 BorderThickness="1"
                                 CornerRadius="4"

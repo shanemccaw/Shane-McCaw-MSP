@@ -1,9 +1,9 @@
 {
   "issue": 1739,
-  "feature": "Projects (Feature #1570) - the real artifacts/portal '/projects/:id' page (src/pages/project-detail.tsx), by-id only (no list route on the server). Wired to the one real customer route, GET /api/portal/projects/:id (artifacts/api-server/src/routes/portal-projects.ts), plus its kanban-events SSE sibling, per docs/portal/projects-contract-pack.md and Design/portal/design_handoff_billing_roles_and_new_modules/screens/Projects.dc.html. Also covers this build's own addition of a `closure` field to that route's response, read from the pre-existing project_closures table (no migration - the table and columns already existed, the route simply never selected from it), needed to draw the design's real closure-requested dead-end banner (#4025).",
+  "feature": "Projects (Feature #1570) - the real artifacts/portal '/projects/:id' page (src/pages/project-detail.tsx), by-id only (no list route on the server). Wired to the one real customer route, GET /api/portal/projects/:id (artifacts/api-server/src/routes/portal-projects.ts), plus its kanban-events SSE sibling, per docs/portal/projects-contract-pack.md and Design/portal/design_handoff_billing_roles_and_new_modules/screens/Projects.dc.html. Also covers this build's own addition of a `closure` field to that route's response, read from the pre-existing project_closures table (no migration - the table and columns already existed, the route simply never selected from it), needed to draw the design's real closure-requested dead-end banner (#4025). #4025 itself (this build) replaced that dead-end banner with a real sign-off ceremony (SignaturePad + permission checkbox + optional feedback) posted to POST /api/portal/projects/:id/closure (#4058) - the AUTH-GATE-3 apiTest below covers that route's own auth gate; the real create->sign->409 round trip was live-verified this session against an isolated :8099 api-server instance (this worktree's own esbuild output) with a synthetic user/project/closure row, not against the shared :8080 dev-server (which does not yet have this branch merged) - see build-journal/4025.md for the full transcript.",
   "baseUrl": "{{DEPLOY_URL}}",
   "loginAs": "Customer — RBAC test",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "040d64a56",
 
   "notes": [
     "WHAT THIS COVERS: the auth gate on GET /api/portal/projects/:id, the real, honest 404 every id currently returns - docs/portal/projects-contract-pack.md §7 confirms `projects` is 0 rows locally (the #1573 fixture rows were cleared and nothing has replaced them), so a 404 for any id is today's true live answer, not a contrived test case - and a real UI walk (login -> navigate to /projects/:id) proving the page's own not-found scene (src/pages/project-detail.tsx's `notFound` branch) actually renders that honest 404 in the DOM for a signed-in customer.",
@@ -46,6 +46,15 @@
       "path": "/api/portal/projects/999999",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 404, "jsonPath": "$.error", "exists": true }
+    },
+    {
+      "name": "AUTH-GATE-3 - POST /api/portal/projects/:id/closure with no Authorization header returns 401 (requireAuth) - #4025's sign-off route",
+      "sessionTag": "4025-closure-signoff",
+      "method": "POST",
+      "path": "/api/portal/projects/1/closure",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "signatureDataUrl": "data:image/png;base64,abc", "permissionGranted": true },
+      "expect": { "status": 401 }
     }
   ],
 

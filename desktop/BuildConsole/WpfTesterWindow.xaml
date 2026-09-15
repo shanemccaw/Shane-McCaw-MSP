@@ -270,7 +270,7 @@
 
                     <Border x:Name="PnlError" Visibility="Collapsed"
                             HorizontalAlignment="Center" VerticalAlignment="Center"
-                            Background="#3A1818" BorderBrush="{StaticResource StatusErrorBrush}"
+                            Background="{StaticResource StatusErrorWashLightBrush}" BorderBrush="{StaticResource StatusErrorBrush}"
                             BorderThickness="1" CornerRadius="6" Padding="20">
                         <StackPanel>
                             <TextBlock Text="&#x26A0; Render Error" FontWeight="Bold" FontSize="{StaticResource BodyFontSize}"
@@ -318,10 +318,10 @@
                                                 <Setter Property="Background" Value="Transparent"/>
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding Level}" Value="Error">
-                                                        <Setter Property="Background" Value="#2A1010"/>
+                                                        <Setter Property="Background" Value="{StaticResource StatusErrorWashLightBrush}"/>
                                                     </DataTrigger>
                                                     <DataTrigger Binding="{Binding Level}" Value="Warning">
-                                                        <Setter Property="Background" Value="#2A2010"/>
+                                                        <Setter Property="Background" Value="{StaticResource StatusWarningWashLightBrush}"/>
                                                     </DataTrigger>
                                                     <DataTrigger Binding="{Binding Level}" Value="Success">
                                                         <Setter Property="Background" Value="{StaticResource StatusSuccessWashLightBrush}"/>
@@ -340,10 +340,10 @@
                                                             <Setter Property="Background" Value="{StaticResource Surface0Brush}"/>
                                                             <Style.Triggers>
                                                                 <DataTrigger Binding="{Binding Level}" Value="Error">
-                                                                    <Setter Property="Background" Value="#5A1010"/>
+                                                                    <Setter Property="Background" Value="{StaticResource StatusErrorWashMediumBrush}"/>
                                                                 </DataTrigger>
                                                                 <DataTrigger Binding="{Binding Level}" Value="Warning">
-                                                                    <Setter Property="Background" Value="#5A4010"/>
+                                                                    <Setter Property="Background" Value="{StaticResource StatusWarningWashMediumBrush}"/>
                                                                 </DataTrigger>
                                                                 <DataTrigger Binding="{Binding Level}" Value="Success">
                                                                     <Setter Property="Background" Value="{StaticResource StatusSuccessWashMediumBrush}"/>

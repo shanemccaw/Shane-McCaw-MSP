@@ -84,7 +84,7 @@ function rbacUnset(): RbacEvaluationInput {
 // input, mirroring real rows — nothing the product reads.
 const FOUNDATION_FEATURES = ["policy_decisions", "risk_register"];
 const GROWTH_FEATURES = [...FOUNDATION_FEATURES, "runbooks", "remediation_tracking", "sops_runbooks", "message_center"];
-const PREMIER_FEATURES = [...GROWTH_FEATURES, "change_control", "ownership", "security_plan", "pii_governance"];
+const PREMIER_FEATURES = [...GROWTH_FEATURES, "change_control", "ownership", "security_plan", "pii_governance", "poams"];
 
 const CATALOG: readonly TierCatalogEntry[] = [
   { tier: "foundation", sortOrder: 1, includedFeatures: FOUNDATION_FEATURES },
@@ -320,11 +320,11 @@ describe("entitlement, only after RBAC allows (#1704 rule 2)", () => {
   it("returns requiredTier null — and says so — when no catalog row bundles the module", () => {
     const withoutCatalog = evaluateAccess({
       rbac: rbacAllowing(),
-      tier: { moduleKey: PORTAL_TIER_MODULE_KEYS.poams, includedFeatures: PREMIER_FEATURES, currentTier: "premier" },
+      tier: { moduleKey: PORTAL_TIER_MODULE_KEYS.securityPlan, includedFeatures: GROWTH_FEATURES, currentTier: "growth" },
     });
     const withCatalog = evaluateAccess({
       rbac: rbacAllowing(),
-      tier: tierOn("premier", PORTAL_TIER_MODULE_KEYS.poams),
+      tier: { ...tierOn("growth", PORTAL_TIER_MODULE_KEYS.securityPlan), catalog: [] },
     });
 
     for (const decision of [withoutCatalog, withCatalog]) {
@@ -332,9 +332,29 @@ describe("entitlement, only after RBAC allows (#1704 rule 2)", () => {
       if (decision.allowed || decision.basis !== "entitlement") continue;
       expect(decision.requiredTier).toBeNull();
       expect(decision.upgradePath).toBe(TIER_UPGRADE_PATH);
-      expect(decision.reason).toBe(
-        'Monitoring tier "premier" does not bundle "poams"; no Monitoring tier in the catalog bundles it.',
-      );
+    }
+  });
+
+  // #4207 (2026-09-15, Shane): poams bundles at Premier only — not Foundation, not
+  // Growth. Un-pins the #3104 "left unassigned" note this test used to carry.
+  it("bundles poams at Premier only (#4207)", () => {
+    const premier = evaluateAccess({
+      rbac: rbacAllowing(),
+      tier: tierOn("premier", PORTAL_TIER_MODULE_KEYS.poams),
+    });
+    expect(premier.allowed).toBe(true);
+    if (!premier.allowed) return;
+    expect(premier.tier).toEqual({ moduleKey: PORTAL_TIER_MODULE_KEYS.poams, currentTier: "premier" });
+
+    for (const currentTier of ["foundation", "growth"] as const) {
+      const decision = evaluateAccess({
+        rbac: rbacAllowing(),
+        tier: tierOn(currentTier, PORTAL_TIER_MODULE_KEYS.poams),
+      });
+      expect(decision.allowed).toBe(false);
+      if (decision.allowed || decision.basis !== "entitlement") continue;
+      expect(decision.requiredTier).toBe("premier");
+      expect(decision.currentTier).toBe(currentTier);
     }
   });
 
@@ -411,20 +431,24 @@ describe("tier-modules vocabulary", () => {
     expect(new Set(PORTAL_TIER_MODULE_KEY_LIST).size).toBe(PORTAL_TIER_MODULE_KEY_LIST.length);
   });
 
-  it("matches the keys the #1168 includedFeatures migration actually writes (poams is the one #3104 left unassigned)", () => {
-    const migration = readFileSync(
+  it("matches the keys the #1168 + #4207 includedFeatures migrations actually write", () => {
+    const migration1168 = readFileSync(
       fileURLToPath(new URL("../../migrations/manual/2026-09-05-portal-tier-included-features-1168.sql", import.meta.url)),
+      "utf8",
+    );
+    const migration4207 = readFileSync(
+      fileURLToPath(new URL("../../migrations/manual/2026-09-15-poams-premier-tier-4207.sql", import.meta.url)),
       "utf8",
     );
     for (const key of PORTAL_TIER_MODULE_KEY_LIST) {
       if (key === PORTAL_TIER_MODULE_KEYS.poams) {
-        // #3104 added the key and the gate but deliberately did not assign a tier —
-        // "a real pricing/product decision this build does not invent". Pinned here so
-        // the day a migration assigns it, this assertion flips and the note comes out.
-        expect(migration).not.toContain(`"${key}"`);
+        // #4207 (2026-09-15, Shane): poams bundles at Premier only, assigned in its own
+        // migration rather than #1168's — #1168 deliberately left it unassigned (#3104).
+        expect(migration1168).not.toContain(`"${key}"`);
+        expect(migration4207).toContain(`"${key}"`);
         continue;
       }
-      expect(migration).toContain(`"${key}"`);
+      expect(migration1168).toContain(`"${key}"`);
     }
   });
 });
