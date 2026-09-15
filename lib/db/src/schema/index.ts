@@ -2751,6 +2751,16 @@ export const powershellScriptsTable = pgTable("powershell_scripts", {
   platformPublished: boolean("platform_published").notNull().default(false),
   scriptType: text("script_type"),
   schemaVersion: text("schema_version"),
+  /**
+   * Git #4262 — the server-side execution binding. A KEY into the ps-execution
+   * container's code-owned catalog (services/ps-execution/cmdlet-catalog.ps1),
+   * never a script — the same contract `monitor_checks.ps_cmdlet_key` follows.
+   * POST /api/admin/run-script executes this entry, not `scriptBody`; a script
+   * with no binding cannot run server-side (it remains downloadable).
+   */
+  psCmdletKey: text("ps_cmdlet_key"),
+  /** Parameter fill values for `psCmdletKey`. `Organization` is always resolved server-side from the target tenant and cannot be set here. */
+  psParams: jsonb("ps_params").$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -2811,6 +2821,9 @@ export const scriptModulesTable = pgTable("script_modules", {
   sourceTaskIds: integer("source_task_ids").array(),
   azureSyncedAt: timestamp("azure_synced_at", { withTimezone: true }),
   permissions: jsonb("permissions").$type<PsScriptPermissions>().default({ appPermissions: [], delegatedPermissions: [], notes: "" }),
+  /** Git #4262 — ps-execution catalog binding; same contract as `powershellScriptsTable.psCmdletKey`. */
+  psCmdletKey: text("ps_cmdlet_key"),
+  psParams: jsonb("ps_params").$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

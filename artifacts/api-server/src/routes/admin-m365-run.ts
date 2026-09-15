@@ -2,7 +2,22 @@
  * admin-m365-run.ts
  *
  * Script execution pipeline for the M365 Command Center.
- * Runs Library scripts (powershell_scripts table) via Azure script execution.
+ * Runs Library scripts (powershell_scripts / script_modules) server-side through
+ * the ps-execution container (lib/ps-execution-client.ts) — Git #4262 moved this
+ * off the retired Azure Automation stub.
+ *
+ * The container only ever runs an entry from its code-owned catalog
+ * (services/ps-execution/cmdlet-catalog.ps1, #209's boundary), never a script
+ * body from the database. So what executes is the library row's
+ * `ps_cmdlet_key` / `ps_params` binding — the same contract
+ * monitor_checks.ps_cmdlet_key follows — and never its `script_body`. A row
+ * with no binding is refused (422) before anything is created; it stays
+ * runnable only via the download-token flow (portal-script-library.ts).
+ *
+ * The container authenticates to the tenant with its own app-only certificate
+ * and takes the tenant as `Organization`. The credential / App Registration in
+ * the request therefore identifies the TARGET TENANT (and its owning client, for
+ * MSP scoping) — its client secret is not read and not sent anywhere.
  *
  * POST /api/admin/run-script        — execute a single library script
  * POST /api/admin/scores/update     — directly upsert client M365 scores
@@ -25,7 +40,9 @@ import {
   servicesTable,
   kanbanTasksTable,
   projectsTable,
+  tenantsTable,
 } from "@workspace/db";
+import { randomUUID } from "node:crypto";
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { requireAdmin, requireCapability } from "../middlewares/requireAuth.ts";
 import { requireClientScope, clientInScope } from "../lib/msp-client-scope.ts";
@@ -33,10 +50,9 @@ import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "engine.monitor" });
 import { advancePhaseIfComplete, syncProjectProgress } from "../lib/kanban-phase-advance.ts";
 import { broadcastKanbanChange } from "../lib/sse-channels.ts";
-import { createScriptJob, getJobStatus, getJobOutput, isTerminalStatus } from "../lib/azure-automation.ts";
+import { callPsExecution, PsExecutionError } from "../lib/ps-execution-client.ts";
 import { runAiAnalyzer } from "../lib/ai-analyzer.ts";
 import { parseM365ScriptOutput } from "../lib/parse-m365-script-output.ts";
-import { getSecretValue } from "../lib/azure-keyvault.ts";
 import { createAuditLog, auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 import { applyProfileUpdates as applyProfileUpdatesShared, snapshotHealthFromProfile as snapshotHealthFromProfileShared } from "../lib/m365-profile-update.ts";
 import { resolveBillingMspId } from "../lib/ai-billing.ts";
@@ -110,24 +126,77 @@ const updateProfileSchema = z.object({
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Poll until the job reaches a terminal status, with configurable timeout. */
-async function waitForJobCompletion(jobId: string, timeoutMs = 300_000): Promise<{ status: string; output: string }> {
-  const deadline = Date.now() + timeoutMs;
-  const POLL_INTERVAL_MS = 5_000;
+/**
+ * Upper bound on one container call. The container's contract is a single
+ * synchronous request/response with no timeout of its own, and a Connect-* +
+ * cmdlet round-trip is normally well under a minute — this only stops a hung
+ * call from leaving the run "running" forever.
+ */
+const PS_EXECUTION_RUN_TIMEOUT_MS = 10 * 60_000;
 
-  while (Date.now() < deadline) {
-    const jobStatus = await getJobStatus(jobId);
-    if (isTerminalStatus(jobStatus.status)) {
-      const lines = await getJobOutput(jobId);
-      return {
-        status: jobStatus.status,
-        output: lines.map(l => l.text).join("\n"),
-      };
+/**
+ * A run row still "running" past this age cannot be in flight any more (the
+ * call above is bounded well inside it) — the api-server restarted mid-run and
+ * the detached processor died with it. The status route reports it failed
+ * rather than leaving the poller spinning on a run nothing will ever finish.
+ */
+const ABANDONED_RUN_AGE_MS = PS_EXECUTION_RUN_TIMEOUT_MS + 5 * 60_000;
+
+interface PsExecutionBinding {
+  cmdletKey: string;
+  params: Record<string, unknown>;
+}
+
+/**
+ * Executes a library row's catalog binding against one tenant. `Organization`
+ * is resolved from the tenant's own domain (GUID fallback), exactly as
+ * monitor-executor's runPowerShellCheck does, and always overrides anything in
+ * the stored params — the tenant that passed MSP scoping is the only tenant a
+ * run can sign in to.
+ */
+async function runPsExecutionBinding(
+  binding: PsExecutionBinding,
+  tenantId: string,
+): Promise<{ status: "Completed" | "Failed"; output: string }> {
+  const [tenantRow] = await db
+    .select({ domain: tenantsTable.domain })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.tenantId, tenantId))
+    .limit(1);
+  const organization = tenantRow?.domain || tenantId;
+  const params = { ...binding.params, Organization: organization };
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const { rawResponse } = await Promise.race([
+      callPsExecution(binding.cmdletKey, params),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`ps-execution call for "${binding.cmdletKey}" did not return within ${PS_EXECUTION_RUN_TIMEOUT_MS / 1000}s`)),
+          PS_EXECUTION_RUN_TIMEOUT_MS,
+        );
+      }),
+    ]);
+    return { status: "Completed", output: JSON.stringify(rawResponse, null, 2) };
+  } catch (err) {
+    if (err instanceof PsExecutionError) {
+      log.warn(
+        { cmdletKey: err.cmdletKey, kind: err.kind, containerErrorKind: err.containerErrorKind, organization },
+        "admin-m365-run: ps-execution call failed",
+      );
+      return { status: "Failed", output: `ps-execution ${err.kind}${err.containerErrorKind ? ` (${err.containerErrorKind})` : ""}: ${err.message}` };
     }
-    await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
+    throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
+}
 
-  throw new Error(`Job ${jobId} did not complete within ${timeoutMs / 1000}s`);
+/** Reads the catalog binding off a powershell_scripts / script_modules row, or null when it has none. */
+function readBinding(row: { psCmdletKey: string | null; psParams: Record<string, unknown> | null }): PsExecutionBinding | null {
+  const cmdletKey = row.psCmdletKey?.trim();
+  if (!cmdletKey) return null;
+  return { cmdletKey, params: row.psParams ?? {} };
 }
 
 /** Clamp a score to [0, 100]. */
@@ -267,6 +336,8 @@ async function resolveSiblingTaskIds(kanbanTaskId: number): Promise<number[]> {
 async function processRunInBackground(
   runResultId: number,
   jobId: string,
+  binding: PsExecutionBinding,
+  tenantId: string,
   libraryScriptId: string,
   customerId: number | undefined,
   packageContext: string,
@@ -284,9 +355,9 @@ async function processRunInBackground(
   let jobOutput: string;
   let jobStatus: string;
   try {
-    ({ status: jobStatus, output: jobOutput } = await waitForJobCompletion(jobId));
+    ({ status: jobStatus, output: jobOutput } = await runPsExecutionBinding(binding, tenantId));
   } catch (err) {
-    log.error({ err, jobId }, "admin-m365-run: background job polling timed out or failed");
+    log.error({ err, jobId, cmdletKey: binding.cmdletKey }, "admin-m365-run: ps-execution run timed out or failed");
     await db
       .update(scriptRunResultsTable)
       .set({ status: "failed", rawOutput: { error: String(err) } })
@@ -323,7 +394,9 @@ async function processRunInBackground(
   const deterministicUpdates = parseM365ScriptOutput(jobOutput);
 
   let aiResult = { findings: [] as string[], recommendations: [] as string[], scoreImpact: {} as Record<string, number>, profileUpdates: {} as Record<string, unknown> };
-  if (jobOutput.trim()) {
+  // A failed run's output is the container's error text, not tenant data —
+  // nothing for the (metered) analyzer to read.
+  if (jobStatus === "Completed" && jobOutput.trim()) {
     try {
       aiResult = await runAiAnalyzer({
         scriptOutput: jobOutput,
@@ -414,7 +487,7 @@ async function processRunInBackground(
         log.warn({ err, effectiveCustomerId }, "admin-m365-run: failed to snapshot health scores (non-fatal)");
       }
     } else {
-      log.warn({ effectiveCustomerId, jobStatus }, "admin-m365-run: skipping health score snapshot — Azure job did not complete successfully");
+      log.warn({ effectiveCustomerId, jobStatus }, "admin-m365-run: skipping health score snapshot — ps-execution run did not complete successfully");
     }
   }
 
@@ -520,7 +593,7 @@ async function processRunInBackground(
 // Re-gated ladder.msp-operator (Git #4255) so the Delivery Projects "Run Script"
 // action works for MSP operators. MSP-scoped in the same change — every target
 // is resolved to a client user and checked against the caller's MSP BEFORE any
-// Key Vault read or Azure Automation job, so an operator can only execute
+// run row or ps-execution call, so an operator can only execute
 // against their own MSP's clients. Out-of-scope targets answer 404, never 403,
 // so their existence is not confirmed:
 //   - appRegistrationId / credentialId → owning client must be in scope (a
@@ -531,8 +604,9 @@ async function processRunInBackground(
 //   - raw tenantId/clientId/clientSecret → PlatformAdmin cross-platform only;
 //     an arbitrary tenant has no ownership chain to check.
 // The script catalog itself (powershell_scripts / script_modules) is the
-// platform-global library, runnable only as its pre-synced `script-<id>` /
-// `module-<id>` runbook — no caller-supplied script body reaches Azure.
+// platform-global library, runnable only through its stored ps-execution catalog
+// binding (Git #4262) — no caller-supplied or DB-stored script body is executed,
+// and the request cannot name a cmdlet or fill a parameter.
 router.post("/admin/run-script", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const parsed = runScriptSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -581,10 +655,12 @@ router.post("/admin/run-script", requireCapability("ladder.msp-operator"), async
 
   const packageContext = "packageContext" in parsed.data ? (parsed.data.packageContext ?? "") : "";
 
-  // Resolve credentials — either from credentialId (Key Vault) or raw fields
+  // Resolve the target tenant — from the credential / App Registration row, or
+  // the raw PlatformAdmin field. The ps-execution container signs in with its own
+  // app-only certificate, so no client secret is read here (Git #4262); the raw
+  // clientId/clientSecret fields stay accepted for request-contract compatibility
+  // and are ignored.
   let tenantId: string;
-  let clientId: string;
-  let clientSecret: string;
   let customerId: number | undefined = parsed.data.customerId;
 
   if ("credentialId" in parsed.data) {
@@ -604,15 +680,7 @@ router.post("/admin/run-script", requireCapability("ladder.msp-operator"), async
     if (!customerId && cred.clientUserId) {
       customerId = cred.clientUserId;
     }
-    try {
-      clientSecret = await getSecretValue(cred.keyVaultSecretName);
-    } catch (err) {
-      log.error({ err, credentialId: parsed.data.credentialId }, "admin-m365-run: failed to fetch secret from Key Vault");
-      res.status(502).json({ error: "Failed to retrieve client secret from Key Vault" });
-      return;
-    }
     tenantId = cred.tenantId;
-    clientId = cred.clientId;
   } else if ("appRegistrationId" in parsed.data) {
     const [appReg] = await db
       .select()
@@ -630,24 +698,17 @@ router.post("/admin/run-script", requireCapability("ladder.msp-operator"), async
     if (!customerId) {
       customerId = appReg.clientUserId;
     }
-    try {
-      clientSecret = await getSecretValue(appReg.keyVaultSecretName);
-    } catch (err) {
-      log.error({ err, appRegistrationId: parsed.data.appRegistrationId }, "admin-m365-run: failed to fetch secret from Key Vault");
-      res.status(502).json({ error: "Failed to retrieve client secret from Key Vault" });
-      return;
-    }
     tenantId = appReg.tenantId;
-    clientId = appReg.azureClientId;
   } else {
     tenantId = parsed.data.tenantId;
-    clientId = parsed.data.clientId;
-    clientSecret = parsed.data.clientSecret;
   }
 
-  // Resolve what to run — either a standalone library script or a package module
+  // Resolve what to run — either a standalone library script or a package module.
+  // `resolvedRunbookName` is kept as the stable human/audit label (`script-<id>` /
+  // `module-<id>`); what actually executes is the row's catalog binding.
   let resolvedRunbookName: string;
   let resolvedLibraryScriptId: string | null = null;
+  let binding: PsExecutionBinding | null;
 
   let resolvedScriptName: string | null = null;
   if ("libraryModuleId" in parsed.data) {
@@ -664,6 +725,7 @@ router.post("/admin/run-script", requireCapability("ladder.msp-operator"), async
     }
     resolvedRunbookName = `module-${mod.id}`;
     resolvedScriptName = mod.filename ? mod.filename.replace(/\.ps1$/i, "") : null;
+    binding = readBinding(mod);
   } else {
     // Running a standalone library script — or a script_modules UUID injected via kanban enrichment
     const libraryScriptId = parsed.data.libraryScriptId;
@@ -685,16 +747,34 @@ router.post("/admin/run-script", requireCapability("ladder.msp-operator"), async
       }
       resolvedRunbookName = `module-${mod.id}`;
       resolvedScriptName = mod.filename ? mod.filename.replace(/\.ps1$/i, "") : null;
+      binding = readBinding(mod);
     } else {
       resolvedRunbookName = `script-${script.id}`;
       resolvedLibraryScriptId = libraryScriptId;
       resolvedScriptName = script.title ?? null;
+      binding = readBinding(script);
     }
+  }
+
+  // Refuse before any row, audit entry or kanban move exists: a script with no
+  // catalog binding has nothing the container is permitted to run.
+  if (!binding) {
+    res.status(422).json({
+      error:
+        `"${resolvedScriptName ?? resolvedRunbookName}" has no server-side execution binding (ps_cmdlet_key) — ` +
+        "it cannot be run from here. Download it from the script library and run it against the tenant instead.",
+    });
+    return;
   }
 
   const kanbanTaskId: number | undefined = "kanbanTaskId" in parsed.data ? (parsed.data.kanbanTaskId ?? undefined) : undefined;
 
-  // Create a placeholder run result row
+  // The container call is one synchronous request/response with no job id of its
+  // own, so the run's jobRef is minted here and is the script_run_results row's
+  // lookup key for the status poll.
+  const jobId = randomUUID();
+
+  // Create the run result row
   let runResultId: number;
   try {
     const [row] = await db
@@ -703,6 +783,7 @@ router.post("/admin/run-script", requireCapability("ladder.msp-operator"), async
         customerId: customerId ?? null,
         libraryScriptId: resolvedLibraryScriptId,
         kanbanTaskId: kanbanTaskId ?? null,
+        jobId,
         status: "running",
         scriptName: resolvedScriptName,
       })
@@ -713,34 +794,6 @@ router.post("/admin/run-script", requireCapability("ladder.msp-operator"), async
     res.status(500).json({ error: "Failed to initialize run result" });
     return;
   }
-
-  // Trigger runbook
-  let jobId: string;
-  try {
-    const job = await createScriptJob({
-      runbookName: resolvedRunbookName,
-      parameters: {
-        TenantId: tenantId,
-        ClientId: clientId,
-        ClientSecret: clientSecret,
-      },
-    });
-    jobId = job.jobId;
-  } catch (err) {
-    log.error({ err, runbookName: resolvedRunbookName }, "admin-m365-run: runbook job creation failed");
-    await db
-      .update(scriptRunResultsTable)
-      .set({ status: "failed", rawOutput: { error: String(err) } })
-      .where(eq(scriptRunResultsTable.id, runResultId));
-    res.status(502).json({ error: `Azure Automation error: ${err instanceof Error ? err.message : String(err)}` });
-    return;
-  }
-
-  // Store jobId
-  await db
-    .update(scriptRunResultsTable)
-    .set({ jobId })
-    .where(eq(scriptRunResultsTable.id, runResultId));
 
   const credentialRef = "credentialId" in parsed.data
     ? { credentialId: parsed.data.credentialId }
@@ -758,6 +811,8 @@ router.post("/admin/run-script", requireCapability("ladder.msp-operator"), async
     clientId: customerId ?? null,
     metadata: {
       runbookName: resolvedRunbookName,
+      cmdletKey: binding.cmdletKey,
+      tenantId,
       kanbanTaskId: kanbanTaskId ?? null,
       mspId: scope.mspId,
       ...credentialRef,
@@ -829,6 +884,8 @@ router.post("/admin/run-script", requireCapability("ladder.msp-operator"), async
   void processRunInBackground(
     runResultId,
     jobId,
+    binding,
+    tenantId,
     resolvedLibraryScriptId ?? "",
     customerId,
     packageContext,
@@ -837,7 +894,7 @@ router.post("/admin/run-script", requireCapability("ladder.msp-operator"), async
     automationRunId,
     siblingTaskIds,
     mspId,
-  );
+  ).catch(err => log.error({ err, runResultId, jobId }, "admin-m365-run: background run processing threw"));
 
   res.json({ jobRef: jobId, resultId: runResultId, libraryScriptId: resolvedLibraryScriptId, status: "running" });
 });
@@ -869,6 +926,9 @@ router.get("/admin/run-script/:jobRef/status", requireCapability("ladder.msp-ope
         recommendations: scriptRunResultsTable.recommendations,
         scoreImpact: scriptRunResultsTable.scoreImpact,
         rawOutput: scriptRunResultsTable.rawOutput,
+        // Compared in SQL: created_at is a naive timestamp, so a JS-side age
+        // would inherit any session-timezone skew.
+        abandoned: sql<boolean>`${scriptRunResultsTable.createdAt} < now() - make_interval(secs => ${ABANDONED_RUN_AGE_MS / 1000})`,
       })
       .from(scriptRunResultsTable)
       .where(eq(scriptRunResultsTable.jobId, jobRef))
@@ -879,17 +939,23 @@ router.get("/admin/run-script/:jobRef/status", requireCapability("ladder.msp-ope
       return;
     }
 
+    // The ps-execution call is one synchronous request, so a running run has no
+    // partial output to stream — outputLines stay empty until it finishes.
+    if (row.status === "running" && row.abandoned) {
+      const error = "Run abandoned — the api-server stopped before the ps-execution call returned";
+      log.warn({ jobRef, runResultId: row.id }, "admin-m365-run: marking abandoned run failed");
+      await db
+        .update(scriptRunResultsTable)
+        .set({ status: "failed", rawOutput: { error } })
+        .where(and(eq(scriptRunResultsTable.id, row.id), eq(scriptRunResultsTable.status, "running")));
+      row.status = "failed";
+      row.rawOutput = { error };
+    }
+
     let outputLines: string[] = [];
-    if (row.status === "running") {
-      try {
-        const lines = await getJobOutput(jobRef);
-        outputLines = lines.map(l => l.text).filter(Boolean);
-      } catch (err) {
-        log.warn({ err, jobRef }, "admin-m365-run: failed to fetch job output during polling (non-fatal)");
-      }
-    } else {
+    if (row.status !== "running") {
       const raw = row.rawOutput as Record<string, unknown> | null;
-      const stored = typeof raw?.output === "string" ? raw.output : "";
+      const stored = typeof raw?.output === "string" ? raw.output : typeof raw?.error === "string" ? raw.error : "";
       if (stored) {
         outputLines = stored
           .replace(/\r\n/g, "\n")
