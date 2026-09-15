@@ -36,10 +36,9 @@
             <Border BorderBrush="{StaticResource ChatPane.BorderSubtle60}" BorderThickness="0,0,0,1" Padding="0,24,0,26">
                 <StackPanel>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,8">
-                        <!-- Git #4183: #24949CA6 has no exact matching brush in ChatPaneBrushes.xaml
-                             or Themes/Colors.xaml (closest is ChatPane.Pill.IdleFill/Muted4, both an
-                             inexact substitute) — filed as its own finding rather than picking one. -->
-                        <Border Width="20" Height="20" CornerRadius="5" Background="#24949CA6">
+                        <!-- Git #4216: real matching brush added in ChatPaneBrushes.xaml (was a raw
+                             hardcoded literal per the #4183 finding). -->
+                        <Border Width="20" Height="20" CornerRadius="5" Background="{StaticResource ChatPane.AvatarBadgeFill}">
                             <TextBlock Text="SM" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource ChatPane.Muted1}"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
