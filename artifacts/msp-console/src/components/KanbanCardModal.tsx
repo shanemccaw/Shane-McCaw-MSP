@@ -363,6 +363,7 @@ function CustomerDownloadSection({
   const [enabled, setEnabled] = useState(!!linked?.scriptId);
   const [scripts, setScripts] = useState<Array<{ id: string; title: string; category: string }>>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -375,12 +376,21 @@ function CustomerDownloadSection({
   const loadScripts = async () => {
     if (scripts.length > 0) return;
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await fetchWithAuth("/api/admin/ps-scripts");
       if (res.ok) {
         const data = await res.json() as Array<{ id: string; title: string; category: string }>;
         setScripts(data);
+      } else {
+        setLoadError(
+          res.status === 403
+            ? "You don't have permission to browse the script library."
+            : "Couldn't load scripts. Try again.",
+        );
       }
+    } catch {
+      setLoadError("Couldn't load scripts. Try again.");
     } finally {
       setLoading(false);
     }
@@ -505,7 +515,11 @@ function CustomerDownloadSection({
               </div>
             )}
 
-            {!loading && filteredScripts.length > 0 && (
+            {!loading && loadError && (
+              <p className="text-[10px] text-red-400">{loadError}</p>
+            )}
+
+            {!loading && !loadError && filteredScripts.length > 0 && (
               <div className="max-h-44 overflow-y-auto space-y-0.5 rounded-lg">
                 {filteredScripts.map(script => (
                   <button
@@ -529,7 +543,7 @@ function CustomerDownloadSection({
               </div>
             )}
 
-            {!loading && scripts.length > 0 && filteredScripts.length === 0 && (
+            {!loading && !loadError && scripts.length > 0 && filteredScripts.length === 0 && (
               <p className="text-[10px] text-muted-foreground/60 italic">No scripts match your search.</p>
             )}
           </div>
