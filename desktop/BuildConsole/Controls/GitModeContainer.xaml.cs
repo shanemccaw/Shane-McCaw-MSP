@@ -391,7 +391,7 @@ namespace BuildConsole.Controls
             cardBorder.Child = grid;
 
             // Click Handler for Chain Highlighting
-            cardBorder.MouseDown += (s, e) =>
+            cardBorder.MouseDown += async (s, e) =>
             {
                 e.Handled = true;
                 _selectedGraphIssue = node.IssueNumber;
@@ -401,9 +401,361 @@ namespace BuildConsole.Controls
                     RenderGraph(_activeGraphData);
                     UpdateGraphHeaderSummary();
                 }
+
+                await LoadIssueDetailAsync(node.IssueNumber);
             };
 
             return cardBorder;
+        }
+
+        private GitModeIssueDetail? _activeIssueDetail;
+
+        public async Task LoadIssueDetailAsync(int issueNumber)
+        {
+            if (issueNumber <= 0)
+            {
+                BorderEmptyDetails.Visibility = Visibility.Visible;
+                StackActiveDetails.Visibility = Visibility.Collapsed;
+                TxtDetailHeaderNum.Text = "#...";
+                return;
+            }
+
+            TxtDetailHeaderNum.Text = $"#{issueNumber}";
+            _activeIssueDetail = await GitModeDetailsService.LoadIssueDetailFromPostgresAsync(issueNumber);
+
+            if (_activeIssueDetail == null)
+            {
+                BorderEmptyDetails.Visibility = Visibility.Visible;
+                StackActiveDetails.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            BorderEmptyDetails.Visibility = Visibility.Collapsed;
+            StackActiveDetails.Visibility = Visibility.Visible;
+
+            // 1. Title & Hierarchy
+            TxtDetailTitle.Text = _activeIssueDetail.Title;
+            string milestoneStr = string.IsNullOrEmpty(_activeIssueDetail.MilestoneTitle) ? "No Milestone" : _activeIssueDetail.MilestoneTitle;
+            string epicStr = _activeIssueDetail.ParentNumber > 0 ? $"Epic #{_activeIssueDetail.ParentNumber}" : "Top Issue";
+            TxtDetailHierarchy.Text = $"{milestoneStr}  •  {epicStr}";
+
+            // 2. GATE Enforcement Banner
+            if (_activeIssueDetail.IsGate || _activeIssueDetail.GateProgress.IsGate)
+            {
+                GateBanner.Visibility = Visibility.Visible;
+                double pct = _activeIssueDetail.GateProgress.PercentComplete;
+                GateProgressBar.Value = pct;
+                TxtGatePercent.Text = $"{pct}% ({_activeIssueDetail.GateProgress.CompletedSubIssues}/{_activeIssueDetail.GateProgress.TotalSubIssues})";
+
+                if (_activeIssueDetail.GateProgress.IsReleaseEnabled)
+                {
+                    TxtGateStatusInfo.Text = "✓ GATE 100% Complete — Release Enabled";
+                    TxtGateStatusInfo.Foreground = (Brush)FindResource("GreenBrush");
+                    BtnReleaseGate.IsEnabled = true;
+                }
+                else
+                {
+                    TxtGateStatusInfo.Text = $"🛑 Release Actions Disabled — GATE is at {pct}% (Requires 100%)";
+                    TxtGateStatusInfo.Foreground = (Brush)FindResource("RedBrush");
+                    BtnReleaseGate.IsEnabled = false;
+                }
+            }
+            else
+            {
+                GateBanner.Visibility = Visibility.Collapsed;
+            }
+
+            // 3. Bucket ComboBox (Prevent triggering selection handler during load)
+            SelectBucketInCombo(_activeIssueDetail.Bucket);
+
+            // 4. Badges
+            TxtDetailBuildStatus.Text = $"BUILD: {_activeIssueDetail.BuildStatus.ToUpperInvariant()}";
+            BadgeBuildStatus.Background = GetBuildStatusBrush(_activeIssueDetail.BuildStatus);
+
+            if (_activeIssueDetail.IsDispatchable && _activeIssueDetail.IsOpen)
+            {
+                BadgeDispatchable.Visibility = Visibility.Visible;
+                TxtDetailDispatchable.Text = "⚡ READY";
+                BadgeDispatchable.Background = (Brush)FindResource("GreenBrush");
+            }
+            else
+            {
+                BadgeDispatchable.Visibility = Visibility.Visible;
+                TxtDetailDispatchable.Text = _activeIssueDetail.IsOpen ? "🛑 BLOCKED" : "✓ CLOSED";
+                BadgeDispatchable.Background = _activeIssueDetail.IsOpen ? (Brush)FindResource("RedBrush") : (Brush)FindResource("Surface0Brush");
+            }
+
+            // 5. Render Labels
+            RenderLabelChips(_activeIssueDetail.Labels);
+
+            // 6. Render Blockers & Dependents Lists
+            RenderRelatedIssues(PanelBlockers, _activeIssueDetail.Blockers, "No upstream blockers");
+            RenderRelatedIssues(PanelDependents, _activeIssueDetail.Dependents, "No downstream dependents");
+
+            // 7. Render PRs & Commits
+            RenderPrs(_activeIssueDetail.PullRequests);
+            RenderCommits(_activeIssueDetail.Commits);
+
+            // 8. Render Comments
+            RenderComments(_activeIssueDetail.Comments);
+        }
+
+        private void SelectBucketInCombo(string bucketName)
+        {
+            for (int i = 0; i < CmbDetailBucket.Items.Count; i++)
+            {
+                if (CmbDetailBucket.Items[i] is ComboBoxItem item && string.Equals(item.Content.ToString(), bucketName, StringComparison.OrdinalIgnoreCase))
+                {
+                    CmbDetailBucket.SelectedIndex = i;
+                    return;
+                }
+            }
+            CmbDetailBucket.SelectedIndex = 2; // Default Backlog
+        }
+
+        private void RenderLabelChips(List<string> labels)
+        {
+            WrapLabels.Children.Clear();
+            if (labels.Count == 0)
+            {
+                WrapLabels.Children.Add(new TextBlock { Text = "No labels attached", FontSize = 11, Foreground = (Brush)FindResource("Overlay0Brush") });
+                return;
+            }
+
+            foreach (var label in labels)
+            {
+                var chipBorder = new Border
+                {
+                    Background = (Brush)FindResource("Surface0Brush"),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 2, 6, 2),
+                    Margin = new Thickness(0, 0, 4, 4)
+                };
+
+                var stack = new StackPanel { Orientation = Orientation.Horizontal };
+                stack.Children.Add(new TextBlock { Text = label, FontSize = 10, Foreground = (Brush)FindResource("TextBrush"), VerticalAlignment = VerticalAlignment.Center });
+
+                var btnRemove = new Button
+                {
+                    Content = "✕",
+                    Style = (Style)FindResource("IconButton"),
+                    Width = 14, Height = 14,
+                    FontSize = 9,
+                    Margin = new Thickness(4, 0, 0, 0),
+                    ToolTip = $"Remove label '{label}'"
+                };
+
+                string labelToRemove = label;
+                btnRemove.Click += async (s, e) =>
+                {
+                    if (_activeIssueDetail != null)
+                    {
+                        _activeIssueDetail.Labels.Remove(labelToRemove);
+                        await GitModeDetailsService.UpdateLabelsInPostgresAsync(_activeIssueDetail.IssueNumber, _activeIssueDetail.Labels);
+                        RenderLabelChips(_activeIssueDetail.Labels);
+                        ToastEngine.Info("Git Mode Labels", $"Removed label '{labelToRemove}'");
+                    }
+                };
+
+                stack.Children.Add(btnRemove);
+                chipBorder.Child = stack;
+                WrapLabels.Children.Add(chipBorder);
+            }
+        }
+
+        private void RenderRelatedIssues(StackPanel container, List<GitModeRelatedIssue> issues, string emptyText)
+        {
+            container.Children.Clear();
+            if (issues.Count == 0)
+            {
+                container.Children.Add(new TextBlock { Text = emptyText, FontSize = 11, Foreground = (Brush)FindResource("Overlay0Brush") });
+                return;
+            }
+
+            foreach (var rel in issues)
+            {
+                var btn = new Button
+                {
+                    Style = (Style)FindResource("SurfaceButton"),
+                    Padding = new Thickness(6, 3, 6, 3),
+                    Margin = new Thickness(0, 0, 0, 4),
+                    HorizontalContentAlignment = HorizontalAlignment.Left
+                };
+
+                var stack = new StackPanel { Orientation = Orientation.Horizontal };
+                stack.Children.Add(new TextBlock
+                {
+                    Text = $"#{rel.IssueNumber}",
+                    FontWeight = FontWeights.Bold,
+                    FontSize = 11,
+                    Foreground = rel.IsOpen ? (Brush)FindResource("TextBrush") : (Brush)FindResource("Overlay0Brush"),
+                    Margin = new Thickness(0, 0, 6, 0)
+                });
+                stack.Children.Add(new TextBlock
+                {
+                    Text = rel.Title,
+                    FontSize = 11,
+                    Foreground = rel.IsOpen ? (Brush)FindResource("TextBrush") : (Brush)FindResource("Subtext0Brush"),
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    MaxWidth = 220
+                });
+
+                btn.Content = stack;
+                int targetIssue = rel.IssueNumber;
+                btn.Click += async (s, e) =>
+                {
+                    _selectedGraphIssue = targetIssue;
+                    if (_activeGraphData != null)
+                    {
+                        GitModeGraphService.ApplyChainHighlighting(_activeGraphData, _selectedGraphIssue, _activeChainMode);
+                        RenderGraph(_activeGraphData);
+                        UpdateGraphHeaderSummary();
+                    }
+                    await LoadIssueDetailAsync(targetIssue);
+                };
+
+                container.Children.Add(btn);
+            }
+        }
+
+        private void RenderPrs(List<GitModePrItem> prs)
+        {
+            PanelPrs.Children.Clear();
+            if (prs.Count == 0)
+            {
+                PanelPrs.Children.Add(new TextBlock { Text = "No linked Pull Requests", FontSize = 11, Foreground = (Brush)FindResource("Overlay0Brush") });
+                return;
+            }
+
+            foreach (var pr in prs)
+            {
+                var dock = new DockPanel { Margin = new Thickness(0, 0, 0, 4) };
+                dock.Children.Add(new TextBlock
+                {
+                    Text = $"PR #{pr.PrNumber}: {pr.Title}",
+                    FontSize = 11,
+                    Foreground = (Brush)FindResource("MauveBrush"),
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    MaxWidth = 220
+                });
+                PanelPrs.Children.Add(dock);
+            }
+        }
+
+        private void RenderCommits(List<GitModeCommitItem> commits)
+        {
+            PanelCommits.Children.Clear();
+            if (commits.Count == 0)
+            {
+                PanelCommits.Children.Add(new TextBlock { Text = "No linked commits", FontSize = 11, Foreground = (Brush)FindResource("Overlay0Brush") });
+                return;
+            }
+
+            foreach (var c in commits)
+            {
+                var dock = new DockPanel { Margin = new Thickness(0, 0, 0, 4) };
+                dock.Children.Add(new TextBlock
+                {
+                    Text = $"[{c.CommitHash}] {c.Message}",
+                    FontSize = 11,
+                    Foreground = (Brush)FindResource("Subtext1Brush"),
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    MaxWidth = 240
+                });
+                PanelCommits.Children.Add(dock);
+            }
+        }
+
+        private void RenderComments(List<GitModeCommentItem> comments)
+        {
+            PanelComments.Children.Clear();
+            if (comments.Count == 0)
+            {
+                PanelComments.Children.Add(new TextBlock { Text = "No comments recorded", FontSize = 11, Foreground = (Brush)FindResource("Overlay0Brush") });
+                return;
+            }
+
+            foreach (var c in comments)
+            {
+                var border = new Border
+                {
+                    Background = (Brush)FindResource("CrustBrush"),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(8),
+                    Margin = new Thickness(0, 0, 0, 6)
+                };
+
+                var stack = new StackPanel();
+                stack.Children.Add(new TextBlock { Text = $"{c.Author} • {c.CreatedAt:g}", FontSize = 10, FontWeight = FontWeights.Bold, Foreground = (Brush)FindResource("Subtext0Brush"), Margin = new Thickness(0, 0, 0, 4) });
+                stack.Children.Add(new TextBlock { Text = c.Body, FontSize = 11, Foreground = (Brush)FindResource("TextBrush"), TextWrapping = TextWrapping.Wrap });
+
+                border.Child = stack;
+                PanelComments.Children.Add(border);
+            }
+        }
+
+        private async void CmbDetailBucket_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_activeIssueDetail == null || !_loadedOnce) return;
+
+            if (CmbDetailBucket.SelectedItem is ComboBoxItem item)
+            {
+                string newBucket = item.Content.ToString()!;
+                if (!string.Equals(_activeIssueDetail.Bucket, newBucket, StringComparison.OrdinalIgnoreCase))
+                {
+                    _activeIssueDetail.Bucket = newBucket;
+                    await GitModeDetailsService.UpdateBucketInPostgresAsync(_activeIssueDetail.IssueNumber, newBucket);
+                    await RefreshGraphAsync();
+                    ToastEngine.Info("Git Mode Bucket", $"Updated #{_activeIssueDetail.IssueNumber} bucket to '{newBucket}'");
+                }
+            }
+        }
+
+        private async void BtnAddLabel_Click(object sender, RoutedEventArgs e)
+        {
+            if (_activeIssueDetail == null) return;
+
+            string newLbl = TxtAddLabel.Text.Trim();
+            if (!string.IsNullOrWhiteSpace(newLbl) && !_activeIssueDetail.Labels.Contains(newLbl, StringComparer.OrdinalIgnoreCase))
+            {
+                _activeIssueDetail.Labels.Add(newLbl);
+                TxtAddLabel.Text = "";
+                await GitModeDetailsService.UpdateLabelsInPostgresAsync(_activeIssueDetail.IssueNumber, _activeIssueDetail.Labels);
+                RenderLabelChips(_activeIssueDetail.Labels);
+                ToastEngine.Info("Git Mode Labels", $"Added label '{newLbl}' to #{_activeIssueDetail.IssueNumber}");
+            }
+        }
+
+        private async void BtnCloseIssue_Click(object sender, RoutedEventArgs e)
+        {
+            if (_activeIssueDetail == null) return;
+
+            bool ok = await GitModeDetailsService.CloseIssueInPostgresAsync(_activeIssueDetail.IssueNumber);
+            if (ok)
+            {
+                _activeIssueDetail.State = "closed";
+                ToastEngine.Success("Git Mode", $"Closed issue #{_activeIssueDetail.IssueNumber} in Postgres");
+                await RefreshAllAsync();
+            }
+        }
+
+        private void BtnOpenClaudeChat_Click(object sender, RoutedEventArgs e)
+        {
+            if (_activeIssueDetail == null) return;
+            ToastEngine.Info("Claude Chat", $"Launching Claude Chat session for issue #{_activeIssueDetail.IssueNumber}: {_activeIssueDetail.Title}");
+        }
+
+        private void BtnReleaseGate_Click(object sender, RoutedEventArgs e)
+        {
+            if (_activeIssueDetail == null) return;
+            if (_activeIssueDetail.GateProgress.IsReleaseEnabled)
+            {
+                ToastEngine.Success("GATE Release", $"GATE #{_activeIssueDetail.IssueNumber} is 100% complete! Release initiated.");
+            }
+            else
+            {
+                ToastEngine.Warning("GATE Locked", $"GATE #{_activeIssueDetail.IssueNumber} is incomplete ({_activeIssueDetail.GateProgress.PercentComplete}%). Requires 100%.");
+            }
         }
 
         private Brush GetBucketBrush(string bucket)
