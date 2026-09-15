@@ -393,10 +393,12 @@ router.put("/msp/settings/connector", requireCapability("ladder.msp-admin"), asy
     updatedByUserId: req.user!.id,
   };
 
+  const { customerAgreementTemplate: _omitOnUpdate, ...updateSet } = values;
+
   await db
     .insert(mspConnectorConfigsTable)
     .values(values)
-    .onConflictDoUpdate({ target: mspConnectorConfigsTable.mspId, set: values });
+    .onConflictDoUpdate({ target: mspConnectorConfigsTable.mspId, set: updateSet });
 
   await writeAuditLog({
     req,
