@@ -41,17 +41,17 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="Shot Vault" Margin="12,0,0,0"
-                           VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
+                           VerticalAlignment="Center" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                            Foreground="{StaticResource Subtext1Brush}"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
                     <Button x:Name="BtnMinimize" Style="{StaticResource CaptionButton}" ToolTip="Minimize" Click="BtnMinimize_Click">
-                        <TextBlock Text="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                        <TextBlock Text="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"/>
                     </Button>
                     <Button x:Name="BtnMaximizeRestore" Style="{StaticResource CaptionButton}" ToolTip="Maximize" Click="BtnMaximizeRestore_Click">
-                        <TextBlock x:Name="BtnMaximizeRestoreIcon" Text="&#xE922;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                        <TextBlock x:Name="BtnMaximizeRestoreIcon" Text="&#xE922;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"/>
                     </Button>
                     <Button x:Name="BtnCloseWindow" Style="{StaticResource CaptionButtonClose}" ToolTip="Close" Click="BtnCloseWindow_Click">
-                        <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                        <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"/>
                     </Button>
                 </StackPanel>
             </Grid>
@@ -79,13 +79,13 @@
                     <Grid Grid.Column="0" Width="380" HorizontalAlignment="Left">
                         <TextBox x:Name="ShotVaultSearchBox"
                                  Style="{StaticResource SearchTextBox}"
-                                 Height="28" Padding="8,4" FontSize="12"
+                                 Height="28" Padding="8,4" FontSize="{StaticResource BodyFontSize}"
                                  VerticalContentAlignment="Center"
                                  Background="{StaticResource Surface0Brush}"
                                  TextChanged="ShotVaultSearchBox_TextChanged"/>
                         <TextBlock IsHitTestVisible="False"
                                    Text="Search by shot name or screen"
-                                   FontSize="12" Margin="10,0,0,0"
+                                   FontSize="{StaticResource BodyFontSize}" Margin="10,0,0,0"
                                    VerticalAlignment="Center" HorizontalAlignment="Left"
                                    Foreground="{StaticResource Subtext1Brush}">
                             <TextBlock.Style>
@@ -105,7 +105,7 @@
                             ToolTip="Refresh — re-read the shots folder"
                             Padding="6,4"
                             Click="BtnShotVaultRefresh_Click">
-                        <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
+                        <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource BodyFontSize}" VerticalAlignment="Center"/>
                     </Button>
                 </Grid>
             </Border>
@@ -122,7 +122,7 @@
 
             <!-- Status line -->
             <TextBlock Grid.Row="2" x:Name="ShotVaultStatus" Text=""
-                       FontSize="11.5" Foreground="{StaticResource Subtext0Brush}"
+                       FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"
                        Margin="14,8,14,0"/>
 
             <!-- Runs + thumbnail grid -->
@@ -131,7 +131,7 @@
                     <StackPanel x:Name="ShotVaultRows"/>
                     <TextBlock x:Name="ShotVaultEmptyText"
                                Text=""
-                               FontSize="12.5"
+                               FontSize="{StaticResource BodyFontSize}"
                                TextWrapping="Wrap"
                                TextAlignment="Center"
                                Foreground="{StaticResource Subtext0Brush}"
