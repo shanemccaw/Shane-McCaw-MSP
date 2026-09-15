@@ -7,7 +7,7 @@
         Topmost="True"
         ShowInTaskbar="False"
         AllowsTransparency="True"
-        Background="#40000000"
+        Background="{DynamicResource ScrimLightBrush}"
         Cursor="Cross"
         KeyDown="Window_KeyDown">
     <!-- Git #1472 — transparent full-bounds overlay positioned exactly over the
@@ -21,21 +21,23 @@
          hit-test-visible over its empty area, so MouseLeftButtonDown/Move/Up never fire
          when you press on the dim overlay — the crosshair shows but a drag draws nothing
          and only Esc (a Window-level KeyDown) works. That was Git #1888: the Window's
-         #40000000 dim is a hittable brush on the *Window*, but these handlers live on the
-         *Canvas*, an unhittable null-background descendant, so the press never routed
-         through them. Transparent keeps the dim (drawn by the Window behind this Canvas)
-         fully visible while making the whole overlay area catch the drag. -->
+         ScrimLightBrush dim is a hittable brush on the *Window*, but these handlers live
+         on the *Canvas*, an unhittable null-background descendant, so the press never
+         routed through them. Transparent keeps the dim (drawn by the Window behind this
+         Canvas) fully visible while making the whole overlay area catch the drag. -->
     <Canvas x:Name="RootCanvas"
             Background="Transparent"
             MouseLeftButtonDown="RootCanvas_MouseLeftButtonDown"
             MouseMove="RootCanvas_MouseMove"
             MouseLeftButtonUp="RootCanvas_MouseLeftButtonUp"
             MouseRightButtonDown="RootCanvas_MouseRightButtonDown">
-        <!-- Git #4182 — Background="#40000000"/#80000000" (the full-screen dim scrim and this
-             hint label's own backing chip) have no matching theme brush: they're a fixed black
-             dimming overlay drawn over arbitrary on-screen content during region capture, not
-             themed app chrome, so a theme-brush substitute would be inexact. Left raw and filed
-             as its own finding rather than guessed. -->
+        <!-- Git #4182 (Window Background, above) resolved by #4205: ScrimLightBrush's
+             value is the exact byte-identical #40000000 this window already used, so
+             retargeting it is not the "inexact substitute" #4182 warned against — no
+             visual change, just a name. Background="#80000000" on this hint label's own
+             backing chip is a different, un-named opacity tier outside #4205's scope
+             (only the ~58%/~25% scrim tiers were named) — left raw, still tracked under
+             #4182. -->
         <TextBlock Canvas.Left="12" Canvas.Top="12"
                    Text="Drag to select a region — Esc or right-click to cancel"
                    Foreground="White" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"

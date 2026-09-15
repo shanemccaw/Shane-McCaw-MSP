@@ -54,6 +54,13 @@
     <SolidColorBrush x:Key="MauveBrush"    Color="#CBA6F7"/>
     <SolidColorBrush x:Key="GreenBrush"      Color="#A6E3A1"/>
     <SolidColorBrush x:Key="LightGreenBrush" Color="#A6E3A1"/> <!-- alias — used by VisualTestTrackerWindow, VisualDiffWindow, SessionSyncDialog -->
+
+    <!-- Git #4205 — low-opacity Green wash, same 20% tier + pattern as the Accent/
+         Success washes in Themes/Colors.xaml (AccentWashMediumBrush/
+         StatusSuccessWashMediumBrush). Declared here (not Colors.xaml) because it
+         derives from GreenBrush above, which is this file's own Catppuccin key, not
+         a Colors.xaml hue. -->
+    <SolidColorBrush x:Key="GreenWashMediumBrush" Color="#33A6E3A1"/>
     <SolidColorBrush x:Key="RedBrush"      Color="#F38BA8"/>
     <SolidColorBrush x:Key="PeachBrush"    Color="#FAB387"/>
     <SolidColorBrush x:Key="YellowBrush"   Color="#F9E2AF"/>
@@ -113,7 +120,15 @@
          in/out on hover/state use their own inline effect + storyboard so
          the shared frozen instances are never mutated.
          ══════════════════════════════════════════════════════════════════ -->
-    <!-- Depth shadows (near-black, drop below) -->
+    <!-- Depth shadows (near-black, drop below). Git #4205 — Color="#000000" on a
+         DropShadowEffect is an accepted, permanent exception to the "no raw hex"
+         rule: shadows are colorless by convention (only BlurRadius/ShadowDepth/
+         Opacity/Direction carry real design meaning), and this file — the
+         canonical theme source — already hardcodes it here, so there is no themed
+         substitute to point inline shadow literals at. MainWindow.xaml's own two
+         inline DropShadowEffect Color="#000000" literals (Quick Thought popup,
+         Tab Switcher overlay card) are left as-is under this same exception rather
+         than forced onto a resource that would just restate #000000. -->
     <DropShadowEffect x:Key="SoftRowShadow"   Color="#000000" BlurRadius="8"  ShadowDepth="1.5" Direction="270" Opacity="0.26"/>
     <DropShadowEffect x:Key="SoftCardShadow"  Color="#000000" BlurRadius="16" ShadowDepth="3"   Direction="270" Opacity="0.34"/>
 

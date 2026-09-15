@@ -80,4 +80,12 @@
     <SolidColorBrush x:Key="StatusWarningWashLightBrush"  Color="#1AD4A56C"/>
     <SolidColorBrush x:Key="StatusWarningWashMediumBrush" Color="#33D4A56C"/>
 
+    <!-- Git #4205 — modal/overlay dim "scrim" brushes. Hue-independent (black at
+         two fixed opacities), so these live here rather than under a hue section.
+         Values are the two real tiers already in use app-wide before this issue —
+         confirmed at MainWindow.xaml's TabSwitcherOverlay/DockGuideOverlay and
+         RegionSelectOverlayWindow.xaml — named verbatim, not retuned. -->
+    <SolidColorBrush x:Key="ScrimBrush"      Color="#95000000"/> <!-- ~58% full-dim -->
+    <SolidColorBrush x:Key="ScrimLightBrush" Color="#40000000"/> <!-- ~25% light-dim -->
+
 </ResourceDictionary>
