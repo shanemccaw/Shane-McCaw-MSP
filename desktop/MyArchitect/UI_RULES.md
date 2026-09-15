@@ -195,3 +195,39 @@ rule as AdminV2 — nothing is marked red just to be noticed.
 Every other Feature's UI work depends on this shell existing. When
 Features get broken into real Issues, wire `blocked_by` against this
 Feature's (#3493) sentinel issue, per `BUILD_QUEUE_METHOD.md` §5.
+
+---
+
+## 10. Theming — zero inline styles
+
+**The rule, no exceptions:** No inline `Foreground`/`Background`/`BorderBrush`/
+`FontSize`/`FontFamily`/`FontWeight` — no raw hex, no raw `Color`, no raw font
+literal — anywhere in any `.xaml` or `.xaml.cs` file. Every visual property comes
+from a `StaticResource`/`DynamicResource` key defined in `Colors.xaml`,
+`DarkTheme.xaml`, or `Typography.xaml`.
+
+A new resource key is added only when (a) no existing key already covers that
+role, or (b) Shane explicitly asks to extend/add one to match a specific design
+layout he's provided. Never invent a one-off inline value to "get something
+working" — add the real key to the real file, then reference it.
+
+The three theme dictionaries live in `desktop/MyArchitect/Themes/` and are merged
+into `App.xaml` (Colors.xaml and Typography.xaml first, since DarkTheme.xaml's
+Styles reference both via `StaticResource`):
+
+- **`Colors.xaml`** — every `Color`/`SolidColorBrush` MyArchitect uses, keyed by
+  role (backgrounds, text, borders, accent, status, washes). Genuinely
+  MyArchitect's own values — never copied from `desktop/BuildConsole/Themes/Colors.xaml`,
+  which is a different app's palette.
+- **`DarkTheme.xaml`** — every control-level `Style` (Button, TextBox, Border,
+  ScrollBar, ProgressBar, etc.), each `Setter` referencing a `Colors.xaml` brush
+  key.
+- **`Typography.xaml`** — shared verbatim with BuildConsole's own file
+  (font sizes, font families, the six TextBlock styles). Confirmed good, reused
+  as-is rather than re-derived.
+
+**Retrofitting the ~30 already-shipped Feature files' existing inline literals is
+real, separate follow-up work (#4275's own deferred scope) — not done as part of
+landing this system.** Any *new* `.xaml`/`.xaml.cs` file, and any file touched for
+other reasons going forward, follows this rule from the moment this section
+exists.

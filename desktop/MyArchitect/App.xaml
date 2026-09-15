@@ -13,6 +13,13 @@
                      — looks like Office 2010 next to WPF-UI's dark Fluent theme"). -->
                 <ResourceDictionary Source="pack://application:,,,/Fluent;component/Themes/Generic.xaml" />
                 <ResourceDictionary Source="pack://application:,,,/Fluent;component/Themes/Themes/Dark.Blue.xaml" />
+                <!-- #4275 — MyArchitect's own theming system (UI_RULES.md §10: zero inline
+                     styles). Colors.xaml and Typography.xaml first (DarkTheme.xaml's Styles
+                     reference both via StaticResource), DarkTheme.xaml last so its Styles win
+                     for any TargetType WPF-UI/Fluent.Ribbon also style above. -->
+                <ResourceDictionary Source="Themes/Colors.xaml" />
+                <ResourceDictionary Source="Themes/Typography.xaml" />
+                <ResourceDictionary Source="Themes/DarkTheme.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Application.Resources>
