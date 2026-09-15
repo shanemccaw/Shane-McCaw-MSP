@@ -12,7 +12,7 @@
  * All rows are created under a unique per-run marker and deleted in afterAll.
  */
 
-import { describe, it, expect, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { randomBytes, randomUUID } from "crypto";
 import {
   db,
@@ -22,7 +22,7 @@ import {
   mspsTable,
   mspDiagnosticRunsTable,
 } from "@workspace/db";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, like } from "drizzle-orm";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 import {
   ensureMonitoringScanKickoff,
@@ -93,6 +93,27 @@ async function makeUser(tenantId: number | null): Promise<number> {
   createdUserIds.push(row.id);
   return row.id;
 }
+
+/** Git #4215: a prior crashed run of this file can die mid-afterAll and leave
+ * permanent `test-1314-%` residue (its own users/tenants gone, its services
+ * rows not — the services delete is the last statement in afterAll below).
+ * Sweep any such residue before this run inserts its own, so a future crash
+ * can't compound into permanent junk again. */
+beforeAll(async () => {
+  const staleTenants = await db
+    .select({ id: tenantsTable.id })
+    .from(tenantsTable)
+    .where(like(tenantsTable.customerName, "%1314%"));
+  const staleTenantIds = staleTenants.map((t) => t.id);
+  if (staleTenantIds.length > 0) {
+    await db.delete(mspDiagnosticRunsTable).where(inArray(mspDiagnosticRunsTable.customerId, staleTenantIds));
+  }
+  await db.delete(usersTable).where(like(usersTable.email, "test-1314-%"));
+  if (staleTenantIds.length > 0) {
+    await db.delete(tenantsTable).where(inArray(tenantsTable.id, staleTenantIds));
+  }
+  await db.delete(servicesTable).where(like(servicesTable.slug, "test-1314-%"));
+});
 
 afterAll(async () => {
   if (createdTenantIds.length > 0) {
