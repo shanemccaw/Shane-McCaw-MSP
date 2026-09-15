@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import { randomUUID, createPrivateKey } from "node:crypto";
 import { logger } from "./logger.ts";
+import { readMtAppCertPrivateKeyPem } from "./mt-app-cert-key.ts";
 
 const log = logger.child({ channel: "integration.sharepoint" });
 
@@ -98,7 +99,8 @@ function adminHost(ref: SharePointTenantRef): string {
 /**
  * True only when every credential this module needs is present:
  *  - MT_APP_CLIENT_ID  (shared with graph.ts — the same multi-tenant app)
- *  - MT_APP_CERT_PRIVATE_KEY  (PEM private key of the cert on that app registration)
+ *  - MT_APP_CERT_PRIVATE_KEY  (single-line base64 of the PEM private key of the cert on
+ *                              that app registration — see ./mt-app-cert-key.ts, Git #4156)
  *  - MT_APP_CERT_THUMBPRINT   (SHA-1 thumbprint hex of that cert)
  *
  * Note it deliberately does NOT accept MT_APP_CLIENT_SECRET as sufficient — a
@@ -143,10 +145,9 @@ export class SharePointAuthError extends Error {
  * used in ./search-console.ts for Google service-account auth.
  */
 function buildClientAssertion(aadTenantId: string, clientId: string): string {
-  const privateKey = process.env.MT_APP_CERT_PRIVATE_KEY!.replace(/\\n/g, "\n");
   const thumbprintHex = process.env.MT_APP_CERT_THUMBPRINT!.replace(/[:\s]/g, "");
 
-  // Pre-validate the PEM before handing it to jsonwebtoken. When
+  // Decode, then pre-validate the PEM before handing it to jsonwebtoken. When
   // MT_APP_CERT_PRIVATE_KEY is present (so the guards above pass) but its value
   // is not a parseable private key — e.g. pasted without its newlines, truncated,
   // or with the wrong content — jwt.sign() fails with the cryptic, source-less
@@ -154,18 +155,20 @@ function buildClientAssertion(aadTenantId: string, clientId: string): string {
   // which gives no hint that this env var is the culprit. Parsing it here first
   // turns that into an actionable error that names the exact env var and cause,
   // so any future recurrence is self-diagnosing. Never logs/echoes the key value.
+  let privateKey: string;
   try {
+    privateKey = readMtAppCertPrivateKeyPem()!;
     createPrivateKey(privateKey);
   } catch (err) {
     const cause = err instanceof Error ? err.message : String(err);
     log.error({ aadTenantId, cause }, "MT_APP_CERT_PRIVATE_KEY is not a parseable PEM private key");
     throw new Error(
-      "MT_APP_CERT_PRIVATE_KEY is set but is not a parseable PEM private key " +
-        `(crypto.createPrivateKey failed: ${cause}). Expected the MT app registration ` +
-        "certificate's RSA private key in PEM form " +
-        "(-----BEGIN PRIVATE KEY----- … -----END PRIVATE KEY-----). Check the env value " +
-        "has real newlines (or literal \\n escapes) and was not truncated, and that it " +
-        "matches the certificate whose SHA-1 thumbprint is MT_APP_CERT_THUMBPRINT.",
+      "MT_APP_CERT_PRIVATE_KEY is set but does not decode to a parseable PEM private key " +
+        `(${cause}). Expected a single-line base64 encoding of the MT app registration ` +
+        "certificate's RSA private key PEM (-----BEGIN PRIVATE KEY----- … -----END PRIVATE KEY-----, " +
+        "Git #4156); a raw PEM with real newlines or literal \\n escapes is still accepted. " +
+        "Check the value was not truncated and matches the certificate whose SHA-1 " +
+        "thumbprint is MT_APP_CERT_THUMBPRINT.",
     );
   }
 

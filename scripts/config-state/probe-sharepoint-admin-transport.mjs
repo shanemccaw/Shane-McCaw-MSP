@@ -79,7 +79,12 @@ async function graphToken(env, entraTenantId) {
  */
 async function sharePointToken(env, entraTenantId, resourceHost) {
   const clientId = env.MT_APP_CLIENT_ID;
-  const privateKey = (env.MT_APP_CERT_PRIVATE_KEY ?? "").replace(/\\n/g, "\n");
+  // Git #4156 — canonical form is single-line base64 of the PEM; a legacy raw PEM is still
+  // accepted. Mirrors decodeMtAppCertPrivateKey() in artifacts/api-server/src/lib/mt-app-cert-key.ts.
+  const rawKey = (env.MT_APP_CERT_PRIVATE_KEY ?? "").trim();
+  const privateKey = rawKey.includes("-----BEGIN")
+    ? rawKey.replace(/\\n/g, "\n")
+    : Buffer.from(rawKey.replace(/\s+/g, ""), "base64").toString("utf8");
   const thumbprint = (env.MT_APP_CERT_THUMBPRINT ?? "").replace(/[:\s]/g, "");
   if (!clientId || !privateKey || !thumbprint) {
     throw new Error("MT_APP_CLIENT_ID / MT_APP_CERT_PRIVATE_KEY / MT_APP_CERT_THUMBPRINT not configured");

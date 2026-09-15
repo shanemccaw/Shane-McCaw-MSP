@@ -62,7 +62,7 @@ Consequences for this platform:
 | Var | Shared with | Purpose |
 |---|---|---|
 | `MT_APP_CLIENT_ID` | `graph.ts` (Graph/Activity API) | The multi-tenant app's client id — **reused, not duplicated**. |
-| `MT_APP_CERT_PRIVATE_KEY` | *new* | PEM private key of the certificate uploaded to the MT app registration. `\n`-escaped newlines are accepted. |
+| `MT_APP_CERT_PRIVATE_KEY` | *new* | **Single-line base64 encoding** of the PEM private key of the certificate uploaded to the MT app registration (Git #4156 — a multi-line PEM in `.env.local` leaked into transcripts via `bash source` and was truncated by the repo's line-based env loaders). Decoded by `mt-app-cert-key.ts`; a legacy raw PEM (real or `\n`-escaped newlines) is still accepted for existing deployed secrets. |
 | `MT_APP_CERT_THUMBPRINT` | *new* | SHA-1 thumbprint (hex) of that certificate, as shown in the Azure portal. |
 
 `sharePointAdminCredentialsPresent()` guards on all three. It deliberately does
