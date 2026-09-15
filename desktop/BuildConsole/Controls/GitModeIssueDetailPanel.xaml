@@ -1,0 +1,47 @@
+<UserControl x:Class="BuildConsole.Controls.GitModeIssueDetailPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctrl="clr-namespace:BuildConsole.Controls"
+             Background="{StaticResource CrustBrush}"
+             Foreground="{StaticResource TextBrush}">
+
+    <Border BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1,0,0,0">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header strip — mirrors the docked-panel header idiom used elsewhere -->
+            <Border Grid.Row="0"
+                    Background="{StaticResource MantleBrush}"
+                    BorderBrush="{StaticResource Surface0Brush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="12,8">
+                <DockPanel LastChildFill="True">
+                    <TextBlock DockPanel.Dock="Left"
+                               Text="ISSUE DETAILS"
+                               FontWeight="ExtraBold"
+                               FontSize="{StaticResource CaptionFontSize}"
+                               Foreground="{StaticResource Subtext0Brush}"
+                               VerticalAlignment="Center"/>
+                    <Button x:Name="BtnExitGitMode"
+                            DockPanel.Dock="Right"
+                            Style="{StaticResource SecondaryButton}"
+                            Padding="8,3"
+                            HorizontalAlignment="Right"
+                            Click="BtnExitGitMode_Click"
+                            ToolTip="Exit Git Mode (Ctrl+Shift+G)">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="✕" Margin="0,0,4,0" Foreground="{StaticResource RedBrush}"/>
+                            <TextBlock Text="Exit Git Mode" Foreground="{StaticResource TextBrush}" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"/>
+                        </StackPanel>
+                    </Button>
+                </DockPanel>
+            </Border>
+
+            <!-- The REAL IssueDetailView — no from-scratch inspector rebuild. -->
+            <ctrl:IssueDetailView x:Name="IssueDetail" Grid.Row="1"/>
+        </Grid>
+    </Border>
+</UserControl>

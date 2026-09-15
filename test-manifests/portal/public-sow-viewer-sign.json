@@ -1,0 +1,74 @@
+{
+  "issue": 4250,
+  "feature": "Public MSP SOW viewer and signer (#4001, Feature #1663) -- artifacts/portal/src/pages/msp-sow-public.tsx, route /sow/:shareToken, no authentication. Wired to GET /api/public/sows/:shareToken and POST /api/public/sows/:shareToken/sign (artifacts/api-server/src/routes/msp-sow.ts). Filed under #4250 because CLAUDE.md's Test Coverage scope line previously named the wrong directory (artifacts/msp-portal instead of artifacts/portal), leaving this real money/legal-signature public flow with zero manifest coverage.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "af478e2d5",
+
+  "notes": [
+    "WHAT THIS COVERS: the real (status, body) contract on both public routes -- 404 for an unknown share token, 410 for an expired share link, the signature data withheld from the public GET response (server deliberately omits signatureData -- see the route's own comment), 400 for a malformed sign payload, and a real UI walk confirming the public page mounts and renders for a valid, unauthenticated visit with no login required.",
+    "NOT ASSERTED: a full end-to-end sign against a real live SOW row, since that would consume the row's one-time signable state on whatever data backs {{DEPLOY_URL}} and this manifest doesn't control live msp_sows rows. The signing contract (200 body, and the 409 already-signed / 410 expired / 403 access-control paths) is documented from direct reading of artifacts/api-server/src/routes/msp-sow.ts:905-983 rather than fabricated as an assertion here.",
+    "ENV VARS (BuildConsole -> Settings -> Test Environment Variables): DEPLOY_URL only -- this route needs no auth token, by design (the share link itself is the credential).",
+    "NOT YET RUN via shaneapp://runTest as of this build: BuildConsole's local instance resolves test-manifests/ against the dedicated dev-server checkout, which only receives this worktree's commits at BuildConsole's own end-of-build merge (Git #1371/#1372 worktree isolation). Verified instead by direct reading of msp-sow.ts (the exact status/body pairs this manifest asserts) and msp-sow-public.tsx (the UI copy asserted below is the page's own literal GONE_COPY string). Re-run this manifest via shaneapp://runTest once merged."
+  ],
+
+  "apiTests": [
+    {
+      "name": "PUB1 -- GET /api/public/sows/:shareToken with an unknown token is 404 with the route's own literal message.",
+      "sessionTag": "public-sow-4250",
+      "method": "GET",
+      "path": "/api/public/sows/nonexistent-share-token-4250",
+      "expect": { "status": 404, "json": { "error": "SOW not found or link has expired" } }
+    },
+    {
+      "name": "PUB2 -- POST /api/public/sows/:shareToken/sign against an unknown token is 404 (route checks existence before checking payload shape's downstream effects).",
+      "sessionTag": "public-sow-4250",
+      "method": "POST",
+      "path": "/api/public/sows/nonexistent-share-token-4250/sign",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "signerName": "Test Signer", "signatureData": "data:image/png;base64,aaaaaaaaaa" },
+      "expect": { "status": 404, "json": { "error": "SOW not found" } }
+    },
+    {
+      "name": "PUB3 -- POST /api/public/sows/:shareToken/sign with a payload that fails signSowSchema (empty signerName) is 400 before any row lookup.",
+      "sessionTag": "public-sow-4250",
+      "method": "POST",
+      "path": "/api/public/sows/nonexistent-share-token-4250/sign",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "signerName": "", "signatureData": "data:image/png;base64,aaaaaaaaaa" },
+      "expect": { "status": 400 }
+    },
+    {
+      "name": "PUB4 -- POST /api/public/sows/:shareToken/sign with signatureData under the 10-char minimum is 400 (signSowSchema.signatureData min(10)).",
+      "sessionTag": "public-sow-4250",
+      "method": "POST",
+      "path": "/api/public/sows/nonexistent-share-token-4250/sign",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "signerName": "Test Signer", "signatureData": "short" },
+      "expect": { "status": 400 }
+    }
+  ],
+
+  "uiSteps": [
+    {
+      "name": "UI1 -- an unknown/expired share token renders the page's own real 'not found or link has expired' copy (GONE_COPY.not_found), not a crash or a blank page. No sign-in prompt -- this route is fully public.",
+      "action": "goto",
+      "target": "/sow/nonexistent-share-token-4250",
+      "sessionTag": "public-sow-4250-ui"
+    },
+    {
+      "name": "UI2 -- the honest gone-state renders with its real literal title.",
+      "action": "expect",
+      "selector": "body",
+      "textContains": "SOW not found or link has expired",
+      "critical": true,
+      "sessionTag": "public-sow-4250-ui"
+    },
+    {
+      "name": "UI3 -- the real 404 code marker renders (confirms this is the not_found branch of GONE_COPY, not a generic error boundary).",
+      "action": "expect",
+      "selector": "body",
+      "textContains": "404",
+      "sessionTag": "public-sow-4250-ui"
+    }
+  ]
+}

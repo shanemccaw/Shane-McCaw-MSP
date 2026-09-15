@@ -6,6 +6,14 @@ import { simulatorStorage } from "./simulator-events.ts";
 import { createAuditLog } from "./audit.ts";
 import { annotateCapturedResponse, recordOutgoingGraphRequest } from "./graph-request-capture.ts";
 import { DERIVED_WRITE_APP_PERMISSIONS } from "./graph-write-permissions.ts";
+import {
+  MAILBOX_SEND_APP_NOT_CONFIGURED,
+  MailboxSendTenantRefusedError,
+  checkMailboxSendTenant,
+  evictMailboxSendToken,
+  getMailboxSendAccessToken,
+  mailboxSendAppCredentialsPresent,
+} from "./mailbox-send-app.ts";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 /**
@@ -1622,13 +1630,20 @@ export async function sendMailViaGraph(opts: {
 
 /**
  * Send an email through an MSP's own Exchange Online tenant.
- * Uses the platform multi-tenant app's client_credentials grant for the MSP's
- * tenant (admin consent with Mail.Send scope must already be granted).
  *
- * Throws on token failure (ConsentRevokedError) or Graph API error — the caller
- * is responsible for falling back to the platform mailbox.
+ * Git #4241: authenticates as the DEDICATED mailbox-send app registration
+ * (./mailbox-send-app.ts), never the shared read app every customer consents to.
+ * Own-tenant binding is checked twice before anything is sent: the connector's
+ * tenant must equal msps.entra_tenant_id (#4242) — unset is refused here, since a
+ * send is the one step that acts as the MSP — and the `tid` of the token Microsoft
+ * issues must equal it as well.
+ *
+ * Throws MailboxSendTenantRefusedError on a binding failure, ConsentRevokedError
+ * when the app's consent is gone, or Error on any other token/Graph failure — the
+ * caller is responsible for falling back to the platform mailbox.
  */
 export async function sendMailViaGraphForMsp(opts: {
+  mspId: number;
   mspTenantId: string;
   fromMailboxUpn: string;
   fromDisplayName: string;
@@ -1647,7 +1662,46 @@ export async function sendMailViaGraphForMsp(opts: {
     log.info({ to: opts.to, subject: opts.subject }, "[Simulator] Allowing real MSP email dispatch to admin contact");
   }
 
-  const token = await getAccessTokenForTenant(opts.mspTenantId);
+  if (!mailboxSendAppCredentialsPresent()) {
+    throw new Error(MAILBOX_SEND_APP_NOT_CONFIGURED);
+  }
+
+  const [msp] = await db
+    .select({ entraTenantId: mspsTable.entraTenantId })
+    .from(mspsTable)
+    .where(eq(mspsTable.id, opts.mspId))
+    .limit(1);
+  const mspEntraTenantId = msp?.entraTenantId ?? null;
+
+  const binding = checkMailboxSendTenant({ mspEntraTenantId, connectorTenantId: opts.mspTenantId });
+  if (!binding.ok) {
+    log.warn(
+      { mspId: opts.mspId, connectorTenantId: opts.mspTenantId, mspEntraTenantId, reason: binding.reason },
+      "MSP mailbox send REFUSED — connector is not bound to the MSP's own Entra tenant (#4241)",
+    );
+    throw new MailboxSendTenantRefusedError(opts.mspId, binding.reason);
+  }
+  const ownTenantId = binding.ownTenantId;
+
+  const tokenResult = await getMailboxSendAccessToken(ownTenantId);
+  if (!tokenResult.ok) {
+    if (tokenResult.consent) throw new ConsentRevokedError(ownTenantId);
+    throw new Error(`Mailbox send app token fetch failed for ${ownTenantId}: ${tokenResult.detail}`);
+  }
+  const issued = checkMailboxSendTenant({
+    mspEntraTenantId,
+    connectorTenantId: opts.mspTenantId,
+    tokenTenantId: tokenResult.tenantId,
+  });
+  if (!issued.ok) {
+    evictMailboxSendToken(ownTenantId);
+    log.warn(
+      { mspId: opts.mspId, ownTenantId, tokenTenantId: tokenResult.tenantId },
+      "MSP mailbox send REFUSED — Microsoft issued the mailbox send token for a different tenant (#4241)",
+    );
+    throw new MailboxSendTenantRefusedError(opts.mspId, issued.reason);
+  }
+  const token = tokenResult.token;
 
   const toRecipients: GraphMailRecipient[] = [
     { emailAddress: { address: opts.to } },
@@ -1692,10 +1746,11 @@ export async function sendMailViaGraphForMsp(opts: {
 
   if (!res.ok && res.status !== 202) {
     const text = await res.text();
+    // Only the dedicated app's token is dropped. The tenant's read consent
+    // (tenants.consent.graph) is a different registration and is not touched.
     if (res.status === 401) {
-      tenantTokenCache.delete(opts.mspTenantId);
-      await markTenantConsentRevoked(opts.mspTenantId);
-      throw new ConsentRevokedError(opts.mspTenantId);
+      evictMailboxSendToken(ownTenantId);
+      throw new ConsentRevokedError(ownTenantId);
     }
     throw new Error(`Graph MSP sendMail failed: ${res.status} ${text}`);
   }

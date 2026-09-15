@@ -34,8 +34,9 @@ import {
   impersonationTokensTable,
   mspAuditLogsTable,
   servicesTable,
+  tenantsTable,
 } from "@workspace/db";
-import { eq, and, desc, asc, count, sql, ilike, or, isNull, isNotNull, inArray } from "drizzle-orm";
+import { eq, and, ne, desc, asc, count, sql, ilike, or, isNull, isNotNull, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { z } from "zod";
 import { randomUUID } from "crypto";
@@ -242,6 +243,15 @@ const updateMspSchema = z.object({
   primaryContactPhone: z.string().max(60).nullable().optional(),
   address: z.string().max(500).nullable().optional(),
   notes: z.string().max(4000).nullable().optional(),
+  // Git #4242: the MSP's own Entra tenant, which the mailbox connector is bound
+  // to once set. Platform-admin only — this route is the one place it is written.
+  entraTenantId: z
+    .string()
+    .trim()
+    .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "entraTenantId must be a tenant GUID")
+    .transform((v) => v.toLowerCase())
+    .nullable()
+    .optional(),
 });
 
 router.patch("/admin/msps/:mspId", requireAdmin, async (req: Request, res: Response) => {
@@ -252,6 +262,30 @@ router.patch("/admin/msps/:mspId", requireAdmin, async (req: Request, res: Respo
   if (!parsed.success) {
     apiError(res, 400, parsed.error.issues.map((i) => i.message).join("; "));
     return;
+  }
+
+  const entraTenantId = parsed.data.entraTenantId;
+  if (entraTenantId) {
+    // A tenant can be one MSP's own organisation, never two, and never a
+    // customer another MSP has registered.
+    const [claimed] = await db
+      .select({ id: mspsTable.id })
+      .from(mspsTable)
+      .where(and(eq(mspsTable.entraTenantId, entraTenantId), ne(mspsTable.id, mspId)))
+      .limit(1);
+    if (claimed) {
+      apiError(res, 409, `Tenant ${entraTenantId} is already recorded as the own tenant of MSP ${claimed.id}`);
+      return;
+    }
+    const [foreignCustomer] = await db
+      .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
+      .from(tenantsTable)
+      .where(and(sql`lower(${tenantsTable.tenantId}) = ${entraTenantId}`, ne(tenantsTable.mspId, mspId)))
+      .limit(1);
+    if (foreignCustomer) {
+      apiError(res, 409, `Tenant ${entraTenantId} is registered as a customer (id ${foreignCustomer.id}) of MSP ${foreignCustomer.mspId}`);
+      return;
+    }
   }
 
   const [updated] = await db

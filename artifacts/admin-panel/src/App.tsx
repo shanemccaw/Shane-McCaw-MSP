@@ -19,7 +19,6 @@ import SystemWorkspace from "@/pages/workspaces/SystemWorkspace";
 import WorkflowsWorkspace from "@/pages/workspaces/WorkflowsWorkspace";
 
 // ─── Detail pages (open without workspace layout) ─────────────────────────────
-import ProjectDetailPage from "@/pages/crm/ProjectDetail";
 import InvoiceDetailPage from "@/pages/crm/InvoiceDetail";
 import PurchaseDetailPage from "@/pages/crm/PurchaseDetail";
 import PromptCenterEditPage from "@/pages/PromptCenterEdit";
@@ -301,9 +300,12 @@ function Router() {
           client (no detail page exists to land on); see the #3424 finding filed under
           #1095 for the context-loss tradeoff this accepts. */}
       <Route path="/crm/clients/:id"><Redirect to="/pipeline/clients" /></Route>
-      <Route path="/crm/projects/:id">
-        <AdminRoute><ProjectDetailPage /></AdminRoute>
-      </Route>
+      {/* Delivery Projects Kanban board relocated to msp-console (Git #4246, #3433).
+          Same context-loss tradeoff as /crm/clients/:id above — DeliveryProjects
+          in msp-console manages project selection as local component state, not
+          a URL, so a specific project id can't be deep-linked across apps; this
+          lands on the "moved" notice at /delivery/projects instead. */}
+      <Route path="/crm/projects/:id"><Redirect to="/delivery/projects" /></Route>
       <Route path="/crm/invoices/:id">
         <AdminRoute><InvoiceDetailPage /></AdminRoute>
       </Route>

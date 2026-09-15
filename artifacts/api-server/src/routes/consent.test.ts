@@ -549,6 +549,80 @@ describe("consent route handlers", () => {
       await handler!(req, res, (() => {}) as NextFunction);
       expect(store.redirectUrl).toContain("/consent/declined");
     });
+
+    // #4243: the decline branch is anonymous and the GUID is public, so the GUID
+    // alone must never select a customer to mark declined.
+    const consentKeysStamped = () =>
+      (mockUpdateSet.mock.calls as Array<[{ consent?: { args: unknown[] }; usedAt?: unknown }]>)
+        .filter(([arg]) => arg?.consent?.args)
+        .map(([arg]) => arg.consent!.args[2]);
+    const DECLINE_CHECKOUT = "33333333-3333-4333-8333-333333333333";
+
+    beforeEach(() => mockUpdateSet.mockClear());
+
+    it("writes NOTHING for an anonymous decline with no state", async () => {
+      const { res, store } = mockRes();
+      const req = mockReq({ headers: {}, query: { error: "access_denied", tenant: "tenant-granted-victim" } });
+      await getHandler(consentRouter, "get", "/consent/callback")!(req, res, (() => {}) as NextFunction);
+      expect(store.redirectUrl).toContain("/consent/declined");
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(mockSelect).not.toHaveBeenCalled();
+    });
+
+    it("writes NOTHING for an unknown/used/expired invite token", async () => {
+      dbSelectQueue.push([]); // token lookup: not live
+      const { res, store } = mockRes();
+      const req = mockReq({ query: { error: "access_denied", tenant: "tenant-granted-victim", state: "made-up" } });
+      await getHandler(consentRouter, "get", "/consent/callback")!(req, res, (() => {}) as NextFunction);
+      expect(store.redirectUrl).toContain("/consent/declined");
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it("burns a live invite naming no customer but records no decline", async () => {
+      dbSelectQueue.push([{ customerId: null }]);
+      const { res } = mockRes();
+      const req = mockReq({ query: { error: "access_denied", tenant: "tenant-granted-victim", state: "live-tok" } });
+      await getHandler(consentRouter, "get", "/consent/callback")!(req, res, (() => {}) as NextFunction);
+      expect(mockUpdate).toHaveBeenCalledTimes(1); // token burn only
+      expect(consentKeysStamped()).toEqual([]);
+    });
+
+    it("writes no decline when the invite's customer is a different tenant", async () => {
+      dbSelectQueue.push([{ customerId: 5 }]);
+      dbSelectQueue.push([{ id: 5, tenantId: "tenant-on-record" }]);
+      const { res } = mockRes();
+      const req = mockReq({ query: { error: "access_denied", tenant: "tenant-granted-victim", state: "live-tok" } });
+      await getHandler(consentRouter, "get", "/consent/callback")!(req, res, (() => {}) as NextFunction);
+      expect(consentKeysStamped()).toEqual([]);
+    });
+
+    it("records the decline on the customer a live invite names when the GUID matches", async () => {
+      dbSelectQueue.push([{ customerId: 5 }]);
+      dbSelectQueue.push([{ id: 5, tenantId: "tenant-own" }]);
+      const { res, store } = mockRes();
+      const req = mockReq({ query: { error: "access_denied", tenant: "TENANT-OWN", state: "live-tok" } });
+      await getHandler(consentRouter, "get", "/consent/callback")!(req, res, (() => {}) as NextFunction);
+      expect(store.redirectUrl).toContain("/consent/declined");
+      expect(consentKeysStamped()).toEqual(["graph"]);
+    });
+
+    it("writes NOTHING for a live checkout session not bound to the GUID", async () => {
+      dbSelectQueue.push([{ tenantId: null }]); // session exists, never granted
+      const { res, store } = mockRes();
+      const req = mockReq({ query: { error: "access_denied", tenant: "tenant-granted-victim", state: DECLINE_CHECKOUT } });
+      await getHandler(consentRouter, "get", "/consent/callback")!(req, res, (() => {}) as NextFunction);
+      expect(store.sentText).toContain("not granted");
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it("records the decline for a live checkout session already bound to the GUID", async () => {
+      dbSelectQueue.push([{ tenantId: "tenant-own" }]);
+      dbSelectQueue.push([{ id: 9 }]);
+      const { res } = mockRes();
+      const req = mockReq({ query: { error: "access_denied", tenant: "tenant-own", state: DECLINE_CHECKOUT } });
+      await getHandler(consentRouter, "get", "/consent/callback")!(req, res, (() => {}) as NextFunction);
+      expect(consentKeysStamped()).toEqual(["graph"]);
+    });
   });
 
   describe("GET /consent/callback — invalid params", () => {

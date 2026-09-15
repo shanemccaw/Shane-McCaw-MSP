@@ -23,6 +23,7 @@ import {
   unique,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { wfRunsTable, usersTable, scriptPackagesTable, activeDirectoryOusTable, projectsTable, type MspRole } from "./index.ts";
 import { LEGACY_ROLE } from "../rbac/legacy-ladder.ts";
@@ -66,9 +67,17 @@ export const mspsTable = pgTable("msps", {
   primaryContactPhone: text("primary_contact_phone"),
   address: text("address"),
   notes: text("notes"),
+  // The MSP's own Microsoft Entra tenant GUID (Git #4242), lowercase. Set only by
+  // a platform admin (PATCH /admin/msps/:id). Once set, the MSP mailbox connector
+  // refuses to bind to any other tenant — including the MSP's own customers'.
+  // Null means not yet recorded: the connector falls back to #4227's mailbox-domain
+  // binding and logs a warning on every attempt.
+  entraTenantId: text("entra_tenant_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  uniqueIndex("msps_entra_tenant_id_unique").on(t.entraTenantId).where(sql`entra_tenant_id IS NOT NULL`),
+]);
 
 export const insertMspSchema = createInsertSchema(mspsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type Msp = typeof mspsTable.$inferSelect;

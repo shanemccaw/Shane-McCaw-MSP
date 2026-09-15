@@ -236,6 +236,7 @@ export async function updateAdMspProfile(
     primaryContactPhone?: string | null;
     address?: string | null;
     notes?: string | null;
+    entraTenantId?: string | null;
   },
 ): Promise<AdMspProfile> {
   const res = await patchJson(adminFetch, `/api/admin/msps/${mspId}`, input);

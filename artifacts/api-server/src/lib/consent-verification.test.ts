@@ -65,6 +65,28 @@ describe("verifyTenantConsentWithMicrosoft", () => {
       .toBe("00000003-0000-0ff1-ce00-000000000000/.default");
   });
 
+  it("uses the dedicated mailbox-send app registration for app=mailbox, never the read app (#4241)", async () => {
+    process.env.MAILBOX_SEND_APP_CLIENT_ID = "mailbox-app";
+    process.env.MAILBOX_SEND_APP_CLIENT_SECRET = "mailbox-secret";
+    try {
+      fetchMock.mockResolvedValueOnce(okResponse({ tid: TENANT, roles: ["Mail.Send"] }));
+      const r = await verifyTenantConsentWithMicrosoft(TENANT, { app: "mailbox", resource: "graph", requireAnyRole: ["Mail.Send"], retryDelaysMs: [] });
+      expect(r).toEqual({ ok: true, roles: ["Mail.Send"] });
+      const body = new URLSearchParams((fetchMock.mock.calls[0][1] as { body: string }).body);
+      expect(body.get("client_id")).toBe("mailbox-app");
+      expect(body.get("client_secret")).toBe("mailbox-secret");
+
+      delete process.env.MAILBOX_SEND_APP_CLIENT_ID;
+      fetchMock.mockClear();
+      const unconfigured = await verifyTenantConsentWithMicrosoft(TENANT, { app: "mailbox", resource: "graph", retryDelaysMs: [] });
+      expect(unconfigured).toMatchObject({ ok: false, reason: "unverifiable" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      delete process.env.MAILBOX_SEND_APP_CLIENT_ID;
+      delete process.env.MAILBOX_SEND_APP_CLIENT_SECRET;
+    }
+  });
+
   it("refuses a tenant Microsoft says does not exist, without retrying", async () => {
     fetchMock.mockResolvedValue(errorResponse(400, "invalid_request", `AADSTS90002: Tenant '${FABRICATED}' not found.`));
     const r = await verifyTenantConsentWithMicrosoft(FABRICATED, { app: "read", resource: "graph", retryDelaysMs: [0, 0, 0] });

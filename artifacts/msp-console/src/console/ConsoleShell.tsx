@@ -27,13 +27,14 @@ import { PolicyEngine } from "./modules/PolicyEngine";
 import { ConsentOnboarding } from "./modules/ConsentOnboarding";
 import { AccountSecurity } from "./modules/AccountSecurity";
 import { StaffRoster } from "./modules/StaffRoster";
+import { Settings } from "./modules/Settings";
 import { Dlq } from "./modules/Dlq";
 import { PlanSelfService } from "./modules/PlanSelfService";
 import { Reports } from "./modules/Reports";
 import { MarketplacePurchase } from "./modules/MarketplacePurchase";
-import { SeatPricing } from "./modules/SeatPricing";
-import { RetainerIntervalSwitch } from "./modules/RetainerIntervalSwitch";
+import { BillingScreen } from "./modules/BillingScreen";
 import { OffersAndSows } from "./modules/OffersAndSows";
+import { Contracts } from "./modules/Contracts";
 import { SopsPage } from "@/pages/Sops";
 import { OffboardingPage } from "@/pages/Offboarding";
 import { ExecutiveView } from "@/pages/executive/ExecutiveView";
@@ -53,6 +54,7 @@ import {
   groupForPage, groupForMspPage, parseLocation, selectionToPath, type Selection,
 } from "./nav";
 import { RiskRegister } from "@/modules/risk-register/RiskRegister";
+import { SecurityPlan } from "@/modules/security-plan/SecurityPlan";
 import { RetentionQueue } from "@/modules/retention/RetentionQueue";
 import { RetainerHours } from "@/modules/retainer/RetainerHours";
 import { PartnerRevenue } from "./modules/PartnerRevenue";
@@ -60,6 +62,9 @@ import { Overview } from "./modules/Overview";
 import { LaunchControl } from "./modules/LaunchControl";
 import { AzureCredential } from "./modules/AzureCredential";
 import { Projects } from "./modules/Projects";
+import { DeliveryProjects } from "@/modules/delivery-projects/DeliveryProjects";
+import { RequestsAndSupportChat } from "./modules/RequestsAndSupportChat";
+import { MicrosoftChanges } from "@/modules/microsoft-changes/MicrosoftChanges";
 
 function roleLabelFor(p: MspUserProfile): string {
   if (p.mspRole === "PlatformAdmin") return "PlatformAdmin — full access";
@@ -297,6 +302,14 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
     const customer = customers.find((c) => c.id === sel.tenant);
     return customer ? <RiskRegister customer={customer} /> : undefined;
   }
+  if (sel.kind === "page" && sel.page === "sp") {
+    // Security Plan (Git #2603, Feature #1689) — the MSP's own signature route
+    // requires ladder.msp-admin server-side; the same admin gate every other
+    // MSPAdmin-only action in this shell already computes client-side.
+    const customer = customers.find((c) => c.id === sel.tenant);
+    const isAdmin = profile.role === "admin" || profile.mspRole === "PlatformAdmin" || profile.mspRole === "MSPAdmin";
+    return customer ? <SecurityPlan customer={customer} isMspAdmin={isAdmin} /> : undefined;
+  }
   if (sel.kind === "page" && sel.page === "poams") {
     // POA&Ms (#3897), README screen 41. This route has no customerId and
     // `msp_poams.tenantId` is free text with no real FK, so the list itself
@@ -324,7 +337,19 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
     return <DataRights customerId={sel.tenant} />;
   }
   if (sel.kind === "page" && sel.page === "status-reports") {
-    return <StatusReports customerId={sel.tenant} />;
+    // Status Reports (#3765) gained a real "Autofill from a delivery project"
+    // panel (#4248) that needs mspId for its own client/project picker — the
+    // Delivery Projects axis has no FK to this tenant, same reason Billing's
+    // Invoices tab (#4109) needs it, so it's resolved the same way: off the
+    // directory row, not the session claim, so a PlatformAdmin session works too.
+    const customer = customers.find((c) => c.id === sel.tenant);
+    if (!customer) return undefined;
+    return <StatusReports customerId={sel.tenant} mspId={customer.mspId} />;
+  }
+  if (sel.kind === "page" && sel.page === "contracts") {
+    // Contracts (#3775), README screen 21 — real aggregation read view over
+    // SOWs, active services and the scope-creep ledger for this customer.
+    return <Contracts customerId={sel.tenant} mspId={profile.mspId ?? null} />;
   }
   if (sel.kind === "page" && sel.page === "offers-sows") {
     // Offers & SOWs (#4014), README screen 66 — the whole SOW book for this
@@ -377,23 +402,20 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
     return <MarketplacePurchase customerId={sel.tenant} customerName={customer?.name ?? `Customer ${sel.tenant}`} />;
   }
   if (sel.kind === "page" && sel.page === "billing") {
-    // Two independent, narrow slices of this still-unwired nav slot stack
-    // here rather than fighting over it — the full Billing screen (Design
-    // screen 23) stays blocked on a real Design export (#2608):
+    // The full Billing screen (#2609, Design screen 23). No real Claude
+    // Design export exists (#2608 never landed) — Shane authorized building
+    // it directly (2026-09-15). Four real capabilities, tabbed:
+    //   - Subscription (#4110) — cancel / discount / free-month.
     //   - Seat Pricing (#4111) — automatic pricing from the customer's real,
     //     live M365 licensed-user count, plus the manual service-account
     //     exclusion override.
     //   - Retainer Interval Switch (#4112, Feature #1692) — propose a
     //     month<->year retainer interval switch for the customer to
     //     approve/reject.
+    //   - Invoices (#4109) — draft CRUD + versioned re-issue.
     const customer = customers.find((c) => c.id === sel.tenant);
     if (!customer) return undefined;
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
-        <SeatPricing customerId={sel.tenant} customerName={customer.name} />
-        <RetainerIntervalSwitch mspId={customer.mspId} customerId={sel.tenant} customerName={customer.name} />
-      </div>
-    );
+    return <BillingScreen mspId={customer.mspId} customerId={sel.tenant} customerName={customer.name} />;
   }
   if (sel.kind === "page" && sel.page === "audit") {
     // Audit Log (#4012, README screen 63), per-tenant leaf — narrowed
@@ -456,6 +478,14 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   if (sel.kind === "msp" && sel.page === "acctsec") {
     return <AccountSecurity />;
   }
+  if (sel.kind === "msp" && sel.page === "settings") {
+    // Settings (#2606, Feature #1690) — organization profile, connector +
+    // Exchange Online, outbound mailbox, service accounts, billing, email
+    // templates, agreement template and this staff member's own notification
+    // preferences. Groups E/F/G/K of the same backend are Staff Roster/
+    // Account Security's, not duplicated here.
+    return <Settings />;
+  }
   if (sel.kind === "msp" && sel.page === "staff") {
     return <StaffRoster profile={profile} />;
   }
@@ -472,6 +502,13 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   if (sel.kind === "msp" && sel.page === "policy") {
     return <PolicyEngine />;
   }
+  if (sel.kind === "msp" && sel.page === "m365changes") {
+    // Microsoft Changes (#2600, Feature #1688) — the "propose but no CR yet"
+    // branch links out to a specific tenant's Change Control register, the
+    // same tenant-page navigation Projects/ActivityTimeline/ExecutiveView
+    // already use above.
+    return <MicrosoftChanges onOpenTenantPage={(tenant, page) => navigate({ kind: "page", tenant, page })} />;
+  }
   if (sel.kind === "msp" && sel.page === "consent") {
     return <ConsentOnboarding />;
   }
@@ -486,6 +523,12 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "msp" && sel.page === "retention") {
     return <RetentionQueue />;
+  }
+  if (sel.kind === "msp" && sel.page === "delivery-projects") {
+    // Delivery Projects (Git #4246, part of #3433) — the real typed-card
+    // Kanban board relocated from admin-panel. Distinct from "Projects"
+    // (Simple Kanban, #3773) below.
+    return <DeliveryProjects />;
   }
   if (sel.kind === "msp" && sel.page === "retainer") {
     // Reopen and the "adjust after close" override both require
@@ -503,6 +546,12 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
     // lives inside the module itself, not the outer tree, since the backend
     // has no cross-customer aggregate route (pack §5).
     return <Projects customers={customers} embedded />;
+  }
+  if (sel.kind === "msp" && sel.page === "requests") {
+    // Requests and Support Chat (#2650, Feature #2570) — the operator's
+    // org-scoped queue, agent-built per Shane's 2026-09-15 authorization
+    // (no Design export exists for this screen).
+    return <RequestsAndSupportChat />;
   }
   if (sel.kind === "msp" && sel.page === "audit") {
     // Audit Log (#4012, README screen 63), Operations mount — no customer

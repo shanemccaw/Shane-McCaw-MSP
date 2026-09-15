@@ -421,6 +421,16 @@ export function pageMeta(sel: Selection, customers: DirectoryCustomer[]): PageMe
         note: "Password reset, temporary password, MFA and session actions against a real account — every one audited, and every one held to a real server-side role ceiling.",
       };
     }
+    // #2606 — Settings' eyebrow/title/note. No Claude Design export exists
+    // for this screen (see the module's own header) — this copy is agent-
+    // authored, not carried over from a `.dc.html` logic class.
+    if (sel.page === "settings") {
+      return {
+        eyebrow: "MSP SETTINGS",
+        title: "Settings",
+        note: "Organization profile, connector + Exchange Online, outbound mailbox, service accounts, billing, email templates, the customer agreement template, and your own notification preferences.",
+      };
+    }
     if (sel.page === "config") {
       return {
         eyebrow: "CONFIGURATION STATE",
@@ -474,6 +484,16 @@ export function pageMeta(sel: Selection, customers: DirectoryCustomer[]): PageMe
         note: "Every generated document, every custom canvas, and the schedules nothing yet executes.",
       };
     }
+    // Microsoft Changes (#2600) — no design export exists for this screen
+    // (see the module's own in-app banner); eyebrow/note are authored here,
+    // not lifted from a `.dc.html` logic class.
+    if (sel.page === "m365changes") {
+      return {
+        eyebrow: "MICROSOFT CHANGES",
+        title: "Interpret, resolve, route",
+        note: "Author what a Microsoft change means once, review the real per-tenant counts it produces, and review the routing decision it drives.",
+      };
+    }
     // #4012 — Audit Log's title is the design's own exact copy
     // (`Audit Log.dc.html`'s logic class, the unfiltered `title` branch).
     if (sel.page === "audit") {
@@ -481,6 +501,15 @@ export function pageMeta(sel: Selection, customers: DirectoryCustomer[]): PageMe
         eyebrow: "AUDIT LOG",
         title: "Everything recorded across your MSP",
         note: "MSPAdmin or above. Search matches the action, entity type, label and actor role — never names, addresses, ids or metadata.",
+      };
+    }
+    // #2650 — Requests and Support Chat, agent-built (no Design export
+    // exists for this screen yet — see the module's own header).
+    if (sel.page === "requests") {
+      return {
+        eyebrow: "REQUESTS & SUPPORT",
+        title: "Your MSP's request queue",
+        note: "Customer-opened requests and chat escalations, together — an escalation has no structured field of its own, only a subject-text convention.",
       };
     }
     return { eyebrow: "OPERATIONS · MSP-WIDE", title: mp?.label ?? "", note: "" };

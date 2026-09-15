@@ -54,6 +54,10 @@ export const CHILD_GROUPS: Group[] = [
       { id: "raci", label: "Ownership", icon: "users-round" },
       { id: "run", label: "Runbooks", icon: "book-open" },
       { id: "dr", label: "Data rights", icon: "scale" },
+      // Security Plan (Git #2603, Feature #1689) — no Claude Design export exists
+      // for this screen; built directly against the real endpoints per Shane's
+      // 2026-09-15 authorization. See SecurityPlan.tsx's own agent-built banner.
+      { id: "sp", label: "Security Plan", icon: "file-check" },
     ],
   },
   {
@@ -110,6 +114,17 @@ export const MSP_PAGES: LeafPage[] = [
   { id: "docs", label: "Documents", icon: "files" },
   { id: "connectors", label: "SharePoint connectors", icon: "plug" },
   { id: "offboarding", label: "Offboarding", icon: "log-out" },
+  // Delivery Projects (Git #4246, part of #3433) — the real, live typed-card
+  // Kanban board relocated from admin-panel's CRM (`ProjectDetail.tsx`,
+  // `Projects.tsx`). Genuinely global (fetches `/api/admin/projects` across
+  // every client, not filtered by tenant), so it sits here in Operations
+  // rather than the per-tenant `CHILD_GROUPS` tree — same placement logic as
+  // "Projects" (Simple Kanban) directly below, which is a *different* system:
+  // that one is per-customer buckets/cards (#3773); this one is a single
+  // customer's fixed-pipeline delivery project with typed task cards. Icon
+  // `layers` deliberately distinct from `kanban` (already used below) so the
+  // two don't read as the same feature in the tree.
+  { id: "delivery-projects", label: "Delivery Projects", icon: "layers" },
   // Projects (Git #2621, Feature #2561) — the design's own MSP-wide
   // Operations placement (`MSP Console.dc.html`'s `mspSel === "projects"`,
   // between Offboarding and Retainer hours). Free-form buckets/cards per
@@ -118,6 +133,11 @@ export const MSP_PAGES: LeafPage[] = [
   // board (`ProjectDetail.tsx`, fixed pipeline, #3433's target).
   { id: "projects", label: "Projects", icon: "kanban" },
   { id: "policy", label: "Policy engine", icon: "shield-check" },
+  // Microsoft Changes (Git #2600, Feature #1688) — authoring is universal
+  // (once per announcement, applied to every tenant, #1532), same
+  // "Operations, not per-tenant" reasoning as everything else on this list;
+  // the per-tenant resolution/routing review happens inside the page itself.
+  { id: "m365changes", label: "Microsoft Changes", icon: "megaphone" },
   { id: "staff", label: "Staff Roster", icon: "user-plus" },
   { id: "acctsec", label: "Account Security", icon: "key-round" },
   // Consent and Onboarding (Git #2627, README screen 64) — its routes resolve
@@ -137,6 +157,11 @@ export const MSP_PAGES: LeafPage[] = [
   // again per tenant (CHILD_GROUPS' "audit" leaf above) with customerId set
   // — same component, one prop, per the README's tree-placement table.
   { id: "audit", label: "Audit log", icon: "history" },
+  // Requests and Support Chat (Git #2650, Feature #2570) — the operator's
+  // org-scoped ticket queue. Agent-built (no Design export exists yet, see
+  // the module's own header); MSP-wide, not per-tenant, same reasoning as
+  // Audit Log's own Operations placement above.
+  { id: "requests", label: "Requests & Support", icon: "life-buoy" },
 ];
 
 const msp = (id: string): LeafPage => {
@@ -155,7 +180,7 @@ const msp = (id: string): LeafPage => {
 export const MSP_GROUPS: Group[] = [
   {
     id: "delivery", label: "Client Delivery", icon: "briefcase",
-    children: ["timeline", "sales", "sla", "sops", "config", "policy", "reports"].map(msp),
+    children: ["timeline", "sales", "sla", "sops", "config", "policy", "m365changes", "reports", "delivery-projects"].map(msp),
   },
   {
     id: "access", label: "Access & Accounts", icon: "shield",

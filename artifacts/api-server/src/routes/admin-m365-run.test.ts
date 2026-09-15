@@ -18,8 +18,10 @@
  * Approach:
  *  - mock.module() stubs @workspace/db so no real DB connection is opened.
  *    A smart fake db returns a configurable scriptRunResultsTable row.
- *  - mock.module() stubs ../lib/azure-automation.ts with a controllable
- *    getJobOutput() for the still-running case.
+ *  - mock.module() stubs ../lib/ps-execution-client.ts with a recording
+ *    callPsExecution() (Git #4262 — the route no longer touches the retired
+ *    azure-automation.ts stub at all), so POST /admin/run-script is exercised
+ *    through to the container call.
  *  - requireAdmin, logger, and other heavy side-effect deps are stubbed.
  *  - The REAL router from admin-m365-run.ts is mounted in a lightweight
  *    Express server and exercised over HTTP with node:fetch.
@@ -37,6 +39,8 @@ const FAKE_JOB_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 // ── Controllable script_run_results row ──────────────────────────────────────
 // Set this before each test to control what the GET route reads back.
 let fakeRunResultRow: Record<string, unknown> | null = null;
+const dbUpdates: Array<Record<string, unknown>> = [];
+const psCalls: Array<{ cmdletKey: string; params: Record<string, unknown> }> = [];
 
 // ── DB mock ───────────────────────────────────────────────────────────────────
 const mockScriptRunResultsTable = { _name: "script_run_results", jobId: {} };
@@ -50,8 +54,12 @@ function makeMockDb() {
         }),
       }),
     }),
-    update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
-    insert: () => ({ values: () => ({ returning: () => Promise.resolve([]) }) }),
+    update: () => ({
+      set: (values: Record<string, unknown>) => ({
+        where: () => { dbUpdates.push(values); return Promise.resolve(); },
+      }),
+    }),
+    insert: () => ({ values: () => ({ returning: () => Promise.resolve([{ id: 7 }]) }) }),
   };
 }
 
@@ -73,6 +81,7 @@ mock.module("@workspace/db", {
     servicesTable: {},
     kanbanTasksTable: {},
     projectsTable: {},
+    tenantsTable: {},
   },
 });
 
@@ -86,17 +95,35 @@ mock.module("../middlewares/requireAuth.ts", {
       req.user = { id: 1, email: "admin@test.local", role: "admin" };
       next();
     },
+    requireCapability: () => (req: any, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: "admin@test.local", role: "admin" };
+      next();
+    },
   },
 });
 
-mock.module("../lib/azure-automation.ts", {
+// PlatformAdmin cross-platform scope (#4255) — MSP scoping itself is
+// live-verified against the real DB, not exercised in this mocked suite.
+mock.module("../lib/msp-client-scope.ts", {
   namedExports: {
-    getJobStatus: async (_jobId: string) => ({ status: "Running", statusDetails: null }),
-    getJobOutput: async (_jobId: string) => [
-      { sequence: 1, streamType: "Output", text: "still working..." },
-    ],
-    isTerminalStatus: (s: string) => ["Completed", "Failed", "Stopped", "Suspended"].includes(s),
-    createScriptJob: async () => ({ jobId: FAKE_JOB_ID, status: "New" }),
+    requireClientScope: async () => ({ mspId: null }),
+    resolveClientScope: async () => ({ mspId: null }),
+    clientInScope: async () => true,
+  },
+});
+
+class FakePsExecutionError extends Error {
+  kind = "script_error";
+  cmdletKey = "";
+  containerErrorKind: string | undefined = undefined;
+}
+mock.module("../lib/ps-execution-client.ts", {
+  namedExports: {
+    callPsExecution: async (cmdletKey: string, params: Record<string, unknown>) => {
+      psCalls.push({ cmdletKey, params });
+      return { items: [{ Name: "conn" }], rawResponse: [{ Name: "conn" }] };
+    },
+    PsExecutionError: FakePsExecutionError,
   },
 });
 
@@ -126,12 +153,8 @@ mock.module("../lib/parse-m365-script-output.ts", {
   namedExports: { parseM365ScriptOutput: (_raw: unknown) => ({}) },
 });
 
-mock.module("../lib/azure-keyvault.ts", {
-  namedExports: { getSecretValue: async () => "secret" },
-});
-
 mock.module("../lib/audit.ts", {
-  namedExports: { createAuditLog: async () => {}, auditPrivilegedRead: async () => {} },
+  namedExports: { createAuditLog: async () => {}, auditPrivilegedRead: async () => {}, resolveAuditActorRole: () => "platform_admin" },
 });
 
 mock.module("../lib/m365-profile-update.ts", {
@@ -179,6 +202,8 @@ after(
 
 beforeEach(() => {
   fakeRunResultRow = null;
+  dbUpdates.length = 0;
+  psCalls.length = 0;
 });
 
 // ── Helper ────────────────────────────────────────────────────────────────────
@@ -200,14 +225,38 @@ describe("GET /api/admin/run-script/:jobRef/status", () => {
         recommendations: null,
         scoreImpact: null,
         rawOutput: null,
+        abandoned: false,
       };
     });
 
-    it("responds HTTP 200 with status: running and live output pulled from Azure", async () => {
+    it("responds HTTP 200 with status: running and no output yet (the container call is synchronous)", async () => {
       const { status, body } = await pollStatus(FAKE_JOB_ID);
       assert.equal(status, 200);
       assert.equal(body["status"], "running");
-      assert.deepEqual(body["outputLines"], ["still working..."]);
+      assert.deepEqual(body["outputLines"], []);
+      assert.equal(dbUpdates.length, 0);
+    });
+  });
+
+  describe("when a running row outlived the ps-execution timeout (api-server restarted mid-run)", () => {
+    beforeEach(() => {
+      fakeRunResultRow = {
+        id: 1,
+        status: "running",
+        parsedFindings: null,
+        recommendations: null,
+        scoreImpact: null,
+        rawOutput: null,
+        abandoned: true,
+      };
+    });
+
+    it("marks the run failed and reports it, instead of leaving the poller spinning", async () => {
+      const { status, body } = await pollStatus(FAKE_JOB_ID);
+      assert.equal(status, 200);
+      assert.equal(body["status"], "failed");
+      assert.equal(dbUpdates[0]?.["status"], "failed");
+      assert.match(String((body["outputLines"] as string[])[0]), /abandoned/);
     });
   });
 
@@ -241,5 +290,63 @@ describe("GET /api/admin/run-script/:jobRef/status", () => {
       assert.equal(status, 404);
       assert.equal(body["error"], "Job not found");
     });
+  });
+});
+
+// ── POST /api/admin/run-script (Git #4262) ────────────────────────────────────
+
+const TESTBED_TENANT_GUID = "11111111-2222-3333-4444-555555555555";
+
+async function postRun(body: Record<string, unknown>) {
+  const res = await fetch(`${baseUrl}/api/admin/run-script`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+}
+
+const rawTenantBody = {
+  libraryScriptId: "b339648d-fe2c-45aa-9a5e-bd7f40274489",
+  tenantId: TESTBED_TENANT_GUID,
+  clientId: "ignored-client-id",
+  clientSecret: "ignored-secret",
+};
+
+describe("POST /api/admin/run-script", () => {
+  it("refuses a library script with no ps-execution catalog binding (422) — no run row, no container call", async () => {
+    // Every select in the mocked db reads this row back; for the POST it is the powershell_scripts row.
+    fakeRunResultRow = { id: rawTenantBody.libraryScriptId, title: "Unbound Script", psCmdletKey: null, psParams: null };
+    const { status, body } = await postRun(rawTenantBody);
+    assert.equal(status, 422);
+    assert.match(String(body["error"]), /no server-side execution binding/);
+    assert.equal(psCalls.length, 0);
+  });
+
+  it("runs a bound script through callPsExecution with its catalog key, the stored params, and a server-resolved Organization", async () => {
+    fakeRunResultRow = {
+      id: rawTenantBody.libraryScriptId,
+      title: "Bound Script",
+      psCmdletKey: "get-connection-info",
+      // A stored Organization must never pick the tenant — the gated one wins.
+      psParams: { Organization: "someone-else.onmicrosoft.com" },
+      domain: "testbed.onmicrosoft.com",
+    };
+    const { status, body } = await postRun(rawTenantBody);
+    assert.equal(status, 200);
+    assert.equal(body["status"], "running");
+    assert.match(String(body["jobRef"]), /^[0-9a-f-]{36}$/);
+    assert.equal(body["resultId"], 7);
+
+    // Background processing is detached — wait for the container call to land.
+    for (let i = 0; i < 50 && dbUpdates.every(u => u["status"] === undefined); i++) {
+      await new Promise(r => setTimeout(r, 10));
+    }
+    assert.equal(psCalls.length, 1);
+    assert.equal(psCalls[0].cmdletKey, "get-connection-info");
+    assert.equal(psCalls[0].params["Organization"], "testbed.onmicrosoft.com");
+    assert.ok(!("ClientSecret" in psCalls[0].params));
+    const final = dbUpdates.find(u => u["status"] !== undefined);
+    assert.equal(final?.["status"], "completed");
   });
 });

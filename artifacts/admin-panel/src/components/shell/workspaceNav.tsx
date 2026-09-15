@@ -320,7 +320,7 @@ export const WORKSPACES: WorkspaceDef[] = [
       {
         id: "projects", label: "Projects", defaultOpen: true,
         items: [
-          { id: "del-projects", label: "Projects", path: "/delivery/projects", icon: FolderKanban },
+          { id: "del-projects", label: "Projects (Moved)", path: "/delivery/projects", icon: FolderKanban },
           { id: "del-engagement", label: "Engagement Projects", path: "/delivery/engagement-projects", icon: Layers },
         ],
       },

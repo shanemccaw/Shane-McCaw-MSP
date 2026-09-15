@@ -234,6 +234,7 @@ const MSP_PROFILE: MspProfileRow = {
   primaryContactPhone: null,
   address: null,
   notes: null,
+  entraTenantId: null,
   createdAt: new Date("2026-01-01T00:00:00Z"),
 };
 

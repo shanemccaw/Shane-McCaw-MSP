@@ -28,7 +28,7 @@ interface Invoice {
   description: string | null;
   amount: string;
   currency: string;
-  status: "draft" | "due" | "paid" | "overdue";
+  status: "draft" | "due" | "paid" | "overdue" | "superseded";
   dueDate: string | null;
   paidAt: string | null;
   pdfFilename: string | null;
@@ -51,6 +51,7 @@ const STATUS_COLORS: Record<string, string> = {
   due: "bg-amber-500/15 text-amber-400",
   overdue: "bg-red-500/15 text-red-400",
   draft: "bg-border/50 text-muted-foreground",
+  superseded: "bg-slate-500/15 text-slate-400",
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -282,6 +283,7 @@ export default function InvoicesPage() {
           <option value="due">Due</option>
           <option value="overdue">Overdue</option>
           <option value="paid">Paid</option>
+          <option value="superseded">Superseded</option>
         </select>
         {(filterType !== "all" || filterStatus !== "all") && (
           <button onClick={() => { setFilterType("all"); setFilterStatus("all"); }}

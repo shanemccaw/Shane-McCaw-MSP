@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
 interface InvoiceDetail {
   id: number;
@@ -11,7 +12,7 @@ interface InvoiceDetail {
   description: string | null;
   amount: string;
   currency: string;
-  status: "draft" | "due" | "paid" | "overdue";
+  status: "draft" | "due" | "paid" | "overdue" | "superseded";
   dueDate: string | null;
   paidAt: string | null;
   pdfFilename: string | null;
@@ -24,6 +25,9 @@ interface InvoiceDetail {
   billingCycleStart: string | null;
   billingCycleEnd: string | null;
   stripeSubscriptionId: string | null;
+  version: number;
+  supersedesInvoiceId: number | null;
+  revisionReason: string | null;
   createdAt: string;
   updatedAt: string;
   client: { id: number; name: string | null; email: string; company: string | null } | null;
@@ -53,6 +57,7 @@ const STATUS_COLORS: Record<string, string> = {
   due: "bg-amber-500/15 text-amber-400 border-amber-500/20",
   overdue: "bg-red-500/15 text-red-400 border-red-500/20",
   draft: "bg-border/50 text-muted-foreground border-border",
+  superseded: "bg-slate-500/15 text-slate-400 border-slate-500/20",
 };
 
 const CHURN_COLORS: Record<string, string> = {
@@ -101,6 +106,18 @@ export default function InvoiceDetailPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [pdfViewerOpen, setPdfViewerOpen] = useState(false);
 
+  // Sent invoice (due/paid/overdue) revise-with-reason flow (#4117). A SENT
+  // invoice is never edited in place — the same rule #4109 built for the
+  // MSP-console invoice surface. A draft keeps the direct status dropdown
+  // below; a sent invoice replaces it with this dialog, which creates a new
+  // versioned row (POST .../revise) instead of mutating this one.
+  const [reviseOpen, setReviseOpen] = useState(false);
+  const [reviseReason, setReviseReason] = useState("");
+  const [reviseAmount, setReviseAmount] = useState("");
+  const [reviseDescription, setReviseDescription] = useState("");
+  const [reviseDueDate, setReviseDueDate] = useState("");
+  const [revising, setRevising] = useState(false);
+
   useEffect(() => {
     if (!invoiceId) return;
     setLoading(true);
@@ -130,6 +147,55 @@ export default function InvoiceDetailPage() {
       }
     } finally {
       setSaving(false);
+    }
+  };
+
+  const openRevise = () => {
+    if (!invoice) return;
+    setReviseReason("");
+    setReviseAmount(invoice.amount);
+    setReviseDescription(invoice.description ?? "");
+    setReviseDueDate(invoice.dueDate ? invoice.dueDate.slice(0, 10) : "");
+    setReviseOpen(true);
+  };
+
+  const handleReviseSubmit = async () => {
+    if (!invoice) return;
+    const reason = reviseReason.trim();
+    if (!reason) {
+      toast({ title: "Reason required", description: "Enter a reason for this revision.", variant: "destructive" });
+      return;
+    }
+    const amountNum = parseFloat(reviseAmount);
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
+      toast({ title: "Invalid amount", description: "Enter a valid amount greater than zero.", variant: "destructive" });
+      return;
+    }
+    setRevising(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/invoices/${invoice.id}/revise`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reason,
+          amount: amountNum,
+          description: reviseDescription.trim() || null,
+          dueDate: reviseDueDate ? new Date(reviseDueDate).toISOString() : null,
+        }),
+      });
+      if (res.ok) {
+        const body = await res.json() as { revised: { id: number } };
+        setReviseOpen(false);
+        toast({ title: "Invoice revised", description: `A new version was created (invoice #${body.revised.id}).` });
+        navigate(`/crm/invoices/${body.revised.id}`);
+      } else {
+        const body = await res.json() as { error?: string };
+        toast({ title: "Revise failed", description: body.error ?? "Unknown error", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Revise failed", description: "Network error", variant: "destructive" });
+    } finally {
+      setRevising(false);
     }
   };
 
@@ -209,17 +275,29 @@ export default function InvoiceDetailPage() {
             )}
           </div>
           <div className="flex items-center gap-3">
-            <select
-              value={invoice.status}
-              onChange={e => void handleStatusChange(e.target.value)}
-              disabled={saving}
-              className="border border-border rounded-lg px-3 py-2 text-sm bg-accent text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
-            >
-              <option value="draft">Draft</option>
-              <option value="due">Due</option>
-              <option value="overdue">Overdue</option>
-              <option value="paid">Paid</option>
-            </select>
+            {invoice.status === "draft" ? (
+              <select
+                value={invoice.status}
+                onChange={e => void handleStatusChange(e.target.value)}
+                disabled={saving}
+                className="border border-border rounded-lg px-3 py-2 text-sm bg-accent text-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
+              >
+                <option value="draft">Draft</option>
+                <option value="due">Due</option>
+                <option value="overdue">Overdue</option>
+                <option value="paid">Paid</option>
+              </select>
+            ) : invoice.status === "superseded" ? (
+              <span className="text-xs text-muted-foreground italic px-2">Superseded — see the newer version</span>
+            ) : (
+              <button
+                onClick={openRevise}
+                className="flex items-center gap-2 border border-border rounded-lg px-4 py-2 text-sm font-semibold text-foreground hover:bg-accent transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                Revise Invoice
+              </button>
+            )}
           </div>
         </div>
 
@@ -329,7 +407,23 @@ export default function InvoiceDetailPage() {
       <Section title="References">
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           <Field label="Invoice ID" value={`#${invoice.id}`} />
+          <Field label="Version" value={`v${invoice.version}`} />
           <Field label="Stripe Session" value={invoice.stripeSessionId} mono />
+          {invoice.supersedesInvoiceId && (
+            <div
+              onClick={() => navigate(`/crm/invoices/${invoice.supersedesInvoiceId}`)}
+              className="cursor-pointer"
+            >
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-0.5">Supersedes</p>
+              <p className="text-xs text-primary hover:underline">Invoice #{invoice.supersedesInvoiceId} →</p>
+            </div>
+          )}
+          {invoice.revisionReason && (
+            <div className="col-span-2 sm:col-span-3">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-0.5">Revision Reason</p>
+              <p className="text-sm text-foreground">{invoice.revisionReason}</p>
+            </div>
+          )}
           {invoice.sharepointFileUrl && (
             <div>
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-0.5">SharePoint</p>
@@ -453,6 +547,80 @@ export default function InvoiceDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Revise sent invoice */}
+      <Dialog open={reviseOpen} onOpenChange={open => { if (!revising) setReviseOpen(open); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Revise Invoice {invoice.invoiceNumber}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <p className="text-sm text-muted-foreground">
+              This invoice has been sent and can&apos;t be edited directly. Revising creates a new version
+              (v{invoice.version + 1}) and marks this one superseded — the customer sees a notification
+              linking to the update.
+            </p>
+            <div>
+              <label className="block text-xs font-semibold text-foreground mb-1">Reason *</label>
+              <textarea
+                autoFocus
+                rows={2}
+                value={reviseReason}
+                onChange={e => setReviseReason(e.target.value)}
+                placeholder="e.g. Corrected billed hours after customer dispute"
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-accent text-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1">Amount ({invoice.currency.toUpperCase()})</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={reviseAmount}
+                  onChange={e => setReviseAmount(e.target.value)}
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-accent text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1">Due Date</label>
+                <input
+                  type="date"
+                  value={reviseDueDate}
+                  onChange={e => setReviseDueDate(e.target.value)}
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-accent text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-foreground mb-1">Description</label>
+              <textarea
+                rows={2}
+                value={reviseDescription}
+                onChange={e => setReviseDescription(e.target.value)}
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-accent text-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <button
+              onClick={() => setReviseOpen(false)}
+              disabled={revising}
+              className="border border-border text-sm font-medium px-4 py-2 rounded-lg hover:bg-accent disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => void handleReviseSubmit()}
+              disabled={revising || !reviseReason.trim()}
+              className="bg-primary text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-primary/90 disabled:opacity-50"
+            >
+              {revising ? "Revising…" : "Create Revision"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

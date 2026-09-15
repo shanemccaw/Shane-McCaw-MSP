@@ -24,7 +24,10 @@
  *   POST   /api/msp/status-reports/:id/publish
  *     — Publish (draft -> published). Irreversible in v1 — no unpublish.
  *       Publishing an already-published report is a no-op 409, not a second
- *       publishedAt stamp.
+ *       publishedAt stamp. Notifies every subscribed, permission-filtered
+ *       customer-side user on the report's customer (Git #4252) — same
+ *       tenant-wide fan-out + `filterByStatusReportViewAccess` gate the
+ *       comments route below already uses, category "status_report_published".
  *
  *   GET    /api/msp/status-reports/:id/comments
  *     — The full two-sided comment thread on a report (Git #3888, phase 2 of
@@ -55,10 +58,50 @@ import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { createNotification } from "../lib/notification-center.ts";
 import { logger } from "../lib/logger.ts";
 import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
+import { ladderEvaluationInput } from "../middlewares/rbac-ladder.ts";
+import { evaluateAccess } from "@workspace/db/rbac/access";
+import { effectiveLegacyRole } from "@workspace/db/rbac/legacy-ladder";
 
 const log = logger.child({ channel: "tenant.portal" });
 
 const router: IRouter = Router();
+
+/**
+ * Which of these candidate recipients actually hold `ladder.customer-user` — the
+ * exact floor `portal-status-reports.ts` requires to view a status report at all
+ * (#3043). Subscription is not sufficient on its own: a Free-tier tenant user can
+ * be opted in to the "message" notification category yet still fail this floor,
+ * and would otherwise be notified about a report they get a 404 on. Uses #1704's
+ * real `evaluateAccess()` / ladder RBAC input — not a bespoke role comparison,
+ * per #1923's and #3043's own sequencing decision. Fails closed: a recipient the
+ * RBAC model can't be consulted for is skipped, not notified.
+ */
+async function filterByStatusReportViewAccess(
+  recipients: readonly { id: number; role: "admin" | "client"; mspRole: string }[],
+): Promise<number[]> {
+  const allowed: number[] = [];
+  for (const recipient of recipients) {
+    const rung = effectiveLegacyRole({ role: recipient.role, mspRole: recipient.mspRole }) ?? null;
+    const prepared = await ladderEvaluationInput(rung, "ladder.customer-user");
+    if (prepared.kind === "unavailable") {
+      log.error(
+        { userId: recipient.id, reason: prepared.reason },
+        "status-report notification fan-out: RBAC model unavailable for a recipient — skipping (failing closed)",
+      );
+      continue;
+    }
+    const decision = evaluateAccess({ rbac: prepared.input, tier: null });
+    if (decision.allowed) {
+      allowed.push(recipient.id);
+    } else {
+      log.info(
+        { userId: recipient.id, reason: decision.reason },
+        "status-report notification fan-out: recipient does not hold ladder.customer-user — skipped",
+      );
+    }
+  }
+  return allowed;
+}
 
 function reportToWire(row: typeof mspStatusReportsTable.$inferSelect, authoredByName: string | null) {
   return {
@@ -313,6 +356,33 @@ router.post(
 
       const [author] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, row.authoredByUserId)).limit(1);
 
+      // Notify every customer-side user on this report's customer who is both
+      // opted in to the "status_report_published" category (createNotification's
+      // own preference check) AND actually holds ladder.customer-user (#4252 —
+      // the exact permission-filter gap #1923/#3043 originally flagged, applied
+      // here from day one rather than shipped unfiltered). Deny wins: a
+      // recipient the RBAC model can't evaluate is skipped, never notified.
+      // Best-effort/non-blocking: createNotification never throws, so a
+      // delivery failure here can't fail the publish that already committed.
+      void (async () => {
+        const candidates = await db
+          .select({ id: usersTable.id, role: usersTable.role, mspRole: usersTable.mspRole })
+          .from(usersTable)
+          .where(and(eq(usersTable.tenantId, row.customerId), eq(usersTable.role, "client")));
+
+        const recipientIds = await filterByStatusReportViewAccess(candidates);
+        for (const recipientId of recipientIds) {
+          void createNotification({
+            title: `New status report published: ${row.periodLabel}`,
+            body: `Your MSP published a new status report for ${row.periodLabel}.`,
+            category: "status_report_published",
+            notifType: "document",
+            linkPath: `/status-reports/${row.id}`,
+            recipient: { type: "customer_user", userId: recipientId },
+          });
+        }
+      })();
+
       return res.json({ report: reportToWire(row, author?.name ?? null) });
     } catch (err) {
       log.error({ err, id }, "msp-status-reports: POST publish failed");
@@ -399,25 +469,27 @@ router.post(
         })
         .returning();
 
-      // Notify every customer-side user on this report's customer — same
-      // tenant-wide fan-out `notifyRetentionRestore` already uses — so
-      // engagement is visible without the customer having to poll.
+      // Notify every customer-side user on this report's customer who can
+      // actually view status reports (#3043) — same tenant-wide fan-out shape
+      // `notifyRetentionRestore` uses, filtered through the real ladder.customer-user
+      // RBAC check before notifying, since subscription alone isn't sufficient.
       // Best-effort: createNotification never throws, so a delivery failure
       // here can't fail the comment write that already committed.
       void (async () => {
-        const recipients = await db
-          .select({ id: usersTable.id })
+        const candidates = await db
+          .select({ id: usersTable.id, role: usersTable.role, mspRole: usersTable.mspRole })
           .from(usersTable)
           .where(and(eq(usersTable.tenantId, report.customerId), eq(usersTable.role, "client")));
 
-        for (const recipient of recipients) {
+        const recipientIds = await filterByStatusReportViewAccess(candidates);
+        for (const recipientId of recipientIds) {
           void createNotification({
             title: `New comment on your status report "${report.periodLabel}"`,
             body: parsed.data.body,
             category: "message",
             notifType: "message",
             linkPath: `/status-reports/${report.id}`,
-            recipient: { type: "customer_user", userId: recipient.id },
+            recipient: { type: "customer_user", userId: recipientId },
           });
         }
       })();

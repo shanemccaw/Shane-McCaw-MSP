@@ -123,6 +123,37 @@ const reviseSchema = z.object({
   projectId: z.number().int().positive().nullable().optional(),
 });
 
+// ── GET /msp/:mspId/clients ──────────────────────────────────────────────────
+// The billed-party picker for invoice creation (#2609, wiring this route
+// surface into the MSP Console UI). `usersTable`/`clientUserId` is the legacy
+// client-portal-user axis `invoicesTable` is keyed on — NOT `tenantsTable`
+// (see this file's own header). There is no FK between the two, so a
+// tenant-scoped page cannot infer which client user "is" the selected tenant;
+// this route lists all of an MSP's client-portal users for an honest, manual
+// pick.
+router.get(
+  "/msp/:mspId/clients",
+  requireCapability("ladder.msp-operator"),
+  requireMspScope("params"),
+  async (req: Request, res: Response) => {
+    const mspId = Number(req.params.mspId);
+    if (isNaN(mspId)) { res.status(400).json({ error: "Invalid mspId" }); return; }
+
+    try {
+      const rows = await db
+        .select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, company: usersTable.company })
+        .from(usersTable)
+        .where(and(eq(usersTable.mspId, mspId), eq(usersTable.role, "client")))
+        .orderBy(asc(usersTable.name));
+
+      res.json(rows);
+    } catch (err) {
+      log.error({ err, mspId }, "GET msp clients failed");
+      res.status(500).json({ error: "Failed to fetch clients" });
+    }
+  },
+);
+
 // ── GET /msp/:mspId/invoices ─────────────────────────────────────────────────
 router.get(
   "/msp/:mspId/invoices",

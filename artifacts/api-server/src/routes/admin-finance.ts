@@ -68,8 +68,14 @@ router.get("/admin/invoices/:id", requireAdmin, async (req: Request, res: Respon
     clientId: invoice.clientUserId ?? null,
   });
 
+  // amount is integer cents in the DB (Git #1610); every other reader of this
+  // table converts to a dollar string at the response boundary (see e.g.
+  // admin-invoices.ts) — this route was the one holdout, silently shipping
+  // raw cents as if they were dollars (a 100x-inflated amount on every admin
+  // invoice detail view). Fixed as part of #4117.
   res.json({
     ...invoice,
+    amount: (invoice.amount / 100).toFixed(2),
     client: client ?? null,
     project,
     contract: contract ?? null,

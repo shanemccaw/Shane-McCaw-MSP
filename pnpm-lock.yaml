@@ -636,6 +636,22 @@ importers:
         version: 5.9.3
 
   artifacts/msp-console:
+    dependencies:
+      '@dnd-kit/core':
+        specifier: ^6.3.1
+        version: 6.3.1(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@radix-ui/react-alert-dialog':
+        specifier: ^1.1.7
+        version: 1.1.15(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@radix-ui/react-dialog':
+        specifier: ^1.1.7
+        version: 1.1.15(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@radix-ui/react-slot':
+        specifier: ^1.2.0
+        version: 1.2.4(@types/react@19.2.14)(react@19.1.0)
+      '@simplewebauthn/browser':
+        specifier: ^13.3.0
+        version: 13.3.0
     devDependencies:
       '@replit/vite-plugin-cartographer':
         specifier: 'catalog:'
@@ -1223,6 +1239,9 @@ importers:
       '@workspace/api-client-react':
         specifier: workspace:*
         version: link:../../lib/api-client-react
+      '@workspace/copilot-scan-scene':
+        specifier: workspace:*
+        version: link:../../lib/copilot-scan-scene
       '@workspace/offer-card':
         specifier: workspace:*
         version: link:../../lib/offer-card
@@ -1434,7 +1453,11 @@ importers:
         specifier: 'catalog:'
         version: 25.6.2
 
-  lib/integrations-openai-ai-react: {}
+  lib/integrations-openai-ai-react:
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.2.14
 
   lib/integrations-openai-ai-server:
     dependencies:
@@ -6363,6 +6386,7 @@ packages:
       '@vitest/ui': 4.1.9
       happy-dom: '*'
       jsdom: '*'
+      vite: ^6.0.0 || ^7.0.0 || ^8.0.0
     peerDependenciesMeta:
       '@edge-runtime/vm':
         optional: true
@@ -12091,13 +12115,13 @@ snapshots:
       tinyexec: 1.2.4
       tinyglobby: 0.2.16
       tinyrainbow: 3.1.0
+      vite: 7.3.3(@types/node@25.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.4)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 25.6.2
       jsdom: 29.1.1(@noble/hashes@2.2.0)
     transitivePeerDependencies:
       - msw
-      - vite
 
   w3c-keyname@2.2.8: {}
 

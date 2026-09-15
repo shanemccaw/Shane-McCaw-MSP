@@ -115,6 +115,7 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
     primaryContactPhone: "",
     address: "",
     notes: "",
+    entraTenantId: "",
   });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -209,6 +210,7 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
       primaryContactPhone: msp.primaryContactPhone ?? "",
       address: msp.address ?? "",
       notes: msp.notes ?? "",
+      entraTenantId: msp.entraTenantId ?? "",
     });
     setSaveError(null);
     setEditing(true);
@@ -227,6 +229,7 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
         primaryContactPhone: editForm.primaryContactPhone.trim() || null,
         address: editForm.address.trim() || null,
         notes: editForm.notes.trim() || null,
+        entraTenantId: editForm.entraTenantId.trim() || null,
       });
       requestAdTreeRefresh();
       setEditing(false);
@@ -330,7 +333,16 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
                 onChange={(v) => setEditForm((f) => ({ ...f, primaryContactPhone: v }))}
               />
               <AdEditField label="Address" value={editForm.address} onChange={(v) => setEditForm((f) => ({ ...f, address: v }))} />
+              <AdEditField
+                label="Own Microsoft Entra tenant ID"
+                value={editForm.entraTenantId}
+                onChange={(v) => setEditForm((f) => ({ ...f, entraTenantId: v }))}
+              />
             </div>
+            {/* Git #4242: the mailbox connector is bound to this tenant once set. */}
+            <span style={{ fontSize: 11.5, color: TEXT.meta }}>
+              The MSP&apos;s own organisation tenant GUID. Once set, this MSP can only connect a sending mailbox that lives in this tenant.
+            </span>
             <AdEditField label="Internal notes" area value={editForm.notes} onChange={(v) => setEditForm((f) => ({ ...f, notes: v }))} />
             <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: TEXT.body }}>
               <input
@@ -353,6 +365,11 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
               <AdTile label="Domain" value={msp.domain ?? "none"} />
               <AdTile label="Customer since" value={fmtDate(msp.createdAt)} />
               <AdTile label="Testbed" value={msp.isTestbed ? "yes" : "no"} />
+              <AdTile
+                label="Own Entra tenant"
+                value={msp.entraTenantId ?? "not set"}
+                accent={msp.entraTenantId ? undefined : ACCENT_TEXT.amber}
+              />
             </AdTileGrid>
           </AdSection>
         )}

@@ -2,9 +2,11 @@
   "issue": 2992,
   "feature": "Notification Preferences (#1485, screen 16) — the real Notification Preferences page in artifacts/portal, wired to the already-built GET/PATCH /api/portal/notification-preferences (docs/portal/notification-preferences-contract-pack.md). Real design landed in Design/portal/design_handoff_full_site/screens/Notification Preferences.dc.html; page lives at artifacts/portal/src/pages/notification-preferences.tsx, route /notification-preferences.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "0231b1938",
+  "lastVerifiedAgainstCommit": "54ec82064",
 
   "notes": [
+    "Git #4252 added a 16th category, \"status_report_published\" (customer notification when their MSP publishes a status report, permission-filtered via msp-status-reports.ts's filterByStatusReportViewAccess). Appended to the end of CATEGORY_STYLES (notifications.ts) / CATEGORY_ORDER+CATEGORY_INFO (this page), so it lands at index 15 and every existing index-2='security' assertion below is unaffected. TEST7/UI11-13 below are tagged sessionTag '4252' — run those alone via onlyTag rather than the full file for a scoped re-check.",
+    "TEST7/UI11-13 were authored but NOT executed via shaneapp://runTest this session — the dev-server checkout's automated merge-back (request-restart.mjs) failed on a real, PRE-EXISTING conflict unrelated to this change (2 real, never-pushed local BuildConsole commits in that checkout diverging from origin/main; filed as #4261, parented #1202). The core notification logic itself (permission-filtered fan-out + preference opt-out) IS live-verified against real Postgres — see msp-status-reports-publish-notification.live-db.test.ts.",
     "shaneapp://runTest hits the DEPLOYED build, not the local worktree — these assertions only go green once this session's commit is deployed by the dev-server rebuild.",
     "apiTests prove the real, already-built backend contract directly: log in via POST /api/auth/login, extract a bearer token, then exercise GET/PATCH /api/portal/notification-preferences exactly as notification-preferences.tsx's own fetchWithAuth calls do.",
     "uiSteps log in through the real Auth Core login page (#2991, Feature #1648 — landed after this build started) and drive the page itself. The UI flow deliberately DISCARDS rather than saves (notification-preferences-discard, not -save) so a UI-test run never races the apiTests' own PATCH/restore of the same 'security' row below — rendering + interactivity is proven here, the real persisted round-trip is proven by TEST3-TEST6.",
@@ -24,7 +26,7 @@
       "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
     },
     {
-      "name": "TEST1 — GET returns all 15 known categories, defaulted or stored, never a partial/empty list (contract pack §2).",
+      "name": "TEST1 — GET returns all 16 known categories, defaulted or stored, never a partial/empty list (contract pack §2).",
       "method": "GET",
       "path": "/api/portal/notification-preferences",
       "headers": { "Authorization": "Bearer {{authToken}}" },
@@ -66,6 +68,14 @@
       "path": "/api/portal/notification-preferences",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.preferences[2].inAppEnabled", "value": true }
+    },
+    {
+      "name": "TEST7 (#4252) — index 15 is the new 'status_report_published' category, appended at the end of KNOWN_CATEGORIES.",
+      "method": "GET",
+      "path": "/api/portal/notification-preferences",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.preferences[15].category", "value": "status_report_published" },
+      "sessionTag": "4252"
     }
   ],
 
@@ -88,6 +98,10 @@
     { "name": "UI8 — the save button is present in that bar.", "action": "expect", "selector": "[data-testid='notification-preferences-save']", "state": "visible" },
 
     { "name": "UI9 — discard rather than save, so this UI run never races apiTests TEST3-TEST6's own PATCH of the same row.", "action": "click", "selector": "[data-testid='notification-preferences-discard']", "critical": true },
-    { "name": "UI10 — the unsaved-changes bar is gone again after discard.", "action": "expect", "selector": "[data-testid='notification-preferences-save-bar']", "state": "absent" }
+    { "name": "UI10 — the unsaved-changes bar is gone again after discard.", "action": "expect", "selector": "[data-testid='notification-preferences-save-bar']", "state": "absent" },
+
+    { "name": "UI11 (#4252) — the new 'status_report_published' category row renders with its authored label.", "action": "expect", "selector": "[data-testid='notification-pref-row-status_report_published']", "state": "visible", "textContains": "Status Reports", "critical": true, "sessionTag": "4252" },
+    { "name": "UI12 (#4252) — its in-app switch renders.", "action": "expect", "selector": "[data-testid='notification-pref-inapp-status_report_published']", "state": "visible", "sessionTag": "4252" },
+    { "name": "UI13 (#4252) — its email switch renders.", "action": "expect", "selector": "[data-testid='notification-pref-email-status_report_published']", "state": "visible", "sessionTag": "4252" }
   ]
 }

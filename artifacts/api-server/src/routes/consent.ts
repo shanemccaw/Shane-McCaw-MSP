@@ -68,7 +68,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { randomBytes, createHmac, timingSafeEqual } from "crypto";
+import { randomBytes, createHash, createHmac, timingSafeEqual } from "crypto";
 import { db, tenantsTable, consentInviteTokensTable, checkoutSessionsTable, servicesTable, mspsTable, type TenantConsentRecord, type TenantConsentMap } from "@workspace/db";
 import { eq, and, isNull, gte, desc, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
@@ -84,6 +84,14 @@ import { getReadConsentRequirementForProduct, buildSessionReadConsentUrl } from 
 import { logger } from "../lib/logger.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 const log = logger.child({ channel: "auth" });
+
+// `state` carries a live bearer secret (invite token) or a checkout session id —
+// never log it raw (#4253). A fingerprint still lets log lines be correlated
+// without handing out anything redeemable.
+function stateFingerprint(state: string | undefined): string | undefined {
+  if (!state) return undefined;
+  return createHash("sha256").update(state).digest("hex").slice(0, 8);
+}
 
 const router: IRouter = Router();
 
@@ -154,6 +162,82 @@ async function resolveCallbackTenant(
   }
 
   return { ok: true, id: row.id, tenantId: row.tenantId };
+}
+
+/**
+ * Resolves the tenants row a DECLINED read-consent callback may record against
+ * (#4243). The decline branch has no Microsoft confirmation to lean on — an
+ * access_denied redirect is just query parameters — and a tenant GUID is public
+ * (OpenID metadata), so the GUID alone never selects a row. A decline is
+ * recorded only when `state` is live and itself names that tenant:
+ *
+ *   - an unused, unexpired invite token that names a customer
+ *     (consent_invite_tokens.customer_id), whose own tenant_id matches the GUID
+ *     — the same binding resolveCallbackTenant gives the grant path;
+ *   - an unexpired checkout session whose tenant_id already equals the GUID.
+ *     checkout_sessions.tenant_id is written only by a Microsoft-confirmed grant
+ *     on that session, so it genuinely ties the session to that customer.
+ *
+ * Everything else — no state, an unknown/used/expired state, a token naming no
+ * customer, a mismatched GUID — resolves to no target. Such a decline carries
+ * nothing worth persisting (there is no customer relationship it speaks for),
+ * so the caller logs it and writes nothing.
+ *
+ * `validInviteToken` is reported separately so the caller can still burn a
+ * live invite on decline whether or not it names a customer.
+ */
+async function resolveDeclineTarget(
+  state: string | undefined,
+  tenant: string | undefined,
+  isCheckoutSession: boolean,
+): Promise<{
+  target: { id: number } | null;
+  reason: string;
+  validInviteToken: boolean;
+}> {
+  const guid = tenant?.trim().toLowerCase();
+  if (!state) return { target: null, reason: "no_state", validInviteToken: false };
+
+  if (isCheckoutSession) {
+    const [session] = await db
+      .select({ tenantId: checkoutSessionsTable.tenantId })
+      .from(checkoutSessionsTable)
+      .where(and(eq(checkoutSessionsTable.id, state), gte(checkoutSessionsTable.expiresAt, new Date())))
+      .limit(1);
+    if (!session) return { target: null, reason: "checkout_session_invalid_or_expired", validInviteToken: false };
+    if (!guid) return { target: null, reason: "no_tenant", validInviteToken: false };
+    if (session.tenantId?.trim().toLowerCase() !== guid) {
+      return { target: null, reason: "checkout_session_not_bound_to_tenant", validInviteToken: false };
+    }
+    const [row] = await db
+      .select({ id: tenantsTable.id })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.tenantId, session.tenantId!))
+      .limit(1);
+    return row
+      ? { target: { id: row.id }, reason: "checkout_session", validInviteToken: false }
+      : { target: null, reason: "no_customer_object", validInviteToken: false };
+  }
+
+  const [invite] = await db
+    .select({ customerId: consentInviteTokensTable.customerId })
+    .from(consentInviteTokensTable)
+    .where(
+      and(
+        eq(consentInviteTokensTable.token, state),
+        isNull(consentInviteTokensTable.usedAt),
+        gte(consentInviteTokensTable.expiresAt, new Date()),
+      ),
+    )
+    .limit(1);
+  if (!invite) return { target: null, reason: "invite_token_invalid_expired_or_used", validInviteToken: false };
+  if (invite.customerId == null) return { target: null, reason: "invite_token_names_no_customer", validInviteToken: true };
+  if (!guid) return { target: null, reason: "no_tenant", validInviteToken: true };
+
+  const bound = await resolveCallbackTenant(invite.customerId, tenant);
+  return bound.ok
+    ? { target: { id: bound.id }, reason: "invite_token", validInviteToken: true }
+    : { target: null, reason: `invite_token_${bound.reason}`, validInviteToken: true };
 }
 
 /**
@@ -494,29 +578,33 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
 
   // Microsoft declined callback — surface a clear message
   if (error === "access_denied" || error_subcode === "cancel") {
-    log.warn({ tenant, state, error, error_subcode }, "Consent callback: admin declined");
+    log.warn({ tenant, stateFingerprint: stateFingerprint(state), error, error_subcode }, "Consent callback: admin declined");
 
-    if (state && !UUID_RE.test(state)) {
-      // Burn the invite token on decline too
+    // #4243: this branch is reachable by anyone — no Microsoft confirmation, and
+    // the GUID is public — so the decline is recorded only against the customer
+    // a live `state` names (see resolveDeclineTarget). It used to stamp any row
+    // matching the bare GUID, letting one anonymous GET flip a consented
+    // customer to declined. Never creates a tenants row either: an admin who
+    // declined at the Microsoft screen has no relationship to record.
+    const decline = await resolveDeclineTarget(state, tenant, isCheckoutSession);
+
+    if (decline.validInviteToken && state) {
+      // Burn a live invite token on decline too. Only a live one: an unknown or
+      // already-used token has nothing to burn.
       await db
         .update(consentInviteTokensTable)
         .set({ usedAt: new Date() })
-        .where(eq(consentInviteTokensTable.token, state));
+        .where(and(eq(consentInviteTokensTable.token, state), isNull(consentInviteTokensTable.usedAt)));
     }
 
-    // Record the decline on the tenant's existing row only. Deliberately does
-    // NOT create one: a tenants row is a real customer object (NOT NULL msp_id
-    // + customer_name, appears in every customer list), and an admin who
-    // declined at the Microsoft screen has no relationship to record. The old
-    // schema could park an orphan consent row against a bare GUID; that is not
-    // a state worth resurrecting. An unmatched decline is logged, not silent.
-    if (tenant) {
-      const stamped = await stampConsent(eq(tenantsTable.tenantId, tenant), "graph", {
-        status: "declined",
-      });
-      if (!stamped) {
-        log.info({ tenant }, "Consent callback: decline from a tenant with no tenants row — nothing to record (no customer object exists for it)");
-      }
+    if (decline.target) {
+      await stampConsent(eq(tenantsTable.id, decline.target.id), "graph", { status: "declined" });
+      log.info({ tenant, customerId: decline.target.id, boundBy: decline.reason }, "Consent callback: decline recorded against the customer its state names");
+    } else {
+      log.warn(
+        { tenant, isCheckoutSession, reason: decline.reason },
+        "Consent callback: decline NOT recorded — no live state binds this tenant to a customer; nothing written",
+      );
     }
 
     endConsentCallback(
@@ -537,7 +625,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
 
   // Success callback must include tenant + admin_consent=True
   if (!tenant || admin_consent?.toLowerCase() !== "true") {
-    log.warn({ tenant, admin_consent, state }, "Consent callback: unexpected parameters");
+    log.warn({ tenant, admin_consent, stateFingerprint: stateFingerprint(state) }, "Consent callback: unexpected parameters");
     res.status(400).send("Invalid consent callback parameters.");
     return;
   }
@@ -569,7 +657,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       .limit(1);
 
     if (!row) {
-      log.warn({ state, tenant }, "Consent callback: invite token invalid, expired, or already used");
+      log.warn({ stateFingerprint: stateFingerprint(state), tenant }, "Consent callback: invite token invalid, expired, or already used");
       res.status(400).send("This consent link has expired or has already been used. Please request a new link.");
       return;
     }
@@ -678,7 +766,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       log.warn(
         {
           tenantId: tenant,
-          sessionId: isCheckoutSession ? state : undefined,
+          sessionId: isCheckoutSession ? stateFingerprint(state) : undefined,
           mspInvite: !isCheckoutSession,
           conflictingCustomerId: conflictingCustomer.id,
           existingMspId: conflictingCustomer.mspId,
@@ -697,7 +785,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       log.warn(
         {
           tenantId: tenant,
-          sessionId: isCheckoutSession ? state : undefined,
+          sessionId: isCheckoutSession ? stateFingerprint(state) : undefined,
           mspInvite: !isCheckoutSession,
           existingCustomerId: conflictingCustomer.id,
           existingMspId: conflictingCustomer.mspId,
@@ -912,9 +1000,9 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       });
 
     if (updatedSession) {
-      log.info({ sessionId: state, tenant }, "Checkout session marked consented via consent callback");
+      log.info({ sessionId: stateFingerprint(state), tenant }, "Checkout session marked consented via consent callback");
     } else {
-      log.warn({ sessionId: state, tenant }, "Consent callback: checkout session not found or expired — callback proceeds without session");
+      log.warn({ sessionId: stateFingerprint(state), tenant }, "Consent callback: checkout session not found or expired — callback proceeds without session");
     }
   }
 
@@ -1140,7 +1228,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
             // (verifyCustomerBridge), so this is not the last line of defense, but
             // it must never pass silently.
             log.error(
-              { tenant, sessionId: state, userId: prospect.userId },
+              { tenant, sessionId: stateFingerprint(state), userId: prospect.userId },
               "consent callback: Prospect user was created WITHOUT a tenant link (users.tenant_id) — customer provisioning failed; payment webhook will retry and alert",
             );
           }
@@ -1168,7 +1256,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
         // and NO users→tenants link is created here, and the paid webhook used
         // to assume this step had already run. Never skip this silently.
         log.error(
-          { tenant, sessionId: state, hadUpdatedSession: !!updatedSession },
+          { tenant, sessionId: stateFingerprint(state), hadUpdatedSession: !!updatedSession },
           "consent callback: checkout session resolved with NO email — Prospect provisioning SKIPPED; bridge now depends entirely on the payment webhook (which verifies and alerts)",
         );
       }
@@ -1220,7 +1308,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
     // provisioning silently didn't happen — the exact precursor to a paid,
     // non-functional account. The redirect still proceeds (never strand the
     // buyer at Microsoft), but this must be loud and greppable.
-    log.error({ err, tenant, sessionId: state }, "consent.granted: provisioning/emission FAILED — redirect proceeds, payment webhook must create the bridge");
+    log.error({ err, tenant, sessionId: stateFingerprint(state) }, "consent.granted: provisioning/emission FAILED — redirect proceeds, payment webhook must create the bridge");
   }
 
   // Fire-and-forget diagnostics run — must not delay the consent redirect.
@@ -1675,7 +1763,7 @@ router.get("/admin/write-consent/callback", async (req: Request, res: Response) 
 
   const verified = state ? verifyWriteConsentState(state) : null;
   if (!verified) {
-    log.warn({ state }, "Write-consent callback: state missing or failed HMAC verification");
+    log.warn({ stateFingerprint: stateFingerprint(state) }, "Write-consent callback: state missing or failed HMAC verification");
     res.status(400).send("Invalid consent callback state.");
     return;
   }
@@ -2046,7 +2134,7 @@ router.get("/admin/sharepoint-consent/callback", async (req: Request, res: Respo
 
   const verified = state ? verifySharePointConsentState(state) : null;
   if (!verified) {
-    log.warn({ state }, "SharePoint-consent callback: state missing or failed HMAC verification");
+    log.warn({ stateFingerprint: stateFingerprint(state) }, "SharePoint-consent callback: state missing or failed HMAC verification");
     res.status(400).send("Invalid consent callback state.");
     return;
   }

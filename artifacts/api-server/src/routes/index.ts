@@ -279,6 +279,7 @@ import adminEventsRouter from "./admin-events.ts";
 import portalCheckoutRouter from "./portal-checkout.ts";
 import portalRetainerBillingRouter from "./portal-retainer-billing.ts";
 import mspRetainerBillingRouter from "./msp-retainer-billing.ts";
+import mspCustomerServicesRouter from "./msp-customer-services.ts";
 import clientEventsRouter from "./client-events.ts";
 import portal404EventsRouter from "./portal-404-events.ts";
 import mspChangesRouter from "./msp-changes.ts";
@@ -654,6 +655,7 @@ router.use(adminEventsRouter);
 router.use(portalCheckoutRouter);
 router.use(portalRetainerBillingRouter);
 router.use(mspRetainerBillingRouter);
+router.use(mspCustomerServicesRouter);
 router.use(clientEventsRouter);
 router.use(portal404EventsRouter);
 

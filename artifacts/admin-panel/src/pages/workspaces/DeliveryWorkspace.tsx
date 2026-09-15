@@ -1,5 +1,4 @@
 import { type ReactNode } from "react";
-import ProjectsPage from "@/pages/crm/Projects";
 import EngagementProjectsPage from "@/pages/EngagementProjects";
 import TenantSignalsPage from "@/pages/TenantSignals";
 import SignalRulesPage from "@/pages/SignalRules";
@@ -40,8 +39,30 @@ function getContent(section: string): ReactNode {
     case "config-diffs":         return <ConfigDiffReportPage />;
     case "baseline-templates":   return <BaselineTemplatesPage />;
     case "engagement-offers":    return <EngagementOfferRules />;
-    default:                     return <ProjectsPage />;
+    // The Delivery Projects Kanban board (the old default here) relocated to
+    // msp-console (Git #4246, #3433) — real drag-and-drop, live SSE, typed
+    // cards, all moved rather than duplicated. Nothing left to render locally.
+    default:                     return <ProjectsMovedNotice />;
   }
+}
+
+function ProjectsMovedNotice() {
+  return (
+    <div className="p-4 sm:p-6 max-w-[600px]">
+      <div className="bg-card border border-border rounded-xl p-8 text-center">
+        <h1 className="text-lg font-bold text-foreground mb-2">Projects moved to MSP Console</h1>
+        <p className="text-sm text-muted-foreground mb-4">
+          The Delivery Projects Kanban board now lives in MSP Console, under Operations → Client Delivery → Delivery Projects.
+        </p>
+        <a
+          href="/msp-console/ops/delivery-projects"
+          className="inline-flex items-center gap-1.5 bg-primary text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
+        >
+          Open in MSP Console →
+        </a>
+      </div>
+    </div>
+  );
 }
 
 export default function DeliveryWorkspace({ section }: { section: string }) {
