@@ -34,20 +34,20 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
-                    <TextBlock Text="🧪" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="🧪" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                     <TextBlock Text="Test History &amp; Diagnostic Inspector"
-                               FontSize="12" FontWeight="SemiBold"
+                               FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
                     <Button x:Name="BtnMinimize" Style="{StaticResource CaptionButton}" ToolTip="Minimize" Click="BtnMinimize_Click">
-                        <TextBlock Text="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                        <TextBlock Text="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"/>
                     </Button>
                     <Button x:Name="BtnMaximizeRestore" Style="{StaticResource CaptionButton}" ToolTip="Maximize" Click="BtnMaximizeRestore_Click">
-                        <TextBlock x:Name="BtnMaximizeRestoreIcon" Text="&#xE922;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                        <TextBlock x:Name="BtnMaximizeRestoreIcon" Text="&#xE922;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"/>
                     </Button>
                     <Button x:Name="BtnCloseWindow" Style="{StaticResource CaptionButtonClose}" ToolTip="Close" Click="BtnCloseWindow_Click">
-                        <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                        <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"/>
                     </Button>
                 </StackPanel>
             </Grid>
@@ -76,10 +76,10 @@
 
                     <!-- Left: Title badge & optional Filter banner -->
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
-                        <TextBlock Text="TEST RUNS" FontSize="12" FontWeight="Bold" Foreground="{StaticResource BlueBrush}" VerticalAlignment="Center"/>
+                        <TextBlock Text="TEST RUNS" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource BlueBrush}" VerticalAlignment="Center"/>
                         <Border x:Name="PillFilterBanner" Background="{StaticResource Surface0Brush}" CornerRadius="10" Padding="8,2" Margin="10,0,0,0" VerticalAlignment="Center" Visibility="Collapsed">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock x:Name="TxtFilterBanner" Text="" FontSize="11" Foreground="{StaticResource MauveBrush}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="TxtFilterBanner" Text="" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource MauveBrush}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                 <Button Content="✕" Margin="6,0,0,0" Padding="2,0" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Subtext0Brush}" Cursor="Hand" Click="BtnClearFilter_Click" ToolTip="Clear filter"/>
                             </StackPanel>
                         </Border>
@@ -110,13 +110,13 @@
                                  BorderBrush="{StaticResource Surface0Brush}"
                                  BorderThickness="1"
                                  Padding="8,5,24,5"
-                                 FontSize="12"
+                                 FontSize="{StaticResource CaptionFontSize}"
                                  Width="320"
                                  TextChanged="TxtSearch_TextChanged"
                                  VerticalAlignment="Center"/>
                         <TextBlock Text="🔍 Search issue # or feature…"
                                    Foreground="{StaticResource OverlayBrush}"
-                                   FontSize="11"
+                                   FontSize="{StaticResource CaptionFontSize}"
                                    IsHitTestVisible="False"
                                    VerticalAlignment="Center"
                                    Margin="10,0,0,0">
@@ -137,12 +137,12 @@
                     <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
                         <ToggleButton x:Name="ToggleStreaksView" Content="⚡ Streaks Summary"
                                       Style="{StaticResource FilterChip}"
-                                      Padding="10,3" Margin="0,0,8,0" FontSize="11"
+                                      Padding="10,3" Margin="0,0,8,0" FontSize="{StaticResource CaptionFontSize}"
                                       Click="ToggleStreaksView_Click"
                                       ToolTip="Toggle overview of reliability streaks per test manifest"/>
                         <Button x:Name="BtnRefresh" Content="↻ Refresh"
                                 Style="{StaticResource SecondaryButton}"
-                                Padding="10,4" FontSize="11" Click="BtnRefresh_Click"/>
+                                Padding="10,4" FontSize="{StaticResource CaptionFontSize}" Click="BtnRefresh_Click"/>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -167,10 +167,10 @@
                             BorderThickness="0,0,1,1" Padding="10,6">
                         <DockPanel>
                             <TextBlock x:Name="TxtListHeader" Text="Test Runs (newest first)"
-                                       FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}"
+                                       FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}"
                                        VerticalAlignment="Center"/>
                             <TextBlock x:Name="TxtRunCountBadge" Text="0 runs"
-                                       FontSize="11" Foreground="{StaticResource Subtext0Brush}"
+                                       FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"
                                        HorizontalAlignment="Right" VerticalAlignment="Center"/>
                         </DockPanel>
                     </Border>
@@ -178,7 +178,7 @@
                     <!-- Empty runs state -->
                     <TextBlock x:Name="TxtNoRuns" Grid.Row="1"
                                Text="No matching runs found."
-                               FontSize="12" Foreground="{StaticResource Subtext0Brush}"
+                               FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"
                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                Margin="20" Visibility="Collapsed"/>
 
@@ -232,37 +232,37 @@
                                     <DockPanel Grid.Row="0" Margin="0,0,0,4">
                                         <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
                                             <TextBlock Text="{Binding StatusGlyph}" FontWeight="Bold"
-                                                       Foreground="{Binding StatusBrush}" FontSize="13" Margin="0,0,6,0"
+                                                       Foreground="{Binding StatusBrush}" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,6,0"
                                                        VerticalAlignment="Center"/>
-                                            <TextBlock Text="{Binding IssueDisplay}" FontWeight="Bold" FontSize="12"
+                                            <TextBlock Text="{Binding IssueDisplay}" FontWeight="Bold" FontSize="{StaticResource CaptionFontSize}"
                                                        Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                             <Border Background="{Binding ReliabilityBadgeBgBrush}" CornerRadius="3" Padding="4,1" Margin="6,0,0,0"
                                                     Visibility="{Binding ReliabilityBadgeVisibility}" ToolTip="{Binding ReliabilityToolTip}">
-                                                <TextBlock Text="{Binding ReliabilityBadgeLabel}" FontSize="9" FontWeight="Bold"
+                                                <TextBlock Text="{Binding ReliabilityBadgeLabel}" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                                            Foreground="{Binding ReliabilityBadgeFgBrush}"/>
                                             </Border>
                                         </StackPanel>
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" DockPanel.Dock="Right">
                                             <Border Background="{Binding StatusBgBrush}" CornerRadius="3" Padding="6,1" Margin="0,0,4,0">
-                                                <TextBlock Text="{Binding StatusLabel}" FontSize="10" FontWeight="Bold"
+                                                <TextBlock Text="{Binding StatusLabel}" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                                            Foreground="{Binding StatusBrush}"/>
                                             </Border>
                                             <Border Background="{StaticResource CrustBrush}" CornerRadius="3" Padding="5,1">
-                                                <TextBlock Text="{Binding ModeLabel}" FontSize="9" Foreground="{StaticResource Subtext0Brush}"/>
+                                                <TextBlock Text="{Binding ModeLabel}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                                             </Border>
                                         </StackPanel>
                                     </DockPanel>
 
                                     <!-- Middle: Feature title -->
                                     <TextBlock Grid.Row="1" Text="{Binding Feature}"
-                                               FontSize="11" Foreground="{StaticResource Subtext1Brush}"
+                                               FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"
                                                TextTrimming="CharacterEllipsis" TextWrapping="Wrap" MaxHeight="32" Margin="0,0,0,6"/>
 
                                     <!-- Bottom: Timestamp + Step counts -->
                                     <DockPanel Grid.Row="2">
-                                        <TextBlock Text="{Binding StartedAtDisplay}" FontSize="10"
+                                        <TextBlock Text="{Binding StartedAtDisplay}" FontSize="{StaticResource CaptionFontSize}"
                                                    Foreground="{StaticResource OverlayBrush}" VerticalAlignment="Center"/>
-                                        <TextBlock Text="{Binding CountsLabel}" FontSize="11" FontWeight="SemiBold"
+                                        <TextBlock Text="{Binding CountsLabel}" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                                    Foreground="{Binding StatusBrush}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                     </DockPanel>
                                 </Grid>
@@ -318,21 +318,21 @@
                                     <DockPanel Grid.Row="0" Margin="0,0,0,3">
                                         <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
                                             <TextBlock Text="{Binding StatusGlyph}" FontWeight="Bold"
-                                                       Foreground="{Binding StatusBrush}" FontSize="13" Margin="0,0,6,0"
+                                                       Foreground="{Binding StatusBrush}" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,6,0"
                                                        VerticalAlignment="Center"/>
-                                            <TextBlock Text="{Binding Title}" FontSize="11" FontWeight="SemiBold"
+                                            <TextBlock Text="{Binding Title}" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                                        Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis"
                                                        VerticalAlignment="Center" MaxWidth="210"/>
                                         </StackPanel>
                                         <Border Background="{Binding CategoryBgBrush}" CornerRadius="3" Padding="5,1"
                                                 HorizontalAlignment="Right" DockPanel.Dock="Right" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding CategoryBadgeLabel}" FontSize="9" FontWeight="Bold"
+                                            <TextBlock Text="{Binding CategoryBadgeLabel}" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                                        Foreground="{Binding CategoryFgBrush}"/>
                                         </Border>
                                     </DockPanel>
-                                    <TextBlock Grid.Row="1" Text="{Binding StreakLabel}" FontSize="10"
+                                    <TextBlock Grid.Row="1" Text="{Binding StreakLabel}" FontSize="{StaticResource CaptionFontSize}"
                                                Foreground="{Binding StatusBrush}" FontWeight="SemiBold" Margin="0,0,0,2"/>
-                                    <TextBlock Grid.Row="2" Text="{Binding PatternDisplay}" FontSize="9"
+                                    <TextBlock Grid.Row="2" Text="{Binding PatternDisplay}" FontSize="{StaticResource CaptionFontSize}"
                                                Foreground="{StaticResource Subtext0Brush}" TextTrimming="CharacterEllipsis"/>
                                 </Grid>
                             </DataTemplate>
@@ -351,10 +351,10 @@
                     <StackPanel x:Name="PanelNoSelection" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="40">
                         <TextBlock Text="📊" FontSize="42" HorizontalAlignment="Center" Margin="0,0,0,12"/>
                         <TextBlock Text="Select a test run to inspect details"
-                                   FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}"
+                                   FontSize="{StaticResource SubHeaderFontSize}" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}"
                                    HorizontalAlignment="Center" Margin="0,0,0,6"/>
                         <TextBlock Text="Choose any test run from the list on the left to see step diagnostics, expected vs actual comparisons, request/response bodies, and screenshot captures."
-                                   FontSize="12" Foreground="{StaticResource Subtext0Brush}"
+                                   FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource Subtext0Brush}"
                                    TextWrapping="Wrap" TextAlignment="Center" MaxWidth="440"/>
                     </StackPanel>
 
@@ -384,10 +384,10 @@
                                 <!-- Top status badge & Title -->
                                 <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Margin="0,0,0,6">
                                     <Border x:Name="BadgeRunStatus" CornerRadius="4" Padding="8,3" Margin="0,0,10,0" VerticalAlignment="Center">
-                                        <TextBlock x:Name="TxtRunStatusLarge" Text="❌ FAILED" FontSize="11" FontWeight="Bold"/>
+                                        <TextBlock x:Name="TxtRunStatusLarge" Text="❌ FAILED" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"/>
                                     </Border>
                                     <TextBlock x:Name="TxtDetailTitle" Text="Issue #0 — Feature Name"
-                                               FontSize="15" FontWeight="Bold" Foreground="{StaticResource TextBrush}"
+                                               FontSize="{StaticResource SubHeaderFontSize}" FontWeight="Bold" Foreground="{StaticResource TextBrush}"
                                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                 </StackPanel>
 
@@ -410,19 +410,19 @@
                                 <!-- Metadata info pills -->
                                 <WrapPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,4,0,0">
                                     <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="6,2" Margin="0,0,8,4">
-                                        <TextBlock x:Name="TxtMetaStarted" Text="🕒 Started: 2026-08-16 14:35:55" FontSize="11" Foreground="{StaticResource Subtext1Brush}"/>
+                                        <TextBlock x:Name="TxtMetaStarted" Text="🕒 Started: 2026-08-16 14:35:55" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"/>
                                     </Border>
                                     <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="6,2" Margin="0,0,8,4">
-                                        <TextBlock x:Name="TxtMetaDuration" Text="⏱️ Duration: 1.2s" FontSize="11" Foreground="{StaticResource Subtext1Brush}"/>
+                                        <TextBlock x:Name="TxtMetaDuration" Text="⏱️ Duration: 1.2s" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"/>
                                     </Border>
                                     <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="6,2" Margin="0,0,8,4">
-                                        <TextBlock x:Name="TxtMetaStepsCount" Text="📊 Steps: 3/6 passed" FontSize="11" Foreground="{StaticResource Subtext1Brush}"/>
+                                        <TextBlock x:Name="TxtMetaStepsCount" Text="📊 Steps: 3/6 passed" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"/>
                                     </Border>
                                     <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="6,2" Margin="0,0,8,4">
-                                        <TextBlock x:Name="TxtMetaMode" Text="⚙️ Mode: single" FontSize="11" Foreground="{StaticResource Subtext0Brush}"/>
+                                        <TextBlock x:Name="TxtMetaMode" Text="⚙️ Mode: single" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                                     </Border>
                                     <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="6,2" Margin="0,0,8,4">
-                                        <TextBlock x:Name="TxtMetaResultFile" Text="📁 636-20260816143555.json" FontSize="10" Foreground="{StaticResource OverlayBrush}"/>
+                                        <TextBlock x:Name="TxtMetaResultFile" Text="📁 636-20260816143555.json" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource OverlayBrush}"/>
                                     </Border>
                                 </WrapPanel>
 
@@ -430,10 +430,10 @@
                                 <Border x:Name="BannerReliabilityAlert" Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
                                         CornerRadius="6" Padding="12,8" Margin="0,8,0,0" Visibility="Collapsed">
                                     <DockPanel>
-                                        <TextBlock x:Name="TxtReliabilityAlertGlyph" Text="⚠️" FontSize="16" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="TxtReliabilityAlertGlyph" Text="⚠️" FontSize="{StaticResource SubHeaderFontSize}" Margin="0,0,10,0" VerticalAlignment="Center"/>
                                         <StackPanel VerticalAlignment="Center">
-                                            <TextBlock x:Name="TxtReliabilityAlertTitle" Text="FLAKY TEST MANIFEST DETECTED" FontWeight="Bold" FontSize="12"/>
-                                            <TextBlock x:Name="TxtReliabilityAlertBody" Text="Recent pattern: ✔ ✖ ✔ ✖" FontSize="11" TextWrapping="Wrap"/>
+                                            <TextBlock x:Name="TxtReliabilityAlertTitle" Text="FLAKY TEST MANIFEST DETECTED" FontWeight="Bold" FontSize="{StaticResource CaptionFontSize}"/>
+                                            <TextBlock x:Name="TxtReliabilityAlertBody" Text="Recent pattern: ✔ ✖ ✔ ✖" FontSize="{StaticResource CaptionFontSize}" TextWrapping="Wrap"/>
                                         </StackPanel>
                                     </DockPanel>
                                 </Border>
@@ -459,7 +459,7 @@
 
                                 <!-- Steps Sub-Filter (visible when Steps tab is active) -->
                                 <StackPanel x:Name="StepSubFilters" Orientation="Horizontal" HorizontalAlignment="Right" DockPanel.Dock="Right">
-                                    <TextBlock Text="Filter:" FontSize="11" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                    <TextBlock Text="Filter:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                     <RadioButton x:Name="StepFilterAll" Content="All" IsChecked="True"
                                                  Style="{StaticResource ActivityBarButton}" Margin="0,0,4,0" Click="StepFilter_Changed"/>
                                     <RadioButton x:Name="StepFilterFailed" Content="❌ Failed Only"
@@ -506,8 +506,8 @@
                                     <!-- Top Caption -->
                                     <Border Grid.Row="0" Background="{StaticResource MantleBrush}" Padding="10,6" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,0,0,1">
                                         <DockPanel>
-                                            <TextBlock x:Name="TxtGalleryCurrentCaption" Text="Step 1: screenshot" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
-                                            <TextBlock x:Name="TxtGalleryCurrentIndex" Text="1 / 1" FontSize="11" Foreground="{StaticResource Subtext0Brush}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="TxtGalleryCurrentCaption" Text="Step 1: screenshot" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="TxtGalleryCurrentIndex" Text="1 / 1" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                         </DockPanel>
                                     </Border>
 
@@ -523,7 +523,7 @@
                                                 <Button x:Name="BtnPrevScreenshot" Content="◀ Previous" Style="{StaticResource SecondaryButton}" Padding="10,3" Margin="0,0,6,0" Click="BtnPrevScreenshot_Click"/>
                                                 <Button x:Name="BtnNextScreenshot" Content="Next ▶" Style="{StaticResource SecondaryButton}" Padding="10,3" Click="BtnNextScreenshot_Click"/>
                                             </StackPanel>
-                                            <TextBlock x:Name="TxtGalleryCurrentPath" Text="test-results/..." FontSize="10" Foreground="{StaticResource OverlayBrush}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="TxtGalleryCurrentPath" Text="test-results/..." FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource OverlayBrush}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                         </DockPanel>
                                     </Border>
                                 </Grid>
@@ -537,15 +537,15 @@
                                 </Grid.RowDefinitions>
                                 <Border Grid.Row="0" Background="{StaticResource MantleBrush}" Padding="10,6" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,0,0,1">
                                     <DockPanel>
-                                        <TextBlock Text="Full Result JSON" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Full Result JSON" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
                                         <Button Content="⎘ Copy JSON" Style="{StaticResource SecondaryButton}" Padding="8,2" HorizontalAlignment="Right" Click="BtnCopyRawJson_Click"/>
                                     </DockPanel>
                                 </Border>
                                 <avalonedit:TextEditor x:Name="EditorRawJson" Grid.Row="1"
                                                        Background="{StaticResource CrustBrush}"
                                                        Foreground="{StaticResource TextBrush}"
-                                                       FontFamily="Cascadia Code, Consolas, Courier New"
-                                                       FontSize="12" Padding="10"
+                                                       FontFamily="{StaticResource MonospaceFontFamily}"
+                                                       FontSize="{StaticResource MonospaceFontSize}" Padding="10"
                                                        IsReadOnly="True"
                                                        ShowLineNumbers="True"
                                                        WordWrap="False"
