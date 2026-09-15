@@ -533,6 +533,7 @@ describe("consent route handlers", () => {
     // loudly rather than redirect the buyer to a success page.
     it("fails loudly (500, no success redirect) when no tenants row can be created", async () => {
       dbSelectQueue.push([{ customerId: null, clientUserId: null }]);   // no customer named → create path
+      dbSelectQueue.push([]);                                            // no isDirectBusiness MSP configured
       mockResolveOrCreateDirectTenant.mockResolvedValueOnce(null);
       const { res, store } = mockRes();
       const req = mockReq({
@@ -546,6 +547,8 @@ describe("consent route handlers", () => {
 
     it("accepts admin_consent=TRUE (case-insensitive)", async () => {
       dbSelectQueue.push([{ customerId: null, clientUserId: null }]);
+      dbSelectQueue.push([{ id: 1 }]);                                   // isDirectBusiness MSP id
+      dbSelectQueue.push([]);                                            // no customer for this tenant yet
       const { res, store } = mockRes();
       const req = mockReq({
         query: { tenant: "tenant-case", admin_consent: "TRUE", state: "tok" },
@@ -564,6 +567,8 @@ describe("consent route handlers", () => {
     // separate, redundant admin-consent round trip.
     it("also stamps the sharepoint key granted, from the same grant, alongside graph", async () => {
       dbSelectQueue.push([{ customerId: null, clientUserId: null }]);
+      dbSelectQueue.push([{ id: 1 }]);                                   // isDirectBusiness MSP id
+      dbSelectQueue.push([]);                                            // no customer for this tenant yet
       const { res, store } = mockRes();
       const req = mockReq({
         query: { tenant: "tenant-sp", admin_consent: "True", state: "tok" },
@@ -630,6 +635,7 @@ describe("consent route handlers", () => {
     it("proceeds when the checkout tenant's existing customer is under the SAME (direct) MSP", async () => {
       dbSelectQueue.push([{ id: 89 }]);               // isDirectBusiness MSP id
       dbSelectQueue.push([{ id: 5, mspId: 89 }]);     // existing customer under the SAME mspId — no conflict
+      mockResolveOrCreateDirectTenant.mockResolvedValueOnce({ id: 5, mspId: 89 });
       const { res, store } = mockRes();
       const req = mockReq({
         query: { tenant: "tenant-ok", admin_consent: "True", state: CHECKOUT_STATE },
@@ -646,6 +652,7 @@ describe("consent route handlers", () => {
     it("proceeds when no customer exists for the checkout tenant yet", async () => {
       dbSelectQueue.push([{ id: 89 }]);               // isDirectBusiness MSP id
       dbSelectQueue.push([]);                          // no existing customer for this tenant
+      mockResolveOrCreateDirectTenant.mockResolvedValueOnce({ id: 5, mspId: 89 });
       const { res, store } = mockRes();
       const req = mockReq({
         query: { tenant: "tenant-new", admin_consent: "True", state: CHECKOUT_STATE },
@@ -664,6 +671,8 @@ describe("consent route handlers", () => {
     // as it always has, and must never be handed the popup page.
     it("still redirects the portal/invite path to /consent/success (no popup page)", async () => {
       dbSelectQueue.push([{ customerId: null, clientUserId: null }]);   // invite-token lookup
+      dbSelectQueue.push([{ id: 1 }]);                                   // isDirectBusiness MSP id
+      dbSelectQueue.push([]);                                            // no customer for this tenant yet
       const { res, store } = mockRes();
       const req = mockReq({
         query: { tenant: "tenant-portal", admin_consent: "True", state: "not-a-uuid-token" },
@@ -759,6 +768,85 @@ describe("consent route handlers", () => {
       const { res, store } = mockRes();
       const req = mockReq({
         query: { tenant: "tenant-raced", admin_consent: "True", state: "msp-invite-tok" },
+      });
+      const handler = getHandler(consentRouter, "get", "/consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.redirectUrl).toContain("/portal/consent/tenant-conflict");
+      expect(store.redirectUrl).not.toContain("/consent/success");
+    });
+  });
+
+  // #4043: an invite token naming neither a customer nor an MSP (POST
+  // /consent/invite-link without a customerId) takes the direct-business create
+  // path, so it must go through the SAME guard against the isDirectBusiness
+  // MSP. Before, resolveOrCreateDirectTenant handed back another MSP's existing
+  // customer as-is and the grant + a new Customer account landed on it.
+  describe("GET /consent/callback — invite with no customer and no MSP on the token", () => {
+    const NO_ID_INVITE = {
+      customerId: null, clientUserId: null, invitedEmail: "new.client@contoso.com", invitedName: null, mspId: null,
+    };
+
+    it("refuses a tenant already owned by a different MSP, before any write", async () => {
+      dbSelectQueue.push([NO_ID_INVITE]);              // invite token row
+      dbSelectQueue.push([{ id: 1 }]);                 // isDirectBusiness MSP id
+      dbSelectQueue.push([{ id: 1831, mspId: 1626 }]); // tenant already a customer of MSP 1626
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-owned-elsewhere", admin_consent: "True", state: "no-id-invite-tok" },
+      });
+      const handler = getHandler(consentRouter, "get", "/consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.redirectUrl).toContain("/portal/consent/tenant-conflict");
+      // Token not burned, no grant stamped, no customer object or account created.
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(mockInsert).not.toHaveBeenCalled();
+      expect(mockResolveOrCreateDirectTenant).not.toHaveBeenCalled();
+    });
+
+    it("proceeds on the direct-business create path when the tenant has no customer yet", async () => {
+      dbSelectQueue.push([NO_ID_INVITE]);
+      dbSelectQueue.push([{ id: 1 }]);
+      dbSelectQueue.push([]);
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-new-client", admin_consent: "True", state: "no-id-invite-tok" },
+      });
+      const handler = getHandler(consentRouter, "get", "/consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.redirectUrl).toContain("/portal/consent/success");
+      expect(mockResolveOrCreateDirectTenant).toHaveBeenCalledWith("tenant-new-client", expect.any(String), undefined);
+      expect(mockUpdate).toHaveBeenCalled();
+    });
+
+    it("fails closed when the resolved tenant belongs to another MSP (raced in after the guard)", async () => {
+      dbSelectQueue.push([NO_ID_INVITE]);
+      dbSelectQueue.push([{ id: 1 }]);
+      dbSelectQueue.push([]);                          // guard saw no customer
+      mockResolveOrCreateDirectTenant.mockResolvedValueOnce({ id: 9, mspId: 1626 });
+      const setCallsBefore = mockUpdateSet.mock.calls.length;
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-raced", admin_consent: "True", state: "no-id-invite-tok" },
+      });
+      const handler = getHandler(consentRouter, "get", "/consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.redirectUrl).toContain("/portal/consent/tenant-conflict");
+      // Refused before the grant: the only update allowed is the token burn.
+      const setCalls = mockUpdateSet.mock.calls.slice(setCallsBefore);
+      expect(setCalls.some(([arg]) => (arg as { consent?: unknown })?.consent)).toBe(false);
+    });
+
+    it("fails closed when no isDirectBusiness MSP is configured and the tenant is owned elsewhere", async () => {
+      dbSelectQueue.push([NO_ID_INVITE]);
+      dbSelectQueue.push([]);                          // no isDirectBusiness MSP → guard has nothing to compare
+      mockResolveOrCreateDirectTenant.mockResolvedValueOnce({ id: 1831, mspId: 1626 });
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-no-direct-msp", admin_consent: "True", state: "no-id-invite-tok" },
       });
       const handler = getHandler(consentRouter, "get", "/consent/callback");
       await handler!(req, res, (() => {}) as NextFunction);
