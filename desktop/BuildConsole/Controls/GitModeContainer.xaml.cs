@@ -19,9 +19,15 @@ namespace BuildConsole.Controls
     public partial class GitModeContainer : UserControl
     {
         public event EventHandler<GitModeTreeNode>? NodeSelected;
+        public event EventHandler? ExitGitModeRequested;
         public GitModeTreeNode? SelectedNode { get; private set; }
 
         private bool _loadedOnce;
+
+        private void BtnExitGitMode_Click(object sender, RoutedEventArgs e)
+        {
+            ExitGitModeRequested?.Invoke(this, EventArgs.Empty);
+        }
 
         public GitModeContainer()
         {

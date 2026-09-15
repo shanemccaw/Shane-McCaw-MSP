@@ -910,8 +910,8 @@
 
                 <!-- ── Git Mode Container (3-Panel Layout & Header Bar) ── -->
                 <ctrl:GitModeContainer x:Name="GitModeContainer"
-                                       Grid.Column="1" Grid.ColumnSpan="5"
-                                       Panel.ZIndex="150"
+                                       Grid.Column="0" Grid.ColumnSpan="6"
+                                       Panel.ZIndex="1000"
                                        Visibility="Collapsed"/>
 
                 <!-- ── Test Mode: Diagnostics Panel (rail 48px / expanded 300px) ── -->

@@ -34,9 +34,18 @@
                     </Border>
                 </StackPanel>
 
-                <!-- Header right actions container (empty for now) -->
+                <!-- Header right actions container -->
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <TextBlock Text="Empty Header Bar" FontSize="11" Foreground="{StaticResource Overlay0Brush}" VerticalAlignment="Center"/>
+                    <Button x:Name="BtnExitGitMode"
+                            Style="{StaticResource SurfaceButton}"
+                            Padding="10,4"
+                            Click="BtnExitGitMode_Click"
+                            ToolTip="Exit Git Mode (Ctrl+Shift+G)">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="✕" Margin="0,0,6,0" Foreground="{StaticResource RedBrush}"/>
+                            <TextBlock Text="Exit Git Mode" Foreground="{StaticResource TextBrush}" FontSize="11" FontWeight="SemiBold"/>
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </DockPanel>
         </Border>
