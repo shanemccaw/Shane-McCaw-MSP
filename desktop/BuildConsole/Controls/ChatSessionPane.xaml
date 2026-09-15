@@ -36,8 +36,11 @@
             <Border BorderBrush="{StaticResource ChatPane.BorderSubtle60}" BorderThickness="0,0,0,1" Padding="0,24,0,26">
                 <StackPanel>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,8">
+                        <!-- Git #4183: #24949CA6 has no exact matching brush in ChatPaneBrushes.xaml
+                             or Themes/Colors.xaml (closest is ChatPane.Pill.IdleFill/Muted4, both an
+                             inexact substitute) — filed as its own finding rather than picking one. -->
                         <Border Width="20" Height="20" CornerRadius="5" Background="#24949CA6">
-                            <TextBlock Text="SM" FontSize="9" FontWeight="Bold" Foreground="{StaticResource ChatPane.Muted1}"
+                            <TextBlock Text="SM" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource ChatPane.Muted1}"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <TextBlock Text="YOU" FontWeight="Bold" Foreground="{StaticResource ChatPane.Muted4}" Margin="8,0,0,0"
@@ -198,7 +201,7 @@
                                                     <DataTemplate>
                                                         <Border Background="{Binding Kind, Converter={StaticResource DiffBg}}">
                                                             <TextBlock Text="{Binding Text}" FontFamily="{StaticResource ChatPane.MonoFont}" TextWrapping="Wrap"
-                                                                       Foreground="{Binding Kind, Converter={StaticResource DiffFg}}" FontSize="11.5" Padding="2,0"
+                                                                       Foreground="{Binding Kind, Converter={StaticResource DiffFg}}" FontSize="{StaticResource MonospaceFontSize}" Padding="2,0"
                                                                        ContextMenu="{StaticResource CopyTextMenu}"/>
                                                         </Border>
                                                     </DataTemplate>
@@ -211,7 +214,7 @@
                                     <Border Visibility="{Binding HasOutput, Converter={StaticResource BoolVis}}"
                                             Background="{StaticResource ChatPane.Surface}" CornerRadius="4" Padding="8,6" Margin="10,1,0,0" MaxHeight="180">
                                         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                            <TextBlock Text="{Binding Output}" FontFamily="{StaticResource ChatPane.MonoFont}" TextWrapping="Wrap" FontSize="11.5"
+                                            <TextBlock Text="{Binding Output}" FontFamily="{StaticResource ChatPane.MonoFont}" TextWrapping="Wrap" FontSize="{StaticResource MonospaceFontSize}"
                                                        ContextMenu="{StaticResource CopyTextMenu}">
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock">
@@ -300,7 +303,7 @@
                 <Grid>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Border Width="24" Height="24" CornerRadius="7" Background="{StaticResource ChatPane.BrandGradient}">
-                            <TextBlock Text="SM" FontSize="10" FontWeight="ExtraBold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <TextBlock Text="SM" FontSize="{StaticResource CaptionFontSize}" FontWeight="ExtraBold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <!-- Git #1801: long real issue titles (e.g. #1799) were reading as visually bulky
                              on the slot card; TextTrimming+MaxWidth already caps this to one line with an
@@ -361,13 +364,13 @@
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="*"/>
                                     </Grid.RowDefinitions>
-                                    <TextBlock Grid.Row="0" Text="Original instructions" FontWeight="SemiBold" FontSize="12"
+                                    <TextBlock Grid.Row="0" Text="Original instructions" FontWeight="SemiBold" FontSize="{StaticResource CaptionFontSize}"
                                                Foreground="{StaticResource ChatPane.Muted2}" Margin="0,0,0,6"/>
                                     <!-- Read-only TextBox (not TextBlock) so Shane can select + Ctrl+C the real prompt. -->
                                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                                         <TextBox Text="{Binding OriginalInstructions, Mode=OneWay}" IsReadOnly="True"
                                                  TextWrapping="Wrap" AcceptsReturn="True" BorderThickness="0" Background="Transparent"
-                                                 Foreground="{StaticResource ChatPane.Text1}" FontSize="12.5"
+                                                 Foreground="{StaticResource ChatPane.Text1}" FontSize="{StaticResource BodyFontSize}"
                                                  VerticalScrollBarVisibility="Disabled"/>
                                     </ScrollViewer>
                                 </Grid>
@@ -401,7 +404,7 @@
                                         </Style>
                                     </Ellipse.Style>
                                 </Ellipse>
-                                <TextBlock Text="{Binding PillLabel}" FontSize="11.5" FontWeight="Bold" Foreground="{Binding PillText}" Margin="7,0,0,0"/>
+                                <TextBlock Text="{Binding PillLabel}" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{Binding PillText}" Margin="7,0,0,0"/>
                             </StackPanel>
                         </Border>
 
@@ -418,8 +421,10 @@
                                 </ControlTemplate>
                             </Button.Template>
                             <StackPanel Orientation="Horizontal">
+                                <!-- Git #4183: "✕" is a decorative icon-glyph substitute, not real text — left below
+                                     CaptionFontSize per the issue's own exemption for decorative glyphs. -->
                                 <TextBlock Text="✕" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
-                                <TextBlock Text="Dismiss" FontSize="10.5" FontWeight="SemiBold" Foreground="{StaticResource Subtext0Brush}" Margin="4,0,0,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Dismiss" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource Subtext0Brush}" Margin="4,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
                     </StackPanel>
@@ -478,15 +483,15 @@
                         <!-- Header -->
                         <DockPanel Grid.Row="0" Margin="0,0,0,6">
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="📊" FontSize="11" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="PROGRESS" FontSize="11" FontWeight="SemiBold"
+                                <TextBlock Text="📊" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="PROGRESS" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                            Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                             </StackPanel>
                             <Border x:Name="ProgressPill" DockPanel.Dock="Right"
                                     Background="{StaticResource Surface0Brush}"
                                     CornerRadius="3" Padding="5,2" HorizontalAlignment="Right">
                                 <TextBlock x:Name="ProgressPercentText" Text="0/0 (0%)"
-                                           FontSize="10" FontWeight="Bold"
+                                           FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                            Foreground="{StaticResource BlueBrush}"/>
                             </Border>
                         </DockPanel>
@@ -503,16 +508,16 @@
                                 BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1"
                                 CornerRadius="4" Padding="7,6" Margin="0,0,0,6">
                             <StackPanel>
-                                <TextBlock Text="CURRENT PHASE" FontSize="9" FontWeight="Bold"
+                                <TextBlock Text="CURRENT PHASE" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                            Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
                                 <TextBlock x:Name="CurrentStepLabelText" Text="Waiting for report…"
-                                           FontSize="11" FontWeight="SemiBold"
+                                           FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                            Foreground="{StaticResource TextBrush}"
                                            TextWrapping="Wrap"/>
                                 <!-- Git #1206: soft "no update in Xm" notice so a quiet build reads
                                      as honestly-stale rather than looking frozen on its first phase. -->
                                 <TextBlock x:Name="StaleNoticeText" Text="" Visibility="Collapsed"
-                                           FontSize="9.5" FontWeight="SemiBold"
+                                           FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                            Foreground="{StaticResource StatusWarningBrush}"
                                            TextWrapping="Wrap" Margin="0,4,0,0"/>
                             </StackPanel>
@@ -523,9 +528,11 @@
                                 BorderBrush="{StaticResource BlueBrush}" BorderThickness="1"
                                 CornerRadius="4" Padding="6,4" Margin="0,0,0,8">
                             <StackPanel Orientation="Horizontal">
+                                <!-- Git #4183: "⏱" is a decorative icon-glyph substitute, not real text — left below
+                                     CaptionFontSize per the issue's own exemption for decorative glyphs. -->
                                 <TextBlock Text="⏱" FontSize="10" Foreground="{StaticResource BlueBrush}" Margin="0,0,4,0" VerticalAlignment="Center"/>
                                 <TextBlock x:Name="EtaRemainingText" Text="Calculating est…"
-                                           FontSize="10" FontWeight="SemiBold"
+                                           FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                            Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
                                            TextTrimming="CharacterEllipsis"/>
                             </StackPanel>
@@ -590,7 +597,7 @@
                                         </Button.Template>
                                         <StackPanel Orientation="Horizontal">
                                             <Path Data="{StaticResource Icon.Square}" Fill="{StaticResource ChatPane.Danger}" Width="11" Height="11" Stretch="Uniform" VerticalAlignment="Center"/>
-                                            <TextBlock Text="Stop" Foreground="{StaticResource ChatPane.Danger}" FontWeight="SemiBold" FontSize="13" Margin="6,0,0,0"/>
+                                            <TextBlock Text="Stop" Foreground="{StaticResource ChatPane.Danger}" FontWeight="SemiBold" FontSize="{StaticResource BodyFontSize}" Margin="6,0,0,0"/>
                                         </StackPanel>
                                     </Button>
                                     <Button x:Name="SendButton" Click="SendButton_Click" IsEnabled="{Binding CanSend}" Height="36" Padding="16,0"
@@ -608,7 +615,7 @@
                                             </ControlTemplate>
                                         </Button.Template>
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="Send" Foreground="White" FontWeight="SemiBold" FontSize="13"/>
+                                            <TextBlock Text="Send" Foreground="White" FontWeight="SemiBold" FontSize="{StaticResource BodyFontSize}"/>
                                             <Path Data="{StaticResource Icon.ArrowRight}" Stroke="White" StrokeThickness="2"
                                                   StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
                                                   Width="13" Height="13" Stretch="Uniform" Margin="6,0,0,0" VerticalAlignment="Center"/>
@@ -621,7 +628,7 @@
                         <!-- Read-only: still running, this app doesn't own its stdin -->
                         <TextBlock Visibility="{Binding Mode, Converter={StaticResource ModeVis}, ConverterParameter=ReadOnlyRunning}"
                                    Text="Streaming output — read-only (not launched by this app instance)" Foreground="{StaticResource ChatPane.Muted6}"
-                                   FontStyle="Italic" FontSize="12.5" Margin="2,4"/>
+                                   FontStyle="Italic" FontSize="{StaticResource BodyFontSize}" Margin="2,4"/>
 
                         <!-- Git #1839 — Adopted after a console restart: streaming + Stop stay, but stdin is gone.
                              Git #2095 — Stop now lives on the composer above (shared with Interactive/Terminal),
@@ -634,7 +641,7 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" TextWrapping="Wrap" VerticalAlignment="Center"
-                                       Foreground="{StaticResource ChatPane.Muted6}" FontStyle="Italic" FontSize="12.5"
+                                       Foreground="{StaticResource ChatPane.Muted6}" FontStyle="Italic" FontSize="{StaticResource BodyFontSize}"
                                        Text="Adopted after a console restart — its live input channel is gone. Type above and Send to resume with instructions, or use Resume Session to pick back up with no changes."/>
                             <!-- Git #1878 — one-click resume, no trip to Build Queue's context menu required. -->
                             <Button Grid.Column="1" Click="ResumeButton_Click"
@@ -649,7 +656,7 @@
                                     </ControlTemplate>
                                 </Button.Template>
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="▶ Resume Session" Foreground="White" FontWeight="SemiBold" FontSize="13"/>
+                                    <TextBlock Text="▶ Resume Session" Foreground="White" FontWeight="SemiBold" FontSize="{StaticResource BodyFontSize}"/>
                                 </StackPanel>
                             </Button>
                         </Grid>
