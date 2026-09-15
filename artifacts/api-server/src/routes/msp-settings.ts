@@ -77,7 +77,7 @@ import {
   type MspConnectorMode,
   type MspRole,
 } from "@workspace/db";
-import { eq, and, desc, isNull, inArray, gte, lt, count } from "drizzle-orm";
+import { eq, and, desc, isNull, inArray, gte, lt, count, ne, sql } from "drizzle-orm";
 import { requireAuth, requireCapability, effectiveMspRole } from "../middlewares/requireAuth.ts";
 import { roleClearsLadderFloor, userClearsLadderCapability } from "../middlewares/rbac-ladder.ts";
 import { setGrantRole, usersHoldingGrantRole } from "../middlewares/rbac-capability.ts";
@@ -93,7 +93,7 @@ import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { setSecretValue, getSecretMetadata } from "../lib/azure-keyvault.ts";
 import { getStripeKey } from "../lib/stripe.ts";
 import { buildAdminConsentUrl, mtAppCredentialsPresent } from "../lib/graph.ts";
-import { verifyTenantConsentWithMicrosoft } from "../lib/consent-verification.ts";
+import { verifyTenantConsentWithMicrosoft, resolveEntraTenantForDomain } from "../lib/consent-verification.ts";
 import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
 import { sendEmailForMsp, emailButton, brandedEmail, sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer.ts";
 import { revokeAllOtherSessions } from "../lib/session-tracking.ts";
@@ -1442,7 +1442,40 @@ router.put("/msp/settings/agreement-template", requireCapability("ladder.msp-adm
 //
 // No client secret is stored. The platform MT app's client_credentials grant is used
 // after admin consent is granted for the MSP's tenant with Mail.Send scope.
+//
+// Tenant binding (#4227): the connector is bound to the Entra tenant that owns the
+// mailbox's domain, resolved from Microsoft at step 2 and recorded on the state. The
+// callback's `tenant` parameter is unsigned and only has to agree with it. A tenant
+// that is a customer of a different MSP is refused at both steps.
 // ──────────────────────────────────────────────────────────────────────────────
+
+/** Application permission sendMailViaGraphForMsp needs on the MSP's tenant. */
+export const MAILBOX_REQUIRED_ROLES = ["Mail.Send"] as const;
+
+/**
+ * The mailbox callback's equivalent of consent.ts's resolveCallbackTenant: the
+ * GUID recorded on the consent state is authoritative, and the one Microsoft
+ * appended to the redirect must match it. Exported for tests.
+ */
+export function bindMailboxCallbackTenant(
+  expectedTenantId: string | null | undefined,
+  tenantFromMicrosoft: string | undefined,
+): { ok: true; tenantId: string } | { ok: false; reason: "unbound_state" | "tenant_mismatch" } {
+  const expected = expectedTenantId?.trim().toLowerCase();
+  if (!expected) return { ok: false, reason: "unbound_state" };
+  if (tenantFromMicrosoft?.trim().toLowerCase() !== expected) return { ok: false, reason: "tenant_mismatch" };
+  return { ok: true, tenantId: expected };
+}
+
+/** A customer row carrying this Microsoft tenant under an MSP other than `mspId`, if any. */
+async function findOtherMspCustomerForTenant(tenantId: string, mspId: number) {
+  const [row] = await db
+    .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
+    .from(tenantsTable)
+    .where(and(sql`lower(${tenantsTable.tenantId}) = ${tenantId.toLowerCase()}`, ne(tenantsTable.mspId, mspId)))
+    .limit(1);
+  return row ?? null;
+}
 
 router.get("/msp/settings/connector/mailbox", requireCapability("ladder.msp-admin"), async (req: Request, res: Response) => {
   const mspId = resolveMspIdStrict(req);
@@ -1502,6 +1535,31 @@ router.post("/msp/settings/connector/mailbox/connect", requireCapability("ladder
     return;
   }
 
+  // #4227: bind the connector to the tenant that actually owns this mailbox,
+  // as Microsoft reports it — not to whatever `tenant` the callback is later
+  // handed. Resolved and recorded now, before anyone is sent to Microsoft.
+  const mailboxDomain = parsed.data.mailboxUpn.split("@").pop() ?? "";
+  const owner = await resolveEntraTenantForDomain(mailboxDomain);
+  if (!owner.ok) {
+    log.warn({ mspId, mailboxDomain, reason: owner.reason, detail: owner.detail }, "MSP mailbox connect: could not resolve the mailbox domain's Microsoft tenant");
+    if (owner.reason === "unverifiable") {
+      apiError(res, 503, "Could not reach Microsoft to confirm which organisation owns this mailbox. Please try again.");
+    } else {
+      apiError(res, 400, `${mailboxDomain} is not a Microsoft 365 domain, so this mailbox cannot be connected.`);
+    }
+    return;
+  }
+
+  const foreign = await findOtherMspCustomerForTenant(owner.tenantId, mspId);
+  if (foreign) {
+    log.warn(
+      { mspId, expectedTenantId: owner.tenantId, existingMspId: foreign.mspId, customerId: foreign.id },
+      "MSP mailbox connect: REFUSED — mailbox domain belongs to a customer tenant of a different MSP",
+    );
+    apiError(res, 409, "This mailbox belongs to an organisation registered with another provider on this platform, so it cannot be connected.");
+    return;
+  }
+
   const state = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
@@ -1510,6 +1568,7 @@ router.post("/msp/settings/connector/mailbox/connect", requireCapability("ladder
     mspId,
     mailboxUpn: parsed.data.mailboxUpn,
     fromDisplayName: parsed.data.fromDisplayName,
+    expectedTenantId: owner.tenantId,
     returnPath: parsed.data.returnPath ?? "/settings/connector",
     requestedByUserId: req.user!.id,
     expiresAt,
@@ -1522,8 +1581,9 @@ router.post("/msp/settings/connector/mailbox/connect", requireCapability("ladder
   const callbackBase = portalBase ?? `${proto}://${host}`;
   const callbackUrl = `${callbackBase}/api/msp/settings/connector/mailbox/callback`;
 
-  // We use "common" as the tenant hint so the MSP's admin can use their own tenant login
-  const consentUrl = buildAdminConsentUrl("common", state, callbackUrl, process.env.MT_APP_CLIENT_ID ?? "");
+  // The mailbox's own tenant as the hint (#4227), so the admin signs in to the
+  // one organisation the callback will accept rather than whichever is cached.
+  const consentUrl = buildAdminConsentUrl(owner.tenantId, state, callbackUrl, process.env.MT_APP_CLIENT_ID ?? "");
 
   await writeAuditLog({
     req,
@@ -1531,7 +1591,7 @@ router.post("/msp/settings/connector/mailbox/connect", requireCapability("ladder
     entityType: "msp_mailbox_connector",
     entityId: String(mspId),
     mspId,
-    metadata: { mailboxUpn: parsed.data.mailboxUpn, fromDisplayName: parsed.data.fromDisplayName },
+    metadata: { mailboxUpn: parsed.data.mailboxUpn, fromDisplayName: parsed.data.fromDisplayName, expectedTenantId: owner.tenantId },
   });
 
   res.json({ consentUrl, state, expiresAt });
@@ -1583,19 +1643,67 @@ router.get("/msp/settings/connector/mailbox/callback", async (req: Request, res:
     return;
   }
 
-  // #4197: `tenant` and `admin_consent` are unsigned query parameters — confirm
-  // with Microsoft that this tenant is real and consented to the app before a
-  // connector is activated against it. Runs before the state burn, so a
-  // platform-side fault leaves the same link retryable.
-  const verification = await verifyTenantConsentWithMicrosoft(tenant, { app: "read", resource: "graph" });
+  // #4227: `tenant` is unsigned. The state carries the tenant that owns the
+  // mailbox (resolved from Microsoft at mint time); any other GUID means the
+  // callback is being pointed somewhere else, so nothing is activated and the
+  // state is burned. Same shape as resolveCallbackTenant on the admin consent
+  // callbacks: the recorded identity is authoritative, the query string is only
+  // a consistency check. A state minted before #4227 has no binding — refused.
+  const binding = bindMailboxCallbackTenant(stateRow.expectedTenantId, tenant);
+  if (!binding.ok) {
+    log.warn(
+      { mspId: stateRow.mspId, tenant, expectedTenantId: stateRow.expectedTenantId, reason: binding.reason },
+      "MSP mailbox consent: REFUSED — callback tenant is not the mailbox's own tenant; connector not activated",
+    );
+    await db
+      .update(mspMailboxConsentStatesTable)
+      .set({ usedAt: now })
+      .where(eq(mspMailboxConsentStatesTable.state, state));
+    res
+      .status(400)
+      .send("The organisation that approved this does not own the mailbox being connected, so the mailbox was not connected. Please start the connection again, signed in to the mailbox's own organisation.");
+    return;
+  }
+  const boundTenantId = binding.tenantId;
+
+  // Re-checked here as well as at mint: a tenant can be registered under
+  // another MSP inside the state's ten-minute window.
+  const foreign = await findOtherMspCustomerForTenant(boundTenantId, stateRow.mspId);
+  if (foreign) {
+    log.warn(
+      { mspId: stateRow.mspId, tenant: boundTenantId, existingMspId: foreign.mspId, customerId: foreign.id },
+      "MSP mailbox consent: REFUSED — tenant is a customer of a different MSP; connector not activated",
+    );
+    await db
+      .update(mspMailboxConsentStatesTable)
+      .set({ usedAt: now })
+      .where(eq(mspMailboxConsentStatesTable.state, state));
+    res.status(409).send("This organisation is registered with another provider on this platform, so the mailbox was not connected.");
+    return;
+  }
+
+  // #4197: confirm with Microsoft that this tenant is real and consented to the
+  // app before a connector is activated against it. #4227: and that the grant
+  // includes Mail.Send — the one permission sendMailViaGraphForMsp needs; a
+  // connector without it is activated only to fail on every send. Runs before
+  // the state burn, so a platform-side fault leaves the same link retryable.
+  const verification = await verifyTenantConsentWithMicrosoft(boundTenantId, {
+    app: "read",
+    resource: "graph",
+    requireAnyRole: MAILBOX_REQUIRED_ROLES,
+  });
   if (!verification.ok) {
     log.warn(
-      { mspId: stateRow.mspId, tenant, reason: verification.reason, detail: verification.detail },
-      "MSP mailbox consent: REFUSED — Microsoft did not confirm this tenant's admin consent; connector not activated",
+      { mspId: stateRow.mspId, tenant: boundTenantId, reason: verification.reason, detail: verification.detail },
+      "MSP mailbox consent: REFUSED — Microsoft did not confirm this tenant's admin consent with Mail.Send; connector not activated",
     );
     res
       .status(verification.reason === "unverifiable" ? 503 : 400)
-      .send("Microsoft did not confirm an approval for this organisation, so the mailbox was not connected. Please start the connection again.");
+      .send(
+        verification.reason === "no_permissions"
+          ? "Microsoft confirmed the approval, but it does not include permission to send mail, so the mailbox was not connected."
+          : "Microsoft did not confirm an approval for this organisation, so the mailbox was not connected. Please start the connection again.",
+      );
     return;
   }
 
@@ -1610,7 +1718,7 @@ router.get("/msp/settings/connector/mailbox/callback", async (req: Request, res:
     .insert(mspMailboxConnectorsTable)
     .values({
       mspId: stateRow.mspId,
-      tenantId: tenant,
+      tenantId: boundTenantId,
       mailboxUpn: stateRow.mailboxUpn,
       fromDisplayName: stateRow.fromDisplayName,
       isActive: true,
@@ -1621,7 +1729,7 @@ router.get("/msp/settings/connector/mailbox/callback", async (req: Request, res:
     .onConflictDoUpdate({
       target: mspMailboxConnectorsTable.mspId,
       set: {
-        tenantId: tenant,
+        tenantId: boundTenantId,
         mailboxUpn: stateRow.mailboxUpn,
         fromDisplayName: stateRow.fromDisplayName,
         isActive: true,
@@ -1631,7 +1739,7 @@ router.get("/msp/settings/connector/mailbox/callback", async (req: Request, res:
       },
     });
 
-  log.info({ mspId: stateRow.mspId, tenant, mailboxUpn: stateRow.mailboxUpn }, "MSP mailbox connector activated");
+  log.info({ mspId: stateRow.mspId, tenant: boundTenantId, mailboxUpn: stateRow.mailboxUpn }, "MSP mailbox connector activated");
 
   const returnPath = stateRow.returnPath ?? "/settings/connector";
   res.redirect(`${portalBase}${returnPath}?mailbox_consent=success`);

@@ -600,6 +600,9 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   // ensureClientMspUser (lib/direct-tenant-provisioning.ts) is a post-payment backstop for this same case.
   // One guard for both: a second copy for the onboarding path is exactly how
   // this class of leak comes back.
+  // Since #4226 the same guard also refuses a GUID whose customer object sits
+  // under the SAME MSP (see endTenantAlreadyRegistered below): every path that
+  // reaches it creates a customer, and none may attach to an existing one.
   // The refusal every cross-MSP check below ends with. The only popup ending
   // that deliberately does NOT close itself: this is a terminal refusal the
   // buyer has to actually read, and the flow behind it will never advance (the
@@ -620,6 +623,34 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       },
       () => `${hostBase}/portal/consent/tenant-conflict?tenant=${encodeURIComponent(tenant)}`,
     );
+
+  // The refusal for a GUID that already has a customer object under the SAME
+  // MSP this consent would create under (#4226). Microsoft's confirmation below
+  // proves the tenant consented to this app — not that whoever holds `state`
+  // is that tenant's admin, and a tenant GUID is public (OpenID metadata). So a
+  // create-path consent never attaches to an existing customer: that would
+  // re-stamp its grant and link a new buyer / invite holder to someone else's
+  // customer record. A genuine returning customer goes through support. Not
+  // the cross-MSP page: that page tells the buyer another provider owns the
+  // tenant, which is not what happened here. A portal-origin request gets a
+  // plain status response, like the other refusals in this file.
+  const endTenantAlreadyRegistered = () => {
+    const detail =
+      "This Microsoft 365 organisation is already registered on this platform, so it cannot be connected again from here. Nothing has been connected. Please contact support to resolve this.";
+    if (uiOrigin === "popup") {
+      res.status(200).send(
+        consentPopupPage({
+          title: "Organisation already registered",
+          heading: "This Microsoft organisation is already registered",
+          detail: `${detail} You can close this window.`,
+          tone: "warn",
+          autoClose: false,
+        }),
+      );
+      return;
+    }
+    res.status(409).send(detail);
+  };
 
   let expectedMspId: number | null = null;
   if (inviteRecord?.mspId != null) {
@@ -658,6 +689,24 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       endTenantConflict();
       return;
     }
+
+    // #4226: the same-MSP case is refused too. Every path reaching this guard
+    // is a create path (no customer named on the token), so an existing row
+    // for the GUID is never a legitimate attach target.
+    if (conflictingCustomer && inviteRecord?.customerId == null) {
+      log.warn(
+        {
+          tenantId: tenant,
+          sessionId: isCheckoutSession ? state : undefined,
+          mspInvite: !isCheckoutSession,
+          existingCustomerId: conflictingCustomer.id,
+          existingMspId: conflictingCustomer.mspId,
+        },
+        "Consent callback: REFUSED — this Microsoft tenant already has a customer object; a create-path consent does not attach to it (no token burn, session flip, grant or account)",
+      );
+      endTenantAlreadyRegistered();
+      return;
+    }
   }
 
   // ── Confirm the grant with Microsoft before recording anything (#4197) ──
@@ -687,51 +736,28 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       .where(eq(consentInviteTokensTable.token, state));
   }
 
-  // ── Mark the checkout session consented ─────────────────────────────────────
-  // Moved AHEAD of the consent stamp by Phase 6 (#99). The stamp now needs a
-  // tenants row to write onto, and creating that row wants the buyer's real
-  // name — which only this update returns. Nothing here depends on the consent
-  // stamp, and the cross-MSP boundary guard above (the actual safety gate)
-  // has already run and returned on conflict.
   // Portal-origin only — a checkout-session (popup) consent never reaches this
   // URL now, it gets the self-closing page instead (#474).
   const successRedirect = `${hostBase}/portal/consent/success?tenant=${encodeURIComponent(tenant)}`;
   // Hoisted so the consent.granted emission block below can read slug + email without a second DB round-trip.
   let updatedSession: { id: string; email: string; fullName: string; company: string | null; industry: string | null; productSlug: string } | undefined;
 
+  // The buyer's name for a newly-created tenants row. Read, not written: the
+  // session is only flipped to consented once the row below is known to be
+  // this consent's own new customer (#4226). Flipping first would leave a
+  // refused session carrying someone else's GUID for the payment/password
+  // steps to attach to later.
+  let sessionNaming: { fullName: string; company: string | null; industry: string | null } | undefined;
   if (isCheckoutSession && state) {
-    const sessionNow = new Date();
-    [updatedSession] = await db
-      .update(checkoutSessionsTable)
-      .set({
-        status: "consented",
-        tenantId: tenant,
-        // #1311: a session whose admin actually granted consent is by
-        // definition not skipped — clears a Retainer buyer's earlier explicit
-        // skip if they changed their mind and connected after all.
-        consentSkippedAt: null,
-        updatedAt: sessionNow,
-      })
-      .where(
-        and(
-          eq(checkoutSessionsTable.id, state),
-          gte(checkoutSessionsTable.expiresAt, sessionNow),
-        ),
-      )
-      .returning({
-        id: checkoutSessionsTable.id,
-        email: checkoutSessionsTable.email,
+    [sessionNaming] = await db
+      .select({
         fullName: checkoutSessionsTable.fullName,
         company: checkoutSessionsTable.company,
         industry: checkoutSessionsTable.industry,
-        productSlug: checkoutSessionsTable.productSlug,
-      });
-
-    if (updatedSession) {
-      log.info({ sessionId: state, tenant }, "Checkout session marked consented via consent callback");
-    } else {
-      log.warn({ sessionId: state, tenant }, "Consent callback: checkout session not found or expired — callback proceeds without session");
-    }
+      })
+      .from(checkoutSessionsTable)
+      .where(and(eq(checkoutSessionsTable.id, state), gte(checkoutSessionsTable.expiresAt, new Date())))
+      .limit(1);
   }
 
   // ── Resolve the tenants row, then stamp the `graph` grant on it ─────────────
@@ -781,9 +807,9 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   } else if (inviteRecord?.mspId != null) {
     // (c) An MSP-issued onboarding invite (#4010): no customer yet, but the
     //     owning MSP is known — create under THAT MSP, never the direct one.
-    //     The guard above already refused a GUID owned by another MSP; this
-    //     re-checks the row actually returned so a tenant raced in under a
-    //     different MSP between the guard and here still fails closed.
+    //     The guard above already refused a GUID with any customer object;
+    //     this re-checks the row actually returned so a tenant raced in
+    //     between the guard and here still fails closed.
     const inviteMspId = inviteRecord.mspId;
     const emailDomain = inviteRecord.invitedEmail?.split("@")[1]?.trim();
     const resolved = await resolveOrCreateTenantForMsp(
@@ -799,25 +825,41 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       endTenantConflict();
       return;
     }
+    if (resolved && !resolved.created) {
+      log.warn(
+        { tenant, mspId: inviteMspId, existingCustomerId: resolved.id },
+        "Consent callback: REFUSED — MSP invite's tenant resolved to an existing customer after the guard (#4226); no grant recorded",
+      );
+      endTenantAlreadyRegistered();
+      return;
+    }
     consentTenant = resolved ? { id: resolved.id } : null;
   } else {
     const resolved = await resolveOrCreateDirectTenant(
       tenant,
-      updatedSession?.company?.trim() || updatedSession?.fullName?.trim() || inviteRecord?.invitedName?.trim() || "Direct Customer",
-      updatedSession?.industry,
+      sessionNaming?.company?.trim() || sessionNaming?.fullName?.trim() || inviteRecord?.invitedName?.trim() || "Direct Customer",
+      sessionNaming?.industry,
     );
     // resolveOrCreateDirectTenant returns an existing row as-is, whatever MSP
-    // owns it. The guard above already refused another MSP's tenant; this
-    // re-checks the row actually returned, so a tenant raced in under a
-    // different MSP after the guard — or an expectedMspId the guard never had
-    // (no isDirectBusiness MSP) — still fails closed instead of granting onto
-    // someone else's customer (#4043).
+    // owns it. The guard above already refused a GUID with any customer
+    // object; these re-check the row actually returned, so a tenant raced in
+    // after the guard — or an expectedMspId the guard never had (no
+    // isDirectBusiness MSP) — still fails closed instead of granting onto
+    // someone else's customer (#4043, #4226).
     if (resolved && resolved.mspId !== expectedMspId) {
       log.warn(
         { tenant, expectedMspId, existingMspId: resolved.mspId, customerId: resolved.id, isCheckoutSession },
         "Consent callback: REFUSED — tenant resolved to a customer under a different MSP than the direct-business create path; no grant recorded",
       );
       endTenantConflict();
+      return;
+    }
+    if (resolved && !resolved.created) {
+      log.warn(
+        { tenant, existingCustomerId: resolved.id, isCheckoutSession },
+        "Consent callback: REFUSED — tenant resolved to an existing customer after the guard (#4226); no grant recorded",
+      );
+      endTenantAlreadyRegistered();
       return;
     }
     consentTenant = resolved ? { id: resolved.id } : null;
@@ -834,6 +876,46 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
     );
     res.status(500).send("Consent was approved, but this platform could not record it. Please contact support — do not retry the link.");
     return;
+  }
+
+  // ── Mark the checkout session consented ─────────────────────────────────────
+  // After the tenants row is resolved and known to be this consent's own
+  // (#4226), and before the consent stamp: the emission block below reads the
+  // returned slug + email. The cross-MSP and existing-customer guards above
+  // have already run and returned on refusal.
+  if (isCheckoutSession && state) {
+    const sessionNow = new Date();
+    [updatedSession] = await db
+      .update(checkoutSessionsTable)
+      .set({
+        status: "consented",
+        tenantId: tenant,
+        // #1311: a session whose admin actually granted consent is by
+        // definition not skipped — clears a Retainer buyer's earlier explicit
+        // skip if they changed their mind and connected after all.
+        consentSkippedAt: null,
+        updatedAt: sessionNow,
+      })
+      .where(
+        and(
+          eq(checkoutSessionsTable.id, state),
+          gte(checkoutSessionsTable.expiresAt, sessionNow),
+        ),
+      )
+      .returning({
+        id: checkoutSessionsTable.id,
+        email: checkoutSessionsTable.email,
+        fullName: checkoutSessionsTable.fullName,
+        company: checkoutSessionsTable.company,
+        industry: checkoutSessionsTable.industry,
+        productSlug: checkoutSessionsTable.productSlug,
+      });
+
+    if (updatedSession) {
+      log.info({ sessionId: state, tenant }, "Checkout session marked consented via consent callback");
+    } else {
+      log.warn({ sessionId: state, tenant }, "Consent callback: checkout session not found or expired — callback proceeds without session");
+    }
   }
 
   // Single write, through mergeConsentKey — the writeBack key in the same

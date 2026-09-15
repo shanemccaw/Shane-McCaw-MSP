@@ -46,8 +46,18 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, kanbanBucketsTable, kanbanCardsTable } from "@workspace/db";
-import { eq, asc, and, sql } from "drizzle-orm";
+import {
+  db,
+  kanbanBucketsTable,
+  kanbanCardsTable,
+  communicationsPushesTable,
+  communicationsPushCheckpointsTable,
+  trainingSessionsTable,
+  automationRegistryTable,
+  KANBAN_CARD_TYPES,
+  TRAINING_SESSION_TYPES,
+} from "@workspace/db";
+import { eq, asc, and, sql, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { requireCapability, assertCustomerAccess } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
@@ -69,16 +79,100 @@ function bucketToWire(row: typeof kanbanBucketsTable.$inferSelect) {
   };
 }
 
-function cardToWire(row: typeof kanbanCardsTable.$inferSelect) {
+// ── Phase 2 (Git #4240) — typed-card linked-entity summaries ────────────────
+// A typed card surfaces real fields from the entity it links to (never a
+// duplicated/fabricated copy) — batch-loaded per board read to avoid N+1.
+
+type CommunicationsPushSummary = {
+  id: number;
+  title: string;
+  effectiveDate: string;
+  checkpointsTotal: number;
+  checkpointsDone: number;
+};
+type TrainingSessionSummary = {
+  id: number;
+  sessionType: string;
+  sessionDate: string;
+  topic: string;
+};
+type AutomationRegistrySummary = {
+  id: number;
+  type: string;
+  name: string;
+  status: string;
+};
+
+interface LinkedSummaries {
+  pushById: Map<number, CommunicationsPushSummary>;
+  sessionById: Map<number, TrainingSessionSummary>;
+  registryById: Map<number, AutomationRegistrySummary>;
+}
+
+async function loadLinkedSummaries(cards: (typeof kanbanCardsTable.$inferSelect)[]): Promise<LinkedSummaries> {
+  const pushIds = [...new Set(cards.map((c) => c.communicationsPushId).filter((id): id is number => id != null))];
+  const sessionIds = [...new Set(cards.map((c) => c.trainingSessionId).filter((id): id is number => id != null))];
+  const registryIds = [...new Set(cards.map((c) => c.automationRegistryId).filter((id): id is number => id != null))];
+
+  const [pushRows, checkpointRows, sessionRows, registryRows] = await Promise.all([
+    pushIds.length ? db.select().from(communicationsPushesTable).where(inArray(communicationsPushesTable.id, pushIds)) : Promise.resolve([]),
+    pushIds.length
+      ? db.select().from(communicationsPushCheckpointsTable).where(inArray(communicationsPushCheckpointsTable.pushId, pushIds))
+      : Promise.resolve([]),
+    sessionIds.length ? db.select().from(trainingSessionsTable).where(inArray(trainingSessionsTable.id, sessionIds)) : Promise.resolve([]),
+    registryIds.length ? db.select().from(automationRegistryTable).where(inArray(automationRegistryTable.id, registryIds)) : Promise.resolve([]),
+  ]);
+
+  const checkpointCountsByPush = new Map<number, { total: number; done: number }>();
+  for (const cp of checkpointRows) {
+    const cur = checkpointCountsByPush.get(cp.pushId) ?? { total: 0, done: 0 };
+    cur.total += 1;
+    if (cp.state === "done") cur.done += 1;
+    checkpointCountsByPush.set(cp.pushId, cur);
+  }
+
+  return {
+    pushById: new Map(
+      pushRows.map((r) => [
+        r.id,
+        {
+          id: r.id,
+          title: r.title,
+          effectiveDate: r.effectiveDate.toISOString(),
+          checkpointsTotal: checkpointCountsByPush.get(r.id)?.total ?? 0,
+          checkpointsDone: checkpointCountsByPush.get(r.id)?.done ?? 0,
+        },
+      ]),
+    ),
+    sessionById: new Map(
+      sessionRows.map((r) => [r.id, { id: r.id, sessionType: r.sessionType, sessionDate: r.sessionDate.toISOString(), topic: r.topic }]),
+    ),
+    registryById: new Map(registryRows.map((r) => [r.id, { id: r.id, type: r.type, name: r.name, status: r.status }])),
+  };
+}
+
+function cardToWire(row: typeof kanbanCardsTable.$inferSelect, linked: LinkedSummaries) {
   return {
     id: row.id,
     bucketId: row.bucketId,
     title: row.title,
     description: row.description,
     position: row.position,
+    type: row.type,
+    communicationsPushId: row.communicationsPushId,
+    trainingSessionId: row.trainingSessionId,
+    automationRegistryId: row.automationRegistryId,
+    communicationsPush: row.communicationsPushId != null ? (linked.pushById.get(row.communicationsPushId) ?? null) : null,
+    trainingSession: row.trainingSessionId != null ? (linked.sessionById.get(row.trainingSessionId) ?? null) : null,
+    automationRegistry: row.automationRegistryId != null ? (linked.registryById.get(row.automationRegistryId) ?? null) : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+function resolveCheckpointDate(effectiveDate: Date, offsetDays: number): Date {
+  const ms = effectiveDate.getTime() - offsetDays * 24 * 60 * 60 * 1000;
+  return new Date(ms);
 }
 
 const createBucketSchema = z.object({
@@ -91,10 +185,40 @@ const patchBucketSchema = z.object({
   position: z.number().int().min(0).optional(),
 });
 
+// Phase 2 (Git #4240): a card is either plain (no `type`) or one of the three
+// real linked types. A typed card links to an EXISTING row of that type
+// (`communicationsPushId` / `trainingSessionId` / `automationRegistryId`) or,
+// for the two types MSP operators can actually write
+// (communications_push, training_session), creates a brand-new one inline
+// (`newCommunicationsPush` / `newTrainingSession`) — automation_registry has
+// no inline-create path because MSP operators have no write access to that
+// table (admin/MyArchitect-only by design; see msp-automation-registry.ts).
+const offsetDaysSchema = z.number().int().positive().max(3650);
+
+const newCommunicationsPushSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  description: z.string().trim().max(5000).optional(),
+  effectiveDate: z.string().datetime({ offset: true }),
+  offsetDays: z.array(offsetDaysSchema).min(1).max(50),
+});
+
+const newTrainingSessionSchema = z.object({
+  sessionType: z.enum(TRAINING_SESSION_TYPES),
+  sessionDate: z.string().datetime({ offset: true }),
+  topic: z.string().trim().min(1).max(500),
+  notes: z.string().trim().max(10000).optional(),
+});
+
 const createCardSchema = z.object({
   title: z.string().trim().min(1).max(500),
   description: z.string().trim().max(10000).optional(),
   position: z.number().int().min(0).optional(),
+  type: z.enum(KANBAN_CARD_TYPES).optional(),
+  communicationsPushId: z.number().int().positive().optional(),
+  trainingSessionId: z.number().int().positive().optional(),
+  automationRegistryId: z.number().int().positive().optional(),
+  newCommunicationsPush: newCommunicationsPushSchema.optional(),
+  newTrainingSession: newTrainingSessionSchema.optional(),
 });
 
 const patchCardSchema = z.object({
@@ -190,10 +314,11 @@ router.get(
         .where(sql`${kanbanCardsTable.bucketId} = ANY(${bucketIds})`)
         .orderBy(asc(kanbanCardsTable.position));
 
+      const linked = await loadLinkedSummaries(cards);
       const cardsByBucket = new Map<number, ReturnType<typeof cardToWire>[]>();
       for (const card of cards) {
         const list = cardsByBucket.get(card.bucketId) ?? [];
-        list.push(cardToWire(card));
+        list.push(cardToWire(card, linked));
         cardsByBucket.set(card.bucketId, list);
       }
 
@@ -311,20 +436,130 @@ router.post(
       if (!parsed.success) {
         return res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
       }
+      const data = parsed.data;
 
-      const position = parsed.data.position ?? (await nextCardPosition(bucketId));
+      let type: (typeof KANBAN_CARD_TYPES)[number] | null = null;
+      let communicationsPushId: number | null = null;
+      let trainingSessionId: number | null = null;
+      let automationRegistryId: number | null = null;
+
+      if (data.type === "communications_push") {
+        if (!!data.communicationsPushId === !!data.newCommunicationsPush) {
+          return res.status(400).json({ error: "Provide exactly one of communicationsPushId or newCommunicationsPush" });
+        }
+        if (data.communicationsPushId !== undefined) {
+          const [push] = await db
+            .select()
+            .from(communicationsPushesTable)
+            .where(eq(communicationsPushesTable.id, data.communicationsPushId))
+            .limit(1);
+          if (!push || push.customerId !== bucket.customerId) {
+            return res.status(400).json({ error: "communicationsPushId does not belong to this customer" });
+          }
+          communicationsPushId = push.id;
+        } else {
+          const mspId = resolveMspIdStrict(req);
+          if (mspId === null) return res.status(403).json({ error: "MSP context required" });
+          const effectiveDate = new Date(data.newCommunicationsPush!.effectiveDate);
+          const [push] = await db
+            .insert(communicationsPushesTable)
+            .values({
+              mspId,
+              customerId: bucket.customerId,
+              title: data.newCommunicationsPush!.title,
+              description: data.newCommunicationsPush!.description ?? null,
+              effectiveDate,
+              createdByUserId: req.user!.id,
+            })
+            .returning();
+          await db.insert(communicationsPushCheckpointsTable).values(
+            data.newCommunicationsPush!.offsetDays.map((offsetDays) => ({
+              pushId: push.id,
+              offsetDays,
+              checkpointDate: resolveCheckpointDate(effectiveDate, offsetDays),
+              state: "pending" as const,
+            })),
+          );
+          communicationsPushId = push.id;
+        }
+        type = "communications_push";
+      } else if (data.type === "training_session") {
+        if (!!data.trainingSessionId === !!data.newTrainingSession) {
+          return res.status(400).json({ error: "Provide exactly one of trainingSessionId or newTrainingSession" });
+        }
+        if (data.trainingSessionId !== undefined) {
+          const [session] = await db
+            .select()
+            .from(trainingSessionsTable)
+            .where(eq(trainingSessionsTable.id, data.trainingSessionId))
+            .limit(1);
+          if (!session || session.customerId !== bucket.customerId) {
+            return res.status(400).json({ error: "trainingSessionId does not belong to this customer" });
+          }
+          trainingSessionId = session.id;
+        } else {
+          const mspId = resolveMspIdStrict(req);
+          if (mspId === null) return res.status(403).json({ error: "MSP context required" });
+          const [session] = await db
+            .insert(trainingSessionsTable)
+            .values({
+              mspId,
+              customerId: bucket.customerId,
+              sessionType: data.newTrainingSession!.sessionType,
+              sessionDate: new Date(data.newTrainingSession!.sessionDate),
+              topic: data.newTrainingSession!.topic,
+              notes: data.newTrainingSession!.notes ?? null,
+              loggedByUserId: req.user!.id,
+            })
+            .returning();
+          trainingSessionId = session.id;
+        }
+        type = "training_session";
+      } else if (data.type === "automation_registry") {
+        // No inline-create path — MSP operators have no write access to
+        // automation_registry (admin/MyArchitect-only), so a card can only
+        // link to an entry that already exists (see msp-automation-registry.ts).
+        if (data.automationRegistryId === undefined) {
+          return res.status(400).json({ error: "automationRegistryId is required for type automation_registry" });
+        }
+        const [entry] = await db
+          .select()
+          .from(automationRegistryTable)
+          .where(eq(automationRegistryTable.id, data.automationRegistryId))
+          .limit(1);
+        if (!entry || entry.customerId !== bucket.customerId) {
+          return res.status(400).json({ error: "automationRegistryId does not belong to this customer" });
+        }
+        automationRegistryId = entry.id;
+        type = "automation_registry";
+      } else if (
+        data.communicationsPushId !== undefined ||
+        data.trainingSessionId !== undefined ||
+        data.automationRegistryId !== undefined ||
+        data.newCommunicationsPush !== undefined ||
+        data.newTrainingSession !== undefined
+      ) {
+        return res.status(400).json({ error: "Linking fields require a type" });
+      }
+
+      const position = data.position ?? (await nextCardPosition(bucketId));
 
       const [row] = await db
         .insert(kanbanCardsTable)
         .values({
           bucketId,
-          title: parsed.data.title,
-          description: parsed.data.description ?? null,
+          title: data.title,
+          description: data.description ?? null,
           position,
+          type,
+          communicationsPushId,
+          trainingSessionId,
+          automationRegistryId,
         })
         .returning();
 
-      return res.status(201).json({ card: cardToWire(row) });
+      const linked = await loadLinkedSummaries([row]);
+      return res.status(201).json({ card: cardToWire(row, linked) });
     } catch (err) {
       log.error({ err, bucketId }, "msp-kanban: POST card create failed");
       return res.status(500).json({ error: "Failed to create card" });
@@ -388,7 +623,8 @@ router.patch(
         .where(eq(kanbanCardsTable.id, id))
         .returning();
 
-      return res.json({ card: cardToWire(row) });
+      const linked = await loadLinkedSummaries([row]);
+      return res.json({ card: cardToWire(row, linked) });
     } catch (err) {
       log.error({ err, id }, "msp-kanban: PATCH card failed");
       return res.status(500).json({ error: "Failed to update card" });

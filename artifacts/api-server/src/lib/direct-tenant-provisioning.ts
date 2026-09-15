@@ -88,6 +88,15 @@ export async function ensureClientAccount(
 }
 
 /**
+ * A tenants row as resolved by the create doors below. `created` is true only
+ * when THIS call inserted the row, false when the GUID already had a customer
+ * object (found up front, or raced in between lookup and insert). The consent
+ * callback's create path refuses anything but `created: true` (#4226): the
+ * GUID it receives is unsigned, so it never attaches to an existing customer.
+ */
+export type ResolvedTenant = { id: number; mspId: number; created: boolean };
+
+/**
  * Resolve-or-create the `tenants` row for a direct-business customer, keyed by
  * the real M365 tenant GUID. tenants.tenant_id is NOT NULL UNIQUE — a tenant
  * row CANNOT exist without a consented GUID, which is the schema-level form of
@@ -98,7 +107,7 @@ export async function ensureClientAccount(
  * customers. (Contrast with MSP-channel customers, who start "onboarding" and
  * flip to "active" only once M365 consent is granted — see consent.ts.)
  *
- * Returns { id, mspId } of the tenants row, or null only in the genuine
+ * Returns { id, mspId, created } of the tenants row, or null only in the genuine
  * no-isDirectBusiness-MSP-configured case (nothing to attach to).
  *
  * Exported for consent.ts's OAuth callback: consent now lives ON the tenants
@@ -111,13 +120,13 @@ export async function resolveOrCreateDirectTenant(
   tenantGuid: string,
   fallbackCustomerName: string,
   industry?: string | null,
-): Promise<{ id: number; mspId: number } | null> {
+): Promise<ResolvedTenant | null> {
   const [existingByTenant] = await db
     .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
     .from(tenantsTable)
     .where(eq(tenantsTable.tenantId, tenantGuid))
     .limit(1);
-  if (existingByTenant) return existingByTenant;
+  if (existingByTenant) return { ...existingByTenant, created: false };
 
   const [directMsp] = await db
     .select({ id: mspsTable.id })
@@ -143,13 +152,13 @@ export async function resolveOrCreateTenantForMsp(
   mspId: number,
   fallbackCustomerName: string,
   industry?: string | null,
-): Promise<{ id: number; mspId: number } | null> {
+): Promise<ResolvedTenant | null> {
   const [existingByTenant] = await db
     .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
     .from(tenantsTable)
     .where(eq(tenantsTable.tenantId, tenantGuid))
     .limit(1);
-  if (existingByTenant) return existingByTenant;
+  if (existingByTenant) return { ...existingByTenant, created: false };
 
   return insertTenantForMsp(tenantGuid, mspId, fallbackCustomerName, industry);
 }
@@ -159,7 +168,7 @@ async function insertTenantForMsp(
   mspId: number,
   fallbackCustomerName: string,
   industry?: string | null,
-): Promise<{ id: number; mspId: number } | null> {
+): Promise<ResolvedTenant | null> {
   const [created] = await db.insert(tenantsTable).values({
     mspId,
     customerName: fallbackCustomerName,
@@ -169,7 +178,7 @@ async function insertTenantForMsp(
   })
     .onConflictDoNothing({ target: tenantsTable.tenantId }) // race-safe under the UNIQUE tenant_id
     .returning({ id: tenantsTable.id, mspId: tenantsTable.mspId });
-  if (created) return created;
+  if (created) return { ...created, created: true };
 
   // Conflict path: another request inserted this GUID between lookup and insert.
   const [raced] = await db
@@ -177,7 +186,7 @@ async function insertTenantForMsp(
     .from(tenantsTable)
     .where(eq(tenantsTable.tenantId, tenantGuid))
     .limit(1);
-  return raced ?? null;
+  return raced ? { ...raced, created: false } : null;
 }
 
 /**

@@ -60,8 +60,6 @@ import {
   baselineActionTemplatesTable,
   baselineActionTemplateAuditLogTable,
   tenantsTable,
-  clientServicesTable,
-  servicesTable,
   mspsTable,
   type WriteActionCatalog,
   type TenantConsentMap,
@@ -69,7 +67,7 @@ import {
 import { eq, and, asc, desc, inArray, sql } from "drizzle-orm";
 import { requireCapability, requireMspScope, assertCustomerAccess } from "../middlewares/requireAuth.ts";
 import { loadTier, tierAllowsFeature } from "../lib/msp-entitlement.ts";
-import { resolveCustomerUserIds } from "../lib/tenant-signals.ts";
+import { resolveCustomerTierEntitlement } from "../lib/portal-tier-features.ts";
 import { logger } from "../lib/logger.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import {
@@ -111,30 +109,17 @@ function resolveTierRank(tierName: string | null | undefined): number | null {
 }
 
 /**
- * Resolve a customer's purchased Monitoring tier (services.tier) via the
- * real join chain: tenants.id -> ALL users carrying that tenantId ->
- * users.id -> client_services.clientUserId -> client_services.serviceId ->
- * services.id. Deliberately NOT the MSP sales-bundle / monitoring_packages
- * path — that path can't distinguish an Enhanced customer from a Premium one,
- * since both share the same monitoring_packages.key.
- *
- * CUSTOMER-scoped: the purchased tier is a property of the customer, so the
- * lookup spans every linked login (the old single-arbitrary-user resolution
- * missed the subscription entirely when it hung off a different sibling user).
+ * Resolve a customer's purchased Monitoring tier (services.tier). Delegates
+ * to `resolveCustomerTierEntitlement` (portal-tier-features.ts, #4192) — the
+ * shared resolver that filters `services.service_type = 'monitoring_tier'` —
+ * so this and the customer-facing tier-feature gate cannot drift apart again
+ * (Git #4213: the prior inline query here had no service_type filter, so a
+ * customer whose earliest active client_services row was a non-monitoring
+ * service resolved to that row's NULL tier instead of their real one).
  */
 async function resolveCustomerMonitoringTier(customerId: number): Promise<string | null> {
-  const customerUserIds = await resolveCustomerUserIds(customerId);
-  if (customerUserIds.length === 0) return null;
-
-  const [row] = await db
-    .select({ tier: servicesTable.tier })
-    .from(clientServicesTable)
-    .innerJoin(servicesTable, eq(servicesTable.id, clientServicesTable.serviceId))
-    .where(and(inArray(clientServicesTable.clientUserId, customerUserIds), eq(clientServicesTable.status, "active")))
-    .orderBy(asc(clientServicesTable.id))
-    .limit(1);
-
-  return row?.tier ?? null;
+  const { currentTier } = await resolveCustomerTierEntitlement(customerId);
+  return currentTier;
 }
 
 type Availability = "included" | "billable_upsell" | "a_la_carte" | "license_required";
