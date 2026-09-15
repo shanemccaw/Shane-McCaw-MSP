@@ -34,6 +34,7 @@ import { Reports } from "./modules/Reports";
 import { MarketplacePurchase } from "./modules/MarketplacePurchase";
 import { BillingScreen } from "./modules/BillingScreen";
 import { OffersAndSows } from "./modules/OffersAndSows";
+import { Contracts } from "./modules/Contracts";
 import { SopsPage } from "@/pages/Sops";
 import { OffboardingPage } from "@/pages/Offboarding";
 import { ExecutiveView } from "@/pages/executive/ExecutiveView";
@@ -336,6 +337,11 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "page" && sel.page === "status-reports") {
     return <StatusReports customerId={sel.tenant} />;
+  }
+  if (sel.kind === "page" && sel.page === "contracts") {
+    // Contracts (#3775), README screen 21 — real aggregation read view over
+    // SOWs, active services and the scope-creep ledger for this customer.
+    return <Contracts customerId={sel.tenant} mspId={profile.mspId ?? null} />;
   }
   if (sel.kind === "page" && sel.page === "offers-sows") {
     // Offers & SOWs (#4014), README screen 66 — the whole SOW book for this
