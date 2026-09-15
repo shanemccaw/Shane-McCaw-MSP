@@ -17,7 +17,7 @@
         <TextBlock x:Name="TitleText"
                    Grid.Row="0"
                    Text="Assign issue to epic:"
-                   FontSize="13"
+                   FontSize="{StaticResource SubHeaderFontSize}"
                    FontWeight="SemiBold"
                    Foreground="{StaticResource TextBrush}"
                    TextWrapping="Wrap"

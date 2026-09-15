@@ -18,12 +18,12 @@
         <TextBlock x:Name="HeaderText"
                    Grid.Row="0"
                    Text="Edit issue #0"
-                   FontSize="13"
+                   FontSize="{StaticResource SubHeaderFontSize}"
                    FontWeight="SemiBold"
                    Foreground="{StaticResource TextBrush}"
                    Margin="0,0,0,10"/>
 
-        <TextBlock Grid.Row="1" Text="Title" FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
+        <TextBlock Grid.Row="1" Text="Title" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
         <TextBox x:Name="TitleBox"
                  Grid.Row="2"
                  Background="{StaticResource MantleBrush}"
@@ -38,7 +38,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
-            <TextBlock Grid.Row="0" Text="Body" FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
+            <TextBlock Grid.Row="0" Text="Body" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
             <TextBox x:Name="BodyBox"
                      Grid.Row="1"
                      Background="{StaticResource MantleBrush}"
@@ -50,7 +50,7 @@
                      AcceptsTab="True"
                      TextWrapping="Wrap"
                      VerticalScrollBarVisibility="Auto"
-                     FontFamily="Consolas"/>
+                     FontFamily="{StaticResource MonospaceFontFamily}"/>
         </Grid>
 
         <StackPanel Grid.Row="4"
