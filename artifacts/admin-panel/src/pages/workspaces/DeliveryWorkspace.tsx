@@ -2,7 +2,6 @@ import { type ReactNode } from "react";
 import EngagementProjectsPage from "@/pages/EngagementProjects";
 import TenantSignalsPage from "@/pages/TenantSignals";
 import SignalRulesPage from "@/pages/SignalRules";
-import WorkflowsPage from "@/pages/Workflows";
 import ActivityLogPage from "@/pages/ActivityLog";
 import SharePointPage from "@/pages/SharePoint";
 import EnginePanel from "@/components/EnginePanel";
@@ -27,7 +26,6 @@ function getContent(section: string): ReactNode {
     case "engagement-projects":  return <EngagementProjectsPage />;
     case "tenant-signals":       return <TenantSignalsPage />;
     case "signal-rules":         return <SignalRulesPage />;
-    case "workflows":            return <WorkflowsPage />;
     case "activity-logs":        return <ActivityLogPage />;
     case "hub-storage":          return <SharePointPage />;
     case "fulfillment-queue":    return <FulfillmentQueuePage />;

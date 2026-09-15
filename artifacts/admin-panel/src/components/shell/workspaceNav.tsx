@@ -327,7 +327,6 @@ export const WORKSPACES: WorkspaceDef[] = [
       {
         id: "operations", label: "Operations", defaultOpen: true,
         items: [
-          { id: "del-workflows", label: "Workflows", path: "/delivery/workflows", icon: Workflow },
           { id: "del-activity", label: "Activity Logs", path: "/delivery/activity-logs", icon: Activity },
           { id: "del-hub-storage", label: "Hub Storage", path: "/delivery/hub-storage", icon: Database },
           { id: "del-tenant-signals", label: "Tenant Signals", path: "/delivery/tenant-signals", icon: Radio },
