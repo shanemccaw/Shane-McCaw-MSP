@@ -22,9 +22,11 @@ import {
   scriptModulesTable,
 } from "@workspace/db";
 import { eq, and, asc, desc, count, sql, inArray, isNotNull, isNull, gte } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { requireCapability, type AuthUser } from "../middlewares/requireAuth.ts";
+import { userClearsLadderCapability } from "../middlewares/rbac-ladder.ts";
+import { LADDER } from "@workspace/db/rbac/legacy-ladder";
 import { createNotification } from "../lib/notification-center.ts";
-import { createAuditLog, auditPrivilegedRead } from "../lib/audit.ts";
+import { createAuditLog, auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 import { createProjectFolder } from "../lib/graph.ts";
 import { resolveTemplateTaskMetadata } from "../lib/template-task-metadata.ts";
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
@@ -93,20 +95,27 @@ router.get("/admin/projects/:id/kanban-events", async (req: Request, res: Respon
   const secret = process.env.JWT_SECRET;
   if (!secret || !token) { res.status(401).json({ error: "Missing token" }); return; }
 
-  let user: { role: string };
-  try { user = jwt.verify(token, secret) as { role: string }; }
+  let user: AuthUser;
+  try { user = jwt.verify(token, secret) as AuthUser; }
   catch { res.status(401).json({ error: "Invalid or expired token" }); return; }
-  if (user.role !== "admin") { res.status(403).json({ error: "Admin access required" }); return; }
+
+  // EventSource cannot set an Authorization header, so this route verifies the
+  // ?token= JWT itself and cannot run through the requireCapability middleware —
+  // same real constraint as msp-sales-offers.ts's SSE route. Ask the same ladder
+  // evaluator every other re-gated route in this file asks, for the same capability.
+  const outcome = await userClearsLadderCapability(user, LADDER.mspOperator);
+  if (outcome.kind === "unavailable") { res.status(503).json({ error: "Authorization is temporarily unavailable" }); return; }
+  if (outcome.kind !== "allow") { res.status(403).json({ error: "Insufficient privileges" }); return; }
 
   setupSSE(req, res, projectId);
 });
 
-router.get("/admin/projects", requireAdmin, async (_req: Request, res: Response) => {
+router.get("/admin/projects", requireCapability("ladder.msp-operator"), async (_req: Request, res: Response) => {
   const projects = await db.select().from(projectsTable).orderBy(desc(projectsTable.createdAt));
   res.json(projects);
 });
 
-router.get("/admin/projects/:id", requireAdmin, async (req: Request, res: Response) => {
+router.get("/admin/projects/:id", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
   const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, id));
@@ -115,7 +124,7 @@ router.get("/admin/projects/:id", requireAdmin, async (req: Request, res: Respon
   await auditPrivilegedRead({
     actorUserId: req.user!.id,
     actorName: req.user!.name ?? req.user!.email,
-    actorRole: "platform_admin",
+    actorRole: resolveAuditActorRole(req.user!),
     actionType: "admin_project_detail_viewed",
     entityType: "project",
     entityId: project.id,
@@ -126,7 +135,7 @@ router.get("/admin/projects/:id", requireAdmin, async (req: Request, res: Respon
   res.json(project);
 });
 
-router.post("/admin/projects", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/projects", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const { title, description, status, phase, progress, clientUserId, startDate, endDate, projectType, workflowTemplateId } = req.body as {
     title?: string; description?: string; status?: string; phase?: string; progress?: number; clientUserId?: number; startDate?: string; endDate?: string; projectType?: string; workflowTemplateId?: number;
   };
@@ -234,7 +243,7 @@ router.post("/admin/projects", requireAdmin, async (req: Request, res: Response)
   void createAuditLog({
     actorUserId: req.user!.id,
     actorName: req.user!.name ?? req.user!.email,
-    actorRole: "admin",
+    actorRole: resolveAuditActorRole(req.user!),
     actionType: "project_created",
     entityType: "project",
     entityId: project.id,
@@ -247,7 +256,7 @@ router.post("/admin/projects", requireAdmin, async (req: Request, res: Response)
 });
 
 // ── Manually create SharePoint folder for an existing project ─────────────
-router.post("/admin/projects/:id/sharepoint-folder", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/projects/:id/sharepoint-folder", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid project id" }); return; }
 
@@ -281,7 +290,7 @@ router.post("/admin/projects/:id/sharepoint-folder", requireAdmin, async (req: R
   res.json({ sharepointFolderUrl: folderUrl });
 });
 
-router.patch("/admin/projects/:id", requireAdmin, async (req: Request, res: Response) => {
+router.patch("/admin/projects/:id", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
@@ -323,7 +332,7 @@ router.patch("/admin/projects/:id", requireAdmin, async (req: Request, res: Resp
   res.json(updated);
 });
 
-router.delete("/admin/projects/:id", requireAdmin, async (req: Request, res: Response) => {
+router.delete("/admin/projects/:id", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   try {
     const id = parseInt(String(req.params.id ?? ""), 10);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
@@ -350,7 +359,7 @@ router.delete("/admin/projects/:id", requireAdmin, async (req: Request, res: Res
   }
 });
 
-router.get("/admin/workflow-steps", requireAdmin, async (req: Request, res: Response) => {
+router.get("/admin/workflow-steps", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const projectId = req.query.projectId ? parseInt(String(req.query.projectId), 10) : null;
   const clientServiceId = req.query.clientServiceId ? parseInt(String(req.query.clientServiceId), 10) : null;
   let q = db.select().from(workflowStepsTable).$dynamic();
@@ -360,14 +369,14 @@ router.get("/admin/workflow-steps", requireAdmin, async (req: Request, res: Resp
   res.json(steps);
 });
 
-router.delete("/admin/workflow-steps/:id", requireAdmin, async (req: Request, res: Response) => {
+router.delete("/admin/workflow-steps/:id", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
   await db.delete(workflowStepsTable).where(eq(workflowStepsTable.id, id));
   res.json({ deleted: id });
 });
 
-router.post("/admin/workflow-steps/bulk", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/workflow-steps/bulk", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const { projectId, steps } = req.body as {
     projectId?: number;
     steps?: Array<{ title?: string; description?: string; status?: string; dueDate?: string | null; notes?: string }>;
@@ -400,7 +409,7 @@ router.post("/admin/workflow-steps/bulk", requireAdmin, async (req: Request, res
   res.status(201).json(created);
 });
 
-router.post("/admin/workflow-steps", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/workflow-steps", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const { projectId, clientServiceId, title, description, order, status, dueDate } = req.body as {
     projectId?: number; clientServiceId?: number; title?: string; description?: string; order?: number; status?: string; dueDate?: string | null;
   };
@@ -418,7 +427,7 @@ router.post("/admin/workflow-steps", requireAdmin, async (req: Request, res: Res
   res.status(201).json(step);
 });
 
-router.patch("/admin/workflow-steps/:id", requireAdmin, async (req: Request, res: Response) => {
+router.patch("/admin/workflow-steps/:id", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
@@ -443,7 +452,7 @@ router.patch("/admin/workflow-steps/:id", requireAdmin, async (req: Request, res
     void createAuditLog({
       actorUserId: req.user!.id,
       actorName: req.user!.name ?? req.user!.email,
-      actorRole: "admin",
+      actorRole: resolveAuditActorRole(req.user!),
       actionType: "workflow_step_changed",
       entityType: "workflow_step",
       entityId: updated.id,
@@ -521,7 +530,7 @@ router.patch("/admin/workflow-steps/:id", requireAdmin, async (req: Request, res
   res.json(updated);
 });
 
-router.get("/admin/kanban-tasks", requireAdmin, async (req: Request, res: Response) => {
+router.get("/admin/kanban-tasks", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const projectId = req.query.projectId ? parseInt(String(req.query.projectId), 10) : null;
   if (!projectId || isNaN(projectId)) { res.status(400).json({ error: "projectId query param required" }); return; }
   const tasks = await db.select().from(kanbanTasksTable)
@@ -640,7 +649,7 @@ router.get("/admin/kanban-tasks", requireAdmin, async (req: Request, res: Respon
   await auditPrivilegedRead({
     actorUserId: req.user!.id,
     actorName: req.user!.name ?? req.user!.email,
-    actorRole: "platform_admin",
+    actorRole: resolveAuditActorRole(req.user!),
     actionType: "admin_project_kanban_viewed",
     entityType: "project",
     entityId: projectId,
@@ -649,7 +658,7 @@ router.get("/admin/kanban-tasks", requireAdmin, async (req: Request, res: Respon
   res.json(tasks);
 });
 
-router.post("/admin/kanban-tasks", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/kanban-tasks", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const { projectId, title, description, column, order, assignedTo, dueDate, priority, taskType, taskMetadata } = req.body as {
     projectId?: number; title?: string; description?: string; column?: string; order?: number; assignedTo?: string; dueDate?: string; priority?: string;
     taskType?: string; taskMetadata?: Record<string, unknown>;
@@ -676,7 +685,7 @@ router.post("/admin/kanban-tasks", requireAdmin, async (req: Request, res: Respo
   void createAuditLog({
     actorUserId: req.user!.id,
     actorName: req.user!.name ?? req.user!.email,
-    actorRole: "admin",
+    actorRole: resolveAuditActorRole(req.user!),
     actionType: "kanban_task_created",
     entityType: "kanban_task",
     entityId: task.id,
@@ -689,7 +698,7 @@ router.post("/admin/kanban-tasks", requireAdmin, async (req: Request, res: Respo
   res.status(201).json(task);
 });
 
-router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: Response) => {
+router.patch("/admin/kanban-tasks/:id", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
@@ -744,7 +753,7 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
   const auditBase = {
     actorUserId: req.user!.id,
     actorName: req.user!.name ?? req.user!.email,
-    actorRole: "admin" as const,
+    actorRole: resolveAuditActorRole(req.user!),
     entityType: "kanban_task",
     entityId: updated.id,
     entityLabel: updated.title,
@@ -793,7 +802,7 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
   res.json(updated);
 });
 
-router.post("/admin/kanban-tasks/:id/checklist/:itemId/completion-schema", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/kanban-tasks/:id/checklist/:itemId/completion-schema", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);
   const itemId = String(req.params.itemId ?? "");
   if (isNaN(id)) { res.status(400).json({ error: "Invalid task ID" }); return; }
@@ -851,7 +860,7 @@ Generate the closure questions JSON array:`;
   }
 });
 
-router.patch("/admin/kanban-tasks/:id/checklist/:itemId", requireAdmin, async (req: Request, res: Response) => {
+router.patch("/admin/kanban-tasks/:id/checklist/:itemId", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);
   const itemId = String(req.params.itemId ?? "");
   if (isNaN(id)) { res.status(400).json({ error: "Invalid task ID" }); return; }
@@ -896,7 +905,7 @@ router.patch("/admin/kanban-tasks/:id/checklist/:itemId", requireAdmin, async (r
   res.json({ taskMetadata: updated.taskMetadata });
 });
 
-router.delete("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: Response) => {
+router.delete("/admin/kanban-tasks/:id", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
   const [existing] = await db.select({ projectId: kanbanTasksTable.projectId }).from(kanbanTasksTable).where(eq(kanbanTasksTable.id, id));
@@ -906,7 +915,7 @@ router.delete("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res:
   res.json({ deleted: id });
 });
 
-router.get("/admin/projects/:id/report-autofill", requireAdmin, async (req: Request, res: Response) => {
+router.get("/admin/projects/:id/report-autofill", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
@@ -974,7 +983,7 @@ router.get("/admin/projects/:id/report-autofill", requireAdmin, async (req: Requ
   await auditPrivilegedRead({
     actorUserId: req.user!.id,
     actorName: req.user!.name ?? req.user!.email,
-    actorRole: "platform_admin",
+    actorRole: resolveAuditActorRole(req.user!),
     actionType: "admin_project_report_autofill_viewed",
     entityType: "project",
     entityId: project.id,
@@ -1006,7 +1015,7 @@ router.get("/admin/projects/:id/report-autofill", requireAdmin, async (req: Requ
   });
 });
 
-router.post("/admin/projects/:id/closure-request", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/projects/:id/closure-request", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const projectId = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(projectId)) { res.status(400).json({ error: "Invalid project ID" }); return; }
 
@@ -1042,7 +1051,7 @@ router.post("/admin/projects/:id/closure-request", requireAdmin, async (req: Req
   res.json(closure);
 });
 
-router.get("/admin/projects/:id/closure", requireAdmin, async (req: Request, res: Response) => {
+router.get("/admin/projects/:id/closure", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const projectId = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(projectId)) { res.status(400).json({ error: "Invalid project ID" }); return; }
 
@@ -1052,7 +1061,7 @@ router.get("/admin/projects/:id/closure", requireAdmin, async (req: Request, res
   await auditPrivilegedRead({
     actorUserId: req.user!.id,
     actorName: req.user!.name ?? req.user!.email,
-    actorRole: "platform_admin",
+    actorRole: resolveAuditActorRole(req.user!),
     actionType: "admin_project_closure_viewed",
     entityType: "project_closure",
     entityId: closure.id,
