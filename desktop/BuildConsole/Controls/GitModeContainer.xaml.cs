@@ -661,7 +661,7 @@ namespace BuildConsole.Controls
             {
                 var btn = new Button
                 {
-                    Style = (Style)FindResource("SurfaceButton"),
+                    Style = (Style)FindResource("SecondaryButton"),
                     Padding = new Thickness(6, 3, 6, 3),
                     Margin = new Thickness(0, 0, 0, 4),
                     HorizontalContentAlignment = HorizontalAlignment.Left

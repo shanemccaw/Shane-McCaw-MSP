@@ -37,7 +37,7 @@
                 <!-- Header right actions container -->
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center">
                     <Button x:Name="BtnExitGitMode"
-                            Style="{StaticResource SurfaceButton}"
+                            Style="{StaticResource SecondaryButton}"
                             Padding="10,4"
                             Click="BtnExitGitMode_Click"
                             ToolTip="Exit Git Mode (Ctrl+Shift+G)">
@@ -185,17 +185,17 @@
                                 <StackPanel Orientation="Horizontal">
                                     <Button x:Name="BtnChainFull"
                                             Content="Full Chain"
-                                            Style="{StaticResource SurfaceButton}"
+                                            Style="{StaticResource SecondaryButton}"
                                             Padding="6,2" FontSize="11"
                                             Click="ChainMode_Click" Tag="FullChain"/>
                                     <Button x:Name="BtnChainBlockers"
                                             Content="Blockers"
-                                            Style="{StaticResource SurfaceButton}"
+                                            Style="{StaticResource SecondaryButton}"
                                             Padding="6,2" FontSize="11" Margin="2,0,0,0"
                                             Click="ChainMode_Click" Tag="BlockersOnly"/>
                                     <Button x:Name="BtnChainDependents"
                                             Content="Dependents"
-                                            Style="{StaticResource SurfaceButton}"
+                                            Style="{StaticResource SecondaryButton}"
                                             Padding="6,2" FontSize="11" Margin="2,0,0,0"
                                             Click="ChainMode_Click" Tag="DependentsOnly"/>
                                 </StackPanel>
@@ -223,7 +223,7 @@
                             <!-- Reset Filters -->
                             <Button x:Name="BtnResetGraphFilters"
                                     Content="Reset"
-                                    Style="{StaticResource SurfaceButton}"
+                                    Style="{StaticResource SecondaryButton}"
                                     Padding="8,3" FontSize="11"
                                     Click="BtnResetGraphFilters_Click"/>
                         </StackPanel>
@@ -314,13 +314,13 @@
                         <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center">
                             <Button x:Name="BtnOpenClaudeChat"
                                     Content="💬 Chat"
-                                    Style="{StaticResource SurfaceButton}"
+                                    Style="{StaticResource SecondaryButton}"
                                     Padding="6,3" FontSize="11" Margin="0,0,4,0"
                                     ToolTip="Launch Claude Chat for this issue"
                                     Click="BtnOpenClaudeChat_Click"/>
                             <Button x:Name="BtnCloseIssue"
                                     Content="✓ Close"
-                                    Style="{StaticResource SurfaceButton}"
+                                    Style="{StaticResource SecondaryButton}"
                                     Padding="6,3" FontSize="11"
                                     ToolTip="Mark issue as closed in Postgres"
                                     Click="BtnCloseIssue_Click"/>
@@ -367,7 +367,7 @@
                                             <TextBlock x:Name="TxtGateStatusInfo" Text="Release Actions Disabled" FontSize="10" Foreground="{StaticResource RedBrush}" VerticalAlignment="Center"/>
                                             <Button x:Name="BtnReleaseGate"
                                                     Content="🚀 Release GATE"
-                                                    Style="{StaticResource SurfaceButton}"
+                                                    Style="{StaticResource SecondaryButton}"
                                                     Padding="8,2" FontSize="10" FontWeight="Bold"
                                                     DockPanel.Dock="Right" HorizontalAlignment="Right"
                                                     IsEnabled="False"
@@ -409,7 +409,7 @@
                                         <WrapPanel x:Name="WrapLabels" Margin="0,0,0,6"/>
                                         
                                         <DockPanel LastChildFill="True">
-                                            <Button x:Name="BtnAddLabel" Content="+ Add" Style="{StaticResource SurfaceButton}" Padding="6,2" FontSize="10" DockPanel.Dock="Right" Click="BtnAddLabel_Click"/>
+                                            <Button x:Name="BtnAddLabel" Content="+ Add" Style="{StaticResource SecondaryButton}" Padding="6,2" FontSize="10" DockPanel.Dock="Right" Click="BtnAddLabel_Click"/>
                                             <TextBox x:Name="TxtAddLabel" Height="24" FontSize="11" Padding="4,2" Margin="0,0,6,0" VerticalContentAlignment="Center"/>
                                         </DockPanel>
                                     </StackPanel>
