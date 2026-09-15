@@ -224,9 +224,10 @@ namespace BuildConsole.Services
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Fallback / log error
+                ActivityLog.Log("git-mode.graph", $"LoadGraphFromPostgresAsync error: {ex.Message}");
+                throw;
             }
 
             if (rawNodes.Count == 0) return data;

@@ -143,7 +143,13 @@ namespace BuildConsole.Services
                 var url = trimmed.Substring(key.Length).Trim().Trim('"').Trim('\'');
                 if (!string.IsNullOrWhiteSpace(url))
                 {
-                    return new ResolveResult { IsReachable = true, ConnectionString = url };
+                    // .env files store `postgresql://user:pass@host:port/db` URIs, which
+                    // Npgsql's NpgsqlConnectionStringBuilder cannot parse directly (it throws
+                    // ArgumentException expecting ADO keyword=value pairs). Reuse the same
+                    // conversion BuildQueuePostgresClient already applies to its own connection
+                    // string (Git #4268).
+                    var adoConnStr = BuildQueuePostgresClient.ParseConnectionString(url);
+                    return new ResolveResult { IsReachable = true, ConnectionString = adoConnStr };
                 }
                 break;
             }
