@@ -1,0 +1,12 @@
+{
+  "StepIndex": 1,
+  "Route": "http://localhost:5175/portal/security-plan",
+  "Selector": "/portal/security-plan",
+  "Description": "goto /portal/security-plan",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 0,
+  "Changes": [],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-14T20:17:05.3338311-04:00"
+}
