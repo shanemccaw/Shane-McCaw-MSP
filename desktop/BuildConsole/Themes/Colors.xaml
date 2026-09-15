@@ -99,6 +99,8 @@
          RegionSelectOverlayWindow.xaml — named verbatim, not retuned. -->
     <SolidColorBrush x:Key="ScrimBrush"      Color="#95000000"/> <!-- ~58% full-dim -->
     <SolidColorBrush x:Key="ScrimLightBrush" Color="#40000000"/> <!-- ~25% light-dim -->
+    <SolidColorBrush x:Key="ScrimMediumBrush" Color="#80000000"/> <!-- ~50% mid-dim; Git #4217 -->
+
 
     <!-- ══════════════════════════════════════════════════════════════════
          Git #4225 — Build Map canvas palette (LocalMapWindow.xaml,

@@ -35,13 +35,12 @@
              value is the exact byte-identical #40000000 this window already used, so
              retargeting it is not the "inexact substitute" #4182 warned against — no
              visual change, just a name. Background="#80000000" on this hint label's own
-             backing chip is a different, un-named opacity tier outside #4205's scope
-             (only the ~58%/~25% scrim tiers were named) — left raw, still tracked under
-             #4182. -->
+             backing chip is resolved by #4217's new ScrimMediumBrush (Themes/Colors.xaml),
+             a byte-identical match for this ~50% opacity tier. -->
         <TextBlock Canvas.Left="12" Canvas.Top="12"
                    Text="Drag to select a region — Esc or right-click to cancel"
                    Foreground="White" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
-                   Background="#80000000" Padding="6,3,6,3"/>
+                   Background="{StaticResource ScrimMediumBrush}" Padding="6,3,6,3"/>
         <Rectangle x:Name="SelectionRect"
                    Stroke="{DynamicResource AccentBrush}" StrokeThickness="2"
                    Fill="{DynamicResource AccentWashMediumBrush}"

@@ -60,6 +60,8 @@
     <SolidColorBrush x:Key="Subtext1Brush" Color="{StaticResource TextSecondaryColor}"/>  <!-- was #A6ADC8 -->
     <SolidColorBrush x:Key="BlueBrush"     Color="{StaticResource AccentColor}"/>         <!-- was #89B4FA -->
     <SolidColorBrush x:Key="MauveBrush"    Color="#CBA6F7"/>
+    <SolidColorBrush x:Key="WhiteBrush"    Color="#FFFFFF"/> <!-- Git #4217 — pure-white ink swatch, no existing brush covers this -->
+
     <SolidColorBrush x:Key="GreenBrush"      Color="#A6E3A1"/>
     <SolidColorBrush x:Key="LightGreenBrush" Color="#A6E3A1"/> <!-- alias — used by VisualTestTrackerWindow, VisualDiffWindow, SessionSyncDialog -->
 
