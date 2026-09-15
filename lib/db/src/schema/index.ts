@@ -5022,6 +5022,14 @@ export * from "./retention.ts";
 
 export * from "./rbac.ts";
 
+export * from "./scope-creep.ts";
+
+export * from "./sla.ts";
+
+export * from "./visual-test-tracker.ts";
+
+export * from "./misc.ts";
+
 /**
  * Git #3390 (Feature #3377) — GitHub MCP server, bearer tokens.
  *
