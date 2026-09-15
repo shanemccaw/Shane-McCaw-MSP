@@ -60,6 +60,7 @@ import { Overview } from "./modules/Overview";
 import { LaunchControl } from "./modules/LaunchControl";
 import { AzureCredential } from "./modules/AzureCredential";
 import { Projects } from "./modules/Projects";
+import { RequestsAndSupportChat } from "./modules/RequestsAndSupportChat";
 
 function roleLabelFor(p: MspUserProfile): string {
   if (p.mspRole === "PlatformAdmin") return "PlatformAdmin — full access";
@@ -503,6 +504,12 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
     // lives inside the module itself, not the outer tree, since the backend
     // has no cross-customer aggregate route (pack §5).
     return <Projects customers={customers} embedded />;
+  }
+  if (sel.kind === "msp" && sel.page === "requests") {
+    // Requests and Support Chat (#2650, Feature #2570) — the operator's
+    // org-scoped queue, agent-built per Shane's 2026-09-15 authorization
+    // (no Design export exists for this screen).
+    return <RequestsAndSupportChat />;
   }
   if (sel.kind === "msp" && sel.page === "audit") {
     // Audit Log (#4012, README screen 63), Operations mount — no customer
