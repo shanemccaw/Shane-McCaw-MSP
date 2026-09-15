@@ -45,13 +45,31 @@ namespace BuildConsole.Controls
         {
             InitializeComponent();
             Loaded += GitModeContainer_Loaded;
+            Unloaded += GitModeContainer_Unloaded;
         }
 
         private async void GitModeContainer_Loaded(object sender, RoutedEventArgs e)
         {
+            GitHubIssueMirror.SyncCompleted += OnMirrorSyncCompleted;
             if (_loadedOnce) return;
             _loadedOnce = true;
             await RefreshAllAsync();
+        }
+
+        private void GitModeContainer_Unloaded(object sender, RoutedEventArgs e)
+        {
+            try { GitHubIssueMirror.SyncCompleted -= OnMirrorSyncCompleted; } catch { }
+        }
+
+        private void OnMirrorSyncCompleted()
+        {
+            Dispatcher.InvokeAsync(async () =>
+            {
+                if (IsVisible)
+                {
+                    await RefreshAllAsync();
+                }
+            });
         }
 
         public async Task RefreshAllAsync()
