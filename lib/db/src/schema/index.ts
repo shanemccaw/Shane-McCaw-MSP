@@ -2081,8 +2081,8 @@ export const azureTenantCredentialsTable = pgTable("azure_tenant_credentials", {
   // Git #3861 — de-dupes the expiry alert email to once per EXPIRY_ALERT_RESEND_HOURS
   // window (azure-credential-expiry.ts) instead of re-firing every evaluation pass.
   lastExpiryAlertSentAt: timestamp("last_expiry_alert_sent_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("azure_tenant_credentials_client_user_id_idx").on(t.clientUserId),
 ]);
