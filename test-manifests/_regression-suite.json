@@ -69,6 +69,7 @@
     "copilot-readiness/customer-diagnostics-cost-savings.json",
     "copilot-readiness/customer-diagnostics-engagement-offer.json",
     "portal/identity-interstitial.json",
+    "portal/accept-agreement.json",
     "portal/change-control.json",
     "portal/scope-and-sla.json",
     "portal/documents.json",

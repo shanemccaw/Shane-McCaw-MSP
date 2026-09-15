@@ -1,0 +1,63 @@
+{
+  "feature": "Accept Agreement (#4009, Feature #1649) — STUB UI PENDING DESIGN REVIEW, authorized by Shane 2026-09-15 ('a stub is better than nothing'). Standalone, authenticated gate at /portal/accept-agreement, wired to the 3 real endpoints restored by #4048 (platform-agreements.ts): GET /api/platform/agreement/current (public), GET .../acceptance-status and POST .../accept (both requireCapability('ladder.free')). Not a nav item — reached by direct link/redirect only.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+
+  "notes": [
+    "Real, permanent common case today (contract pack §2, `Design/portal/design_handoff_full_site/docs/accept-agreement-contract-pack.md`, confirmed live against the local DB): the only `platform_agreements` row that has ever existed (id=1, version 'Test') was never published, so GET /api/platform/agreement/current genuinely returns { agreement: null } and every signed-in user's acceptance-status is { required: false, accepted: true }. The UI test below asserts the honest 'nothing to accept' state, which is the only state actually reachable in this environment without first publishing a version through the Admin Panel.",
+    "The 'needs acceptance' state (checkbox + accept flow) has no environment fixture to drive it — publishing a version is an Admin Panel action (PlatformAgreements.tsx), out of scope for this manifest. Not faked as coverage; documented honestly here rather than asserted."
+  ],
+
+  "apiTests": [
+    {
+      "name": "GET /api/platform/agreement/current — public, no auth — real current state is null (nothing ever published)",
+      "method": "GET",
+      "path": "/api/platform/agreement/current",
+      "expect": { "status": 200, "jsonPath": "$.agreement", "value": null }
+    }
+  ],
+
+  "uiSteps": [
+    {
+      "name": "goto the real login URL, force-logged-out by the runner",
+      "action": "goto",
+      "target": "/portal/login"
+    },
+    { "action": "expect", "selector": "#email", "state": "visible" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_RBAC_CUSTOMER_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
+    {
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true,
+      "captureResponse": {
+        "urlPattern": "/api/auth/login",
+        "expect": { "status": 200, "jsonPath": "$.user.id", "exists": true }
+      }
+    },
+    {
+      "name": "navigate directly to the standalone accept-agreement gate",
+      "action": "goto",
+      "target": "/portal/accept-agreement"
+    },
+    {
+      "name": "acceptance-status resolves to real non-required state (no version has ever been published)",
+      "action": "expect",
+      "selector": "[data-testid='accept-agreement-up-to-date']",
+      "state": "visible"
+    },
+    {
+      "name": "the up-to-date card carries the real, honest copy",
+      "action": "expect",
+      "selector": "[data-testid='accept-agreement-up-to-date']",
+      "state": "visible",
+      "textContains": "You're up to date"
+    },
+    {
+      "name": "no accept-flow controls render when there is nothing to accept",
+      "action": "expect",
+      "selector": "[data-testid='accept-agreement-checkbox']",
+      "state": "absent"
+    }
+  ]
+}

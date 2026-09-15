@@ -28,6 +28,7 @@ import SignInHelpPage from "@/pages/sign-in-help";
 import SignupPage from "@/pages/signup";
 import SignupSuccessPage from "@/pages/signup-success";
 import AcceptInvitePage from "@/pages/accept-invite";
+import AcceptAgreementPage from "@/pages/accept-agreement";
 import SharedDocumentPublicPage from "@/pages/shared-document-public";
 import SharedLiveDocumentsPublicPage from "@/pages/shared-live-documents-public";
 import MspSowPublicPage from "@/pages/msp-sow-public";
@@ -201,6 +202,17 @@ export default function App() {
                 <Route path="/signup" component={SignupPage} />
                 <Route path="/signup/success" component={SignupSuccessPage} />
                 <Route path="/invite/:token" component={AcceptInvitePage} />
+                {/*
+                  Accept Agreement (#4009, Feature #1649) — authenticated, but
+                  deliberately standalone rather than a ProtectedRoutes entry:
+                  it's a gate a signed-in user is sent to (direct
+                  link/redirect), not a page anyone browses to, so it carries
+                  no nav/menu entry. Guards for `user` itself (see the page's
+                  own header comment) rather than relying on RequireAuth's
+                  PortalLayout wrapper, matching accept-invite.tsx's own
+                  standalone-chrome convention above.
+                */}
+                <Route path="/accept-agreement" component={AcceptAgreementPage} />
                 {/* Public break-glass verify landing (#3994) — every invite email
                     links here, and the recipient may have no portal account at
                     all. Must stay ahead of ProtectedRoutes' /break-glass/:runId. */}
