@@ -163,6 +163,43 @@ function subscriptionToWire(row: typeof tenantSubscriptionsTable.$inferSelect) {
   };
 }
 
+// ── GET /msp/:mspId/customers/:customerId/subscription ────────────────────────
+// Read-only (#2609, wiring this route surface into the MSP Console UI): the
+// tenant's current subscription, if any, plus its recent operator-issued
+// credit history — so the UI can render real state before offering
+// cancel/discount/free-month. #4110 shipped the three write routes only; no
+// GET existed for the operator to see what they're about to act on.
+router.get(
+  "/msp/:mspId/customers/:customerId/subscription",
+  requireCapability("ladder.msp-operator"),
+  requireMspScope("params"),
+  async (req: Request, res: Response) => {
+    try {
+      const scope = await resolveCustomerOrRespond(req, res);
+      if (!scope) return;
+      const { customerId, customerName } = scope;
+
+      const subscription = await findActiveSubscription(customerId);
+      const credits = await db
+        .select()
+        .from(customerBillingCreditsTable)
+        .where(eq(customerBillingCreditsTable.tenantId, customerId))
+        .orderBy(desc(customerBillingCreditsTable.createdAt))
+        .limit(20);
+
+      res.json({
+        customerId,
+        customerName,
+        subscription: subscription ? subscriptionToWire(subscription) : null,
+        credits: credits.map((c) => ({ ...serializeCredit(c), source: c.source, createdAt: c.createdAt })),
+      });
+    } catch (err) {
+      log.error({ err }, "GET /msp/:mspId/customers/:customerId/subscription failed");
+      res.status(500).json({ error: "Failed to fetch subscription" });
+    }
+  },
+);
+
 // ── POST /msp/:mspId/customers/:customerId/subscription/cancel ────────────────
 const cancelSchema = z.object({
   atPeriodEnd: z.boolean().optional().default(false),

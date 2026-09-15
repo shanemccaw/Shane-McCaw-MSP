@@ -71,6 +71,8 @@ import {
   Kanban,
   // Microsoft Changes (#2600)
   Megaphone,
+  // Billing (#2609) — Percent/Gift for discount and free-month actions.
+  Percent, Gift,
   type LucideIcon,
 } from "lucide-react";
 
@@ -256,6 +258,9 @@ const REGISTRY: Record<string, LucideIcon> = {
   kanban: Kanban,
   // Microsoft Changes (#2600)
   megaphone: Megaphone,
+  // Billing (#2609)
+  percent: Percent,
+  gift: Gift,
 };
 
 export type IconName = keyof typeof REGISTRY | (string & {});

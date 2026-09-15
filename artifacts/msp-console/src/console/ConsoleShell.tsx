@@ -31,8 +31,7 @@ import { Dlq } from "./modules/Dlq";
 import { PlanSelfService } from "./modules/PlanSelfService";
 import { Reports } from "./modules/Reports";
 import { MarketplacePurchase } from "./modules/MarketplacePurchase";
-import { SeatPricing } from "./modules/SeatPricing";
-import { RetainerIntervalSwitch } from "./modules/RetainerIntervalSwitch";
+import { BillingScreen } from "./modules/BillingScreen";
 import { OffersAndSows } from "./modules/OffersAndSows";
 import { SopsPage } from "@/pages/Sops";
 import { OffboardingPage } from "@/pages/Offboarding";
@@ -388,23 +387,20 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
     return <MarketplacePurchase customerId={sel.tenant} customerName={customer?.name ?? `Customer ${sel.tenant}`} />;
   }
   if (sel.kind === "page" && sel.page === "billing") {
-    // Two independent, narrow slices of this still-unwired nav slot stack
-    // here rather than fighting over it — the full Billing screen (Design
-    // screen 23) stays blocked on a real Design export (#2608):
+    // The full Billing screen (#2609, Design screen 23). No real Claude
+    // Design export exists (#2608 never landed) — Shane authorized building
+    // it directly (2026-09-15). Four real capabilities, tabbed:
+    //   - Subscription (#4110) — cancel / discount / free-month.
     //   - Seat Pricing (#4111) — automatic pricing from the customer's real,
     //     live M365 licensed-user count, plus the manual service-account
     //     exclusion override.
     //   - Retainer Interval Switch (#4112, Feature #1692) — propose a
     //     month<->year retainer interval switch for the customer to
     //     approve/reject.
+    //   - Invoices (#4109) — draft CRUD + versioned re-issue.
     const customer = customers.find((c) => c.id === sel.tenant);
     if (!customer) return undefined;
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
-        <SeatPricing customerId={sel.tenant} customerName={customer.name} />
-        <RetainerIntervalSwitch mspId={customer.mspId} customerId={sel.tenant} customerName={customer.name} />
-      </div>
-    );
+    return <BillingScreen mspId={customer.mspId} customerId={sel.tenant} customerName={customer.name} />;
   }
   if (sel.kind === "page" && sel.page === "audit") {
     // Audit Log (#4012, README screen 63), per-tenant leaf — narrowed
