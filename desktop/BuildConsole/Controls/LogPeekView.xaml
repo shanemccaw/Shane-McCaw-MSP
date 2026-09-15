@@ -44,17 +44,17 @@
         <DockPanel Grid.Row="1" Margin="10,8,10,0" LastChildFill="False">
             <StackPanel x:Name="LogPeekStreamSwitch" DockPanel.Dock="Left" Orientation="Horizontal"/>
             <TextBlock x:Name="LogPeekStatusPill" DockPanel.Dock="Right" VerticalAlignment="Center"
-                       Padding="6,2" FontSize="9" FontWeight="ExtraBold"
+                       Padding="6,2" FontSize="{StaticResource CaptionFontSize}" FontWeight="ExtraBold"
                        Foreground="{StaticResource Subtext0Brush}"/>
         </DockPanel>
 
         <Grid Grid.Row="2" Margin="10,8,10,8">
             <TextBox x:Name="LogPeekSearchBox" Height="26"
-                     FontFamily="Cascadia Code, Consolas, Courier New" FontSize="10.5"
+                     FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource MonospaceFontSize}"
                      TextChanged="LogPeekSearchBox_TextChanged"/>
             <TextBlock x:Name="LogPeekSearchPlaceholder" Text="Search…" Margin="9,0,0,0"
                        VerticalAlignment="Center" IsHitTestVisible="False"
-                       FontFamily="Cascadia Code, Consolas, Courier New" FontSize="10.5"
+                       FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource MonospaceFontSize}"
                        Foreground="{StaticResource Subtext0Brush}"/>
         </Grid>
 
@@ -65,7 +65,7 @@
         <Border Grid.Row="4" Padding="10,7" BorderThickness="0,1,0,0"
                 Background="{StaticResource MantleBrush}" BorderBrush="{StaticResource Surface0Brush}">
             <TextBlock x:Name="LogPeekSelectionStatus" Text="Check lines below to send them to chat."
-                       FontSize="10" TextWrapping="Wrap"
+                       FontSize="{StaticResource CaptionFontSize}" TextWrapping="Wrap"
                        Foreground="{StaticResource Subtext0Brush}"/>
         </Border>
     </Grid>

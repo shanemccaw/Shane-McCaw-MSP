@@ -103,11 +103,11 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Import from Notepad" Margin="14,0,0,0"
-                               VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold"
+                               VerticalAlignment="Center" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                Foreground="{StaticResource TextPrimaryBrush}"/>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
                         <Button x:Name="BtnCloseWindow" Style="{StaticResource DialogCaptionCloseButton}" ToolTip="Close" Click="BtnCloseWindow_Click">
-                            <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                            <TextBlock Text="&#xE8BB;" FontFamily="{StaticResource IconFontFamily}" FontSize="10"/>
                         </Button>
                     </StackPanel>
                 </Grid>
@@ -131,7 +131,7 @@
                 <TextBlock Grid.Row="0"
                            Text="Paste a whole Notepad file below, then Parse. Each blank-line-separated block becomes a note; a leading !/?/+/. still sets its type."
                            TextWrapping="Wrap"
-                           FontSize="11.5"
+                           FontSize="{StaticResource CaptionFontSize}"
                            Foreground="{StaticResource TextSecondaryBrush}"/>
 
                 <Border Grid.Row="1" Margin="0,10,0,0" CornerRadius="6"
@@ -142,7 +142,7 @@
                              BorderThickness="0" Padding="8,6" Background="Transparent"
                              Foreground="{StaticResource TextPrimaryBrush}"
                              CaretBrush="{StaticResource TextPrimaryBrush}"
-                             FontSize="11.5"/>
+                             FontSize="{StaticResource CaptionFontSize}"/>
                 </Border>
 
                 <Grid Grid.Row="2" Margin="0,12,0,4">
@@ -151,7 +151,7 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock x:Name="PreviewHeaderText" Grid.Column="0"
-                               FontSize="11.5" FontWeight="SemiBold"
+                               FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                Foreground="{StaticResource TextSecondaryBrush}"
                                TextWrapping="Wrap"
                                Text="" Visibility="Collapsed"/>
@@ -160,7 +160,7 @@
                          UpdateMergeBar alongside the per-selection MergeBar below. -->
                     <Button x:Name="BtnUndoMerges" Grid.Column="1" Content="Undo merges"
                             Style="{StaticResource DialogButton}" Padding="8,2" Margin="8,0,0,0"
-                            FontSize="11"
+                            FontSize="{StaticResource CaptionFontSize}"
                             VerticalAlignment="Top"
                             Click="BtnUndoMerges_Click" Visibility="Collapsed"/>
                 </Grid>
@@ -175,7 +175,7 @@
                         BorderBrush="{StaticResource BorderDividerBrush}" BorderThickness="1">
                     <DockPanel LastChildFill="False">
                         <TextBlock x:Name="MergeBarText" DockPanel.Dock="Left" VerticalAlignment="Center"
-                                   FontSize="11.5"
+                                   FontSize="{StaticResource CaptionFontSize}"
                                    Foreground="{StaticResource TextSecondaryBrush}" Text=""/>
                         <Button x:Name="BtnMergeUp" DockPanel.Dock="Right" Content="Merge N up"
                                 Style="{StaticResource DialogButton}" Padding="10,3"

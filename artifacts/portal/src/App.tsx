@@ -12,6 +12,7 @@ import CustomerOffersPage from "@/pages/customer-offers";
 import ComingSoon from "@/pages/coming-soon";
 import SupportPage from "@/pages/support";
 import CustomerRequestsPage from "@/pages/customer-requests";
+import TestimonialsPage from "@/pages/testimonials";
 import AccountSecurityPage from "@/pages/account-security";
 import DataRightsAndPrivacyPage from "@/pages/data-rights-and-privacy";
 import BillingPage from "@/pages/billing";
@@ -123,6 +124,7 @@ function ProtectedRoutes() {
           <Route path="/offers" component={CustomerOffersPage} />
           <Route path="/support" component={SupportPage} />
           <Route path="/requests" component={CustomerRequestsPage} />
+          <Route path="/testimonials" component={TestimonialsPage} />
           <Route path="/account-security" component={AccountSecurityPage} />
           <Route path="/privacy" component={DataRightsAndPrivacyPage} />
           <Route path="/billing" component={BillingPage} />

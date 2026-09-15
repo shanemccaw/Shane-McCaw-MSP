@@ -43,17 +43,17 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="&#xE8FA;"
-                               FontFamily="Segoe MDL2 Assets" FontSize="13"
+                               FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}"
                                Margin="0,0,6,0" VerticalAlignment="Center"
                                Foreground="{StaticResource PeachBrush}"/>
                     <TextBlock Grid.Column="1" Text="Microsoft Sign-In Needed"
-                               FontSize="12" FontWeight="SemiBold"
+                               FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                VerticalAlignment="Center"
                                Foreground="{StaticResource TextBrush}"/>
                     <Button x:Name="BtnClose" Grid.Column="2"
                             Content="&#x2715;"
                             Style="{StaticResource IconButton}"
-                            FontSize="10"
+                            FontSize="{StaticResource CaptionFontSize}"
                             Padding="4,1,4,1"
                             ToolTip="Dismiss (the verification keeps waiting in the background)"
                             Click="BtnClose_Click"/>
@@ -64,7 +64,7 @@
             <TextBlock Grid.Row="1"
                        Margin="12,10,12,6"
                        TextWrapping="Wrap"
-                       FontSize="12"
+                       FontSize="{StaticResource BodyFontSize}"
                        Foreground="{StaticResource Subtext0Brush}"
                        Text="A test wants to verify Microsoft Graph as you. Open the link, enter the code below, and sign in — the test keeps waiting and continues on its own once you're signed in."/>
 
@@ -87,8 +87,8 @@
                              BorderThickness="0"
                              Background="Transparent"
                              Foreground="{StaticResource YellowBrush}"
-                             FontFamily="Consolas, Cascadia Mono, monospace"
-                             FontSize="22" FontWeight="Bold"
+                             FontFamily="{StaticResource MonospaceFontFamily}"
+                             FontSize="{StaticResource HeaderFontSize}" FontWeight="Bold"
                              VerticalAlignment="Center"/>
                     <Button x:Name="BtnCopy" Grid.Column="1"
                             Content="Copy"
@@ -103,7 +103,7 @@
             <!-- The clickable verification link -->
             <TextBlock Grid.Row="3"
                        Margin="12,4,12,2"
-                       FontSize="12"
+                       FontSize="{StaticResource BodyFontSize}"
                        TextWrapping="Wrap">
                 <Hyperlink x:Name="UrlLink" NavigateUri="https://microsoft.com/devicelogin"
                            RequestNavigate="UrlLink_RequestNavigate"
@@ -115,7 +115,7 @@
             <!-- Status line (waiting / signed in / timed out) -->
             <TextBlock x:Name="StatusText" Grid.Row="5"
                        Margin="12,6,12,12"
-                       FontSize="11"
+                       FontSize="{StaticResource CaptionFontSize}"
                        TextWrapping="Wrap"
                        Foreground="{StaticResource StatusRunningBrush}"
                        Text="Waiting for you to sign in…"/>

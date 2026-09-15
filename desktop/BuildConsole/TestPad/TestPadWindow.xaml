@@ -28,7 +28,7 @@
         </Border.Effect>
         <StackPanel>
             <Grid Margin="14,12,10,10">
-                <TextBlock Text="Test Pad" FontSize="13" FontWeight="SemiBold"
+                <TextBlock Text="Test Pad" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                            Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <!-- Import: paste a whole Notepad file (#2533), opens the real
@@ -37,7 +37,7 @@
                             Padding="6,0" Margin="0,0,6,0" Background="Transparent"
                             MouseLeftButtonUp="BtnImport_Click"
                             ToolTip="Import notes from a pasted Notepad file">
-                        <TextBlock Text="Import" FontSize="10"
+                        <TextBlock Text="Import" FontSize="{StaticResource CaptionFontSize}"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    VerticalAlignment="Center"/>
                     </Border>
@@ -50,7 +50,7 @@
                             MouseLeftButtonUp="BtnCopyMarkdown_Click"
                             Visibility="Collapsed"
                             ToolTip="Copy the selected notes as a markdown block">
-                        <TextBlock x:Name="CopyMarkdownLabel" Text="Copy as markdown" FontSize="10"
+                        <TextBlock x:Name="CopyMarkdownLabel" Text="Copy as markdown" FontSize="{StaticResource CaptionFontSize}"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    VerticalAlignment="Center"/>
                     </Border>
@@ -60,14 +60,14 @@
                             Padding="6,0" Margin="0,0,6,0" Background="Transparent"
                             MouseLeftButtonUp="BtnGroupByFeature_Click"
                             ToolTip="Group notes by feature">
-                        <TextBlock x:Name="GroupByFeatureLabel" Text="By feature" FontSize="10"
+                        <TextBlock x:Name="GroupByFeatureLabel" Text="By feature" FontSize="{StaticResource CaptionFontSize}"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    VerticalAlignment="Center"/>
                     </Border>
                     <Border x:Name="BtnClose" Width="22" Height="22" CornerRadius="4" Cursor="Hand"
                             Background="Transparent"
                             MouseLeftButtonUp="BtnClose_Click">
-                        <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="9"
+                        <TextBlock Text="&#xE8BB;" FontFamily="{StaticResource IconFontFamily}" FontSize="9"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
@@ -80,7 +80,7 @@
                  BuildConsole, so this band reports the honest count only rather than fabricating a
                  busy/free state BuildConsole can't actually observe.) -->
             <Border x:Name="StatusBand" Padding="14,7,14,7" Background="{StaticResource CardBackgroundBrush}">
-                <TextBlock x:Name="StatusBandText" FontSize="10.5" FontWeight="SemiBold"
+                <TextBlock x:Name="StatusBandText" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                            Foreground="{StaticResource TextSecondaryBrush}"/>
             </Border>
 
@@ -91,7 +91,7 @@
             <StackPanel Margin="14,10,14,8">
                 <Border x:Name="EditingBanner" Background="{StaticResource Surface0Brush}" CornerRadius="6"
                         Padding="8,4" Margin="0,0,0,6" Visibility="Collapsed">
-                    <TextBlock Text="Editing note — Enter saves, Esc cancels" FontSize="10.5"
+                    <TextBlock Text="Editing note — Enter saves, Esc cancels" FontSize="{StaticResource CaptionFontSize}"
                                Foreground="{StaticResource TextSecondaryBrush}"/>
                 </Border>
                 <Border Background="{StaticResource Surface0Brush}" BorderBrush="{StaticResource BorderDividerBrush}"
@@ -101,7 +101,7 @@
                              Padding="8,6" Background="Transparent"
                              Foreground="{StaticResource TextPrimaryBrush}"
                              CaretBrush="{StaticResource TextPrimaryBrush}"
-                             FontSize="11.5"
+                             FontSize="{StaticResource CaptionFontSize}"
                              PreviewKeyDown="ComposerBox_PreviewKeyDown"/>
                 </Border>
                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
@@ -111,7 +111,7 @@
             <Border Height="1" Background="{StaticResource BorderDividerBrush}"/>
 
             <Grid x:Name="EmptyState" Margin="16,28,16,28">
-                <TextBlock Text="No notes yet." FontSize="11.5"
+                <TextBlock Text="No notes yet." FontSize="{StaticResource CaptionFontSize}"
                            Foreground="{StaticResource TextSecondaryBrush}"
                            HorizontalAlignment="Center"/>
             </Grid>
@@ -126,7 +126,7 @@
                     Cursor="Hand" Background="{StaticResource Surface0Brush}"
                     MouseLeftButtonUp="BtnSendToClaude_Click"
                     ToolTip="Copy the selected (or every unsent) note as a formatted block, ready to paste into Claude's composer">
-                <TextBlock x:Name="SendToClaudeLabel" Text="Send to Claude" FontSize="11"
+                <TextBlock x:Name="SendToClaudeLabel" Text="Send to Claude" FontSize="{StaticResource CaptionFontSize}"
                            FontWeight="SemiBold" Foreground="{StaticResource BlueBrush}"
                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
@@ -134,7 +134,7 @@
                  the destination explicit — filing a note here is the start of a real pipeline, not
                  a fire-and-forget message. -->
             <Border x:Name="PipelineCaption" Padding="14,7,14,8">
-                <TextBlock TextWrapping="Wrap" FontSize="9.5" FontStyle="Italic" TextAlignment="Center"
+                <TextBlock TextWrapping="Wrap" FontSize="{StaticResource CaptionFontSize}" FontStyle="Italic" TextAlignment="Center"
                            Foreground="{StaticResource TextDisabledBrush}">
                     <Run Text="Note"/><Run Text=" → "/><Run Text="Claude architects"/><Run Text=" → "/><Run Text="you approve"/><Run Text=" → "/><Run Text="prompt + git issue"/><Run Text=" → "/><Run Text="Batter Up"/>
                 </TextBlock>

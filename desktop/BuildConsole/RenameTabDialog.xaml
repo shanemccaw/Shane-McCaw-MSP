@@ -17,7 +17,7 @@
 
         <TextBlock Grid.Row="0"
                    Text="Enter new tab name:"
-                   FontSize="12"
+                   FontSize="{StaticResource CaptionFontSize}"
                    FontWeight="SemiBold"
                    Foreground="{StaticResource TextBrush}"
                    Margin="0,0,0,8"/>
@@ -25,7 +25,7 @@
         <TextBox x:Name="TabNameBox"
                  Grid.Row="1"
                  Height="28"
-                 FontSize="13"
+                 FontSize="{StaticResource BodyFontSize}"
                  Padding="8,4"
                  KeyDown="TabNameBox_KeyDown"/>
 

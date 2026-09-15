@@ -1296,7 +1296,7 @@
                     <Border Background="Transparent" Width="16" Height="16">
                         <TextBlock x:Name="ExpandPath"
                                    Text="&#xE76C;"
-                                   FontFamily="Segoe MDL2 Assets"
+                                   FontFamily="{StaticResource IconFontFamily}"
                                    FontSize="9"
                                    Foreground="{StaticResource Subtext0Brush}"
                                    HorizontalAlignment="Center"

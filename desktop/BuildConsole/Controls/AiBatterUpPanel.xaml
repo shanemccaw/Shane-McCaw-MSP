@@ -65,13 +65,13 @@
                     </Grid.ColumnDefinitions>
 
                     <TextBlock Grid.Column="0" Text="🔍 AI Batter Up"
-                               FontWeight="SemiBold" FontSize="13"
+                               FontWeight="SemiBold" FontSize="{StaticResource BodyFontSize}"
                                Foreground="{StaticResource TextBrush}"
                                VerticalAlignment="Center"/>
 
                     <DockPanel Grid.Column="1" Margin="8,0,0,0" LastChildFill="False">
                         <TextBlock x:Name="TxtCount" DockPanel.Dock="Right"
-                                   Foreground="{StaticResource Subtext0Brush}" FontSize="11"
+                                   Foreground="{StaticResource Subtext0Brush}" FontSize="{StaticResource CaptionFontSize}"
                                    VerticalAlignment="Center" Text=""/>
 
                         <!-- Git #4146 — Epic filter dropdown, populated in code-behind
@@ -79,7 +79,7 @@
                              in _allRows, "All Epics" default first. Combines AND-wise with
                              TxtFilter below (see RenderFilteredRows) — never replaces it. -->
                         <ComboBox x:Name="CmbEpicFilter" DockPanel.Dock="Left"
-                                  Width="90" Height="18" FontSize="10.5"
+                                  Width="90" Height="18" FontSize="{StaticResource CaptionFontSize}"
                                   Margin="0,0,6,0"
                                   VerticalContentAlignment="Center"
                                   Visibility="Collapsed"
@@ -91,13 +91,13 @@
                             <TextBox x:Name="TxtFilter"
                                      Style="{StaticResource SearchTextBox}"
                                      Width="70" Height="18"
-                                     Padding="4,0,18,0" FontSize="10.5"
+                                     Padding="4,0,18,0" FontSize="{StaticResource CaptionFontSize}"
                                      VerticalContentAlignment="Center"
                                      Background="{StaticResource Surface0Brush}"
                                      TextChanged="TxtFilter_TextChanged"/>
                             <TextBlock IsHitTestVisible="False"
                                        Text="Search #"
-                                       FontSize="10.5"
+                                       FontSize="{StaticResource CaptionFontSize}"
                                        Margin="5,0,0,0"
                                        VerticalAlignment="Center"
                                        HorizontalAlignment="Left"
@@ -121,7 +121,7 @@
                      "zero items" case is shown inline in TxtCount above instead, so the common
                      empty state no longer reserves this block's own margin/wrap space. -->
                 <TextBlock x:Name="TxtEmpty" DockPanel.Dock="Top" Margin="10,4,10,10"
-                           Foreground="{StaticResource Subtext0Brush}" FontSize="11.5"
+                           Foreground="{StaticResource Subtext0Brush}" FontSize="{StaticResource CaptionFontSize}"
                            TextWrapping="Wrap" Text=""
                            Visibility="Collapsed"/>
 

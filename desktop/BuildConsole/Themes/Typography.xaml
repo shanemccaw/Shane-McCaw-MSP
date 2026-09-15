@@ -25,6 +25,13 @@
     <FontFamily x:Key="DefaultFontFamily">Segoe UI</FontFamily>
     <FontFamily x:Key="MonospaceFontFamily">Cascadia Code, Consolas, Courier New</FontFamily>
 
+    <!-- Git #4189 — icon-glyph font used by every icon button/glyph in the app.
+         "Segoe MDL2 Assets" was hardcoded as a raw FontFamily literal 155x across
+         35 files with no shared resource key. Includes the Segoe UI Symbol fallback
+         so every consumer gets it uniformly, whether or not the original literal
+         at that call site carried it. -->
+    <FontFamily x:Key="IconFontFamily">Segoe MDL2 Assets, Segoe UI Symbol</FontFamily>
+
     <!-- Standard TextBlock Typography Styles -->
     <Style x:Key="HeaderTextStyle" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource DefaultFontFamily}"/>

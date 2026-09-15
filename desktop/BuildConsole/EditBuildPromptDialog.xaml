@@ -26,22 +26,22 @@
 
                 <StackPanel Grid.Column="0">
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                        <TextBlock Text="✏️" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="HeaderTitleText" Text="Edit Build Prompt" FontSize="15" FontWeight="Bold"
+                        <TextBlock Text="✏️" FontSize="{StaticResource SubHeaderFontSize}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="HeaderTitleText" Text="Edit Build Prompt" FontSize="{StaticResource SubHeaderFontSize}" FontWeight="Bold"
                                    Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                     </StackPanel>
                     <TextBlock Text="Modify prompt text, parameters, or attach blockers before sending to builder or adding to queue."
-                               FontSize="11" Foreground="{StaticResource Subtext0Brush}"/>
+                               FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                 </StackPanel>
 
                 <!-- Model & Effort Chips -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <Border Background="{StaticResource Surface0Brush}" CornerRadius="6" Padding="8,4" Margin="0,0,6,0">
-                        <TextBlock x:Name="ModelBadgeText" Text="model: auto" FontSize="10.5" FontWeight="SemiBold"
+                        <TextBlock x:Name="ModelBadgeText" Text="model: auto" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                    Foreground="{StaticResource BlueBrush}"/>
                     </Border>
                     <Border Background="{StaticResource Surface0Brush}" CornerRadius="6" Padding="8,4">
-                        <TextBlock x:Name="EffortBadgeText" Text="effort: high" FontSize="10.5" FontWeight="SemiBold"
+                        <TextBlock x:Name="EffortBadgeText" Text="effort: high" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                    Foreground="{StaticResource PeachBrush}"/>
                     </Border>
                 </StackPanel>
@@ -54,10 +54,10 @@
                 CornerRadius="8" Padding="14" Margin="0,0,0,12">
             <StackPanel>
                 <DockPanel Margin="0,0,0,6">
-                    <TextBlock Text="🛑  BLOCKERS (Dependencies)" FontSize="12" FontWeight="Bold"
+                    <TextBlock Text="🛑  BLOCKERS (Dependencies)" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                Foreground="{StaticResource PeachBrush}" VerticalAlignment="Center"/>
                     <TextBlock Text="Enter GitHub issue #s (e.g. 1024, 1025) or local --notGit #s (e.g. -1, -2)"
-                               FontSize="10.5" Foreground="{StaticResource Subtext0Brush}"
+                               FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"
                                HorizontalAlignment="Right" VerticalAlignment="Center"/>
                 </DockPanel>
 
@@ -66,17 +66,17 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBox x:Name="BlockersBox" Grid.Column="0" Height="28" FontSize="12"
+                    <TextBox x:Name="BlockersBox" Grid.Column="0" Height="28" FontSize="{StaticResource BodyFontSize}"
                              Background="{StaticResource Surface0Brush}" Foreground="{StaticResource TextBrush}"
                              BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1"
                              Padding="6,4" Margin="0,0,8,0" TextChanged="BlockersBox_TextChanged"/>
                     <Button x:Name="BtnClearBlockers" Grid.Column="1" Content="Clear" Style="{StaticResource IconButton}"
-                            Padding="10,4" FontSize="11" Click="BtnClearBlockers_Click"/>
+                            Padding="10,4" FontSize="{StaticResource CaptionFontSize}" Click="BtnClearBlockers_Click"/>
                 </Grid>
 
                 <!-- Quick Pick Blocker Candidates -->
                 <StackPanel x:Name="QuickBlockerPanel">
-                    <TextBlock Text="Quick Add Blocker:" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                    <TextBlock Text="Quick Add Blocker:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
                     <WrapPanel x:Name="QuickBlockerChips" Orientation="Horizontal"/>
                 </StackPanel>
             </StackPanel>
@@ -93,9 +93,9 @@
                 </Grid.RowDefinitions>
 
                 <DockPanel Grid.Row="0" Margin="0,0,0,6">
-                    <TextBlock Text="PROMPT BODY" FontSize="11" FontWeight="Bold"
+                    <TextBlock Text="PROMPT BODY" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="PromptCharCountText" Text="0 chars" FontSize="10.5"
+                    <TextBlock x:Name="PromptCharCountText" Text="0 chars" FontSize="{StaticResource CaptionFontSize}"
                                Foreground="{StaticResource Subtext0Brush}" HorizontalAlignment="Right"
                                VerticalAlignment="Center"/>
                 </DockPanel>
@@ -104,7 +104,7 @@
                          AcceptsReturn="True" AcceptsTab="True"
                          TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
                          HorizontalScrollBarVisibility="Auto"
-                         FontFamily="Consolas, Cascadia Code, Courier New" FontSize="12"
+                         FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource MonospaceFontSize}"
                          Background="{StaticResource BaseBrush}"
                          Foreground="{StaticResource TextBrush}"
                          BorderBrush="{StaticResource Surface0Brush}"
@@ -116,14 +116,14 @@
         <!-- ── FOOTER & ACTIONS ────────────────────────────────── -->
         <DockPanel Grid.Row="3">
             <Button Content="✕ Cancel" Style="{StaticResource IconButton}"
-                    Padding="14,6" FontSize="12" Click="Cancel_Click" DockPanel.Dock="Left"/>
+                    Padding="14,6" FontSize="{StaticResource CaptionFontSize}" Click="Cancel_Click" DockPanel.Dock="Left"/>
 
             <!-- Git #1416 — per-build Claude account (primary Max 20x / secondary Pro overflow).
                  Sequential overflow only; mirrors the choice into an account header flag on the prompt. -->
             <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center" Margin="14,0,0,0">
-                <TextBlock Text="Account:" FontSize="11" FontWeight="SemiBold"
+                <TextBlock Text="Account:" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                            Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                <ComboBox x:Name="AccountSelector" Width="120" FontSize="11" VerticalAlignment="Center"
+                <ComboBox x:Name="AccountSelector" Width="120" FontSize="{StaticResource BodyFontSize}" VerticalAlignment="Center"
                           SelectionChanged="AccountSelector_SelectionChanged"
                           ToolTip="Primary = Max 20x account (default). Secondary = Pro overflow account, launched with CLAUDE_CONFIG_DIR pointed at the secondary config dir (Settings). Sequential only — never concurrent.">
                     <ComboBoxItem Content="primary" IsSelected="True"/>
@@ -134,12 +134,12 @@
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button x:Name="BtnQueueBuild" Content="📋 Add to Build Queue"
                         Style="{StaticResource IconButton}"
-                        Padding="14,6" FontSize="12" Margin="0,0,8,0"
+                        Padding="14,6" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,8,0"
                         Click="BtnQueueBuild_Click"/>
 
                 <Button x:Name="BtnSendToBuilder" Content="🚀 Send to Builder"
                         Style="{StaticResource PrimaryButton}"
-                        Padding="18,6" FontSize="12"
+                        Padding="18,6" FontSize="{StaticResource CaptionFontSize}"
                         Click="BtnSendToBuilder_Click"/>
             </StackPanel>
         </DockPanel>

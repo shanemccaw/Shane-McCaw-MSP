@@ -36,16 +36,16 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Column="0" Text="📜" FontSize="13"
+                    <TextBlock Grid.Column="0" Text="📜" FontSize="{StaticResource CaptionFontSize}"
                                Margin="0,0,6,0" VerticalAlignment="Center"/>
                     <TextBlock Grid.Column="1" Text="Testing Session History &amp; Audit Trail"
-                               FontSize="12" FontWeight="SemiBold"
+                               FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                VerticalAlignment="Center"
                                Foreground="{StaticResource TextBrush}"/>
                     <Button x:Name="BtnClose" Grid.Column="2"
                             Content="✕"
                             Style="{StaticResource IconButton}"
-                            FontSize="10"
+                            FontSize="{StaticResource CaptionFontSize}"
                             Padding="5,2,5,2"
                             ToolTip="Close"
                             Click="BtnClose_Click"/>
@@ -67,26 +67,26 @@
 
                     <!-- Total Sessions -->
                     <StackPanel Grid.Column="0">
-                        <TextBlock Text="TOTAL SESSIONS" FontSize="8" FontWeight="Bold" Foreground="{StaticResource Subtext1Brush}"/>
-                        <TextBlock x:Name="MetricTotalSessions" Text="0" FontSize="14" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"/>
+                        <TextBlock Text="TOTAL SESSIONS" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource Subtext1Brush}"/>
+                        <TextBlock x:Name="MetricTotalSessions" Text="0" FontSize="{StaticResource BodyFontSize}" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"/>
                     </StackPanel>
 
                     <!-- Total Testing Time -->
                     <StackPanel Grid.Column="1">
-                        <TextBlock Text="TESTING TIME" FontSize="8" FontWeight="Bold" Foreground="{StaticResource Subtext1Brush}"/>
-                        <TextBlock x:Name="MetricTotalTime" Text="0m 00s" FontSize="14" FontWeight="Bold" Foreground="{StaticResource TextBrush}"/>
+                        <TextBlock Text="TESTING TIME" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource Subtext1Brush}"/>
+                        <TextBlock x:Name="MetricTotalTime" Text="0m 00s" FontSize="{StaticResource BodyFontSize}" FontWeight="Bold" Foreground="{StaticResource TextBrush}"/>
                     </StackPanel>
 
                     <!-- Bugs Logged -->
                     <StackPanel Grid.Column="2">
-                        <TextBlock Text="BUGS FOUND" FontSize="8" FontWeight="Bold" Foreground="{StaticResource Subtext1Brush}"/>
-                        <TextBlock x:Name="MetricTotalBugs" Text="0" FontSize="14" FontWeight="Bold" Foreground="{StaticResource StatusWarningBrush}"/>
+                        <TextBlock Text="BUGS FOUND" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource Subtext1Brush}"/>
+                        <TextBlock x:Name="MetricTotalBugs" Text="0" FontSize="{StaticResource BodyFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusWarningBrush}"/>
                     </StackPanel>
 
                     <!-- Clean Pages -->
                     <StackPanel Grid.Column="3">
-                        <TextBlock Text="CONFIRMED CLEAN" FontSize="8" FontWeight="Bold" Foreground="{StaticResource Subtext1Brush}"/>
-                        <TextBlock x:Name="MetricTotalClean" Text="0" FontSize="14" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
+                        <TextBlock Text="CONFIRMED CLEAN" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource Subtext1Brush}"/>
+                        <TextBlock x:Name="MetricTotalClean" Text="0" FontSize="{StaticResource BodyFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -96,7 +96,7 @@
                 <StackPanel>
                     <TextBlock x:Name="EmptyHistoryText"
                                Text="No recorded test sessions yet. As you navigate and test pages, sessions are automatically logged here."
-                               FontSize="11" FontStyle="Italic"
+                               FontSize="{StaticResource CaptionFontSize}" FontStyle="Italic"
                                Foreground="{StaticResource Subtext1Brush}"
                                TextAlignment="Center"
                                Margin="0,30,0,0"
@@ -119,13 +119,13 @@
                     <Button x:Name="BtnCopyMarkdown" Grid.Column="0"
                             Content="📋 Copy History (Markdown)"
                             Style="{StaticResource IconButton}"
-                            FontSize="10"
+                            FontSize="{StaticResource CaptionFontSize}"
                             Padding="8,5,8,5"
                             ToolTip="Copy complete test session history as Markdown table"
                             Click="BtnCopyMarkdown_Click"/>
 
                     <TextBlock x:Name="StatusMessage" Grid.Column="1"
-                               FontSize="10" Foreground="{StaticResource StatusSuccessBrush}"
+                               FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusSuccessBrush}"
                                VerticalAlignment="Center" HorizontalAlignment="Center"
                                TextTrimming="CharacterEllipsis" Visibility="Collapsed"/>
 
@@ -133,7 +133,7 @@
                         <Button x:Name="BtnClearHistory"
                                 Content="🗑 Clear All"
                                 Style="{StaticResource IconButton}"
-                                FontSize="10"
+                                FontSize="{StaticResource CaptionFontSize}"
                                 Padding="8,5,8,5"
                                 Margin="0,0,6,0"
                                 ToolTip="Delete all recorded session history"
@@ -142,7 +142,7 @@
                         <Button x:Name="BtnDone"
                                 Content="Close"
                                 Style="{StaticResource PrimaryButton}"
-                                FontSize="10"
+                                FontSize="{StaticResource CaptionFontSize}"
                                 Padding="12,5,12,5"
                                 Click="BtnClose_Click"/>
                     </StackPanel>

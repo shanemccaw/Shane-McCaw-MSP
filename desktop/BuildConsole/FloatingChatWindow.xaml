@@ -64,7 +64,7 @@
                     <!-- Git #4183: Segoe MDL2 Assets glyph — a separate, already-tracked icon-font
                          finding per #4162's audit comment; left alone here. -->
                     <TextBlock Grid.Column="0" Text="&#xE8BD;"
-                               FontFamily="Segoe MDL2 Assets" FontSize="13"
+                               FontFamily="{StaticResource IconFontFamily}" FontSize="13"
                                Margin="0,0,6,0" VerticalAlignment="Center"
                                Foreground="{StaticResource BlueBrush}"/>
                     <TextBlock x:Name="HeaderTitle" Grid.Column="1" Text="Chat"
@@ -77,7 +77,7 @@
                          questions) for whichever tab is active. -->
                     <Button x:Name="BtnToggleDock" Grid.Column="2"
                             Content="&#xE8A1;"
-                            FontFamily="Segoe MDL2 Assets"
+                            FontFamily="{StaticResource IconFontFamily}"
                             Style="{StaticResource IconButton}"
                             FontSize="10"
                             Padding="4,1,4,1"
@@ -86,7 +86,7 @@
                             Click="BtnToggleDock_Click"/>
                     <Button x:Name="BtnToggleBridge" Grid.Column="3"
                             Content="&#xE010;"
-                            FontFamily="Segoe MDL2 Assets"
+                            FontFamily="{StaticResource IconFontFamily}"
                             Style="{StaticResource IconButton}"
                             FontSize="10"
                             Padding="4,1,4,1"

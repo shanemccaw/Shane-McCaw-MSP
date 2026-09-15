@@ -117,6 +117,10 @@ function blankSet(name, openedBy) {
     baseHead: null,
     closed: false,
     members: {}, // key -> { key, commit, agentId, status, error, at }
+    // The MOST RECENT restart this set has fired. `fired` stays true once any
+    // restart has happened. Git #4153: a set can fire more than one restart (a
+    // follow-up for a straggler/re-reported member) -- see restartHistory below
+    // and maybeFireSetRestart's serverHead-advance check in coordinator.mjs.
     restart: {
       fired: false,
       cycleId: null,
@@ -126,6 +130,10 @@ function blankSet(name, openedBy) {
       reason: null,
       restarted: null,
     },
+    // Every restart PRIOR to the current `restart` (populated only if a
+    // follow-up restart ever fires). Absent/empty for the common case of exactly
+    // one restart.
+    restartHistory: [],
     completedAt: null,
   };
 }
@@ -245,6 +253,16 @@ export function treeAdvanced(set) {
 export function markRestartFired(config, name, { cycleId, serverHead, byAgent, reason, restarted }) {
   const set = readSet(config, name);
   if (!set) return null;
+  // Git #4153: a set can fire more than one restart -- a follow-up restart for a
+  // straggler/re-reported member that landed a genuinely newer commit AFTER the
+  // set was already considered complete (see maybeFireSetRestart in
+  // coordinator.mjs). Keep the prior restart in `restartHistory` before
+  // overwriting `restart` with the new one, so the manifest still carries a real
+  // record of every restart this set ever fired, not just the latest.
+  if (set.restart?.fired) {
+    set.restartHistory = Array.isArray(set.restartHistory) ? set.restartHistory : [];
+    set.restartHistory.push(set.restart);
+  }
   set.restart = {
     fired: true,
     cycleId: cycleId || null,

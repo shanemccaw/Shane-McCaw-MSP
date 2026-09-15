@@ -41,16 +41,16 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Column="0" Text="🐞" FontSize="13"
+                    <TextBlock Grid.Column="0" Text="🐞" FontSize="{StaticResource CaptionFontSize}"
                                Margin="0,0,6,0" VerticalAlignment="Center"/>
                     <TextBlock x:Name="TxtWindowTitle" Grid.Column="1" Text="Bug History"
-                               FontSize="12" FontWeight="SemiBold"
+                               FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                VerticalAlignment="Center"
                                Foreground="{StaticResource TextBrush}"/>
                     <Button x:Name="BtnClose" Grid.Column="2"
                             Content="✕"
                             Style="{StaticResource IconButton}"
-                            FontSize="10"
+                            FontSize="{StaticResource CaptionFontSize}"
                             Padding="5,2,5,2"
                             ToolTip="Close"
                             Click="BtnClose_Click"/>
@@ -63,7 +63,7 @@
                     BorderThickness="0,0,0,1"
                     Padding="12,6,12,6">
                 <TextBlock x:Name="TxtScopeDescription" Text="Scope"
-                           FontSize="11" Foreground="{StaticResource Subtext1Brush}"
+                           FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource Subtext1Brush}"
                            TextWrapping="Wrap"/>
             </Border>
 
@@ -72,7 +72,7 @@
                 <StackPanel>
                     <TextBlock x:Name="TxtEmpty"
                                Text="No bugs recorded for this scope."
-                               FontSize="11" FontStyle="Italic"
+                               FontSize="{StaticResource BodyFontSize}" FontStyle="Italic"
                                Foreground="{StaticResource Subtext1Brush}"
                                TextAlignment="Center"
                                Margin="0,30,0,0"

@@ -107,7 +107,7 @@
                                 Width="26" Height="26"
                                 ToolTip="Refresh from Postgres"
                                 Click="BtnRefreshTree_Click">
-                            <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{StaticResource Subtext0Brush}"/>
+                            <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFontFamily}" FontSize="12" Foreground="{StaticResource Subtext0Brush}"/>
                         </Button>
                     </DockPanel>
 
@@ -473,6 +473,8 @@
                                 </Border>
 
                             </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>

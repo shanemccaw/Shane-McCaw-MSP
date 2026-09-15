@@ -22,7 +22,7 @@
                              IsChecked="True"
                              Checked="Btn_Checked" PreviewMouseLeftButtonDown="Btn_PreviewMouseLeftButtonDown" Tag="Chats"
                              ToolTip="Chats">
-                    <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
+                    <TextBlock Text="&#xE8BD;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource HeaderFontSize}"/>
                 </RadioButton>
 
                 <RadioButton x:Name="BtnExplorer"
@@ -30,7 +30,7 @@
                              Style="{StaticResource ActivityBarButton}"
                              Checked="Btn_Checked" PreviewMouseLeftButtonDown="Btn_PreviewMouseLeftButtonDown" Tag="Explorer"
                              ToolTip="Explorer">
-                    <TextBlock Text="&#xE8A5;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
+                    <TextBlock Text="&#xE8A5;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource HeaderFontSize}"/>
                 </RadioButton>
 
                 <RadioButton x:Name="BtnSearch"
@@ -38,7 +38,7 @@
                              Style="{StaticResource ActivityBarButton}"
                              Checked="Btn_Checked" PreviewMouseLeftButtonDown="Btn_PreviewMouseLeftButtonDown" Tag="Search"
                              ToolTip="Search">
-                    <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
+                    <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource HeaderFontSize}"/>
                 </RadioButton>
 
                 <RadioButton x:Name="BtnGit"
@@ -64,7 +64,7 @@
                              Style="{StaticResource ActivityBarButton}"
                              Checked="Btn_Checked" PreviewMouseLeftButtonDown="Btn_PreviewMouseLeftButtonDown" Tag="Issues"
                              ToolTip="Git Milestones, Epics &amp; Issues Tracker">
-                    <TextBlock Text="🎯" FontSize="16"/>
+                    <TextBlock Text="🎯" FontSize="{StaticResource SubHeaderFontSize}"/>
                 </RadioButton>
 
                 <RadioButton x:Name="BtnAutomation"
@@ -78,9 +78,9 @@
                          (VS Code's Test Explorer) badge a bug icon onto the run
                          affordance for "debug test" actions. -->
                     <Grid Width="18" Height="18">
-                        <TextBlock Text="&#xE768;" FontFamily="Segoe MDL2 Assets" FontSize="15"
+                        <TextBlock Text="&#xE768;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource BodyFontSize}"
                                    HorizontalAlignment="Left" VerticalAlignment="Top"/>
-                        <TextBlock Text="&#xEBE8;" FontFamily="Segoe MDL2 Assets" FontSize="10"
+                        <TextBlock Text="&#xEBE8;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}"
                                    HorizontalAlignment="Right" VerticalAlignment="Bottom"/>
                     </Grid>
                 </RadioButton>
@@ -90,7 +90,7 @@
                              Style="{StaticResource ActivityBarButton}"
                              Checked="Btn_Checked" PreviewMouseLeftButtonDown="Btn_PreviewMouseLeftButtonDown" Tag="GraphApi"
                              ToolTip="Microsoft Graph API Panel">
-                    <TextBlock Text="&#xE9A1;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="{StaticResource BlueBrush}"/>
+                    <TextBlock Text="&#xE9A1;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource SubHeaderFontSize}" Foreground="{StaticResource BlueBrush}"/>
                 </RadioButton>
 
                 <!-- Git #2798/#2809 — Git Doctor: full-capability real repo status, diagnostic
@@ -107,7 +107,7 @@
                         Width="48" Height="44"
                         Click="BtnGitDoctor_Click"
                         ToolTip="Git Doctor — real repo status, diagnostic findings, branch &amp; commit tools">
-                    <TextBlock Text="&#xE95E;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource RedBrush}"/>
+                    <TextBlock Text="&#xE95E;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource HeaderFontSize}" Foreground="{StaticResource RedBrush}"/>
                 </Button>
 
                 <!-- Git Mode top-level entry (Ctrl+Shift+G) -->
@@ -116,7 +116,7 @@
                         Width="48" Height="44"
                         Click="BtnGitMode_Click"
                         ToolTip="Git Mode (Ctrl+Shift+G)">
-                    <TextBlock Text="&#xE8D5;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource MauveBrush}"/>
+                    <TextBlock Text="&#xE8D5;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource HeaderFontSize}" Foreground="{StaticResource MauveBrush}"/>
                 </Button>
 
                 <!-- Separator -->
@@ -132,7 +132,7 @@
                         ToolTip="Replit Workspace"
                         Click="QuickNav_Click"
                         Tag="https://replit.com/@shanemccaw/Shane-McCaw-Consulting">
-                    <TextBlock Text="&#xE7B8;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource PeachBrush}"/>
+                    <TextBlock Text="&#xE7B8;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource HeaderFontSize}" Foreground="{StaticResource PeachBrush}"/>
                 </Button>
 
                 <!-- Separator -->
@@ -148,7 +148,7 @@
                         Width="48" Height="44"
                         ToolTip="Web Tools"
                         Click="BtnWebTools_Click">
-                    <TextBlock Text="&#xE71B;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource BlueBrush}"/>
+                    <TextBlock Text="&#xE71B;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource HeaderFontSize}" Foreground="{StaticResource BlueBrush}"/>
                 </Button>
 
                 <Popup x:Name="WebToolsPopup"
@@ -179,7 +179,7 @@
                         Width="48" Height="44"
                         ToolTip="Sticky Notes (always-on-top floaty)"
                         Click="BtnStickyNotes_Click">
-                    <TextBlock Text="&#x1F5D2;" FontSize="16"/>
+                    <TextBlock Text="&#x1F5D2;" FontSize="{StaticResource SubHeaderFontSize}"/>
                 </Button>
 
                 <!-- Git #973 — Shane: "pre-fill and then I'd press the actual
@@ -193,7 +193,7 @@
                         Width="48" Height="44"
                         ToolTip="LinkedIn Post pre-fill (always-on-top floaty)"
                         Click="BtnLinkedInComposer_Click">
-                    <TextBlock Text="&#xE71B;" FontFamily="Segoe MDL2 Assets" FontSize="16"
+                    <TextBlock Text="&#xE71B;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource SubHeaderFontSize}"
                                Foreground="{StaticResource BlueBrush}"/>
                 </Button>
 
@@ -207,7 +207,7 @@
                         Width="48" Height="44"
                         ToolTip="Build Watch — 8-slot live build monitor (floaty)"
                         Click="BtnBuildWatch_Click">
-                    <TextBlock Text="&#xE7F4;" FontFamily="Segoe MDL2 Assets" FontSize="18"
+                    <TextBlock Text="&#xE7F4;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource HeaderFontSize}"
                                Foreground="{StaticResource GreenBrush}"/>
                 </Button>
 
@@ -220,7 +220,7 @@
                         Width="48" Height="44"
                         ToolTip="Build Chain Map — Epic → Feature → Issue → blocked_by, live GitHub read/write (maximized)"
                         Click="BtnBuildChainMap_Click">
-                    <TextBlock Text="&#x1F5FA;" FontSize="16"/>
+                    <TextBlock Text="&#x1F5FA;" FontSize="{StaticResource SubHeaderFontSize}"/>
                 </Button>
 
                 <!-- Git #1472 — Shane: per-page checkbox + notes + fast WebView2 screenshots
@@ -231,7 +231,7 @@
                         Width="48" Height="44"
                         ToolTip="Visual Test Tracker — per-page checkbox/notes + screenshot history (floaty)"
                         Click="BtnVisualTestTracker_Click">
-                    <TextBlock Text="&#xE722;" FontFamily="Segoe MDL2 Assets" FontSize="16"
+                    <TextBlock Text="&#xE722;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource SubHeaderFontSize}"
                                Foreground="{StaticResource BlueBrush}"/>
                 </Button>
 
@@ -245,7 +245,7 @@
                         Width="48" Height="44"
                         ToolTip="Notifications"
                         Click="BtnNotifications_Click">
-                    <TextBlock x:Name="NotificationBellGlyph" Text="&#xE7E7;" FontFamily="Segoe MDL2 Assets" FontSize="18"
+                    <TextBlock x:Name="NotificationBellGlyph" Text="&#xE7E7;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource HeaderFontSize}"
                                Foreground="{StaticResource Subtext1Brush}"/>
                 </Button>
 
@@ -277,13 +277,13 @@
                         ToolTip="Shelf — tabs set aside &amp; kept alive in the background (right-click a tab → Shelve Tab)"
                         Click="BtnShelf_Click">
                     <Grid Width="24" Height="24">
-                        <TextBlock Text="&#x1F5C3;" FontSize="16"
+                        <TextBlock Text="&#x1F5C3;" FontSize="{StaticResource SubHeaderFontSize}"
                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         <Border x:Name="ShelfCountBadge" Visibility="Collapsed"
-                                Background="{StaticResource RedBrush}" CornerRadius="7"
-                                MinWidth="14" Height="14" Padding="3,0"
+                                Background="{StaticResource RedBrush}" CornerRadius="8"
+                                MinWidth="16" Height="16" Padding="3,0"
                                 HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-3,-3,0">
-                            <TextBlock x:Name="ShelfCountText" Text="0" FontSize="9" FontWeight="Bold"
+                            <TextBlock x:Name="ShelfCountText" Text="0" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                        Foreground="{StaticResource CrustBrush}"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
@@ -303,7 +303,7 @@
                             Padding="4"
                             MinWidth="220" MaxWidth="340">
                         <StackPanel>
-                            <TextBlock Text="🗃 SHELF" FontSize="10" FontWeight="Bold"
+                            <TextBlock Text="🗃 SHELF" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                        Foreground="{StaticResource Subtext0Brush}"
                                        Margin="8,6,8,6"/>
                             <StackPanel x:Name="ShelfList"/>
@@ -320,7 +320,7 @@
                              Style="{StaticResource ActivityBarButton}"
                              Checked="Btn_Checked" PreviewMouseLeftButtonDown="Btn_PreviewMouseLeftButtonDown" Tag="Settings"
                              ToolTip="Settings">
-                    <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
+                    <TextBlock Text="&#xE713;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource HeaderFontSize}"/>
                 </RadioButton>
             </StackPanel>
 

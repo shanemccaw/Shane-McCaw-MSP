@@ -21,14 +21,14 @@
                 CornerRadius="8" Padding="14" Margin="0,0,0,12">
             <StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                    <TextBlock Text="🚀" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                    <TextBlock Text="Deploy to Staging (Replit)" FontSize="15" FontWeight="Bold"
+                    <TextBlock Text="🚀" FontSize="{StaticResource SubHeaderFontSize}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="Deploy to Staging (Replit)" FontSize="{StaticResource SubHeaderFontSize}" FontWeight="Bold"
                                Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                     <Border Background="{StaticResource StatusWarningBrush}" CornerRadius="3" Padding="6,1" Margin="10,0,0,0" VerticalAlignment="Center">
-                        <TextBlock Text="⚠️ MANUAL · SHANE ONLY" FontSize="9" FontWeight="Bold" Foreground="{StaticResource CrustBrush}"/>
+                        <TextBlock Text="⚠️ MANUAL · SHANE ONLY" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource CrustBrush}"/>
                     </Border>
                 </StackPanel>
-                <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="{StaticResource Subtext0Brush}"
+                <TextBlock TextWrapping="Wrap" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource Subtext0Brush}"
                            Text="This is a deliberate, one-off deploy of the current origin/main to the Staging server. It will: SSH connect + git pull, apply any pending migration SQL below, restart the server, and confirm the restart landed — then notify you. No tests run automatically; switch the Target Environment to Staging and run tests yourself afterward."/>
             </StackPanel>
         </Border>
@@ -39,13 +39,13 @@
                 CornerRadius="8" Padding="14" Margin="0,0,0,12">
             <StackPanel>
                 <DockPanel Margin="0,0,0,4">
-                    <TextBlock Text="SSH host (git pull + restart):" FontSize="10.5" Foreground="{StaticResource Subtext1Brush}" Width="200"/>
-                    <TextBlock x:Name="SshHostText" Text="—" FontSize="10.5" FontFamily="Consolas, Cascadia Code, Courier New"
+                    <TextBlock Text="SSH host (git pull + restart):" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Width="200"/>
+                    <TextBlock x:Name="SshHostText" Text="—" FontSize="{StaticResource MonospaceFontSize}" FontFamily="{StaticResource MonospaceFontFamily}"
                                Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis"/>
                 </DockPanel>
                 <DockPanel>
-                    <TextBlock Text="Staging URL (#911 / #805 target):" FontSize="10.5" Foreground="{StaticResource Subtext1Brush}" Width="200"/>
-                    <TextBlock x:Name="StagingUrlText" Text="—" FontSize="10.5" FontFamily="Consolas, Cascadia Code, Courier New"
+                    <TextBlock Text="Staging URL (#911 / #805 target):" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Width="200"/>
+                    <TextBlock x:Name="StagingUrlText" Text="—" FontSize="{StaticResource MonospaceFontSize}" FontFamily="{StaticResource MonospaceFontFamily}"
                                Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis"/>
                 </DockPanel>
             </StackPanel>
@@ -57,13 +57,13 @@
                 CornerRadius="8" Padding="12" Margin="0,0,0,12">
             <DockPanel>
                 <Button x:Name="BtnLoadPending" Content="Load into SQL box ↓" DockPanel.Dock="Right"
-                        Style="{StaticResource IconButton}" Padding="10,4" FontSize="10.5"
+                        Style="{StaticResource IconButton}" Padding="10,4" FontSize="{StaticResource CaptionFontSize}"
                         Margin="10,0,0,0" VerticalAlignment="Center"
                         IsEnabled="False" Click="LoadPending_Click"/>
                 <StackPanel>
-                    <TextBlock Text="PENDING MANUAL MIGRATIONS (Dev vs Staging, live)" FontSize="11" FontWeight="Bold"
+                    <TextBlock Text="PENDING MANUAL MIGRATIONS (Dev vs Staging, live)" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                Foreground="{StaticResource Subtext1Brush}"/>
-                    <TextBlock x:Name="PendingMigrationsText" TextWrapping="Wrap" FontSize="10.5"
+                    <TextBlock x:Name="PendingMigrationsText" TextWrapping="Wrap" FontSize="{StaticResource CaptionFontSize}"
                                Foreground="{StaticResource Subtext0Brush}" Margin="0,2,0,0"
                                Text="Checking Staging's simulator_migration_runs over SSH…"/>
                 </StackPanel>
@@ -81,9 +81,9 @@
                 </Grid.RowDefinitions>
 
                 <StackPanel Grid.Row="0" Margin="0,0,0,6">
-                    <TextBlock Text="PENDING MIGRATION SQL (OPTIONAL)" FontSize="11" FontWeight="Bold"
+                    <TextBlock Text="PENDING MIGRATION SQL (OPTIONAL)" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                Foreground="{StaticResource Subtext1Brush}"/>
-                    <TextBlock TextWrapping="Wrap" FontSize="10.5" Foreground="{StaticResource Subtext0Brush}" Margin="0,2,0,0"
+                    <TextBlock TextWrapping="Wrap" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,2,0,0"
                                Text="Paste any pending schema migration SQL to apply to the Staging database as part of this deploy. It runs through the existing #911 apply mechanism: CREATE / ALTER / INSERT statements only, all-or-nothing in one transaction (anything else is hard-rejected server-side and nothing runs). Leave blank for a code-only deploy."/>
                 </StackPanel>
 
@@ -91,7 +91,7 @@
                          AcceptsReturn="True" AcceptsTab="True"
                          TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto"
                          HorizontalScrollBarVisibility="Auto"
-                         FontFamily="Consolas, Cascadia Code, Courier New" FontSize="12"
+                         FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource MonospaceFontSize}"
                          Background="{StaticResource BaseBrush}"
                          Foreground="{StaticResource TextBrush}"
                          BorderBrush="{StaticResource Surface0Brush}"
@@ -102,11 +102,11 @@
         <!-- ── FOOTER ─────────────────────────────────────────────── -->
         <DockPanel Grid.Row="4">
             <Button Content="✕ Cancel" Style="{StaticResource IconButton}"
-                    Padding="14,6" FontSize="12" Click="Cancel_Click" DockPanel.Dock="Left"/>
+                    Padding="14,6" FontSize="{StaticResource CaptionFontSize}" Click="Cancel_Click" DockPanel.Dock="Left"/>
 
             <Button x:Name="BtnDeploy" Content="🚀 Deploy to Staging"
                     Style="{StaticResource PrimaryButton}"
-                    Padding="18,6" FontSize="12" HorizontalAlignment="Right"
+                    Padding="18,6" FontSize="{StaticResource CaptionFontSize}" HorizontalAlignment="Right"
                     Click="BtnDeploy_Click"/>
         </DockPanel>
     </Grid>

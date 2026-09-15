@@ -720,6 +720,83 @@ async function main() {
   }
 
   // ---------------------------------------------------------------
+  // Scenario 14 (Git #4153): a single-agent build set (expected=1) is satisfied by
+  // the agent's FIRST member event (e.g. an early request-restart right after the
+  // bookend-only commit, per the mandatory bookend convention) and fires its one
+  // restart -- then the SAME agent/key reports again later with the real code
+  // commit (a descendant of the bookend commit). The set must NOT stay latched
+  // closed: because the checkout genuinely advanced past what the first restart
+  // saw, a follow-up restart must fire to pick up the real code, instead of
+  // silently merging it with no restart (orphaning the merge, Git #4153's real
+  // observed failure).
+  // ---------------------------------------------------------------
+  console.log("Scenario 14: bookend-only commit then real code commit for the same set member (#4153)");
+  {
+    const { repo, initial } = makeRepo(0);
+    cleanup.push(repo);
+    const stateDir = path.join(repo, "_state");
+    applyEnv(baseEnv(repo, stateDir));
+    const config = loadConfig({ cwd: repo });
+    const SET = "q2869-single-agent";
+
+    // Bookend-only commit for agent "4129": one small journal file, no real code.
+    G(repo, ["checkout", "-q", "-b", "agentBranch", initial]);
+    mkdirSync(path.join(repo, "build-journal"), { recursive: true });
+    writeFileSync(path.join(repo, "build-journal", "4129.md"), "# 4129 IN FLIGHT\n");
+    G(repo, ["add", "-A"]);
+    G(repo, ["commit", "-q", "-m", "IN FLIGHT bookend for #4129"]);
+    const bookendSha = revParse(repo, "HEAD");
+    G(repo, ["checkout", "-q", "dev-server"]);
+
+    let restarts = 0;
+    const fakeRestart = async () => { restarts++; return { fake: true, ready: true }; };
+
+    const r0 = await runSetMemberCycle(
+      config,
+      { restart: fakeRestart },
+      { commit: bookendSha, agentId: "4129", setName: SET, memberKey: "4129", expected: 1 }
+    );
+    check("expected=1 is satisfied by the bookend-only commit and fires the set's restart", () =>
+      assert.ok(r0.setComplete && r0.restarted && restarts === 1, `r0=${JSON.stringify(r0)} restarts=${restarts}`));
+    check("bookend commit is live", () => assert.ok(isAncestor(repo, bookendSha, revParse(repo, "HEAD"))));
+
+    // Real code commit, stacked on top of the bookend commit, for the SAME agent.
+    // `_state/` (this test's DEV_SERVER_STATE_DIR) now has real runtime files on
+    // disk from r0's cycle -- stage ONLY the intended file, not `-A`, so this
+    // commit doesn't inadvertently pick up the coordinator's own state snapshot
+    // (which would then conflict when merged back into dev-server's own,
+    // now-different, state files).
+    G(repo, ["checkout", "-q", "agentBranch"]);
+    writeFileSync(path.join(repo, "real-feature.txt"), "the actual implementation\n");
+    G(repo, ["add", "real-feature.txt"]);
+    G(repo, ["commit", "-q", "-m", "Real implementation for #4129"]);
+    const realSha = revParse(repo, "HEAD");
+    G(repo, ["checkout", "-q", "dev-server"]);
+
+    const r1 = await runSetMemberCycle(
+      config,
+      { restart: fakeRestart },
+      { commit: realSha, agentId: "4129", setName: SET, memberKey: "4129", expected: 1 }
+    );
+    check("the real code commit is merged into the checkout (not orphaned)", () =>
+      assert.ok(isAncestor(repo, realSha, revParse(repo, "HEAD")), "real commit not merged"));
+    check("a FOLLOW-UP restart fires for the real code instead of latching closed", () =>
+      assert.ok(r1.restarted && restarts === 2, `r1=${JSON.stringify(r1)} restarts=${restarts}`));
+
+    const set = bs.readSet(config, SET);
+    check("the set's restart history records both restarts", () =>
+      assert.ok(Array.isArray(set.restartHistory) && set.restartHistory.length === 1 && set.restart.fired,
+        `restartHistory=${JSON.stringify(set.restartHistory)} restart=${JSON.stringify(set.restart)}`));
+
+    // A third call with NOTHING new merged must remain a genuine no-op (the
+    // existing single-shot guarantee for real re-completions is unchanged).
+    const before = restarts;
+    const again = await finishSetFromCli(config, SET, { byAgent: "again" });
+    check("re-completing with no new commits stays a no-op", () =>
+      assert.ok(!again.restarted && restarts === before, `again=${JSON.stringify(again)} restarts=${restarts}`));
+  }
+
+  // ---------------------------------------------------------------
   console.log("");
   console.log(`RESULT: ${PASS} passed, ${FAIL} failed`);
   for (const dir of cleanup) {

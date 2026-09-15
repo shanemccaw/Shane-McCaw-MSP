@@ -42,17 +42,17 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="&#xE71B;"
-                               FontFamily="Segoe MDL2 Assets" FontSize="13"
+                               FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}"
                                Margin="0,0,6,0" VerticalAlignment="Center"
                                Foreground="{StaticResource BlueBrush}"/>
                     <TextBlock Grid.Column="1" Text="LinkedIn Post"
-                               FontSize="12" FontWeight="SemiBold"
+                               FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                VerticalAlignment="Center"
                                Foreground="{StaticResource TextBrush}"/>
                     <Button x:Name="BtnClose" Grid.Column="2"
                             Content="&#x2715;"
                             Style="{StaticResource IconButton}"
-                            FontSize="10"
+                            FontSize="{StaticResource CaptionFontSize}"
                             Padding="4,1,4,1"
                             ToolTip="Close (reopen from the ActivityBar)"
                             Click="BtnClose_Click"/>
@@ -71,14 +71,14 @@
                      Foreground="{StaticResource TextBrush}"
                      BorderBrush="{StaticResource Surface0Brush}"
                      BorderThickness="1"
-                     FontSize="13"
+                     FontSize="{StaticResource BodyFontSize}"
                      Padding="6"
                      TextChanged="PostBox_TextChanged"/>
 
             <!-- Inline status/error message (empty by default) -->
             <TextBlock x:Name="InlineMessage" Grid.Row="2"
                        Margin="8,0,8,2"
-                       FontSize="11"
+                       FontSize="{StaticResource CaptionFontSize}"
                        TextWrapping="Wrap"
                        Visibility="Collapsed"
                        Foreground="{StaticResource Subtext1Brush}"/>

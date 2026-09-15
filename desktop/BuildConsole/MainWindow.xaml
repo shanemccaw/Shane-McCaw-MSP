@@ -418,7 +418,7 @@
                                 ToolTip="Quick Thought — capture a one-liner without leaving what you're doing"
                                 MouseLeftButtonUp="QuickThoughtPill_Click">
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="&#xE70B;" FontFamily="Segoe MDL2 Assets, Segoe UI Symbol" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <TextBlock Text="&#xE70B;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
                                 <TextBlock Text="Quick Thought" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Border>
@@ -512,7 +512,7 @@
                                 ToolTip="Screen clip (PrintScreen) - drag a region to the clipboard and disk"
                                 Click="ScreenClip_Click"
                                 Padding="6,4">
-                            <TextBlock Text="&#xE7A8;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource BlueBrush}"/>
+                            <TextBlock Text="&#xE7A8;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource BlueBrush}"/>
                         </Button>
                         <!-- Git #3657 (sub-issue of Epic #1202) - Shot Vault: browse the real shots
                              screen clip already saves to disk, grouped into runs, with search/tags/Copy. -->
@@ -521,7 +521,7 @@
                                 ToolTip="Shot Vault - browse captured screen clips"
                                 Click="ShotVault_Click"
                                 Padding="6,4">
-                            <TextBlock Text="&#xEB9F;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource BlueBrush}"/>
+                            <TextBlock Text="&#xEB9F;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource BlueBrush}"/>
                         </Button>
                         <!-- Git #1872 - Batter Up and AI Batter Up moved out of the queue column
                              into their own document tabs (MainWindow.BatterUpTabs.cs); these two
@@ -614,26 +614,26 @@
                                 ToolTip="Toggle Primary Side Bar (Ctrl+B)"
                                 Click="ToggleSidebar_Click"
                                 Padding="6,4">
-                            <TextBlock Text="&#xE899;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"/>
+                            <TextBlock Text="&#xE899;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}"/>
                         </Button>
                         <Button Style="{StaticResource IconButton}"
                                 ToolTip="Toggle Panel (Ctrl+`)"
                                 Click="ToggleBottomPanel_Click"
                                 Padding="6,4">
-                            <TextBlock Text="&#xE90A;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"/>
+                            <TextBlock Text="&#xE90A;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}"/>
                         </Button>
                         <Button Style="{StaticResource IconButton}"
                                 ToolTip="Toggle Secondary Side Bar"
                                 Click="ToggleQueuePanel_Click"
                                 Padding="6,4">
-                            <TextBlock Text="&#xE89A;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"/>
+                            <TextBlock Text="&#xE89A;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}"/>
                         </Button>
                         <Button Style="{StaticResource IconButton}"
                                 ToolTip="Developer Tools"
                                 Click="OpenDevTools_Click"
                                 Padding="6,4"
                                 Margin="4,0,0,0">
-                            <TextBlock Text="&#xE7BE;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource MauveBrush}"/>
+                            <TextBlock Text="&#xE7BE;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource MauveBrush}"/>
                         </Button>
                         <!-- Quick Dev Services Control Menu -->
                         <Menu Background="Transparent" BorderThickness="0" VerticalAlignment="Center" Margin="4,0,0,0" WindowChrome.IsHitTestVisibleInChrome="True">
@@ -674,7 +674,7 @@
                                 Padding="6,4"
                                 Margin="4,0,0,0"
                                 WindowChrome.IsHitTestVisibleInChrome="True">
-                            <TextBlock Text="&#xEC15;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource MauveBrush}"/>
+                            <TextBlock Text="&#xEC15;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource MauveBrush}"/>
                         </Button>
                     </StackPanel>
 
@@ -690,13 +690,13 @@
                          snap still works fine via WindowChrome, only the hover flyout is missing. -->
                     <StackPanel Grid.Column="3" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
                         <Button x:Name="BtnMinimize" Style="{StaticResource CaptionButton}" ToolTip="Minimize" Click="BtnMinimize_Click">
-                            <TextBlock Text="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"/>
+                            <TextBlock Text="&#xE921;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}"/>
                         </Button>
                         <Button x:Name="BtnMaximizeRestore" Style="{StaticResource CaptionButton}" ToolTip="Maximize" Click="BtnMaximizeRestore_Click">
-                            <TextBlock x:Name="BtnMaximizeRestoreIcon" Text="&#xE922;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"/>
+                            <TextBlock x:Name="BtnMaximizeRestoreIcon" Text="&#xE922;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}"/>
                         </Button>
                         <Button x:Name="BtnCloseWindow" Style="{StaticResource CaptionButtonClose}" ToolTip="Close" Click="BtnCloseWindow_Click">
-                            <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"/>
+                            <TextBlock Text="&#xE8BB;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}"/>
                         </Button>
                     </StackPanel>
 
@@ -1250,7 +1250,7 @@
 
                     <DockPanel Grid.Row="0" Margin="4,0,4,8">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="&#xE8B9;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource SubHeaderFontSize}"
+                            <TextBlock Text="&#xE8B9;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource SubHeaderFontSize}"
                                        Foreground="{StaticResource BlueBrush}" Margin="0,0,8,0" VerticalAlignment="Center"/>
                             <TextBlock Text="OPEN DOCUMENTS" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                        Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
@@ -1313,7 +1313,7 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="{Binding Glyph}"
-                                               FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource HeaderFontSize}"
+                                               FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource HeaderFontSize}"
                                                Foreground="{StaticResource BlueBrush}"
                                                VerticalAlignment="Center"/>
                                     <StackPanel Grid.Column="1" VerticalAlignment="Center">

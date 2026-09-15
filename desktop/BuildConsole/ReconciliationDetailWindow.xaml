@@ -40,7 +40,7 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="&#xE895;"
-                               FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource BodyFontSize}"
+                               FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource BodyFontSize}"
                                Margin="0,0,8,0" VerticalAlignment="Center"
                                Foreground="{StaticResource PeachBrush}"/>
                     <TextBlock Grid.Column="1" Text="Auto-Reconciled Builds"

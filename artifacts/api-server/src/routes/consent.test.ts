@@ -162,6 +162,20 @@ vi.mock("../lib/direct-tenant-provisioning.ts", async (importOriginal) => {
   };
 });
 
+// #4197: every success path now confirms the grant with Microsoft first. Mocked
+// to "confirmed" by default so the existing cases keep exercising consent.ts's
+// own logic; the refusal cases below override it. The module's real behaviour
+// against the token endpoint is covered by lib/consent-verification.test.ts.
+type VerifyResult = import("../lib/consent-verification.ts").ConsentVerificationResult;
+const mockVerifyConsent = vi.fn<(...args: unknown[]) => Promise<VerifyResult>>();
+function verifiedOk(): Promise<VerifyResult> {
+  return Promise.resolve({ ok: true, roles: ["Directory.Read.All"] });
+}
+mockVerifyConsent.mockImplementation(verifiedOk);
+vi.mock("../lib/consent-verification.ts", () => ({
+  verifyTenantConsentWithMicrosoft: (...args: unknown[]) => mockVerifyConsent(...args),
+}));
+
 vi.mock("../lib/logger.ts", () => {
   // `.child()` returns the same logger so both the module-level binding in
   // consent.ts (logger.child({ channel: "auth" })) and transitive imports
@@ -378,7 +392,7 @@ describe("graph.ts — multi-tenant helpers", () => {
 
 // ── Tests: route handlers (mock req/res) ─────────────────────────────────────
 
-import consentRouter from "./consent.ts";
+import consentRouter, { signSharePointConsentState } from "./consent.ts";
 import type { IRouter } from "express";
 
 // Helper: extract handler from router stack. Routes gated by requireAdmin
@@ -429,7 +443,87 @@ describe("consent route handlers", () => {
     mockUpdate.mockClear();
     mockSelect.mockClear();
     mockResolveOrCreateDirectTenant.mockClear();
+    mockVerifyConsent.mockReset();
+    mockVerifyConsent.mockImplementation(verifiedOk);
     dbSelectQueue = [];
+  });
+
+  // #4197: tenant + admin_consent are unsigned query parameters. Before any
+  // grant, token burn, checkout-session flip or customer creation, Microsoft
+  // itself must confirm the tenant exists and consented.
+  describe("GET /consent/callback — Microsoft verification before any grant (#4197)", () => {
+    const FABRICATED = "ef825402-eae9-4b6f-8bd8-8b7e674ecfdd";
+    const CHECKOUT_STATE = "22222222-2222-4222-8222-222222222222";
+
+    it("REFUSES a fabricated tenant with no side effects at all", async () => {
+      mockVerifyConsent.mockResolvedValueOnce({ ok: false, reason: "tenant_not_found", detail: "400 AADSTS90002" });
+      dbSelectQueue.push([{ customerId: null, clientUserId: null, invitedEmail: "x@example.com", invitedName: null, mspId: null }]);
+      dbSelectQueue.push([{ id: 1 }]);   // isDirectBusiness MSP
+      dbSelectQueue.push([]);            // guard: no existing customer for the GUID
+      mockUpdateSet.mockClear();
+      const { res, store } = mockRes();
+      const req = mockReq({ query: { tenant: FABRICATED, admin_consent: "True", state: "invite-tok" } });
+      const handler = getHandler(consentRouter, "get", "/consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(mockVerifyConsent).toHaveBeenCalledWith(FABRICATED, { app: "read", resource: "graph" });
+      expect(store.statusCode).toBe(400);
+      expect(store.redirectUrl).toBeNull();
+      // No token burn, no session flip, no consent stamp, no customer object.
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(mockInsert).not.toHaveBeenCalled();
+      expect(mockResolveOrCreateDirectTenant).not.toHaveBeenCalled();
+    });
+
+    it("REFUSES a checkout-session popup with a non-closing page and no session flip", async () => {
+      mockVerifyConsent.mockResolvedValueOnce({ ok: false, reason: "not_consented", detail: "400 AADSTS7000229" });
+      dbSelectQueue.push([{ id: 1 }]);   // isDirectBusiness MSP
+      dbSelectQueue.push([]);            // guard: no existing customer
+      const { res, store } = mockRes();
+      const req = mockReq({ query: { tenant: FABRICATED, admin_consent: "True", state: CHECKOUT_STATE } });
+      const handler = getHandler(consentRouter, "get", "/consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.sentText).toContain("could not be confirmed");
+      expect(store.sentText).not.toContain("window.close");
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(mockResolveOrCreateDirectTenant).not.toHaveBeenCalled();
+    });
+
+    it("answers a platform-side verification fault with 503 and leaves the invite unburned", async () => {
+      mockVerifyConsent.mockResolvedValueOnce({ ok: false, reason: "unverifiable", detail: "token endpoint unreachable" });
+      dbSelectQueue.push([{ customerId: 5, clientUserId: null }]);
+      const { res, store } = mockRes();
+      const req = mockReq({ query: { tenant: FABRICATED, admin_consent: "True", state: "invite-tok" } });
+      const handler = getHandler(consentRouter, "get", "/consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.statusCode).toBe(503);
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it("withholds only the sharepoint stamp when Microsoft confirms graph but not SharePoint", async () => {
+      mockVerifyConsent.mockImplementation(async (_t: unknown, opts: unknown) =>
+        (opts as { resource: string }).resource === "sharepoint"
+          ? { ok: false, reason: "no_permissions", detail: "no Sites.FullControl.All" }
+          : { ok: true, roles: ["Directory.Read.All"] },
+      );
+      dbSelectQueue.push([{ customerId: null, clientUserId: null }]);
+      dbSelectQueue.push([{ id: 1 }]);
+      dbSelectQueue.push([]);
+      mockUpdateSet.mockClear();
+      const { res, store } = mockRes();
+      const req = mockReq({ query: { tenant: "tenant-graph-only", admin_consent: "True", state: "tok" } });
+      const handler = getHandler(consentRouter, "get", "/consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.redirectUrl).toContain("/consent/success");
+      const keysStamped = (mockUpdateSet.mock.calls as Array<[{ consent?: { args: unknown[] } }]>)
+        .filter(([arg]) => arg?.consent?.args)
+        .map(([arg]) => arg.consent!.args[2]);
+      expect(keysStamped).toContain("graph");
+      expect(keysStamped).not.toContain("sharepoint");
+    });
   });
 
   describe("GET /consent/declined", () => {
@@ -922,6 +1016,55 @@ describe("consent route handlers", () => {
 
       expect(store.redirectUrl).toContain("/consent/success");
       expect(store.redirectUrl).toContain("write=1");
+      expect(consentWasStamped()).toBe(true);
+      expect(mockVerifyConsent).toHaveBeenCalledWith("tenant-legit", { app: "write", resource: "graph" });
+    });
+
+    // #4197: the signed state + GUID binding prove WHICH customer, not that the
+    // admin approved the write app — a hand-typed admin_consent=True must not stamp.
+    it("REFUSES when Microsoft does not confirm the write app's consent", async () => {
+      mockVerifyConsent.mockResolvedValueOnce({ ok: false, reason: "not_consented", detail: "400 AADSTS7000229" });
+      dbSelectQueue.push([{ customerId: 7 }]);
+      dbSelectQueue.push([{ id: 7, tenantId: "tenant-legit" }]);
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-legit", admin_consent: "True", state: writeState(7, "tok-w") },
+      });
+      const handler = getHandler(consentRouter, "get", "/admin/write-consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.statusCode).toBe(400);
+      expect(store.redirectUrl).toBeNull();
+      expect(consentWasStamped()).toBe(false);
+    });
+
+    it("SharePoint callback: REFUSES when Microsoft does not confirm the SharePoint permission", async () => {
+      mockVerifyConsent.mockResolvedValueOnce({ ok: false, reason: "no_permissions", detail: "no Sites.FullControl.All" });
+      dbSelectQueue.push([{ customerId: 7 }]);
+      dbSelectQueue.push([{ id: 7, tenantId: "tenant-legit" }]);
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-legit", admin_consent: "True", state: signSharePointConsentState(7, "tok-sp") },
+      });
+      const handler = getHandler(consentRouter, "get", "/admin/sharepoint-consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(mockVerifyConsent).toHaveBeenCalledWith("tenant-legit", expect.objectContaining({ app: "read", resource: "sharepoint" }));
+      expect(store.statusCode).toBe(400);
+      expect(consentWasStamped()).toBe(false);
+    });
+
+    it("SharePoint callback: grants once Microsoft confirms", async () => {
+      dbSelectQueue.push([{ customerId: 7 }]);
+      dbSelectQueue.push([{ id: 7, tenantId: "tenant-legit" }]);
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-legit", admin_consent: "True", state: signSharePointConsentState(7, "tok-sp") },
+      });
+      const handler = getHandler(consentRouter, "get", "/admin/sharepoint-consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.redirectUrl).toContain("/consent/success");
       expect(consentWasStamped()).toBe(true);
     });
 

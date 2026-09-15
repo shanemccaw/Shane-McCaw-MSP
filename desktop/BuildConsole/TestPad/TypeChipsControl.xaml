@@ -24,25 +24,25 @@
     <StackPanel Orientation="Horizontal">
         <Border x:Name="ChipBug" Style="{StaticResource TypeChipStyle}" Margin="0,0,6,0"
                 ToolTip="Bug — leading ! marker" MouseLeftButtonUp="ChipBug_Click">
-            <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource RedBrush}">
+            <TextBlock FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource RedBrush}">
                 <Run Text="!"/><Run Text=" Bug"/>
             </TextBlock>
         </Border>
         <Border x:Name="ChipQuestion" Style="{StaticResource TypeChipStyle}" Margin="0,0,6,0"
                 ToolTip="Question — leading ? marker" MouseLeftButtonUp="ChipQuestion_Click">
-            <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource BlueBrush}">
+            <TextBlock FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource BlueBrush}">
                 <Run Text="?"/><Run Text=" Question"/>
             </TextBlock>
         </Border>
         <Border x:Name="ChipIdea" Style="{StaticResource TypeChipStyle}" Margin="0,0,6,0"
                 ToolTip="Idea — leading + marker" MouseLeftButtonUp="ChipIdea_Click">
-            <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource PeachBrush}">
+            <TextBlock FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource PeachBrush}">
                 <Run Text="+"/><Run Text=" Idea"/>
             </TextBlock>
         </Border>
         <Border x:Name="ChipWorks" Style="{StaticResource TypeChipStyle}"
                 ToolTip="Works — leading . marker" MouseLeftButtonUp="ChipWorks_Click">
-            <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource GreenBrush}">
+            <TextBlock FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource GreenBrush}">
                 <Run Text="."/><Run Text=" Works"/>
             </TextBlock>
         </Border>

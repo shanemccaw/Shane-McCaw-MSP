@@ -19,7 +19,7 @@
         <TextBlock x:Name="TitleText"
                    Grid.Row="0"
                    Text="Assign chat to epic:"
-                   FontSize="13"
+                   FontSize="{StaticResource SubHeaderFontSize}"
                    FontWeight="SemiBold"
                    Foreground="{StaticResource TextBrush}"
                    TextWrapping="Wrap"
@@ -27,7 +27,7 @@
 
         <TextBlock Grid.Row="1"
                    Text="Chat URL"
-                   FontSize="11"
+                   FontSize="{StaticResource CaptionFontSize}"
                    Foreground="{StaticResource Subtext1Brush}"
                    Margin="0,0,0,4"/>
 
@@ -38,7 +38,7 @@
                  BorderThickness="1"
                  Foreground="{StaticResource TextBrush}"
                  Padding="6,5"
-                 FontSize="12"/>
+                 FontSize="{StaticResource BodyFontSize}"/>
 
         <Button x:Name="UseCurrentChatButton"
                 Grid.Row="3"
@@ -50,7 +50,7 @@
 
         <TextBlock x:Name="StatusText"
                    Grid.Row="4"
-                   FontSize="11"
+                   FontSize="{StaticResource CaptionFontSize}"
                    Foreground="{StaticResource StatusErrorBrush}"
                    TextWrapping="Wrap"
                    VerticalAlignment="Top"

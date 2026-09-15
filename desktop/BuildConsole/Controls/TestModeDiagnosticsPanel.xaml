@@ -25,7 +25,7 @@
                             Padding="0"
                             ToolTip="Expand Diagnostics (300px)"
                             Click="BtnExpandRail_Click">
-                        <TextBlock Text="&#xE76C;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
+                        <TextBlock Text="&#xE76C;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                     </Button>
                 </Border>
 
@@ -35,37 +35,37 @@
                         <!-- DOM Inspector -->
                         <Button x:Name="RailBtnDom" Style="{StaticResource IconButton}" Width="32" Height="32" Margin="0,0,0,3"
                                 ToolTip="DOM Inspector" Click="RailBtnDom_Click">
-                            <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
+                            <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                         </Button>
 
                         <!-- Accessibility Audit -->
                         <Button x:Name="RailBtnA11y" Style="{StaticResource IconButton}" Width="32" Height="32" Margin="0,0,0,3"
                                 ToolTip="Accessibility Audit" Click="RailBtnA11y_Click">
-                            <TextBlock Text="&#xE7B5;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
+                            <TextBlock Text="&#xE7B5;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                         </Button>
 
                         <!-- DOM Mutations -->
                         <Button x:Name="RailBtnMut" Style="{StaticResource IconButton}" Width="32" Height="32" Margin="0,0,0,3"
                                 ToolTip="DOM Mutations" Click="RailBtnMut_Click">
-                            <TextBlock Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
+                            <TextBlock Text="&#xE9D9;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                         </Button>
 
                         <!-- DevTools Runner -->
                         <Button x:Name="RailBtnRunner" Style="{StaticResource IconButton}" Width="32" Height="32" Margin="0,0,0,3"
                                 ToolTip="DevTools Runner" Click="RailBtnRunner_Click">
-                            <TextBlock Text="&#xE756;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
+                            <TextBlock Text="&#xE756;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                         </Button>
 
                         <!-- HUD Options -->
                         <Button x:Name="RailBtnHud" Style="{StaticResource IconButton}" Width="32" Height="32" Margin="0,0,0,3"
                                 ToolTip="HUD Options" Click="RailBtnHud_Click">
-                            <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
+                            <TextBlock Text="&#xE713;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                         </Button>
 
                         <!-- API Helper -->
                         <Button x:Name="RailBtnApi" Style="{StaticResource IconButton}" Width="32" Height="32" Margin="0,0,0,3"
                                 ToolTip="API Helper" Click="RailBtnApi_Click">
-                            <TextBlock Text="&#xE945;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource AccentBrush}"/>
+                            <TextBlock Text="&#xE945;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource AccentBrush}"/>
                         </Button>
                     </StackPanel>
                 </ScrollViewer>
@@ -97,7 +97,7 @@
                                 Padding="0"
                                 ToolTip="Collapse Diagnostics Rail (48px)"
                                 Click="BtnCollapseRail_Click">
-                            <TextBlock Text="&#xE76B;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
+                            <TextBlock Text="&#xE76B;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                         </Button>
                     </Grid>
                 </Border>
@@ -111,7 +111,7 @@
                             <!-- Errors -->
                             <Border Background="#1ADC8A8A" BorderBrush="#40DC8A8A" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="0,0,4,4">
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock Text="&#xE783;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusErrorBrush}" Margin="0,0,3,0"/>
+                                    <TextBlock Text="&#xE783;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusErrorBrush}" Margin="0,0,3,0"/>
                                     <TextBlock x:Name="TxtTelemetryErrors" Text="0 errors" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusErrorBrush}"/>
                                 </StackPanel>
                             </Border>
@@ -119,7 +119,7 @@
                             <!-- Net Fail -->
                             <Border Background="#1AD4A56C" BorderBrush="#40D4A56C" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="0,0,4,4">
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock Text="&#xE945;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusWarningBrush}" Margin="0,0,3,0"/>
+                                    <TextBlock Text="&#xE945;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusWarningBrush}" Margin="0,0,3,0"/>
                                     <TextBlock x:Name="TxtTelemetryNetFail" Text="0 net fail" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusWarningBrush}"/>
                                 </StackPanel>
                             </Border>
@@ -127,7 +127,7 @@
                             <!-- Perf ms -->
                             <Border Background="#1A79B3C8" BorderBrush="#4079B3C8" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="0,0,4,4">
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock Text="&#xE916;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusRunningBrush}" Margin="0,0,3,0"/>
+                                    <TextBlock Text="&#xE916;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusRunningBrush}" Margin="0,0,3,0"/>
                                     <TextBlock x:Name="TxtTelemetryPerf" Text="-- ms" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusRunningBrush}"/>
                                 </StackPanel>
                             </Border>
@@ -135,7 +135,7 @@
                             <!-- Events -->
                             <Border Background="#1A8B949E" BorderBrush="#408B949E" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="0,0,4,4">
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,3,0"/>
+                                    <TextBlock Text="&#xE9D9;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,3,0"/>
                                     <TextBlock x:Name="TxtTelemetryEvents" Text="0 events" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}"/>
                                 </StackPanel>
                             </Border>
@@ -168,9 +168,9 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="0" Text="&#xE721;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                         <TextBlock Grid.Column="1" Text="DOM Inspector" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" VerticalAlignment="Center"/>
-                                        <TextBlock x:Name="IconDomChevron" Grid.Column="2" Text="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="IconDomChevron" Grid.Column="2" Text="&#xE70D;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Border>
                                 <Border x:Name="BodyDom" Background="{StaticResource CrustBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Padding="10" Visibility="Collapsed">
@@ -249,7 +249,7 @@
                                                     <DockPanel LastChildFill="False">
                                                         <Button x:Name="BtnDomSendBug" DockPanel.Dock="Left" Style="{StaticResource PrimaryButton}" FontSize="{StaticResource CaptionFontSize}" Padding="8,4" Margin="0,0,6,0" Click="BtnDomSendBug_Click">
                                                             <StackPanel Orientation="Horizontal">
-                                                                <TextBlock Text="&#xE725;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                                                <TextBlock Text="&#xE725;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,5,0" VerticalAlignment="Center"/>
                                                                 <TextBlock Text="Send to Bug List (Enter)" FontWeight="Bold" VerticalAlignment="Center"/>
                                                             </StackPanel>
                                                         </Button>
@@ -278,9 +278,9 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="&#xE7B5;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="0" Text="&#xE7B5;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                         <TextBlock Grid.Column="1" Text="Accessibility Audit" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" VerticalAlignment="Center"/>
-                                        <TextBlock x:Name="IconA11yChevron" Grid.Column="2" Text="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="IconA11yChevron" Grid.Column="2" Text="&#xE70D;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Border>
                                 <Border x:Name="BodyA11y" Background="{StaticResource CrustBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Padding="10" Visibility="Collapsed">
@@ -289,7 +289,7 @@
                                         <WrapPanel>
                                             <Button x:Name="BtnRescanA11y" Style="{StaticResource SecondaryButton}" FontSize="{StaticResource CaptionFontSize}" Padding="8,5" Margin="0,0,6,0" Click="BtnRescanA11y_Click">
                                                 <StackPanel Orientation="Horizontal">
-                                                    <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,5,0"/>
+                                                    <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,5,0"/>
                                                     <TextBlock Text="Rescan" FontWeight="Bold"/>
                                                 </StackPanel>
                                             </Button>
@@ -306,9 +306,9 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="0" Text="&#xE9D9;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                         <TextBlock Grid.Column="1" Text="DOM Mutations" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" VerticalAlignment="Center"/>
-                                        <TextBlock x:Name="IconMutChevron" Grid.Column="2" Text="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="IconMutChevron" Grid.Column="2" Text="&#xE70D;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Border>
                                 <Border x:Name="BodyMut" Background="{StaticResource CrustBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Padding="10" Visibility="Collapsed">
@@ -330,9 +330,9 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="&#xE756;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="0" Text="&#xE756;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                         <TextBlock Grid.Column="1" Text="DevTools Runner" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" VerticalAlignment="Center"/>
-                                        <TextBlock x:Name="IconRunnerChevron" Grid.Column="2" Text="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="IconRunnerChevron" Grid.Column="2" Text="&#xE70D;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Border>
                                 <Border x:Name="BodyRunner" Background="{StaticResource CrustBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Padding="10" Visibility="Collapsed">
@@ -344,7 +344,7 @@
                                                  KeyDown="TxtConsoleCmd_KeyDown"/>
                                         <Button Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" FontSize="{StaticResource CaptionFontSize}" Padding="8,5" Margin="0,0,0,6" Click="BtnRunConsole_Click">
                                             <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="&#xE768;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,5,0"/>
+                                                <TextBlock Text="&#xE768;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,5,0"/>
                                                 <TextBlock Text="Run (Enter)" FontWeight="Bold"/>
                                             </StackPanel>
                                         </Button>
@@ -374,9 +374,9 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="0" Text="&#xE713;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                         <TextBlock Grid.Column="1" Text="HUD Options" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" VerticalAlignment="Center"/>
-                                        <TextBlock x:Name="IconHudChevron" Grid.Column="2" Text="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="IconHudChevron" Grid.Column="2" Text="&#xE70D;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Border>
                                 <Border x:Name="BodyHud" Background="{StaticResource CrustBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Padding="10" Visibility="Collapsed">
@@ -401,7 +401,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="&#xE945;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource AccentBrush}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="0" Text="&#xE945;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource AccentBrush}" Margin="0,0,8,0" VerticalAlignment="Center"/>
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                     <TextBlock Text="API Helper" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource TextBrush}"/>
                                     <TextBlock Text="Opens companion window" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"/>

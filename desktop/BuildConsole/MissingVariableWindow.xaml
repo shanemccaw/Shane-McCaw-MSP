@@ -44,17 +44,17 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="&#xE9F5;"
-                               FontFamily="Segoe MDL2 Assets" FontSize="13"
+                               FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}"
                                Margin="0,0,6,0" VerticalAlignment="Center"
                                Foreground="{StaticResource PeachBrush}"/>
                     <TextBlock Grid.Column="1" Text="Test Variable Needs a Value"
-                               FontSize="12" FontWeight="SemiBold"
+                               FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                VerticalAlignment="Center"
                                Foreground="{StaticResource TextBrush}"/>
                     <Button x:Name="BtnClose" Grid.Column="2"
                             Content="&#x2715;"
                             Style="{StaticResource IconButton}"
-                            FontSize="10"
+                            FontSize="{StaticResource CaptionFontSize}"
                             Padding="4,1,4,1"
                             ToolTip="Dismiss (this step will fail, naming the variable)"
                             Click="BtnClose_Click"/>
@@ -65,7 +65,7 @@
             <TextBlock Grid.Row="1"
                        Margin="12,10,12,4"
                        TextWrapping="Wrap"
-                       FontSize="12"
+                       FontSize="{StaticResource BodyFontSize}"
                        Foreground="{StaticResource Subtext0Brush}"
                        Text="This test run needs a real value for the variable below (it's still unset). Enter it and the run continues on it; the value is saved to Settings › Test Environment Variables so you won't be asked again."/>
 
@@ -80,8 +80,8 @@
                 <TextBlock x:Name="NameText"
                            Text="{}{{NAME}}"
                            Foreground="{StaticResource YellowBrush}"
-                           FontFamily="Consolas, Cascadia Mono, monospace"
-                           FontSize="15" FontWeight="Bold"
+                           FontFamily="{StaticResource MonospaceFontFamily}"
+                           FontSize="{StaticResource MonospaceFontSize}" FontWeight="Bold"
                            TextWrapping="Wrap"
                            VerticalAlignment="Center"/>
             </Border>
@@ -90,7 +90,7 @@
             <TextBox x:Name="ValueBox" Grid.Row="3"
                      Margin="12,4,12,2"
                      Padding="8,6,8,6"
-                     FontSize="13"
+                     FontSize="{StaticResource BodyFontSize}"
                      Background="{StaticResource BaseBrush}"
                      Foreground="{StaticResource TextBrush}"
                      BorderBrush="{StaticResource Surface0Brush}"
@@ -101,7 +101,7 @@
             <!-- Hint / validation line -->
             <TextBlock x:Name="HintText" Grid.Row="4"
                        Margin="12,4,12,2"
-                       FontSize="11"
+                       FontSize="{StaticResource BodyFontSize}"
                        TextWrapping="Wrap"
                        Foreground="{StaticResource Subtext0Brush}"
                        Text="Press Enter to submit, Esc to dismiss."/>

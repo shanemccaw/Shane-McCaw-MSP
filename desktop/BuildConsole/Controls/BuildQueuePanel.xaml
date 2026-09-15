@@ -186,7 +186,7 @@
                                 Click="BtnCollapseQueue_Click">
                             <TextBlock x:Name="CollapseQueueIcon"
                                        Text="&#xE76C;"
-                                       FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
+                                       FontFamily="{StaticResource IconFontFamily}"
                                        FontSize="13"
                                        VerticalAlignment="Center"/>
                         </Button>
@@ -203,7 +203,7 @@
                                 Click="BtnToggleBuildSets_Click">
                             <TextBlock x:Name="ToggleBuildSetsIcon"
                                        Text="&#xE8B7;"
-                                       FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
+                                       FontFamily="{StaticResource IconFontFamily}"
                                        FontSize="13"
                                        VerticalAlignment="Center"/>
                         </Button>
@@ -235,7 +235,7 @@
                                 Margin="0,0,3,0"
                                 Click="BtnNewBuildFromPaste_Click">
                             <TextBlock Text="&#xE710;"
-                                       FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
+                                       FontFamily="{StaticResource IconFontFamily}"
                                        FontSize="11"
                                        Foreground="{StaticResource BlueBrush}"
                                        VerticalAlignment="Center"/>
@@ -253,7 +253,7 @@
                                 Click="BtnPauseQueue_Click">
                             <TextBlock x:Name="PlayPauseQueueIcon"
                                        Text="&#xE769;"
-                                       FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
+                                       FontFamily="{StaticResource IconFontFamily}"
                                        FontSize="13"
                                        Foreground="{StaticResource GreenBrush}"
                                        VerticalAlignment="Center"/>
@@ -276,7 +276,7 @@
                                 Click="BtnRefreshBoard_Click">
                             <TextBlock x:Name="RefreshBoardIcon"
                                        Text="&#xE72C;"
-                                       FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
+                                       FontFamily="{StaticResource IconFontFamily}"
                                        FontSize="13"
                                        Foreground="{StaticResource GreenBrush}"
                                        VerticalAlignment="Center"
@@ -300,7 +300,7 @@
                                 Click="BtnRefreshBatterUp_Click">
                             <TextBlock x:Name="RefreshBatterUpIcon"
                                        Text="&#xE72C;"
-                                       FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
+                                       FontFamily="{StaticResource IconFontFamily}"
                                        FontSize="13"
                                        Foreground="{StaticResource GreenBrush}"
                                        VerticalAlignment="Center"
@@ -369,7 +369,7 @@
                         <DockPanel LastChildFill="True">
                             <TextBlock Text="&#xE70D;"
                                        DockPanel.Dock="Right"
-                                       FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
+                                       FontFamily="{StaticResource IconFontFamily}"
                                        FontSize="9"
                                        Margin="4,0,0,0"
                                        Foreground="{StaticResource Subtext0Brush}"
@@ -416,14 +416,14 @@
                             <TextBlock x:Name="MatrixChipCaret"
                                        Text="&#xE70D;"
                                        DockPanel.Dock="Right"
-                                       FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
+                                       FontFamily="{StaticResource IconFontFamily}"
                                        FontSize="9"
                                        Margin="4,0,0,0"
                                        Foreground="{StaticResource Subtext0Brush}"
                                        HorizontalAlignment="Right"
                                        VerticalAlignment="Center"/>
                             <TextBlock Text="&#xE8A9;"
-                                       FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
+                                       FontFamily="{StaticResource IconFontFamily}"
                                        FontSize="10"
                                        Margin="0,0,6,0"
                                        Foreground="{StaticResource Subtext0Brush}"
@@ -709,7 +709,7 @@
                             Click="BtnToggleCritterLounge_Click">
                         <TextBlock x:Name="ToggleCritterLoungeIcon"
                                    Text="&#xED1A;"
-                                   FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
+                                   FontFamily="{StaticResource IconFontFamily}"
                                    FontSize="12"
                                    VerticalAlignment="Center"/>
                     </Button>
@@ -831,7 +831,7 @@
                                         Padding="4,2"
                                         Click="BtnRefreshChatEpicIssues_Click">
                                     <TextBlock Text="&#xE72C;"
-                                               FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
+                                               FontFamily="{StaticResource IconFontFamily}"
                                                FontSize="11"
                                                Foreground="{StaticResource Subtext1Brush}"
                                                VerticalAlignment="Center"/>

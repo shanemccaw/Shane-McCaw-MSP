@@ -224,10 +224,23 @@ builds together (properly blocked by their parents); without grouping that's
   deferred").
 * When **every** member has reached a terminal state, the completing call fires
   **exactly ONE** restart for the combined changes (all four services), marks the
-  set done (single-shot — a second completion can never double-restart), and
-  returns `restarted: true, runSetTests: true`. **Only that one caller runs the
-  combined test pass** — the others returned `runSetTests: false`, so tests run
-  once for the whole set, not once per build.
+  set done, and returns `restarted: true, runSetTests: true`. **Only that one
+  caller runs the combined test pass** — the others returned `runSetTests: false`,
+  so tests run once for the whole set, not once per build.
+* **Single-shot is per server HEAD, not permanent (Git #4153).** A set with
+  `expected=1` (a lone single-agent set — the common case for the mandatory
+  bookend-then-code commit pattern) is satisfied by that agent's very first
+  member event, which is often an early `request-restart` call right after the
+  IN-FLIGHT bookend commit, before the real code exists. The commit still
+  merges into the checkout regardless of set completion — so if the SAME
+  key/agent (or a late straggler) reports again later with a genuinely newer
+  commit, the coordinator detects the checkout has advanced past what the
+  already-fired restart saw and fires a **follow-up restart** for the delta,
+  instead of silently orphaning that merge. A real re-completion with nothing
+  new merged (e.g. a duplicate `finishSetFromCli` call) stays a true no-op, so
+  this doesn't reintroduce double-restarts for identical content. The set
+  manifest's `restart` field always holds the most recent restart; any prior
+  restart is preserved in `restartHistory`.
 * Set members **never touch the general pending queue** — the ungrouped
   enqueue → `runCycle` → restart path (and its coalescing) is completely
   unchanged. A build with no `--buildSet` behaves exactly as before.

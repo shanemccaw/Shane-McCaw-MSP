@@ -21,14 +21,14 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Column="0" Text="NOTIFICATIONS" FontSize="10" FontWeight="Bold"
+                <TextBlock Grid.Column="0" Text="NOTIFICATIONS" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                            Foreground="{StaticResource Subtext0Brush}"
                            VerticalAlignment="Center"/>
 
                 <Button x:Name="BtnClearAll" Grid.Column="1"
                         Content="Clear All"
                         Style="{StaticResource IconButton}"
-                        FontSize="10"
+                        FontSize="{StaticResource CaptionFontSize}"
                         Padding="6,3"
                         ToolTip="Clear every non-bookmarked notification — bookmarked entries stay"
                         Click="BtnClearAll_Click"/>

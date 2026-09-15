@@ -284,21 +284,58 @@ function makeRestartAction(config) {
 /**
  * If (and only if) the set is now complete and its restart hasn't already fired,
  * trigger EXACTLY ONE restart for the combined changes of the whole set. Idempotent
- * and single-shot: the `restart.fired` flag on the manifest -- written under the
- * held mutex -- guarantees no second restart even under concurrent completions.
+ * and single-shot PER server HEAD: the `restart.fired` flag on the manifest --
+ * written under the held mutex -- guarantees no second restart for the SAME
+ * content even under concurrent completions.
+ *
+ * Git #4153: "single-shot" must not mean "latched closed forever the first time
+ * `expected` is satisfied." A set opened by a single agent id (expected=1) is
+ * satisfied by that agent's very first member event -- which, per the mandatory
+ * bookend convention, is often an early `request-restart` call right after the
+ * IN-FLIGHT bookend commit, before the real code has landed. `runSetMemberCycle`
+ * merges every member event's commit into the server checkout regardless of set
+ * completion, so a later event for the SAME key (the real code commit) still
+ * advances the checkout -- but a bare `restart.fired` check here would silently
+ * swallow that advance with no restart, orphaning the merge (the dev server keeps
+ * serving the pre-merge code with no error). Instead, compare the current server
+ * HEAD to the HEAD recorded at the LAST fired restart: if nothing has actually
+ * advanced past it, this really is a no-op re-completion (preserves the existing
+ * single-shot guarantee, e.g. `finishSetFromCli` called twice with no new merge).
+ * If the tree HAS advanced since -- a straggler or re-reporting member landed a
+ * genuinely new commit after the set was already considered complete -- fire a
+ * FOLLOW-UP restart for that delta rather than treating the set as forever closed.
  *
  * Assumes the coordinator mutex is HELD by the caller.
  */
 export async function maybeFireSetRestart(config, deps, name, { byAgent } = {}) {
   const set = bs.readSet(config, name);
   if (!set) return { complete: false, restarted: false };
-  if (set.restart?.fired) return { complete: true, restarted: false, alreadyFired: true };
-  if (!bs.isComplete(set)) return { complete: false, restarted: false };
 
   const W = config.serverWorktree;
-  const advanced = bs.treeAdvanced(set);
   const serverHeadBefore = revParse(W, "HEAD");
+  const alreadyFired = !!set.restart?.fired;
+  if (alreadyFired && serverHeadBefore === set.restart.serverHead) {
+    // Nothing has merged into the checkout since the last fired restart -- a
+    // genuine no-op re-completion, not a missed follow-up.
+    return { complete: true, restarted: false, alreadyFired: true };
+  }
+  if (!bs.isComplete(set)) return { complete: false, restarted: false };
+
   const cycleId = `set-${Date.now()}-${process.pid}`;
+  if (alreadyFired) {
+    // Follow-up restart: the checkout advanced past the previously fired
+    // restart's recorded HEAD. Preserve the prior restart in history before
+    // overwriting `set.restart` with this new one.
+    bs.logSetEvent(config, {
+      kind: "restart-reopen",
+      setName: set.name,
+      cycleId,
+      priorServerHead: set.restart.serverHead,
+      currentServerHead: serverHeadBefore,
+      byAgent,
+    });
+  }
+  const advanced = bs.treeAdvanced(set);
 
   // --- Selective service targeting ------------------------------------------
   // Compute the set's COMBINED changed-file footprint (the union of each merged
@@ -377,6 +414,7 @@ export async function maybeFireSetRestart(config, deps, name, { byAgent } = {}) 
     kind: "restart",
     setName: set.name,
     cycleId,
+    followUp: alreadyFired,
     restarted: advanced,
     reason,
     holdWait,

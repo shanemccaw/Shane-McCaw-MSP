@@ -35,17 +35,17 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="TxtTitleBar" Grid.Column="0" Text="Test Runner" Margin="12,0,0,0"
-                           VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
+                           VerticalAlignment="Center" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                            Foreground="{StaticResource Subtext1Brush}"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
                     <Button x:Name="BtnMinimize" Style="{StaticResource CaptionButton}" ToolTip="Minimize" Click="BtnMinimize_Click">
-                        <TextBlock Text="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                        <TextBlock Text="&#xE921;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}"/>
                     </Button>
                     <Button x:Name="BtnMaximizeRestore" Style="{StaticResource CaptionButton}" ToolTip="Maximize" Click="BtnMaximizeRestore_Click">
-                        <TextBlock x:Name="BtnMaximizeRestoreIcon" Text="&#xE922;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                        <TextBlock x:Name="BtnMaximizeRestoreIcon" Text="&#xE922;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}"/>
                     </Button>
                     <Button x:Name="BtnCloseWindow" Style="{StaticResource CaptionButtonClose}" ToolTip="Close" Click="BtnCloseWindow_Click">
-                        <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                        <TextBlock Text="&#xE8BB;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}"/>
                     </Button>
                 </StackPanel>
             </Grid>
@@ -73,17 +73,17 @@
                 <StackPanel Grid.Column="0">
                     <DockPanel>
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="TEST RUNNER" FontSize="12" FontWeight="Bold" Foreground="{StaticResource BlueBrush}"/>
+                            <TextBlock Text="TEST RUNNER" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource BlueBrush}"/>
                             <Border x:Name="TargetEnvBadge" Background="{StaticResource StatusSuccessBrush}" CornerRadius="4" Padding="6,1" Margin="10,0,0,0" VerticalAlignment="Center">
-                                <TextBlock x:Name="TxtTargetEnvBadge" Text="DEV (LOCAL)" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource CrustBrush}"/>
+                                <TextBlock x:Name="TxtTargetEnvBadge" Text="DEV (LOCAL)" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource CrustBrush}"/>
                             </Border>
                         </StackPanel>
-                        <TextBlock x:Name="TxtStatusBadge" Text="● IDLE" FontSize="12" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" HorizontalAlignment="Right"/>
+                        <TextBlock x:Name="TxtStatusBadge" Text="● IDLE" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" HorizontalAlignment="Right"/>
                     </DockPanel>
-                    <TextBlock x:Name="TxtRunLabel" Text="No run yet." FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock x:Name="TxtRunLabel" Text="No run yet." FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
                     <!-- Live elapsed ticker: shown while a step is in flight, hidden otherwise -->
                     <TextBlock x:Name="TxtCurrentStep"
-                               FontSize="10.5"
+                               FontSize="{StaticResource CaptionFontSize}"
                                Foreground="{StaticResource StatusRunningBrush}"
                                Margin="0,3,0,0"
                                TextTrimming="CharacterEllipsis"
@@ -91,7 +91,7 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock x:Name="TxtSummary" Text="0 pass / 0 warn / 0 crash" FontSize="11" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <TextBlock x:Name="TxtSummary" Text="0 pass / 0 warn / 0 crash" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
                     <!-- Git #966 — opens the click-through screenshot review gallery for the last run; disabled until a run captures at least one screenshot. -->
                     <Button x:Name="BtnScreenshots" Content="📷 Screenshots" IsEnabled="False" Margin="0,0,8,0" Click="BtnScreenshots_Click"/>
                     <!-- QA HUD Automation: link to generated /Bugs/<ProductName>/<SessionId>/automation/ folder -->
@@ -123,13 +123,13 @@
                         BorderBrush="{StaticResource Surface0Brush}"
                         BorderThickness="0,0,1,1"
                         Padding="10,6">
-                    <TextBlock Text="Test Steps" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}"/>
+                    <TextBlock Text="Test Steps" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}"/>
                 </Border>
 
                 <TextBlock x:Name="TxtNoSteps"
                            DockPanel.Dock="Top"
                            Text="No manifest loaded yet."
-                           FontSize="11"
+                           FontSize="{StaticResource CaptionFontSize}"
                            Foreground="{StaticResource Subtext0Brush}"
                            Margin="10,10"
                            Visibility="Visible"/>
@@ -150,7 +150,7 @@
                             <GroupStyle.HeaderTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding Name}"
-                                               FontSize="10" FontWeight="Bold"
+                                               FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                                Foreground="{StaticResource MauveBrush}"
                                                Margin="8,8,0,4"/>
                                 </DataTemplate>
@@ -162,7 +162,7 @@
                             <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="8,5" Margin="6,2">
                                 <DockPanel>
                                     <TextBlock DockPanel.Dock="Left" Text="{Binding StatusGlyph}" FontWeight="Bold" Foreground="{Binding StatusBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                    <TextBlock FontSize="11" Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
+                                    <TextBlock FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
                                         <Run Text="{Binding Label, Mode=OneWay}"/><Run Text="{Binding ElapsedText, Mode=OneWay}" Foreground="{StaticResource PeachBrush}"/>
                                     </TextBlock>
                                 </DockPanel>
@@ -181,14 +181,14 @@
                         BorderBrush="{StaticResource Surface0Brush}"
                         BorderThickness="0,0,0,1"
                         Padding="10,6">
-                    <TextBlock Text="Live UI Test View" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}"/>
+                    <TextBlock Text="Live UI Test View" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}"/>
                 </Border>
 
                 <Grid>
                     <wv2:WebView2 x:Name="RunnerWebView"/>
                     <TextBlock x:Name="TxtNoUiSteps"
                                Text="This run has no uiSteps — nothing to show here."
-                               FontSize="12"
+                               FontSize="{StaticResource BodyFontSize}"
                                Foreground="{StaticResource Subtext0Brush}"
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"
@@ -205,7 +205,7 @@
                         BorderBrush="{StaticResource Surface0Brush}"
                         BorderThickness="1,0,0,1"
                         Padding="10,6">
-                    <TextBlock Text="Results" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}"/>
+                    <TextBlock Text="Results" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}"/>
                 </Border>
 
                 <ScrollViewer x:Name="TelemetryScroller" VerticalScrollBarVisibility="Auto" Padding="10,6">
@@ -228,7 +228,7 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Console Output" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="0" Text="Console Output" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
                     <Button x:Name="BtnCopyConsole" Grid.Column="1" Content="Copy" Padding="10,2" Click="BtnCopyConsole_Click"/>
                 </Grid>
             </Border>
@@ -236,8 +236,8 @@
             <TextBox x:Name="ConsoleOutputBox"
                      IsReadOnly="True"
                      IsReadOnlyCaretVisible="True"
-                     FontFamily="Consolas"
-                     FontSize="11"
+                     FontFamily="{StaticResource MonospaceFontFamily}"
+                     FontSize="{StaticResource MonospaceFontSize}"
                      TextWrapping="NoWrap"
                      AcceptsReturn="True"
                      VerticalScrollBarVisibility="Auto"

@@ -34,17 +34,17 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="&#x26A1;" FontSize="13"
+                    <TextBlock Grid.Column="0" Text="&#x26A1;" FontSize="{StaticResource CaptionFontSize}"
                                Margin="0,0,6,0" VerticalAlignment="Center"
                                Foreground="{StaticResource AccentBrush}"/>
                     <TextBlock Grid.Column="1" Text="API Helper — Test Accounts &amp; Page Actions"
-                               FontSize="12" FontWeight="SemiBold"
+                               FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                VerticalAlignment="Center"
                                Foreground="{StaticResource TextBrush}"/>
                     <Button x:Name="BtnClose" Grid.Column="2"
                             Content="&#x2715;"
                             Style="{StaticResource IconButton}"
-                            FontSize="10"
+                            FontSize="{StaticResource CaptionFontSize}"
                             Padding="5,2,5,2"
                             ToolTip="Close"
                             Click="BtnClose_Click"/>
@@ -58,10 +58,10 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Target Page:" FontWeight="SemiBold" FontSize="11"
+                    <TextBlock Grid.Column="0" Text="Target Page:" FontWeight="SemiBold" FontSize="{StaticResource CaptionFontSize}"
                                Foreground="{StaticResource Subtext1Brush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                     <TextBlock x:Name="ActivePageText" Grid.Column="1" Text="No active page connected"
-                               FontSize="11" FontFamily="Consolas" TextTrimming="CharacterEllipsis"
+                               FontSize="{StaticResource MonospaceFontSize}" FontFamily="{StaticResource MonospaceFontFamily}" TextTrimming="CharacterEllipsis"
                                Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                 </Grid>
             </Border>
@@ -73,7 +73,7 @@
                     <!-- Status Notification Message -->
                     <Border x:Name="StatusBanner" Background="{StaticResource Surface1Brush}"
                             CornerRadius="4" Padding="8,6,8,6" Margin="0,0,0,8" Visibility="Collapsed">
-                        <TextBlock x:Name="StatusMessageText" FontSize="11" TextWrapping="Wrap"
+                        <TextBlock x:Name="StatusMessageText" FontSize="{StaticResource CaptionFontSize}" TextWrapping="Wrap"
                                    Foreground="{StaticResource TextBrush}"/>
                     </Border>
 
@@ -82,28 +82,28 @@
                             BorderThickness="1" CornerRadius="5" Padding="10" Margin="0,0,0,10">
                         <StackPanel>
                             <TextBlock Text="CREATE TEST ACCOUNT (BYPASS PAYMENTS)"
-                                       FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"
+                                       FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"
                                        Margin="0,0,0,4"/>
                             <TextBlock Text="Provisions a user account via API with chosen Tenant &amp; Role without Stripe checkouts or form requirements."
-                                       FontSize="10" Foreground="{StaticResource Subtext1Brush}" TextWrapping="Wrap"
+                                       FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" TextWrapping="Wrap"
                                        Margin="0,0,0,8"/>
 
                             <!-- Email Row -->
-                            <TextBlock Text="Email Address:" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
+                            <TextBlock Text="Email Address:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
                             <Grid Margin="0,0,0,6">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBox x:Name="TxtEmail" Grid.Column="0" Height="26"
-                                         FontSize="11" Padding="4,2,4,2"
+                                         FontSize="{StaticResource BodyFontSize}" Padding="4,2,4,2"
                                          Background="{StaticResource Surface0Brush}"
                                          Foreground="{StaticResource TextBrush}"
                                          BorderBrush="{StaticResource Surface1Brush}"
                                          VerticalContentAlignment="Center"/>
                                 <Button x:Name="BtnRandomEmail" Grid.Column="1"
                                         Content="🎲 Random" Style="{StaticResource IconButton}"
-                                        FontSize="10" Padding="8,2,8,2" Margin="4,0,0,0"
+                                        FontSize="{StaticResource CaptionFontSize}" Padding="8,2,8,2" Margin="4,0,0,0"
                                         ToolTip="Generate unique random test email"
                                         Click="BtnRandomEmail_Click"/>
                             </Grid>
@@ -116,18 +116,18 @@
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0">
-                                    <TextBlock Text="Password:" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
+                                    <TextBlock Text="Password:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
                                     <TextBox x:Name="TxtPassword" Text="TestPass123!" Height="26"
-                                             FontSize="11" Padding="4,2,4,2"
+                                             FontSize="{StaticResource BodyFontSize}" Padding="4,2,4,2"
                                              Background="{StaticResource Surface0Brush}"
                                              Foreground="{StaticResource TextBrush}"
                                              BorderBrush="{StaticResource Surface1Brush}"
                                              VerticalContentAlignment="Center"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="2">
-                                    <TextBlock Text="Display Name:" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
+                                    <TextBlock Text="Display Name:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
                                     <TextBox x:Name="TxtName" Text="Test User" Height="26"
-                                             FontSize="11" Padding="4,2,4,2"
+                                             FontSize="{StaticResource BodyFontSize}" Padding="4,2,4,2"
                                              Background="{StaticResource Surface0Brush}"
                                              Foreground="{StaticResource TextBrush}"
                                              BorderBrush="{StaticResource Surface1Brush}"
@@ -143,17 +143,17 @@
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0">
-                                    <TextBlock Text="Associated Tenant:" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
+                                    <TextBlock Text="Associated Tenant:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
                                     <ComboBox x:Name="CmbTenant" Height="26"
-                                              FontSize="11"
+                                              FontSize="{StaticResource BodyFontSize}"
                                               Background="{StaticResource Surface0Brush}"
                                               Foreground="{StaticResource TextBrush}"
                                               BorderBrush="{StaticResource Surface1Brush}"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="2">
-                                    <TextBlock Text="RBAC Role:" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
+                                    <TextBlock Text="RBAC Role:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
                                     <ComboBox x:Name="CmbRole" Height="26"
-                                              FontSize="11"
+                                              FontSize="{StaticResource BodyFontSize}"
                                               Background="{StaticResource Surface0Brush}"
                                               Foreground="{StaticResource TextBrush}"
                                               BorderBrush="{StaticResource Surface1Brush}"/>
@@ -175,10 +175,10 @@
                             BorderThickness="1" CornerRadius="5" Padding="10" Margin="0,0,0,10">
                         <StackPanel>
                             <TextBlock Text="PAGE ACTIONS (ACTIVE BROWSER TAB)"
-                                       FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"
+                                       FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"
                                        Margin="0,0,0,4"/>
                             <TextBlock Text="Directly manipulate the active page using this test account's credentials or tokens:"
-                                       FontSize="10" Foreground="{StaticResource Subtext1Brush}" TextWrapping="Wrap"
+                                       FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" TextWrapping="Wrap"
                                        Margin="0,0,0,8"/>
 
                             <!-- Fill Login Form Buttons -->
@@ -244,18 +244,18 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="RECENT TEST ACCOUNTS"
-                                           FontSize="11" FontWeight="Bold" Foreground="{StaticResource Subtext1Brush}"
+                                           FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource Subtext1Brush}"
                                            VerticalAlignment="Center"/>
                                 <Button x:Name="BtnClearRecents" Grid.Column="1"
                                         Content="Clear" Style="{StaticResource IconButton}"
-                                        FontSize="10" Padding="6,1,6,1"
+                                        FontSize="{StaticResource CaptionFontSize}" Padding="6,1,6,1"
                                         Click="BtnClearRecents_Click"/>
                             </Grid>
 
                             <StackPanel x:Name="RecentAccountsPanel"/>
 
                             <TextBlock x:Name="NoRecentsText" Text="No recent test accounts yet."
-                                       FontSize="10" Foreground="{StaticResource Subtext1Brush}"
+                                       FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"
                                        Margin="2,4,2,2"/>
                         </StackPanel>
                     </Border>

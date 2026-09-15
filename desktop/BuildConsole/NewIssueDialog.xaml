@@ -18,7 +18,7 @@
 
         <TextBlock Grid.Row="0"
                    Text="Title"
-                   FontSize="11"
+                   FontSize="{StaticResource CaptionFontSize}"
                    FontWeight="SemiBold"
                    Foreground="{StaticResource Subtext1Brush}"
                    Margin="0,0,0,4"/>
@@ -26,13 +26,13 @@
         <TextBox x:Name="TitleBox"
                  Grid.Row="1"
                  Height="26"
-                 FontSize="13"
+                 FontSize="{StaticResource BodyFontSize}"
                  Padding="6,2"
                  Margin="0,0,0,10"/>
 
         <TextBlock Grid.Row="2"
                    Text="Body"
-                   FontSize="11"
+                   FontSize="{StaticResource CaptionFontSize}"
                    FontWeight="SemiBold"
                    Foreground="{StaticResource Subtext1Brush}"
                    Margin="0,0,0,4"/>
@@ -47,7 +47,7 @@
 
         <DockPanel Grid.Row="4" Margin="0,10,0,0">
             <TextBlock Text="Epic:"
-                       FontSize="12"
+                       FontSize="{StaticResource CaptionFontSize}"
                        Foreground="{StaticResource Subtext1Brush}"
                        VerticalAlignment="Center"
                        Margin="0,0,8,0"/>
@@ -65,7 +65,7 @@
                     Click="BtnPickEpic_Click"/>
             <TextBlock x:Name="SelectedEpicText"
                        Text="(none)"
-                       FontSize="12"
+                       FontSize="{StaticResource CaptionFontSize}"
                        Foreground="{StaticResource TextBrush}"
                        VerticalAlignment="Center"
                        TextTrimming="CharacterEllipsis"/>

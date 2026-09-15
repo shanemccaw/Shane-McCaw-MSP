@@ -76,6 +76,7 @@ import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { requireAdmin, requireCapability } from "../middlewares/requireAuth.ts";
 import { buildAdminConsentUrl, mergeConsentKey, mtAppCredentialsPresent, getInitialDomainForTenant, REQUIRED_MT_SCOPES, REQUIRED_WRITE_APP_PERMISSIONS } from "../lib/graph.ts";
 import { REQUIRED_SHAREPOINT_APP_PERMISSIONS } from "../lib/sharepoint-admin.ts";
+import { verifyTenantConsentWithMicrosoft, type ConsentVerificationResult } from "../lib/consent-verification.ts";
 import { startPowerPlatformEnrollmentDeviceCode, pollPowerPlatformEnrollmentDeviceCode } from "../lib/power-platform-admin.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { resolveOrCreateDirectTenant, resolveOrCreateTenantForMsp, provisionProspectAccount, resolveProspectRole } from "../lib/direct-tenant-provisioning.ts";
@@ -342,6 +343,32 @@ function endConsentCallback(
     return;
   }
   res.redirect(portalRedirect());
+}
+
+/**
+ * Ends a consent callback whose grant Microsoft did NOT confirm (#4197). No
+ * grant, token burn, customer object or scan has happened by the time this is
+ * called. A popup gets the non-closing warn page (the buyer has to read it);
+ * a portal-origin request gets a plain status response, the same shape as the
+ * other refusals in this file. A platform-side fault is a 503 — the admin did
+ * nothing wrong and the same link can be retried — anything else is a 400.
+ */
+function endConsentUnverified(
+  res: Response,
+  origin: ConsentUiOrigin,
+  verification: Extract<ConsentVerificationResult, { ok: false }>,
+): void {
+  const platformFault = verification.reason === "unverifiable";
+  const detail = platformFault
+    ? "Microsoft could not be reached to confirm this approval, so nothing has been connected. Please try the link again in a few minutes."
+    : "Microsoft did not confirm an approval for this organisation, so nothing has been connected. Please start the approval again from the page you came from.";
+  if (origin === "popup") {
+    res.status(200).send(
+      consentPopupPage({ title: "Consent not confirmed", heading: "This approval could not be confirmed", detail, tone: "warn", autoClose: false }),
+    );
+    return;
+  }
+  res.status(platformFault ? 503 : 400).send(detail);
 }
 
 // ── POST /api/consent/invite-link ──────────────────────────────────────────────
@@ -633,6 +660,25 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
     }
   }
 
+  // ── Confirm the grant with Microsoft before recording anything (#4197) ──
+  // `tenant` and `admin_consent` are unsigned query parameters; only `state`
+  // was ever secret, so without this anyone holding a state value could type
+  // the URL and stamp a grant on any GUID — including one that does not exist
+  // in Entra. Microsoft issues an app-only Graph token for the read app only
+  // when the tenant is real and an admin consented there. Runs before the
+  // token burn, the session flip, customer creation, the grant stamp and
+  // every scan below, so a refusal leaves no trace and a platform-side fault
+  // leaves the same link retryable.
+  const graphVerification = await verifyTenantConsentWithMicrosoft(tenant, { app: "read", resource: "graph" });
+  if (!graphVerification.ok) {
+    log.warn(
+      { tenant, isCheckoutSession, reason: graphVerification.reason, detail: graphVerification.detail },
+      "Consent callback: REFUSED — Microsoft did not confirm this tenant's admin consent; no grant, token burn, customer object or scan",
+    );
+    endConsentUnverified(res, uiOrigin, graphVerification);
+    return;
+  }
+
   // Burn the invite token validated above, now that the guard has passed.
   if (state && inviteRecord) {
     await db
@@ -818,14 +864,33 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   // start/callback routes stay — see their own header comment — as the only
   // way a tenant whose `graph` grant predates this stamp (i.e. already
   // consented before this change shipped) can pick up the SharePoint grant.
-  await stampConsent(eq(tenantsTable.id, consentTenant.id), "sharepoint", {
-    status: "granted",
-    consentedAt: grantedAt,
-    revokedAt: null,
-    grants: [...REQUIRED_SHAREPOINT_APP_PERMISSIONS],
+  //
+  // #4197: "the same click covers it" is now checked rather than assumed — a
+  // SharePoint Online token for the same registration must carry the declared
+  // permission. The `graph` grant above is already Microsoft-confirmed, so a
+  // miss here only withholds the `sharepoint` stamp (the reconsent pill then
+  // offers the dedicated SharePoint flow); it never fails the callback.
+  const sharePointVerification = await verifyTenantConsentWithMicrosoft(tenant, {
+    app: "read",
+    resource: "sharepoint",
+    requireAnyRole: REQUIRED_SHAREPOINT_APP_PERMISSIONS,
+    retryDelaysMs: [1500],
   });
+  if (sharePointVerification.ok) {
+    await stampConsent(eq(tenantsTable.id, consentTenant.id), "sharepoint", {
+      status: "granted",
+      consentedAt: grantedAt,
+      revokedAt: null,
+      grants: [...REQUIRED_SHAREPOINT_APP_PERMISSIONS],
+    });
+  } else {
+    log.warn(
+      { tenant, customerId: consentTenant.id, reason: sharePointVerification.reason, detail: sharePointVerification.detail },
+      "Consent callback: graph grant confirmed but Microsoft did not confirm the SharePoint permission — sharepoint NOT stamped",
+    );
+  }
 
-  log.info({ tenant, customerId: consentTenant.id, inviteCustomerId: inviteRecord?.customerId, isCheckoutSession }, "Tenant admin consent granted (graph + sharepoint, same app registration)");
+  log.info({ tenant, customerId: consentTenant.id, inviteCustomerId: inviteRecord?.customerId, isCheckoutSession, sharepoint: sharePointVerification.ok }, "Tenant admin consent granted (Microsoft-confirmed)");
 
   // ── Capture the tenant's real domain (#238) ─────────────────────────────
   // tenants.domain was never populated by this flow. Connect-IPPSSession-backed
@@ -1600,6 +1665,21 @@ router.get("/admin/write-consent/callback", async (req: Request, res: Response) 
     return;
   }
 
+  // #4197: the signed state binds the customer and resolveCallbackTenant binds
+  // the GUID to it, but neither proves the admin actually approved the WRITE
+  // app — typing `admin_consent=True` would otherwise stamp writeBack granted
+  // and fire role-group + Global Reader provisioning. Microsoft must issue a
+  // write-app token carrying application permissions for this tenant first.
+  const writeVerification = await verifyTenantConsentWithMicrosoft(tenant, { app: "write", resource: "graph" });
+  if (!writeVerification.ok) {
+    log.warn(
+      { customerId, tenant, reason: writeVerification.reason, detail: writeVerification.detail },
+      "Write-consent callback: REFUSED — Microsoft did not confirm the write app's admin consent; no grant recorded",
+    );
+    endConsentUnverified(res, uiOrigin, writeVerification);
+    return;
+  }
+
   // Stamp the `writeBack` key as granted. `grants` is deliberately NOT written —
   // the write app's manifest is the source of truth for what was granted; no
   // permission list is fabricated here. (Contrast the read and SharePoint flows,
@@ -1953,6 +2033,23 @@ router.get("/admin/sharepoint-consent/callback", async (req: Request, res: Respo
   if (!tenant || admin_consent?.toLowerCase() !== "true") {
     log.warn({ customerId, tenant, admin_consent }, "SharePoint-consent callback: unexpected parameters");
     res.status(400).send("Invalid consent callback parameters.");
+    return;
+  }
+
+  // #4197: same check as the write callback — Microsoft must issue a SharePoint
+  // Online token for the read app carrying the declared permission before a
+  // grant is recorded from unsigned query parameters.
+  const sharePointVerification = await verifyTenantConsentWithMicrosoft(tenant, {
+    app: "read",
+    resource: "sharepoint",
+    requireAnyRole: REQUIRED_SHAREPOINT_APP_PERMISSIONS,
+  });
+  if (!sharePointVerification.ok) {
+    log.warn(
+      { customerId, tenant, reason: sharePointVerification.reason, detail: sharePointVerification.detail },
+      "SharePoint-consent callback: REFUSED — Microsoft did not confirm the SharePoint permission; no grant recorded",
+    );
+    endConsentUnverified(res, uiOrigin, sharePointVerification);
     return;
   }
 
