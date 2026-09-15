@@ -563,6 +563,17 @@ router.post("/admin/run-script", requireCapability("ladder.msp-operator"), async
       .where(eq(kanbanTasksTable.id, requestedTaskId))
       .limit(1);
     if (!taskRow || !(await clientInScope(scope, taskRow.clientUserId))) {
+      void createAuditLog({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "script_run_refused",
+        actionCategory: "security",
+        entityType: "script_run",
+        entityId: String(requestedTaskId),
+        entityLabel: "Run Script — cross-MSP task refused",
+        metadata: { reason: "task_not_in_scope", kanbanTaskId: requestedTaskId, mspId: scope.mspId },
+      }).catch(() => {});
       res.status(404).json({ error: "Task not found" });
       return;
     }
@@ -730,6 +741,28 @@ router.post("/admin/run-script", requireCapability("ladder.msp-operator"), async
     .update(scriptRunResultsTable)
     .set({ jobId })
     .where(eq(scriptRunResultsTable.id, runResultId));
+
+  const credentialRef = "credentialId" in parsed.data
+    ? { credentialId: parsed.data.credentialId }
+    : "appRegistrationId" in parsed.data
+      ? { appRegistrationId: parsed.data.appRegistrationId }
+      : {};
+  void createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.email,
+    actorRole: resolveAuditActorRole(req.user!),
+    actionType: "script_run_started",
+    entityType: "script_run",
+    entityId: jobId,
+    entityLabel: resolvedRunbookName,
+    clientId: customerId ?? null,
+    metadata: {
+      runbookName: resolvedRunbookName,
+      kanbanTaskId: kanbanTaskId ?? null,
+      mspId: scope.mspId,
+      ...credentialRef,
+    },
+  }).catch(() => {});
 
   // Create a clientAutomationRuns row so the CRM portal can show progress
   let automationRunId: number | undefined;
