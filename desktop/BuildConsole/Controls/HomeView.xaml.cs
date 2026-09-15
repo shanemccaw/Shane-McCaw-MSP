@@ -928,13 +928,13 @@ namespace BuildConsole.Controls
             // Overall Status Pill
             if (report.AllHealthy)
             {
-                OverallHealthPill.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E3A2F"));
+                OverallHealthPill.Background = (Brush)FindResource("StatusSuccessBadgeBrush");
                 OverallHealthPillText.Text = "🟢 ALL HEALTHY";
                 OverallHealthPillText.Foreground = (Brush)FindResource("StatusSuccessBrush");
             }
             else
             {
-                OverallHealthPill.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3E2723"));
+                OverallHealthPill.Background = (Brush)FindResource("StatusWarningBadgeAltBrush");
                 OverallHealthPillText.Text = "⚠️ ATTENTION NEEDED";
                 OverallHealthPillText.Foreground = (Brush)FindResource("StatusWarningBrush");
             }
@@ -961,7 +961,7 @@ namespace BuildConsole.Controls
             }
             else
             {
-                MutexStatusBadge.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E2A3A"));
+                MutexStatusBadge.Background = (Brush)FindResource("StatusActiveBadgeBrush");
                 MutexBadgeText.Text = "ACTIVE";
                 MutexBadgeText.Foreground = (Brush)FindResource("BlueBrush");
             }
@@ -1003,27 +1003,27 @@ namespace BuildConsole.Controls
             switch (status)
             {
                 case HealthStatus.Healthy:
-                    badge.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E3A2F"));
+                    badge.Background = (Brush)FindResource("StatusSuccessBadgeBrush");
                     badgeText.Text = string.IsNullOrEmpty(customText) ? "OK" : customText;
                     badgeText.Foreground = (Brush)FindResource("StatusSuccessBrush");
                     break;
                 case HealthStatus.Degraded:
-                    badge.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3E2E1E"));
+                    badge.Background = (Brush)FindResource("StatusWarningBadgeBrush");
                     badgeText.Text = string.IsNullOrEmpty(customText) ? "WARN" : customText;
                     badgeText.Foreground = (Brush)FindResource("StatusWarningBrush");
                     break;
                 case HealthStatus.Unhealthy:
-                    badge.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3E1E1E"));
+                    badge.Background = (Brush)FindResource("StatusErrorBadgeBrush");
                     badgeText.Text = string.IsNullOrEmpty(customText) ? "ERROR" : customText;
                     badgeText.Foreground = (Brush)FindResource("StatusErrorBrush");
                     break;
                 case HealthStatus.NotConfigured:
-                    badge.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2A2B3D"));
+                    badge.Background = (Brush)FindResource("StatusRunningBadgeBrush");
                     badgeText.Text = string.IsNullOrEmpty(customText) ? "NOT SET" : customText;
                     badgeText.Foreground = (Brush)FindResource("Subtext0Brush");
                     break;
                 default:
-                    badge.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2A2B3D"));
+                    badge.Background = (Brush)FindResource("StatusRunningBadgeBrush");
                     badgeText.Text = "UNKNOWN";
                     badgeText.Foreground = (Brush)FindResource("Subtext1Brush");
                     break;

@@ -727,7 +727,7 @@
                                         <TextBlock Text="SYSTEM HEALTH &amp; TIERS" Style="{StaticResource HomeCardHeader}"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                                        <Border x:Name="OverallHealthPill" Background="#1E3A2F" CornerRadius="8" Padding="6,2" Margin="0,0,6,0">
+                                        <Border x:Name="OverallHealthPill" Background="{StaticResource StatusSuccessBadgeBrush}" CornerRadius="8" Padding="6,2" Margin="0,0,6,0">
                                             <TextBlock x:Name="OverallHealthPillText" Text="Live Checking…" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                                         </Border>
                                         <Button x:Name="BtnRefreshHealth" Content="⟳" Style="{StaticResource SecondaryButton}" Width="22" Height="22" Padding="0" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Cursor="Hand" ToolTip="Re-check system health now" Click="BtnRefreshHealth_Click"/>
@@ -747,7 +747,7 @@
                                             <TextBlock Text="Local Dev Server" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
                                             <TextBlock x:Name="DevServerSummaryText" Text="Checking…" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                                         </StackPanel>
-                                        <Border Grid.Column="2" x:Name="DevServerStatusBadge" Background="#1E3A2F" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                        <Border Grid.Column="2" x:Name="DevServerStatusBadge" Background="{StaticResource StatusSuccessBadgeBrush}" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
                                             <TextBlock x:Name="DevServerBadgeText" Text="--" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                                         </Border>
                                     </Grid>
@@ -766,7 +766,7 @@
                                             <TextBlock Text="Database (API Pipe)" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
                                             <TextBlock x:Name="DatabaseSummaryText" Text="Checking…" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                                         </StackPanel>
-                                        <Border Grid.Column="2" x:Name="DatabaseStatusBadge" Background="#1E3A2F" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                        <Border Grid.Column="2" x:Name="DatabaseStatusBadge" Background="{StaticResource StatusSuccessBadgeBrush}" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
                                             <TextBlock x:Name="DatabaseBadgeText" Text="--" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                                         </Border>
                                     </Grid>
@@ -785,7 +785,7 @@
                                             <TextBlock Text="#92 Coordination Mutex" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
                                             <TextBlock x:Name="MutexSummaryText" Text="Checking…" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                                         </StackPanel>
-                                        <Border Grid.Column="2" x:Name="MutexStatusBadge" Background="#1E3A2F" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                        <Border Grid.Column="2" x:Name="MutexStatusBadge" Background="{StaticResource StatusSuccessBadgeBrush}" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
                                             <TextBlock x:Name="MutexBadgeText" Text="--" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                                         </Border>
                                     </Grid>
@@ -806,7 +806,7 @@
                                             <TextBlock x:Name="WorktreesSummaryText" Text="Checking…" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                                         </StackPanel>
                                         <Button Grid.Column="2" x:Name="BtnCleanWorktrees" Content="🧹 Clean" Style="{StaticResource SecondaryButton}" Height="20" Padding="6,0" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Cursor="Hand" Margin="0,0,6,0" Visibility="Collapsed" Click="BtnCleanWorktrees_Click" ToolTip="Sweep orphaned worktrees now"/>
-                                        <Border Grid.Column="3" x:Name="WorktreesStatusBadge" Background="#1E3A2F" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                        <Border Grid.Column="3" x:Name="WorktreesStatusBadge" Background="{StaticResource StatusSuccessBadgeBrush}" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
                                             <TextBlock x:Name="WorktreesBadgeText" Text="--" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                                         </Border>
                                     </Grid>
@@ -827,7 +827,7 @@
                                             <TextBlock x:Name="StrandedBranchesSummaryText" Text="Checking…" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                                         </StackPanel>
                                         <Button Grid.Column="2" x:Name="BtnRecheckStranded" Content="🔀 Recheck" Style="{StaticResource SecondaryButton}" Height="20" Padding="6,0" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Cursor="Hand" Margin="0,0,6,0" Visibility="Collapsed" Click="BtnRecheckStranded_Click" ToolTip="Re-run the stranded-branch sweep now (read-only — does not delete branches; see diagnostics log for which branches to review/merge yourself)"/>
-                                        <Border Grid.Column="3" x:Name="StrandedBranchesStatusBadge" Background="#1E3A2F" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                        <Border Grid.Column="3" x:Name="StrandedBranchesStatusBadge" Background="{StaticResource StatusSuccessBadgeBrush}" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
                                             <TextBlock x:Name="StrandedBranchesBadgeText" Text="--" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                                         </Border>
                                     </Grid>
@@ -846,7 +846,7 @@
                                             <TextBlock Text="Staging (Replit SSH)" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
                                             <TextBlock x:Name="SshSummaryText" Text="Checking…" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                                         </StackPanel>
-                                        <Border Grid.Column="2" x:Name="SshStatusBadge" Background="#1E3A2F" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                        <Border Grid.Column="2" x:Name="SshStatusBadge" Background="{StaticResource StatusSuccessBadgeBrush}" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
                                             <TextBlock x:Name="SshBadgeText" Text="--" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                                         </Border>
                                     </Grid>

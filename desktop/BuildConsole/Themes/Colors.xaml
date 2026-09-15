@@ -92,6 +92,18 @@
     <SolidColorBrush x:Key="StatusWarningWashLightBrush"  Color="#1AD4A56C"/>
     <SolidColorBrush x:Key="StatusWarningWashMediumBrush" Color="#33D4A56C"/>
 
+    <!-- Git #4210 — HomeView's status-badge backgrounds. These are opaque
+         solids, not compositable washes like the ones immediately above, so
+         they're distinct brushes rather than a reuse of StatusXWashBrush at
+         a different alpha. Exact values already in live use in
+         HomeView.xaml/.xaml.cs's ColorConverter.ConvertFromString calls. -->
+    <SolidColorBrush x:Key="StatusSuccessBadgeBrush" Color="#1E3A2F"/>
+    <SolidColorBrush x:Key="StatusWarningBadgeBrush" Color="#3E2E1E"/>
+    <SolidColorBrush x:Key="StatusErrorBadgeBrush"   Color="#3E1E1E"/>
+    <SolidColorBrush x:Key="StatusRunningBadgeBrush" Color="#2A2B3D"/>
+    <SolidColorBrush x:Key="StatusActiveBadgeBrush"  Color="#1E2A3A"/>
+    <SolidColorBrush x:Key="StatusWarningBadgeAltBrush" Color="#3E2723"/>
+
     <!-- Git #4205 — modal/overlay dim "scrim" brushes. Hue-independent (black at
          two fixed opacities), so these live here rather than under a hue section.
          Values are the two real tiers already in use app-wide before this issue —
