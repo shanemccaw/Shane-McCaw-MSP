@@ -299,4 +299,84 @@ router.get("/public/live-document-shares/:token", async (req: Request, res: Resp
   }
 });
 
+// ── GET /portal/live-documents/:docType ───────────────────────────────────
+//
+// #2825 (Feature #1658) — the authenticated, single-document counterpart to
+// GET /public/live-document-shares/:token above. Real narrow scope, per this
+// issue's own 2026-09-15 correction comment: no new content-generation logic
+// — it reuses the exact same LIVE_DOCUMENT_SHARE_REPORTS registry (generator
+// functions + buildPillarSummary()) this file already calls for the public
+// share flow, scoped to the CALLER'S OWN tenant via req.user.customerId
+// (the same claim resolveCustomerId() reads in portal-assessment.ts) rather
+// than a share token.
+//
+// This is the destination buildPrintDocumentUrl()/buildLiveDocumentPrintUrl()
+// (portal-url.ts) already build, and the route headless Chromium navigates
+// via renderLiveDocumentToPdf() (html-pdf.ts) — that pipeline needs no
+// further change once this route exists; it already waits on
+// `[data-print-ready="true"]`, which the new portal page sets once this
+// response has loaded.
+//
+// No TTL cache here unlike the public share route above: an authenticated
+// customer/staff member re-opening their own report re-triggering the same
+// metered narrative cost is already the accepted behavior documented on the
+// portal-assessment.ts per-report narrative routes this mirrors — the public
+// route's cache exists specifically for the different, bot-reachable
+// exposure of an unauthenticated link (see this file's header).
+router.get("/portal/live-documents/:docType", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const customerId = (req.user as { customerId?: number } | undefined)?.customerId;
+    if (typeof customerId !== "number" || Number.isNaN(customerId)) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    const docType = String(req.params.docType ?? "");
+    const report = LIVE_DOCUMENT_SHARE_REPORTS.find((r) => r.docType === docType);
+    if (!report) {
+      res.status(404).json({ error: "Unknown live document type" });
+      return;
+    }
+
+    const [tenantRow] = await db
+      .select({ mspId: tenantsTable.mspId, customerName: tenantsTable.customerName })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, customerId))
+      .limit(1);
+    if (!tenantRow) {
+      log.error({ customerId, docType }, "authenticated live document: no tenant row for customerId");
+      res.status(500).json({ error: "Could not resolve your account" });
+      return;
+    }
+
+    const tenantName = tenantRow.customerName?.trim() || "this tenant";
+    const attribution = { mspId: tenantRow.mspId, customerId, triggerSource: "live-document-viewer" };
+
+    const [pillarStats, narrative] = await Promise.all([
+      buildPillarSummary(customerId),
+      report.generate({ customerId, tenantName, attribution }),
+    ]);
+
+    const pillars = pillarStats.pillars.map((p) => ({
+      pillar: p.pillar,
+      score: p.score,
+      evaluation: p.evaluation,
+      stats: p.stats,
+      findings: p.findings,
+      findingCounts: p.findingCounts,
+    }));
+
+    res.json({
+      docType: report.docType,
+      title: report.title,
+      companyName: tenantRow.customerName ?? null,
+      pillars,
+      sections: narrative.sections,
+    });
+  } catch (err) {
+    req.log.error({ err }, "GET /portal/live-documents/:docType failed");
+    res.status(500).json({ error: "Failed to load this document" });
+  }
+});
+
 export default router;
