@@ -451,6 +451,11 @@ export async function sendEmailForMspOrThrow(
         // Fall through to platform mailbox
       }
     }
+  } else {
+    // Git #4309: today's real state — no dedicated app registration yet. Logged
+    // explicitly (not just silently skipped) so it's obvious which mechanism sent
+    // a given email once a second real MSP exists and genuinely needs Path 1.
+    log.info({ mspId, to, subject }, "sendEmailForMspOrThrow: dedicated mailbox-send app not configured — using platform mailbox fallback");
   }
 
   // ── Path 2: Platform mailbox with display-name override ──────────────────────

@@ -243,6 +243,36 @@ describe("sendEmailForMspOrThrow — no connector (display-name fallback)", () =
   });
 });
 
+describe("sendEmailForMspOrThrow — dedicated app not configured (Git #4309)", () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it("falls back straight to the platform mailbox — today's real state — without ever looking up a connector", async () => {
+    vi.mocked(mailboxSendAppMod.mailboxSendAppCredentialsPresent).mockReturnValue(false);
+    vi.mocked(graphMod.graphCredentialsPresent).mockReturnValue(true);
+    process.env.GRAPH_MAIL_USER_ID = "platform@shanemccaw.com";
+
+    vi.mocked(db.select).mockReturnValue(makeSelectChain([{ name: "Acme Managed Services" }]));
+    vi.mocked(graphMod.sendMailViaGraph).mockResolvedValue(undefined);
+    vi.mocked(db.insert).mockReturnValue(makeInsertChain());
+
+    await sendEmailForMspOrThrow(7, "client@example.com", "Dedicated app unset test", "<p>Hi</p>", { skipWrapper: true });
+
+    // Path 1 must never even attempt a connector lookup — mailboxSendAppCredentialsPresent()
+    // is checked first, and this is false, so the dedicated-app path is skipped entirely.
+    expect(graphMod.sendMailViaGraphForMsp).not.toHaveBeenCalled();
+
+    expect(graphMod.sendMailViaGraph).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fromUserId: "platform@shanemccaw.com",
+        fromDisplayName: "Acme Managed Services",
+        to: "client@example.com",
+      }),
+    );
+
+    delete process.env.GRAPH_MAIL_USER_ID;
+  });
+});
+
 describe("sendEmailForMspOrThrow — no transport", () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
