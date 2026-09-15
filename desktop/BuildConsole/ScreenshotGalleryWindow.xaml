@@ -38,17 +38,17 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="Screenshot Review" Margin="12,0,0,0"
-                           VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
+                           VerticalAlignment="Center" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                            Foreground="{StaticResource Subtext1Brush}"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
                     <Button x:Name="BtnMinimize" Style="{StaticResource CaptionButton}" ToolTip="Minimize" Click="BtnMinimize_Click">
-                        <TextBlock Text="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                        <TextBlock Text="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"/>
                     </Button>
                     <Button x:Name="BtnMaximizeRestore" Style="{StaticResource CaptionButton}" ToolTip="Maximize" Click="BtnMaximizeRestore_Click">
-                        <TextBlock x:Name="BtnMaximizeRestoreIcon" Text="&#xE922;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                        <TextBlock x:Name="BtnMaximizeRestoreIcon" Text="&#xE922;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"/>
                     </Button>
                     <Button x:Name="BtnCloseWindow" Style="{StaticResource CaptionButtonClose}" ToolTip="Close" Click="BtnCloseWindow_Click">
-                        <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                        <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"/>
                     </Button>
                 </StackPanel>
             </Grid>
@@ -73,8 +73,8 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="SCREENSHOT REVIEW" FontSize="12" FontWeight="Bold" Foreground="{StaticResource BlueBrush}" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="TxtGalleryCounter" Text="0 / 0" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="SCREENSHOT REVIEW" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource BlueBrush}" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="TxtGalleryCounter" Text="0 / 0" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="12,0,0,0" VerticalAlignment="Center"/>
                 </StackPanel>
                 <Button Grid.Column="1" x:Name="BtnGalleryClose" Content="✕ Close" Click="BtnGalleryClose_Click"/>
             </Grid>
@@ -86,7 +86,7 @@
                 <Image x:Name="GalleryImage" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
                 <TextBlock x:Name="TxtGalleryEmpty"
                            Text="No screenshots captured for the last run."
-                           FontSize="12"
+                           FontSize="{StaticResource BodyFontSize}"
                            Foreground="{StaticResource Subtext0Brush}"
                            HorizontalAlignment="Center"
                            VerticalAlignment="Center"
@@ -95,7 +95,7 @@
         </Border>
 
         <!-- caption -->
-        <TextBlock Grid.Row="2" x:Name="TxtGalleryCaption" Text="" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" TextWrapping="Wrap" Margin="14,8,14,0"/>
+        <TextBlock Grid.Row="2" x:Name="TxtGalleryCaption" Text="" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" TextWrapping="Wrap" Margin="14,8,14,0"/>
 
         <!-- nav footer -->
         <Border Grid.Row="3"
@@ -110,7 +110,7 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <Button Grid.Column="0" x:Name="BtnGalleryPrev" Content="◀ Prev" Padding="16,4" Click="BtnGalleryPrev_Click"/>
-                <TextBlock Grid.Column="1" x:Name="TxtGalleryFile" Text="" FontSize="10" FontFamily="Consolas" Foreground="{StaticResource Subtext0Brush}" HorizontalAlignment="Center" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                <TextBlock Grid.Column="1" x:Name="TxtGalleryFile" Text="" FontSize="{StaticResource MonospaceFontSize}" FontFamily="{StaticResource MonospaceFontFamily}" Foreground="{StaticResource Subtext0Brush}" HorizontalAlignment="Center" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                 <Button Grid.Column="2" x:Name="BtnGalleryNext" Content="Next ▶" Padding="16,4" Click="BtnGalleryNext_Click"/>
             </Grid>
         </Border>

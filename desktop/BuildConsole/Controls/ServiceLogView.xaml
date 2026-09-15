@@ -32,7 +32,7 @@
 
                 <TextBlock x:Name="ServiceTitleText"
                            Text="SERVICE NAME"
-                           FontSize="11.5"
+                           FontSize="{StaticResource CaptionFontSize}"
                            FontWeight="SemiBold"
                            Foreground="{StaticResource TextBrush}"
                            VerticalAlignment="Center"
@@ -46,14 +46,14 @@
                         VerticalAlignment="Center">
                     <TextBlock x:Name="ServicePortText"
                                Text=":5173"
-                               FontSize="10.5"
+                               FontSize="{StaticResource CaptionFontSize}"
                                FontWeight="Bold"
                                Foreground="{StaticResource BlueBrush}"/>
                 </Border>
 
                 <TextBlock x:Name="ServicePathText"
                            Text="artifacts/..."
-                           FontSize="11"
+                           FontSize="{StaticResource CaptionFontSize}"
                            Foreground="{StaticResource Subtext0Brush}"
                            VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis"
@@ -69,7 +69,7 @@
                             Height="24"
                             Padding="8,0"
                             Margin="0,0,6,0"
-                            FontSize="11"
+                            FontSize="{StaticResource CaptionFontSize}"
                             FontWeight="SemiBold"
                             Cursor="Hand"
                             Click="BtnStartService_Click"
@@ -82,7 +82,7 @@
                             Height="24"
                             Padding="8,0"
                             Margin="0,0,6,0"
-                            FontSize="11"
+                            FontSize="{StaticResource CaptionFontSize}"
                             FontWeight="SemiBold"
                             Cursor="Hand"
                             Click="BtnStopService_Click"
@@ -95,7 +95,7 @@
                             Height="24"
                             Padding="8,0"
                             Margin="0,0,6,0"
-                            FontSize="11"
+                            FontSize="{StaticResource CaptionFontSize}"
                             Cursor="Hand"
                             Click="BtnBrowseService_Click"
                             ToolTip="Open in default browser"/>
@@ -107,7 +107,7 @@
                             Height="24"
                             Padding="8,0"
                             Margin="0,0,6,0"
-                            FontSize="11"
+                            FontSize="{StaticResource CaptionFontSize}"
                             Cursor="Hand"
                             Click="BtnPauseLog_Click"
                             ToolTip="Pause/Resume scrolling"/>
@@ -118,7 +118,7 @@
                             Style="{StaticResource ChipButton}"
                             Height="24"
                             Padding="6,0"
-                            FontSize="11"
+                            FontSize="{StaticResource CaptionFontSize}"
                             Cursor="Hand"
                             Click="BtnClearLog_Click"
                             ToolTip="Clear visible log buffer"/>

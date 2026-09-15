@@ -23,12 +23,12 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="⚡" FontSize="18" Margin="0,0,8,0" VerticalAlignment="Center" Foreground="{StaticResource MauveBrush}"/>
-                        <TextBlock Text="API Endpoint Runner &amp; Explorer" FontSize="18" FontWeight="Bold"
+                        <TextBlock Text="⚡" FontSize="{StaticResource HeaderFontSize}" Margin="0,0,8,0" VerticalAlignment="Center" Foreground="{StaticResource MauveBrush}"/>
+                        <TextBlock Text="API Endpoint Runner &amp; Explorer" FontSize="{StaticResource HeaderFontSize}" FontWeight="Bold"
                                    Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                     </StackPanel>
                     <TextBlock Text="Scan routes dynamically from the local API server, filter by URL, and execute requests with inline response details."
-                               FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,2,0,0"/>
+                               FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,2,0,0"/>
                 </StackPanel>
                 <Button Grid.Column="1" x:Name="BtnRescan" Style="{StaticResource SecondaryButton}" Content="⟳ Rescan Endpoints" VerticalAlignment="Center" Padding="12,6" Click="BtnRescan_Click"/>
             </Grid>
@@ -53,14 +53,14 @@
                 <!-- Search -->
                 <Grid Grid.Row="0" Margin="12,12,12,6">
                     <TextBox Grid.Row="0" x:Name="TxtSearch" Height="30" Padding="6,4"
-                             VerticalContentAlignment="Center" FontSize="12"
+                             VerticalContentAlignment="Center" FontSize="{StaticResource BodyFontSize}"
                              Background="{StaticResource Surface0Brush}" Foreground="{StaticResource TextBrush}"
                              BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1"
                              GotFocus="TxtSearch_GotFocus" LostFocus="TxtSearch_LostFocus"
                              TextChanged="TxtSearch_TextChanged"/>
                     <TextBlock Grid.Row="0" x:Name="SearchPlaceholder" IsHitTestVisible="False" Text="🔍 Search endpoints..."
                                VerticalAlignment="Center" HorizontalAlignment="Left" Margin="10,0,0,0"
-                               Foreground="{StaticResource OverlayBrush}" FontSize="12"/>
+                               Foreground="{StaticResource OverlayBrush}" FontSize="{StaticResource BodyFontSize}"/>
                 </Grid>
 
                 <!-- Endpoint list -->
@@ -96,26 +96,32 @@
                                         <Style TargetType="Border">
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding Method}" Value="GET">
+                                                    <!-- Git #4177: no GreenBrushTint exists in Colors.xaml/DarkTheme.xaml matching
+                                                         GreenBrush (#A6E3A1) at this wash opacity — filed as its own finding
+                                                         rather than picking an inexact substitute. -->
                                                     <Setter Property="Background" Value="#25A6E3A1"/>
                                                     <Setter Property="BorderBrush" Value="{StaticResource GreenBrush}"/>
                                                     <Setter Property="BorderThickness" Value="1"/>
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding Method}" Value="POST">
-                                                    <Setter Property="Background" Value="#257C8CF0"/> <!-- Git #2126: was #2589B4FA (Blue wash) -->
+                                                    <Setter Property="Background" Value="{StaticResource BlueBrushTint}"/> <!-- Git #2126: was #2589B4FA (Blue wash); Git #4177: literal #257C8CF0 -> real BlueBrushTint (same AccentColor, 0.13 opacity) -->
                                                     <Setter Property="BorderBrush" Value="{StaticResource BlueBrush}"/>
                                                     <Setter Property="BorderThickness" Value="1"/>
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding Method}" Value="PUT">
-                                                    <Setter Property="Background" Value="#25FAB387"/>
+                                                    <Setter Property="Background" Value="{StaticResource PeachBrushTint}"/>
                                                     <Setter Property="BorderBrush" Value="{StaticResource PeachBrush}"/>
                                                     <Setter Property="BorderThickness" Value="1"/>
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding Method}" Value="PATCH">
-                                                    <Setter Property="Background" Value="#25FAB387"/>
+                                                    <Setter Property="Background" Value="{StaticResource PeachBrushTint}"/>
                                                     <Setter Property="BorderBrush" Value="{StaticResource PeachBrush}"/>
                                                     <Setter Property="BorderThickness" Value="1"/>
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding Method}" Value="DELETE">
+                                                    <!-- Git #4177: no RedBrushTint exists in Colors.xaml/DarkTheme.xaml matching
+                                                         RedBrush (#F38BA8) at this wash opacity — filed as its own finding
+                                                         rather than picking an inexact substitute. -->
                                                     <Setter Property="Background" Value="#25F38BA8"/>
                                                     <Setter Property="BorderBrush" Value="{StaticResource RedBrush}"/>
                                                     <Setter Property="BorderThickness" Value="1"/>
@@ -123,7 +129,7 @@
                                             </Style.Triggers>
                                         </Style>
                                     </Border.Style>
-                                    <TextBlock Text="{Binding Method}" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Method}" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock">
                                                 <Style.Triggers>
@@ -148,8 +154,8 @@
                                     </TextBlock>
                                 </Border>
                                 <StackPanel Grid.Column="1" Margin="6,0,0,0" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding Route}" Foreground="{StaticResource TextBrush}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Text="{Binding SourceFile}" Foreground="{StaticResource Subtext1Brush}" FontSize="10" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding Route}" Foreground="{StaticResource TextBrush}" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding SourceFile}" Foreground="{StaticResource Subtext1Brush}" FontSize="{StaticResource CaptionFontSize}" Margin="0,2,0,0"/>
                                 </StackPanel>
                             </Grid>
                         </DataTemplate>
@@ -157,7 +163,7 @@
                 </ListView>
 
                 <!-- Count -->
-                <TextBlock Grid.Row="2" x:Name="TxtEndpointCount" Margin="12" FontSize="11" Foreground="{StaticResource Subtext0Brush}" HorizontalAlignment="Left" Text="0 endpoints loaded"/>
+                <TextBlock Grid.Row="2" x:Name="TxtEndpointCount" Margin="12" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" HorizontalAlignment="Left" Text="0 endpoints loaded"/>
             </Grid>
 
             <!-- Splitter -->
@@ -168,7 +174,7 @@
                 <Grid x:Name="GridRunnerPlaceholder" Visibility="Visible">
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-40,0,0">
                         <TextBlock Text="⚡" FontSize="48" Foreground="{StaticResource OverlayBrush}" HorizontalAlignment="Center"/>
-                        <TextBlock Text="Select an API endpoint to execute" FontSize="14" Foreground="{StaticResource Subtext0Brush}" Margin="0,12,0,0" HorizontalAlignment="Center"/>
+                        <TextBlock Text="Select an API endpoint to execute" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,12,0,0" HorizontalAlignment="Center"/>
                     </StackPanel>
                 </Grid>
 
@@ -182,19 +188,19 @@
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
                                 <StackPanel Grid.Row="0" Orientation="Horizontal">
-                                    <TextBlock x:Name="TxtSelectedMethod" Text="GET" FontWeight="Bold" FontSize="14" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="TxtSelectedRoute" Text="/api/route" FontSize="14" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="TxtSelectedMethod" Text="GET" FontWeight="Bold" FontSize="{StaticResource BodyFontSize}" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="TxtSelectedRoute" Text="/api/route" FontSize="{StaticResource BodyFontSize}" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 </StackPanel>
-                                <TextBlock Grid.Row="1" x:Name="TxtSelectedFile" Text="File: admin-build-tracker.ts" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,6,0,0"/>
+                                <TextBlock Grid.Row="1" x:Name="TxtSelectedFile" Text="File: admin-build-tracker.ts" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,6,0,0"/>
                             </Grid>
                         </Border>
 
                         <!-- Base Server URL -->
-                        <TextBlock Text="API SERVER BASE URL" FontSize="10" FontWeight="Bold" Foreground="{StaticResource OverlayBrush}" Margin="0,0,0,4"/>
-                        <TextBox x:Name="TxtBaseUrl" Style="{StaticResource EditorTextBox}" Margin="0,0,0,14" VerticalContentAlignment="Center" Padding="8,6" FontSize="12"/>
+                        <TextBlock Text="API SERVER BASE URL" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource OverlayBrush}" Margin="0,0,0,4"/>
+                        <TextBox x:Name="TxtBaseUrl" Style="{StaticResource EditorTextBox}" Margin="0,0,0,14" VerticalContentAlignment="Center" Padding="8,6"/>
 
                         <!-- Authorization (Bearer Token) -->
-                        <TextBlock Text="AUTHORIZATION" FontSize="10" FontWeight="Bold" Foreground="{StaticResource OverlayBrush}" Margin="0,0,0,4"/>
+                        <TextBlock Text="AUTHORIZATION" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource OverlayBrush}" Margin="0,0,0,4"/>
                         <Grid Margin="0,0,0,6">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -203,14 +209,14 @@
                             </Grid.ColumnDefinitions>
                             <!-- masked input -->
                             <PasswordBox x:Name="TxtBearerToken" Grid.Column="0"
-                                         Height="30" Padding="8,0" FontSize="12" FontFamily="Consolas"
+                                         Height="30" Padding="8,0" FontSize="{StaticResource MonospaceFontSize}" FontFamily="{StaticResource MonospaceFontFamily}"
                                          Background="{StaticResource Surface0Brush}" Foreground="{StaticResource TextBrush}"
                                          BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1"
                                          VerticalContentAlignment="Center"
                                          PasswordChar="●"/>
                             <!-- plain-text mirror (shown when eye is toggled) -->
                             <TextBox x:Name="TxtBearerTokenPlain" Grid.Column="0"
-                                     Height="30" Padding="8,6" FontSize="12" FontFamily="Consolas"
+                                     Height="30" Padding="8,6" FontSize="{StaticResource MonospaceFontSize}" FontFamily="{StaticResource MonospaceFontFamily}"
                                      Background="{StaticResource Surface0Brush}" Foreground="{StaticResource TextBrush}"
                                      BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1"
                                      Visibility="Collapsed"
@@ -224,24 +230,24 @@
                         </Grid>
 
                         <!-- Quick-Login expander: auto-fills token via POST /api/auth/login -->
-                        <Expander x:Name="ExpQuickLogin" Header="🔑  Get Token via Login" Foreground="{StaticResource Subtext0Brush}" FontSize="11"
+                        <Expander x:Name="ExpQuickLogin" Header="🔑  Get Token via Login" Foreground="{StaticResource Subtext0Brush}" FontSize="{StaticResource CaptionFontSize}"
                                   Margin="0,0,0,14" Background="Transparent" BorderThickness="0">
                             <Border Background="{StaticResource MantleBrush}" CornerRadius="4" Padding="12,10" Margin="0,6,0,0"
                                     BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1">
                                 <StackPanel>
-                                    <TextBlock Text="Calls POST /api/auth/login and auto-fills the Bearer token above." FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,8"/>
+                                    <TextBlock Text="Calls POST /api/auth/login and auto-fills the Bearer token above." FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,8"/>
                                     <Grid Margin="0,0,0,6">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Grid.Column="0" Margin="0,0,6,0">
-                                            <TextBlock Text="EMAIL" FontSize="10" FontWeight="Bold" Foreground="{StaticResource OverlayBrush}" Margin="0,0,0,3"/>
-                                            <TextBox x:Name="TxtLoginEmail" Style="{StaticResource EditorTextBox}" Height="28" Padding="8,4" FontSize="12"/>
+                                            <TextBlock Text="EMAIL" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource OverlayBrush}" Margin="0,0,0,3"/>
+                                            <TextBox x:Name="TxtLoginEmail" Style="{StaticResource EditorTextBox}" Height="28" Padding="8,4"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="1">
-                                            <TextBlock Text="PASSWORD" FontSize="10" FontWeight="Bold" Foreground="{StaticResource OverlayBrush}" Margin="0,0,0,3"/>
-                                            <PasswordBox x:Name="TxtLoginPassword" Height="28" Padding="8,0" FontSize="12"
+                                            <TextBlock Text="PASSWORD" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource OverlayBrush}" Margin="0,0,0,3"/>
+                                            <PasswordBox x:Name="TxtLoginPassword" Height="28" Padding="8,0" FontSize="{StaticResource BodyFontSize}"
                                                          Background="{StaticResource Surface0Brush}" Foreground="{StaticResource TextBrush}"
                                                          BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1"
                                                          VerticalContentAlignment="Center"/>
@@ -250,7 +256,7 @@
                                     <DockPanel>
                                         <Button x:Name="BtnQuickLogin" DockPanel.Dock="Left" Style="{StaticResource PrimaryButton}"
                                                 Content="🔑 Login &amp; Fill Token" Padding="12,6" Click="BtnQuickLogin_Click"/>
-                                        <TextBlock x:Name="TxtLoginStatus" Margin="12,0,0,0" FontSize="11" VerticalAlignment="Center"
+                                        <TextBlock x:Name="TxtLoginStatus" Margin="12,0,0,0" FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center"
                                                    Foreground="{StaticResource Subtext0Brush}" TextTrimming="CharacterEllipsis"/>
                                     </DockPanel>
                                 </StackPanel>
@@ -258,37 +264,37 @@
                         </Expander>
 
                         <!-- Query parameters -->
-                        <TextBlock Text="QUERY PARAMETERS (Key=Value, one per line or raw ?a=b)" FontSize="10" FontWeight="Bold" Foreground="{StaticResource OverlayBrush}" Margin="0,0,0,4"/>
-                        <TextBox x:Name="TxtQueryParams" Style="{StaticResource EditorTextBox}" Height="50" Margin="0,0,0,14" TextWrapping="Wrap" AcceptsReturn="True" Padding="8,6" FontSize="12" FontFamily="Consolas"/>
+                        <TextBlock Text="QUERY PARAMETERS (Key=Value, one per line or raw ?a=b)" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource OverlayBrush}" Margin="0,0,0,4"/>
+                        <TextBox x:Name="TxtQueryParams" Style="{StaticResource EditorTextBox}" Height="50" Margin="0,0,0,14" TextWrapping="Wrap" AcceptsReturn="True" Padding="8,6"/>
 
                         <!-- Request body (JSON) -->
-                        <TextBlock x:Name="LblRequestBody" Text="REQUEST BODY (JSON)" FontSize="10" FontWeight="Bold" Foreground="{StaticResource OverlayBrush}" Margin="0,0,0,4"/>
-                        <TextBox x:Name="TxtRequestBody" Style="{StaticResource EditorTextBox}" Height="110" Margin="0,0,0,16" TextWrapping="Wrap" AcceptsReturn="True" Padding="8,6" FontSize="12" FontFamily="Consolas"/>
+                        <TextBlock x:Name="LblRequestBody" Text="REQUEST BODY (JSON)" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource OverlayBrush}" Margin="0,0,0,4"/>
+                        <TextBox x:Name="TxtRequestBody" Style="{StaticResource EditorTextBox}" Height="110" Margin="0,0,0,16" TextWrapping="Wrap" AcceptsReturn="True" Padding="8,6"/>
 
                         <!-- Actions row -->
-                        <Button x:Name="BtnExecute" Style="{StaticResource PrimaryButton}" Content="⚡ Send Request" FontSize="13" Padding="20,10" HorizontalAlignment="Left" Click="BtnExecute_Click" Margin="0,0,0,20"/>
+                        <Button x:Name="BtnExecute" Style="{StaticResource PrimaryButton}" Content="⚡ Send Request" FontSize="{StaticResource BodyFontSize}" Padding="20,10" HorizontalAlignment="Left" Click="BtnExecute_Click" Margin="0,0,0,20"/>
 
                         <!-- Execution Results panel -->
                         <Border x:Name="PanelResponse" Visibility="Collapsed" BorderThickness="0,1,0,0" BorderBrush="{StaticResource Surface0Brush}" Padding="0,20,0,0">
                             <StackPanel>
-                                <TextBlock Text="RESPONSE DETAILS" FontSize="10" FontWeight="Bold" Foreground="{StaticResource OverlayBrush}" Margin="0,0,0,10"/>
+                                <TextBlock Text="RESPONSE DETAILS" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource OverlayBrush}" Margin="0,0,0,10"/>
                                 
                                 <!-- Metadata row (status, time) -->
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                                     <Border x:Name="BorderHttpStatus" CornerRadius="3" Padding="8,4" Margin="0,0,10,0">
-                                        <TextBlock x:Name="TxtHttpStatus" Text="200 OK" FontWeight="Bold" FontSize="12"/>
+                                        <TextBlock x:Name="TxtHttpStatus" Text="200 OK" FontWeight="Bold" FontSize="{StaticResource BodyFontSize}"/>
                                     </Border>
-                                    <TextBlock x:Name="TxtElapsed" Text="45ms" Foreground="{StaticResource Subtext0Brush}" FontSize="12" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="TxtElapsed" Text="45ms" Foreground="{StaticResource Subtext0Brush}" FontSize="{StaticResource BodyFontSize}" VerticalAlignment="Center"/>
                                 </StackPanel>
 
                                 <!-- Response Headers -->
-                                <Expander Header="Response Headers" Foreground="{StaticResource Subtext0Brush}" FontSize="11" Margin="0,0,0,10" Background="Transparent" BorderThickness="0">
-                                    <TextBox x:Name="TxtHeaders" Style="{StaticResource TerminalOutputBox}" Margin="0,6,0,0" Height="100" TextWrapping="Wrap" IsReadOnly="True" FontSize="11"/>
+                                <Expander Header="Response Headers" Foreground="{StaticResource Subtext0Brush}" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,0,10" Background="Transparent" BorderThickness="0">
+                                    <TextBox x:Name="TxtHeaders" Style="{StaticResource TerminalOutputBox}" Margin="0,6,0,0" Height="100" TextWrapping="Wrap" IsReadOnly="True"/>
                                 </Expander>
 
                                 <!-- Response Body -->
-                                <TextBlock Text="RESPONSE BODY" FontSize="10" FontWeight="Bold" Foreground="{StaticResource OverlayBrush}" Margin="0,0,0,4"/>
-                                <TextBox x:Name="TxtResponseBody" Style="{StaticResource TerminalOutputBox}" Height="300" TextWrapping="Wrap" IsReadOnly="True" FontSize="12" AcceptsReturn="True" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"/>
+                                <TextBlock Text="RESPONSE BODY" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource OverlayBrush}" Margin="0,0,0,4"/>
+                                <TextBox x:Name="TxtResponseBody" Style="{StaticResource TerminalOutputBox}" Height="300" TextWrapping="Wrap" IsReadOnly="True" AcceptsReturn="True" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>

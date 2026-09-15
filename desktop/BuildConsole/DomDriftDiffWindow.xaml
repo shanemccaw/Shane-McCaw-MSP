@@ -33,9 +33,9 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
-                    <TextBlock Text="⚡" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="⚡" FontSize="{StaticResource BodyFontSize}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                     <TextBlock Text="DOM Mutation Drift &amp; Regression Viewer"
-                               FontSize="12" FontWeight="SemiBold"
+                               FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
                 </StackPanel>
 
@@ -58,29 +58,35 @@
             <Border Grid.Row="0" Background="{StaticResource MantleBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="6" Padding="12,10" Margin="0,0,0,14">
                 <DockPanel>
                     <StackPanel Orientation="Vertical">
-                        <TextBlock x:Name="TxtPageRoute" Text="Route: /" FontSize="14" FontWeight="Bold" Foreground="{StaticResource MauveBrush}" Margin="0,0,0,4"/>
-                        <TextBlock x:Name="TxtBaselineAge" Text="Baseline recorded: 7 days ago" FontSize="11" Foreground="{StaticResource Subtext1Brush}"/>
+                        <TextBlock x:Name="TxtPageRoute" Text="Route: /" FontSize="{StaticResource BodyFontSize}" FontWeight="Bold" Foreground="{StaticResource MauveBrush}" Margin="0,0,0,4"/>
+                        <TextBlock x:Name="TxtBaselineAge" Text="Baseline recorded: 7 days ago" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"/>
                     </StackPanel>
 
                     <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center">
                         <!-- Total Drift Count -->
                         <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="8,4" Margin="0,0,8,0">
-                            <TextBlock x:Name="TxtTotalDrift" Text="0 Total Drifts" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}"/>
+                            <TextBlock x:Name="TxtTotalDrift" Text="0 Total Drifts" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource TextBrush}"/>
                         </Border>
 
                         <!-- Added Badge -->
-                        <Border Background="#1A22C55E" BorderBrush="#4022C55E" BorderThickness="1" CornerRadius="4" Padding="8,4" Margin="0,0,8,0">
-                            <TextBlock x:Name="TxtAddedCount" Text="0 Added" FontSize="11" FontWeight="Bold" Foreground="#22C55E"/>
+                        <Border Background="{StaticResource StatusSuccessWashLightBrush}" BorderBrush="{StaticResource StatusSuccessWashMediumBrush}" BorderThickness="1" CornerRadius="4" Padding="8,4" Margin="0,0,8,0">
+                            <TextBlock x:Name="TxtAddedCount" Text="0 Added" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                         </Border>
 
                         <!-- Modified Badge -->
+                        <!-- Background/BorderBrush left as raw hex: no StatusWarningWash*Brush exists yet in Colors.xaml
+                             (only StatusSuccessWashLightBrush/WashMediumBrush have wash variants) — filed as a finding
+                             rather than substituting an inexact brush. -->
                         <Border Background="#1AEAB308" BorderBrush="#40EAB308" BorderThickness="1" CornerRadius="4" Padding="8,4" Margin="0,0,8,0">
-                            <TextBlock x:Name="TxtModifiedCount" Text="0 Modified" FontSize="11" FontWeight="Bold" Foreground="#EAB308"/>
+                            <TextBlock x:Name="TxtModifiedCount" Text="0 Modified" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusWarningBrush}"/>
                         </Border>
 
                         <!-- Removed Badge -->
+                        <!-- Background/BorderBrush left as raw hex: no StatusErrorWash*Brush exists yet in Colors.xaml
+                             (only StatusSuccessWashLightBrush/WashMediumBrush have wash variants) — filed as a finding
+                             rather than substituting an inexact brush. -->
                         <Border Background="#1AEF4444" BorderBrush="#40EF4444" BorderThickness="1" CornerRadius="4" Padding="8,4">
-                            <TextBlock x:Name="TxtRemovedCount" Text="0 Removed" FontSize="11" FontWeight="Bold" Foreground="#EF4444"/>
+                            <TextBlock x:Name="TxtRemovedCount" Text="0 Removed" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusErrorBrush}"/>
                         </Border>
                     </StackPanel>
                 </DockPanel>
@@ -89,7 +95,7 @@
             <!-- 2. Drift List -->
             <Border Grid.Row="1" Background="{StaticResource MantleBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="6" Padding="8">
                 <DockPanel>
-                    <TextBlock Text="Detected DOM Mutations &amp; Structure Drift" DockPanel.Dock="Top" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource Subtext0Brush}" Margin="4,0,0,8"/>
+                    <TextBlock Text="Detected DOM Mutations &amp; Structure Drift" DockPanel.Dock="Top" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource Subtext0Brush}" Margin="4,0,0,8"/>
 
                     <ListBox x:Name="LstDriftItems" Background="Transparent" BorderThickness="0">
                         <ListBox.ItemTemplate>
@@ -106,17 +112,17 @@
                                         <DockPanel Grid.Row="0" Margin="0,0,0,4">
                                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                                 <Border Background="{Binding ActionBadgeColor}" CornerRadius="3" Padding="5,1" Margin="0,0,8,0">
-                                                    <TextBlock Text="{Binding ActionDisplay}" FontSize="10" FontWeight="Bold" Foreground="{StaticResource CrustBrush}"/>
+                                                    <TextBlock Text="{Binding ActionDisplay}" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource CrustBrush}"/>
                                                 </Border>
-                                                <TextBlock Text="{Binding Tag, StringFormat='&lt;{0}&gt;'}" FontSize="11.5" FontFamily="Consolas" FontWeight="Bold" Foreground="{StaticResource MauveBrush}" Margin="0,0,8,0"/>
-                                                <TextBlock Text="{Binding Selector}" FontSize="11.5" FontFamily="Consolas" Foreground="{StaticResource TextBrush}"/>
+                                                <TextBlock Text="{Binding Tag, StringFormat='&lt;{0}&gt;'}" FontSize="{StaticResource MonospaceFontSize}" FontFamily="{StaticResource MonospaceFontFamily}" FontWeight="Bold" Foreground="{StaticResource MauveBrush}" Margin="0,0,8,0"/>
+                                                <TextBlock Text="{Binding Selector}" FontSize="{StaticResource MonospaceFontSize}" FontFamily="{StaticResource MonospaceFontFamily}" Foreground="{StaticResource TextBrush}"/>
                                             </StackPanel>
 
-                                            <TextBlock Text="{Binding Timestamp}" DockPanel.Dock="Right" HorizontalAlignment="Right" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                                            <TextBlock Text="{Binding Timestamp}" DockPanel.Dock="Right" HorizontalAlignment="Right" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                                         </DockPanel>
 
                                         <!-- Row 2: Target description / Attribute name -->
-                                        <TextBlock Grid.Row="1" Text="{Binding Description}" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                        <TextBlock Grid.Row="1" Text="{Binding Description}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
 
                                         <!-- Row 3: Old vs New values -->
                                         <Grid Grid.Row="2" Visibility="{Binding HasValueDiffVisibility}">
@@ -127,13 +133,13 @@
                                             </Grid.ColumnDefinitions>
 
                                             <Border Grid.Column="0" Background="{StaticResource BaseBrush}" CornerRadius="3" Padding="6,4">
-                                                <TextBlock Text="{Binding OldValue, StringFormat='Baseline: {0}'}" FontSize="10.5" FontFamily="Consolas" Foreground="#EF4444" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{Binding OldValue, StringFormat='Baseline: {0}'}" FontSize="{StaticResource MonospaceFontSize}" FontFamily="{StaticResource MonospaceFontFamily}" Foreground="{StaticResource StatusErrorBrush}" TextTrimming="CharacterEllipsis"/>
                                             </Border>
 
-                                            <TextBlock Grid.Column="1" Text=" ➔ " FontSize="12" VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
+                                            <TextBlock Grid.Column="1" Text=" ➔ " FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
 
                                             <Border Grid.Column="2" Background="{StaticResource BaseBrush}" CornerRadius="3" Padding="6,4">
-                                                <TextBlock Text="{Binding NewValue, StringFormat='Live: {0}'}" FontSize="10.5" FontFamily="Consolas" Foreground="#22C55E" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{Binding NewValue, StringFormat='Live: {0}'}" FontSize="{StaticResource MonospaceFontSize}" FontFamily="{StaticResource MonospaceFontFamily}" Foreground="{StaticResource StatusSuccessBrush}" TextTrimming="CharacterEllipsis"/>
                                             </Border>
                                         </Grid>
                                     </Grid>

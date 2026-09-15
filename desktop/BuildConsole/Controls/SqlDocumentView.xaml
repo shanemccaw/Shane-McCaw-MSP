@@ -10,7 +10,7 @@
             <Setter Property="Foreground" Value="{StaticResource Subtext0Brush}"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="10,3"/>
-            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontSize" Value="{StaticResource CaptionFontSize}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
@@ -103,7 +103,7 @@
                             <ComboBox x:Name="DatabaseSelector"
                                       MinWidth="170"
                                       Padding="6,3"
-                                      FontSize="11"
+                                      FontSize="{StaticResource CaptionFontSize}"
                                       BorderThickness="0"
                                       Background="Transparent"
                                       DisplayMemberPath="DisplayName"
@@ -116,7 +116,7 @@
                 <TextBlock x:Name="ExecStatus"
                            DockPanel.Dock="Right"
                            Text="Ready"
-                           FontSize="11"
+                           FontSize="{StaticResource CaptionFontSize}"
                            Foreground="{StaticResource Subtext1Brush}"
                            VerticalAlignment="Center"
                            HorizontalAlignment="Right"/>
@@ -145,8 +145,8 @@
                 <avalonedit:TextEditor x:Name="QueryEditor"
                                        Background="Transparent"
                                        Foreground="{StaticResource TextBrush}"
-                                       FontFamily="Cascadia Code, Consolas, Courier New"
-                                       FontSize="13"
+                                       FontFamily="{StaticResource MonospaceFontFamily}"
+                                       FontSize="{StaticResource MonospaceFontSize}"
                                        Padding="8"
                                        ShowLineNumbers="True"
                                        LineNumbersForeground="{StaticResource Surface2Brush}"
@@ -175,7 +175,7 @@
                         Padding="6,5">
                     <DockPanel>
                         <TextBlock Text="Results"
-                                   FontSize="11"
+                                   FontSize="{StaticResource CaptionFontSize}"
                                    FontWeight="SemiBold"
                                    Foreground="{StaticResource Subtext1Brush}"
                                    VerticalAlignment="Center"/>
@@ -184,7 +184,7 @@
                                     VerticalAlignment="Center">
                             <TextBlock x:Name="RowCountLabel"
                                        Text="No results"
-                                       FontSize="11"
+                                       FontSize="{StaticResource CaptionFontSize}"
                                        Foreground="{StaticResource Subtext1Brush}"
                                        VerticalAlignment="Center"
                                        Margin="0,0,12,0"/>
@@ -192,7 +192,7 @@
                                     Content="⎘ Copy CSV"
                                     Padding="7,3"
                                     Margin="0,0,5,0"
-                                    FontSize="11"
+                                    FontSize="{StaticResource CaptionFontSize}"
                                     IsEnabled="False"
                                     ToolTip="Copy all results as CSV"
                                     Click="CopyTableBtn_Click"/>
@@ -200,7 +200,7 @@
                                     Content="⎘ Copy JSON"
                                     Padding="7,3"
                                     Margin="0,0,10,0"
-                                    FontSize="11"
+                                    FontSize="{StaticResource CaptionFontSize}"
                                     IsEnabled="False"
                                     ToolTip="Copy all results as JSON"
                                     Click="CopyJsonBtn_Click"/>
@@ -240,8 +240,8 @@
                                        Grid.Row="1"
                                        Background="{StaticResource CrustBrush}"
                                        Foreground="{StaticResource TextBrush}"
-                                       FontFamily="Cascadia Code, Consolas, Courier New"
-                                       FontSize="12"
+                                       FontFamily="{StaticResource MonospaceFontFamily}"
+                                       FontSize="{StaticResource MonospaceFontSize}"
                                        Padding="8"
                                        IsReadOnly="True"
                                        WordWrap="False"

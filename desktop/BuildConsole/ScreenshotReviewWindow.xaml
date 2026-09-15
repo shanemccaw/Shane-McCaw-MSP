@@ -33,17 +33,17 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="Screenshot Review" Margin="12,0,0,0"
-                           VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
+                           VerticalAlignment="Center" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                            Foreground="{StaticResource Subtext1Brush}"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
                     <Button x:Name="BtnMinimize" Style="{StaticResource CaptionButton}" ToolTip="Minimize" Click="BtnMinimize_Click">
-                        <TextBlock Text="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                        <TextBlock Text="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"/>
                     </Button>
                     <Button x:Name="BtnMaximizeRestore" Style="{StaticResource CaptionButton}" ToolTip="Maximize" Click="BtnMaximizeRestore_Click">
-                        <TextBlock x:Name="BtnMaximizeRestoreIcon" Text="&#xE922;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                        <TextBlock x:Name="BtnMaximizeRestoreIcon" Text="&#xE922;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"/>
                     </Button>
                     <Button x:Name="BtnCloseWindow" Style="{StaticResource CaptionButtonClose}" ToolTip="Close" Click="BtnCloseWindow_Click">
-                        <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                        <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"/>
                     </Button>
                 </StackPanel>
             </Grid>
@@ -70,19 +70,19 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0">
-                    <TextBlock x:Name="TitleText" FontSize="18" FontWeight="SemiBold"
+                    <TextBlock x:Name="TitleText" FontSize="{StaticResource HeaderFontSize}" FontWeight="SemiBold"
                                Foreground="{StaticResource TextBrush}" Text="Screenshot Review"/>
-                    <TextBlock x:Name="SubjectText" FontSize="12" Margin="0,3,0,0"
+                    <TextBlock x:Name="SubjectText" FontSize="{StaticResource BodyFontSize}" Margin="0,3,0,0"
                                Foreground="{StaticResource Subtext0Brush}" Text=""/>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <Border x:Name="DiffChip" CornerRadius="4" Padding="8,3" Margin="0,0,12,0"
                             Background="{StaticResource Surface0Brush}">
-                        <TextBlock x:Name="DiffChipText" FontSize="11" FontWeight="SemiBold"
+                        <TextBlock x:Name="DiffChipText" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextBrush}" Text=""/>
                     </Border>
-                    <TextBlock x:Name="CounterText" FontSize="13" VerticalAlignment="Center"
+                    <TextBlock x:Name="CounterText" FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center"
                                Foreground="{StaticResource Subtext1Brush}" Text="0 / 0"/>
                 </StackPanel>
             </Grid>
@@ -102,7 +102,7 @@
                     Background="{StaticResource CrustBrush}"
                     BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="6">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="🔍 Zoom" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
+                    <TextBlock Text="🔍 Zoom" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" VerticalAlignment="Center"
                                Foreground="{StaticResource Subtext1Brush}" Margin="0,0,10,0"/>
                     <Button x:Name="ZoomOutButton" Content="−" Width="30" MinWidth="30"
                             Style="{StaticResource SecondaryButton}" Click="ZoomOutButton_Click"
@@ -114,7 +114,7 @@
                     <Button x:Name="ZoomInButton" Content="+" Width="30" MinWidth="30"
                             Style="{StaticResource SecondaryButton}" Click="ZoomInButton_Click"
                             ToolTip="Zoom in"/>
-                    <TextBlock x:Name="ZoomLabel" Text="100%" FontSize="12" VerticalAlignment="Center"
+                    <TextBlock x:Name="ZoomLabel" Text="100%" FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center"
                                MinWidth="46" TextAlignment="Right" Margin="10,0,0,0"
                                Foreground="{StaticResource Subtext0Brush}"/>
                     <Button x:Name="ZoomFitButton" Content="Fit width" MinWidth="80" Margin="14,0,0,0"
@@ -139,7 +139,7 @@
                         BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="6">
                     <DockPanel>
                         <Border DockPanel.Dock="Top" Background="{StaticResource Surface0Brush}" Padding="10,6">
-                            <TextBlock Text="BASELINE (source of truth)" FontSize="11" FontWeight="SemiBold"
+                            <TextBlock Text="BASELINE (source of truth)" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                        Foreground="{StaticResource Subtext0Brush}"/>
                         </Border>
                         <Grid>
@@ -180,7 +180,7 @@
                         BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="6">
                     <DockPanel>
                         <Border DockPanel.Dock="Top" Background="{StaticResource Surface0Brush}" Padding="10,6">
-                            <TextBlock Text="THIS RUN" FontSize="11" FontWeight="SemiBold"
+                            <TextBlock Text="THIS RUN" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                        Foreground="{StaticResource Subtext0Brush}"/>
                         </Border>
                         <Grid>
@@ -223,17 +223,17 @@
                 BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="6">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock x:Name="NarrationStep" FontSize="14" FontWeight="SemiBold"
+                    <TextBlock x:Name="NarrationStep" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                Foreground="{StaticResource BlueBrush}" Text=""/>
                     <Border x:Name="VerdictChip" CornerRadius="4" Padding="7,2" Margin="10,0,0,0"
                             Background="{StaticResource Surface0Brush}">
-                        <TextBlock x:Name="VerdictText" FontSize="11" FontWeight="SemiBold"
+                        <TextBlock x:Name="VerdictText" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextBrush}" Text=""/>
                     </Border>
                 </StackPanel>
-                <TextBlock x:Name="NarrationWhat" FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap"
+                <TextBlock x:Name="NarrationWhat" FontSize="{StaticResource BodyFontSize}" Margin="0,6,0,0" TextWrapping="Wrap"
                            Foreground="{StaticResource TextBrush}" Text=""/>
-                <TextBlock x:Name="NarrationDiff" FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap"
+                <TextBlock x:Name="NarrationDiff" FontSize="{StaticResource BodyFontSize}" Margin="0,4,0,0" TextWrapping="Wrap"
                            Foreground="{StaticResource Subtext0Brush}" Text=""/>
             </StackPanel>
         </Border>
@@ -257,7 +257,7 @@
                 BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="6">
             <StackPanel>
                 <TextBlock Text="Report / note (sent to the active Claude chat — you review &amp; press Enter yourself):"
-                           FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,6"/>
+                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,6"/>
                 <TextBox x:Name="ComposeBox" MinHeight="84" MaxHeight="150"
                          AcceptsReturn="True" TextWrapping="Wrap"
                          VerticalScrollBarVisibility="Auto"
@@ -273,7 +273,7 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock x:Name="StatusText" Grid.Column="0" VerticalAlignment="Center"
-                               TextWrapping="Wrap" FontSize="12"
+                               TextWrapping="Wrap" FontSize="{StaticResource CaptionFontSize}"
                                Foreground="{StaticResource Subtext0Brush}" Text=""/>
                     <Button x:Name="ReportButton" Grid.Column="1" Content="🐞 Report issue"
                             MinWidth="130" Margin="0,0,10,0"

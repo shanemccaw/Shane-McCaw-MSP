@@ -33,10 +33,10 @@
                 <Border BorderBrush="#302f2d" BorderThickness="0,0,0,1" Padding="12,11,12,12">
                     <StackPanel>
                         <TextBlock x:Name="GdmHeadline" Text="Checking git…"
-                                   FontSize="11" FontWeight="Bold" Foreground="#ece9e4"
+                                   FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="#ece9e4"
                                    TextWrapping="Wrap"/>
                         <TextBlock x:Name="GdmSubline" Text=""
-                                   Margin="0,3,0,0" FontFamily="Consolas" FontSize="9"
+                                   Margin="0,3,0,0" FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource MonospaceFontSize}"
                                    Foreground="#7a7975" TextWrapping="Wrap"/>
 
                         <Border x:Name="GdmNightmareBtn" Height="30" Margin="0,10,0,0"
@@ -48,13 +48,13 @@
                                            FontSize="12" Foreground="#1a0f0a"
                                            VerticalAlignment="Center" Margin="0,0,6,0"/>
                                 <TextBlock x:Name="GdmNightmareLabel" Text="Fix My Git Nightmare"
-                                           FontSize="12" FontWeight="ExtraBold" Foreground="#1a0f0a"
+                                           FontSize="{StaticResource BodyFontSize}" FontWeight="ExtraBold" Foreground="#1a0f0a"
                                            VerticalAlignment="Center"/>
                             </StackPanel>
                         </Border>
                         <TextBlock x:Name="GdmNightmareSub" Text=""
                                    Margin="0,4,0,0" HorizontalAlignment="Center"
-                                   FontSize="8.5" Foreground="#7a7975" TextAlignment="Center"
+                                   FontSize="{StaticResource CaptionFontSize}" Foreground="#7a7975" TextAlignment="Center"
                                    TextWrapping="Wrap"/>
                     </StackPanel>
                 </Border>
@@ -76,11 +76,11 @@
                 <StackPanel Margin="12,14,12,0">
                     <DockPanel LastChildFill="False">
                         <TextBlock DockPanel.Dock="Left" Text="CLAUDE BRIDGE"
-                                   FontSize="9" FontWeight="ExtraBold" Foreground="#7a7975"
+                                   FontSize="{StaticResource CaptionFontSize}" FontWeight="ExtraBold" Foreground="#7a7975"
                                    VerticalAlignment="Center"/>
                         <TextBlock x:Name="GdmSendFindings" DockPanel.Dock="Right"
                                    Text="send findings" Cursor="Hand"
-                                   FontSize="10" FontWeight="SemiBold" Foreground="#d97757"
+                                   FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="#d97757"
                                    VerticalAlignment="Center"
                                    MouseLeftButtonUp="GdmSendFindings_Click"/>
                     </DockPanel>
@@ -91,11 +91,11 @@
                                  VerticalScrollBarVisibility="Auto"
                                  Background="#0d0f10" Foreground="#ece9e4"
                                  BorderBrush="#302f2d" BorderThickness="1" Padding="7,5,7,5"
-                                 FontFamily="Consolas" FontSize="10.5"
+                                 FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource MonospaceFontSize}"
                                  TextChanged="GdmPasteBox_TextChanged"/>
                         <TextBlock x:Name="GdmPastePlaceholder" Text="Paste Claude's commands…"
                                    Margin="9,7,0,0" VerticalAlignment="Top"
-                                   IsHitTestVisible="False" FontFamily="Consolas" FontSize="10.5"
+                                   IsHitTestVisible="False" FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource MonospaceFontSize}"
                                    Foreground="#7a7975"/>
                     </Grid>
 
@@ -104,7 +104,7 @@
                             BorderBrush="#3d3b37" BorderThickness="1" Cursor="Hand"
                             HorizontalAlignment="Left" MouseLeftButtonUp="GdmExtractBtn_Click">
                         <TextBlock Text="Extract commands" Margin="12,0,12,0"
-                                   FontSize="10.5" Foreground="#c2c0bc"
+                                   FontSize="{StaticResource CaptionFontSize}" Foreground="#c2c0bc"
                                    VerticalAlignment="Center"/>
                     </Border>
                 </StackPanel>
@@ -116,13 +116,13 @@
                         Visibility="Collapsed" HorizontalAlignment="Left"
                         MouseLeftButtonUp="GdmRunPlanBtn_Click">
                     <TextBlock x:Name="GdmRunPlanLabel" Text="Run 0 approved" Margin="14,0,14,0"
-                               FontSize="11.5" FontWeight="Bold" Foreground="#1a0f0a"
+                               FontSize="{StaticResource BodyFontSize}" FontWeight="Bold" Foreground="#1a0f0a"
                                VerticalAlignment="Center"/>
                 </Border>
 
                 <!-- 5. Run log -->
                 <TextBlock Text="RUN LOG" Margin="12,14,12,0"
-                           FontSize="9" FontWeight="ExtraBold" Foreground="#7a7975"/>
+                           FontSize="{StaticResource CaptionFontSize}" FontWeight="ExtraBold" Foreground="#7a7975"/>
                 <Border Margin="12,5,12,12" MaxHeight="140" CornerRadius="6"
                         Background="#0d0f10" BorderBrush="#302f2d" BorderThickness="1">
                     <ScrollViewer x:Name="GdmLogScroll" VerticalScrollBarVisibility="Auto"

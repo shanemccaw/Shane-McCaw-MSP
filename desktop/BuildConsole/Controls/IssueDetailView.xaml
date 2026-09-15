@@ -25,14 +25,14 @@
                         VerticalAlignment="Center">
                     <TextBlock x:Name="NumberBadgeText"
                                Text=""
-                               FontSize="11"
+                               FontSize="{StaticResource CaptionFontSize}"
                                FontWeight="Bold"
                                Foreground="{StaticResource PeachBrush}"/>
                 </Border>
 
                 <TextBox x:Name="TitleLabel"
                          Text="SELECT AN ISSUE"
-                         FontSize="12"
+                         FontSize="{StaticResource CaptionFontSize}"
                          Foreground="{StaticResource TextBrush}"
                          VerticalAlignment="Center"
                          IsReadOnly="True"
@@ -51,7 +51,7 @@
                         HorizontalAlignment="Right">
                     <TextBlock x:Name="StateBadgeText"
                                Text=""
-                               FontSize="11"
+                               FontSize="{StaticResource CaptionFontSize}"
                                Foreground="{StaticResource Subtext1Brush}"/>
                 </Border>
 
@@ -104,7 +104,7 @@
                                  BorderBrush="{StaticResource Surface1Brush}"
                                  BorderThickness="1"
                                  Padding="6"
-                                 FontSize="12"/>
+                                 FontSize="{StaticResource CaptionFontSize}"/>
                     </DockPanel>
                 </Border>
 
@@ -115,25 +115,25 @@
 
                         <TextBlock x:Name="LoadingText"
                                    Text=""
-                                   FontSize="12"
+                                   FontSize="{StaticResource CaptionFontSize}"
                                    Foreground="{StaticResource Subtext1Brush}"
                                    Visibility="Collapsed"/>
 
                         <TextBlock x:Name="EpicLabel"
                                    Text="PARENT EPIC"
-                                   FontSize="10"
+                                   FontSize="{StaticResource CaptionFontSize}"
                                    FontWeight="SemiBold"
                                    Foreground="{StaticResource Subtext0Brush}"
                                    Margin="0,0,0,4"
                                    Visibility="Collapsed"/>
                         <TextBlock x:Name="EpicText"
-                                   FontSize="12"
+                                   FontSize="{StaticResource CaptionFontSize}"
                                    Margin="0,0,0,16"
                                    Visibility="Collapsed"/>
 
                         <TextBlock x:Name="BodyLabel"
                                    Text="DESCRIPTION"
-                                   FontSize="10"
+                                   FontSize="{StaticResource CaptionFontSize}"
                                    FontWeight="SemiBold"
                                    Foreground="{StaticResource Subtext0Brush}"
                                    Margin="0,0,0,4"
@@ -147,7 +147,7 @@
 
                         <TextBlock x:Name="CommentsLabel"
                                    Text="COMMENTS"
-                                   FontSize="10"
+                                   FontSize="{StaticResource CaptionFontSize}"
                                    FontWeight="SemiBold"
                                    Foreground="{StaticResource Subtext0Brush}"
                                    Margin="0,0,0,4"

@@ -14,8 +14,10 @@
             BorderBrush="{StaticResource Surface1Brush}"
             BorderThickness="1"
             CornerRadius="8">
+        <!-- Git #4183: was a hand-rolled DropShadowEffect with a raw #000000 — Themes/DarkTheme.xaml's
+             SoftCardShadow is the real named card-shadow resource for this exact role. -->
         <Border.Effect>
-            <DropShadowEffect BlurRadius="14" ShadowDepth="2" Direction="270" Opacity="0.45" Color="#000000"/>
+            <StaticResource ResourceKey="SoftCardShadow"/>
         </Border.Effect>
 
         <Grid>
@@ -33,7 +35,9 @@
                     CornerRadius="8,0,0,8"
                     Background="{StaticResource BlueBrush}"/>
 
-            <!-- Kind icon (glyph + colour set in code-behind) -->
+            <!-- Kind icon (glyph + colour set in code-behind). Git #4183: FontFamily here is a
+                 separate, already-tracked icon-font finding per #4162's audit comment — left alone;
+                 FontSize is a decorative icon-glyph size, exempt from the CaptionFontSize floor. -->
             <TextBlock x:Name="IconText" Grid.Column="1"
                        Text="&#x2139;"
                        FontFamily="Segoe UI Symbol, Segoe UI"
@@ -45,11 +49,11 @@
             <!-- Title + message -->
             <StackPanel Grid.Column="2" Margin="10,10,8,11">
                 <TextBlock x:Name="TitleText"
-                           FontSize="13" FontWeight="SemiBold"
+                           FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                            TextWrapping="Wrap"
                            Foreground="{StaticResource TextBrush}"/>
                 <TextBlock x:Name="MessageText"
-                           FontSize="12"
+                           FontSize="{StaticResource CaptionFontSize}"
                            TextWrapping="Wrap"
                            Margin="0,2,0,0"
                            Foreground="{StaticResource Subtext0Brush}"/>
@@ -61,14 +65,16 @@
             <Button x:Name="BtnBookmark" Grid.Column="3"
                     Content="&#x2606;"
                     Style="{StaticResource IconButton}"
-                    FontSize="11"
+                    FontSize="{StaticResource CaptionFontSize}"
                     Padding="6,4"
                     VerticalAlignment="Top"
                     Margin="0,6,0,0"
                     ToolTip="Bookmark"
                     Click="BtnBookmark_Click"/>
 
-            <!-- Dismiss (the toast also auto-dismisses on its own) -->
+            <!-- Dismiss (the toast also auto-dismisses on its own). Git #4183: "&#x2715;" is a
+                 decorative icon-glyph substitute, not real text — left below CaptionFontSize per
+                 the issue's own exemption for decorative glyphs. -->
             <Button x:Name="BtnClose" Grid.Column="4"
                     Content="&#x2715;"
                     Style="{StaticResource IconButton}"
