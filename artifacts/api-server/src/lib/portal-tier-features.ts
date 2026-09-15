@@ -38,27 +38,20 @@
  * ── Module keys ──────────────────────────────────────────────────────────────
  * Canonical strings written into `services.type_attributes.includedFeatures`
  * by `lib/db/migrations/manual/2026-09-05-portal-tier-included-features-1168.sql`.
- * `changeControl` is listed here for documentation completeness only (Premier
+ * `changeControl` is listed for documentation completeness only (Premier
  * "functionally gets both", per #1168's structural-dependency note) — it is
  * NEVER read by `hasTierFeature`/`requireTierFeature` below; its real gate is
  * `requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY)`.
+ *
+ * #4191 moved the vocabulary itself to `@workspace/db/rbac/tier-modules` — one key
+ * at a time, unchanged — because the composed RBAC + tier decision function
+ * (`evaluateAccess`, `@workspace/db/rbac/access`) is pure and lives in lib/db, and
+ * types its tier input against these keys. Re-exported here so every route's
+ * existing `import { PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features.ts"`
+ * and every test that mocks this module keep working unchanged.
  */
-export const PORTAL_TIER_MODULE_KEYS = {
-  policyDecisions: "policy_decisions",
-  riskRegister: "risk_register",
-  runbooks: "runbooks",
-  remediationTracking: "remediation_tracking",
-  sopsRunbooks: "sops_runbooks",
-  messageCenter: "message_center",
-  changeControl: "change_control", // documentation only — see header. Real gate: portal-addon-entitlements.ts
-  ownership: "ownership",
-  securityPlan: "security_plan",
-  piiGovernance: "pii_governance",
-  poams: "poams", // #3104 — customer-facing POA&M reads only; MSP-console side stays ungated
-} as const;
-
-export type PortalTierModuleKey =
-  (typeof PORTAL_TIER_MODULE_KEYS)[keyof typeof PORTAL_TIER_MODULE_KEYS];
+export { PORTAL_TIER_MODULE_KEYS, type PortalTierModuleKey } from "@workspace/db/rbac/tier-modules";
+import type { PortalTierModuleKey } from "@workspace/db/rbac/tier-modules";
 
 import type { Request, Response, NextFunction } from "express";
 import { db, clientServicesTable, servicesTable } from "@workspace/db";

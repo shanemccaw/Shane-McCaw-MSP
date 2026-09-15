@@ -18,6 +18,11 @@ export default defineConfig({
       // fail-closed rules (#1696 requirements 1 and 3).
       "src/rbac/capabilities.test.ts",
       "src/rbac/evaluate.test.ts",
+      // #4191 — the composed RBAC + tier decision (`evaluateAccess`): every branch,
+      // RBAC-before-tier proven structurally (the tier input is never read on an
+      // RBAC denial), requiredTier from the catalog by sort_order, and the
+      // tier-module vocabulary pinned against the #1168 migration. Pure, no DB.
+      "src/rbac/access.test.ts",
       // #2457 — the transcription of today's model: the ROLE_ORDER ladder (checked
       // against the live requireAuth.ts, so drift fails loudly), the legacy admin
       // promotion, and the asymmetric way the three capability columns are actually
