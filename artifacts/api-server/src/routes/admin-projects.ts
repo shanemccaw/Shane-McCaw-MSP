@@ -21,11 +21,11 @@ import {
   powershellScriptsTable,
   scriptModulesTable,
 } from "@workspace/db";
-import { eq, and, asc, desc, count, sql, inArray, isNotNull, isNull, gte } from "drizzle-orm";
-import { requireCapability, type AuthUser } from "../middlewares/requireAuth.ts";
+import { eq, and, or, asc, desc, count, sql, inArray, isNotNull, isNull, gte } from "drizzle-orm";
+import { requireCapability, effectiveMspRole, type AuthUser } from "../middlewares/requireAuth.ts";
 import { userClearsLadderCapability } from "../middlewares/rbac-ladder.ts";
-import { LADDER } from "@workspace/db/rbac/legacy-ladder";
-import { resolveMspIdOrZero } from "../lib/resolve-msp-id.ts";
+import { LADDER, LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
+import { resolveMspId } from "../lib/resolve-msp-id.ts";
 import { createNotification } from "../lib/notification-center.ts";
 import { createAuditLog, auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 import { createProjectFolder } from "../lib/graph.ts";
@@ -67,27 +67,6 @@ async function syncProjectProgress(projectId: number): Promise<void> {
   await db.update(projectsTable).set({ progress }).where(eq(projectsTable.id, projectId));
 }
 
-/**
- * Confirm a project's client belongs to `mspId` (0 = PlatformAdmin cross-platform
- * view, no scoping). Same ownership-gate shape as `msp-invoices.ts`'s
- * `clientBelongsToMsp` — `projectsTable.clientUserId` has no FK to `tenantsTable`,
- * only to `usersTable.mspId`, which is the axis every MSP-Console-scoped route in
- * this file needs to check (Git #4251 — `admin-projects.ts` was re-gated from
- * `requireAdmin` to `requireCapability("ladder.msp-operator")` by #4245 with no
- * MSP-scoping added, so a project with no `clientUserId` or a `clientUserId`
- * outside the caller's own MSP must not be visible to a non-admin caller).
- */
-async function projectVisibleToMsp(clientUserId: number | null, mspId: number): Promise<boolean> {
-  if (mspId === 0) return true; // PlatformAdmin cross-platform view — unchanged
-  if (!clientUserId) return false;
-  const [row] = await db
-    .select({ id: usersTable.id })
-    .from(usersTable)
-    .where(and(eq(usersTable.id, clientUserId), eq(usersTable.mspId, mspId)))
-    .limit(1);
-  return Boolean(row);
-}
-
 function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
   const result = { ...target };
   for (const key of Object.keys(source)) {
@@ -107,6 +86,112 @@ function deepMerge(target: Record<string, unknown>, source: Record<string, unkno
     }
   }
   return result;
+}
+
+// ── MSP ownership scoping (#4251) ─────────────────────────────────────────────
+// #4245 opened this surface to `ladder.msp-operator`, i.e. staff at any MSP on
+// the platform, so every handler below now resolves whose data the caller may
+// touch before reading or mutating a row. Same ownership join as
+// msp-invoices.ts (#4109), confirmed against the schema:
+//   projects.client_user_id        → users.id → users.msp_id
+//   client_services.client_user_id → users.id → users.msp_id
+//   workflow_steps.project_id | client_service_id → one of the two above
+//   kanban_tasks.project_id        → projects
+// An MSP owns a row iff that chain lands on its msp_id. A row outside the
+// caller's MSP (or with no client at all) is reported as not found — never 403 —
+// so an unauthorized caller cannot confirm it exists.
+//
+// `mspId: null` is the PlatformAdmin cross-platform view (no ?mspId= override),
+// unchanged from before #4245. A PlatformAdmin passing ?mspId= is scoped to that
+// MSP, same as resolveMspIdOrZero callers elsewhere.
+type ProjectScope = { mspId: number | null };
+
+/** Resolve the caller's scope, or null when an MSP-staff session carries no mspId (callers 403). */
+async function resolveProjectScope(req: Request): Promise<ProjectScope | null> {
+  const mspId = await resolveMspId(req);
+  if (mspId !== null) return { mspId };
+  return effectiveMspRole(req.user!) === LEGACY_ROLE.platformAdmin ? { mspId: null } : null;
+}
+
+/** Resolve scope for a handler, answering 403 itself when the session has no MSP context. */
+async function requireProjectScope(req: Request, res: Response): Promise<ProjectScope | null> {
+  const scope = await resolveProjectScope(req);
+  if (!scope) {
+    log.warn({ userId: req.user?.id, path: req.path }, "admin-projects: MSP-staff session has no mspId — denied");
+    res.status(403).json({ error: "No MSP context on this session" });
+  }
+  return scope;
+}
+
+async function findScopedProject(scope: ProjectScope, projectId: number) {
+  if (scope.mspId === null) {
+    const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
+    return project ?? null;
+  }
+  const [row] = await db
+    .select({ project: projectsTable })
+    .from(projectsTable)
+    .innerJoin(usersTable, eq(projectsTable.clientUserId, usersTable.id))
+    .where(and(eq(projectsTable.id, projectId), eq(usersTable.mspId, scope.mspId)))
+    .limit(1);
+  return row?.project ?? null;
+}
+
+async function clientInScope(scope: ProjectScope, clientUserId: number): Promise<boolean> {
+  const [row] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(scope.mspId === null
+      ? eq(usersTable.id, clientUserId)
+      : and(eq(usersTable.id, clientUserId), eq(usersTable.mspId, scope.mspId)))
+    .limit(1);
+  return Boolean(row);
+}
+
+async function clientServiceInScope(scope: ProjectScope, clientServiceId: number): Promise<boolean> {
+  const [row] = await db
+    .select({ id: clientServicesTable.id })
+    .from(clientServicesTable)
+    .innerJoin(usersTable, eq(clientServicesTable.clientUserId, usersTable.id))
+    .where(scope.mspId === null
+      ? eq(clientServicesTable.id, clientServiceId)
+      : and(eq(clientServicesTable.id, clientServiceId), eq(usersTable.mspId, scope.mspId)))
+    .limit(1);
+  return Boolean(row);
+}
+
+async function findScopedStep(scope: ProjectScope, stepId: number) {
+  const [step] = await db.select().from(workflowStepsTable).where(eq(workflowStepsTable.id, stepId));
+  if (!step) return null;
+  if (scope.mspId === null) return step;
+  if (step.projectId !== null) return (await findScopedProject(scope, step.projectId)) ? step : null;
+  if (step.clientServiceId !== null) return (await clientServiceInScope(scope, step.clientServiceId)) ? step : null;
+  return null;
+}
+
+async function findScopedTask(scope: ProjectScope, taskId: number) {
+  const [task] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, taskId));
+  if (!task) return null;
+  if (scope.mspId === null) return task;
+  return (await findScopedProject(scope, task.projectId)) ? task : null;
+}
+
+/** Subquery: ids of every project whose client belongs to `mspId`. */
+function mspProjectIds(mspId: number) {
+  return db
+    .select({ id: projectsTable.id })
+    .from(projectsTable)
+    .innerJoin(usersTable, eq(projectsTable.clientUserId, usersTable.id))
+    .where(eq(usersTable.mspId, mspId));
+}
+
+/** Subquery: ids of every client service whose client belongs to `mspId`. */
+function mspClientServiceIds(mspId: number) {
+  return db
+    .select({ id: clientServicesTable.id })
+    .from(clientServicesTable)
+    .innerJoin(usersTable, eq(clientServicesTable.clientUserId, usersTable.id))
+    .where(eq(usersTable.mspId, mspId));
 }
 
 router.get("/admin/projects/:id/kanban-events", async (req: Request, res: Response) => {
@@ -129,39 +214,36 @@ router.get("/admin/projects/:id/kanban-events", async (req: Request, res: Respon
   if (outcome.kind === "unavailable") { res.status(503).json({ error: "Authorization is temporarily unavailable" }); return; }
   if (outcome.kind !== "allow") { res.status(403).json({ error: "Insufficient privileges" }); return; }
 
+  // Same ownership check every other route in this file runs (#4251): the ladder
+  // answers who may reach the surface, not whose project stream they may watch.
+  req.user = user;
+  const scope = await requireProjectScope(req, res);
+  if (!scope) return;
+  if (!(await findScopedProject(scope, projectId))) { res.status(404).json({ error: "Project not found" }); return; }
+
   setupSSE(req, res, projectId);
 });
 
 router.get("/admin/projects", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
-  const mspId = await resolveMspIdOrZero(req);
+  const scope = await requireProjectScope(req, res);
+  if (!scope) return;
+  // #4248's project picker narrows to one client; the MSP filter still applies on top.
   const clientUserIdParam = typeof req.query.clientUserId === "string" ? parseInt(req.query.clientUserId, 10) : NaN;
-
-  // mspId === 0 is the PlatformAdmin cross-platform view (unchanged behavior).
-  // Any other caller (an MSP Console operator) only ever sees projects whose
-  // client belongs to their own MSP (Git #4251 — see `projectVisibleToMsp`).
-  const conditions = mspId === 0
-    ? []
-    : [eq(usersTable.mspId, mspId)];
+  const conditions = [];
+  if (scope.mspId !== null) conditions.push(inArray(projectsTable.id, mspProjectIds(scope.mspId)));
   if (!isNaN(clientUserIdParam)) conditions.push(eq(projectsTable.clientUserId, clientUserIdParam));
-
-  const projects = mspId === 0
-    ? await db.select().from(projectsTable)
-        .where(conditions.length ? and(...conditions) : undefined)
-        .orderBy(desc(projectsTable.createdAt))
-    : await db.select({ project: projectsTable })
-        .from(projectsTable)
-        .innerJoin(usersTable, eq(projectsTable.clientUserId, usersTable.id))
-        .where(and(...conditions))
-        .orderBy(desc(projectsTable.createdAt))
-        .then((rows) => rows.map((r) => r.project));
-
+  const projects = await db.select().from(projectsTable)
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(projectsTable.createdAt));
   res.json(projects);
 });
 
 router.get("/admin/projects/:id", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
-  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, id));
+  const scope = await requireProjectScope(req, res);
+  if (!scope) return;
+  const project = await findScopedProject(scope, id);
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
 
   await auditPrivilegedRead({
@@ -184,6 +266,10 @@ router.post("/admin/projects", requireCapability("ladder.msp-operator"), async (
   };
   if (!title) { res.status(400).json({ error: "title is required" }); return; }
   if (!clientUserId) { res.status(400).json({ error: "clientUserId is required" }); return; }
+
+  const scope = await requireProjectScope(req, res);
+  if (!scope) return;
+  if (!(await clientInScope(scope, clientUserId))) { res.status(404).json({ error: "Client not found" }); return; }
 
   const validStatuses = ["active", "on_hold", "completed"];
   const [project] = await db.insert(projectsTable).values({
@@ -303,7 +389,9 @@ router.post("/admin/projects/:id/sharepoint-folder", requireCapability("ladder.m
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid project id" }); return; }
 
-  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, id));
+  const scope = await requireProjectScope(req, res);
+  if (!scope) return;
+  const project = await findScopedProject(scope, id);
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
   if (project.sharepointFolderUrl) {
     res.status(409).json({ error: "SharePoint folder already exists", sharepointFolderUrl: project.sharepointFolderUrl });
@@ -352,6 +440,16 @@ router.patch("/admin/projects/:id", requireCapability("ladder.msp-operator"), as
   if (endDate !== undefined) updates.endDate = endDate ? new Date(endDate) : null;
   if (projectType !== undefined) updates.projectType = (["retainer", "quick_win"].includes(projectType) ? projectType : "project") as "project" | "retainer" | "quick_win";
 
+  const scope = await requireProjectScope(req, res);
+  if (!scope) return;
+  if (!(await findScopedProject(scope, id))) { res.status(404).json({ error: "Project not found" }); return; }
+  if (clientUserId !== undefined && scope.mspId !== null) {
+    // An MSP-scoped caller may only reassign to one of its own clients, and may
+    // not detach the client — that would silently move the project out of scope.
+    if (clientUserId === null) { res.status(400).json({ error: "clientUserId cannot be cleared" }); return; }
+    if (!(await clientInScope(scope, clientUserId))) { res.status(404).json({ error: "Client not found" }); return; }
+  }
+
   const [updated] = await db.update(projectsTable).set(updates).where(eq(projectsTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Project not found" }); return; }
 
@@ -380,8 +478,9 @@ router.delete("/admin/projects/:id", requireCapability("ladder.msp-operator"), a
     const id = parseInt(String(req.params.id ?? ""), 10);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
-    const [project] = await db.select({ id: projectsTable.id }).from(projectsTable)
-      .where(eq(projectsTable.id, id)).limit(1);
+    const scope = await requireProjectScope(req, res);
+    if (!scope) return;
+    const project = await findScopedProject(scope, id);
     if (!project) { res.status(404).json({ error: "Project not found" }); return; }
 
     await db.delete(kanbanTasksTable).where(eq(kanbanTasksTable.projectId, id));
@@ -405,9 +504,21 @@ router.delete("/admin/projects/:id", requireCapability("ladder.msp-operator"), a
 router.get("/admin/workflow-steps", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const projectId = req.query.projectId ? parseInt(String(req.query.projectId), 10) : null;
   const clientServiceId = req.query.clientServiceId ? parseInt(String(req.query.clientServiceId), 10) : null;
+  const scope = await requireProjectScope(req, res);
+  if (!scope) return;
   let q = db.select().from(workflowStepsTable).$dynamic();
-  if (projectId && !isNaN(projectId)) q = q.where(eq(workflowStepsTable.projectId, projectId));
-  else if (clientServiceId && !isNaN(clientServiceId)) q = q.where(eq(workflowStepsTable.clientServiceId, clientServiceId));
+  if (projectId && !isNaN(projectId)) {
+    if (!(await findScopedProject(scope, projectId))) { res.status(404).json({ error: "Project not found" }); return; }
+    q = q.where(eq(workflowStepsTable.projectId, projectId));
+  } else if (clientServiceId && !isNaN(clientServiceId)) {
+    if (!(await clientServiceInScope(scope, clientServiceId))) { res.status(404).json({ error: "Client service not found" }); return; }
+    q = q.where(eq(workflowStepsTable.clientServiceId, clientServiceId));
+  } else if (scope.mspId !== null) {
+    q = q.where(or(
+      inArray(workflowStepsTable.projectId, mspProjectIds(scope.mspId)),
+      inArray(workflowStepsTable.clientServiceId, mspClientServiceIds(scope.mspId)),
+    ));
+  }
   const steps = await q.orderBy(asc(workflowStepsTable.order));
   res.json(steps);
 });
@@ -415,6 +526,9 @@ router.get("/admin/workflow-steps", requireCapability("ladder.msp-operator"), as
 router.delete("/admin/workflow-steps/:id", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+  const scope = await requireProjectScope(req, res);
+  if (!scope) return;
+  if (!(await findScopedStep(scope, id))) { res.status(404).json({ error: "Step not found" }); return; }
   await db.delete(workflowStepsTable).where(eq(workflowStepsTable.id, id));
   res.json({ deleted: id });
 });
@@ -429,6 +543,10 @@ router.post("/admin/workflow-steps/bulk", requireCapability("ladder.msp-operator
 
   const invalid = steps.findIndex(s => !s.title?.trim());
   if (invalid !== -1) { res.status(400).json({ error: `Step at index ${invalid} is missing a title` }); return; }
+
+  const scope = await requireProjectScope(req, res);
+  if (!scope) return;
+  if (!(await findScopedProject(scope, projectId))) { res.status(404).json({ error: "Project not found" }); return; }
 
   const existing = await db.select({ order: workflowStepsTable.order })
     .from(workflowStepsTable)
@@ -458,6 +576,15 @@ router.post("/admin/workflow-steps", requireCapability("ladder.msp-operator"), a
   };
   if (!title) { res.status(400).json({ error: "title is required" }); return; }
 
+  const scope = await requireProjectScope(req, res);
+  if (!scope) return;
+  if (scope.mspId !== null && !projectId && !clientServiceId) {
+    // A parentless step belongs to no MSP; only the cross-platform view may create one.
+    res.status(400).json({ error: "projectId or clientServiceId is required" }); return;
+  }
+  if (projectId && !(await findScopedProject(scope, projectId))) { res.status(404).json({ error: "Project not found" }); return; }
+  if (clientServiceId && !(await clientServiceInScope(scope, clientServiceId))) { res.status(404).json({ error: "Client service not found" }); return; }
+
   const [step] = await db.insert(workflowStepsTable).values({
     projectId: projectId ?? null,
     clientServiceId: clientServiceId ?? null,
@@ -485,7 +612,9 @@ router.patch("/admin/workflow-steps/:id", requireCapability("ladder.msp-operator
   if (description !== undefined) updates.description = description;
   if (dueDate !== undefined) updates.dueDate = dueDate ? new Date(dueDate) : null;
 
-  const [existing] = await db.select().from(workflowStepsTable).where(eq(workflowStepsTable.id, id));
+  const scope = await requireProjectScope(req, res);
+  if (!scope) return;
+  const existing = await findScopedStep(scope, id);
   if (!existing) { res.status(404).json({ error: "Step not found" }); return; }
 
   const [updated] = await db.update(workflowStepsTable).set(updates).where(eq(workflowStepsTable.id, id)).returning();
@@ -576,6 +705,9 @@ router.patch("/admin/workflow-steps/:id", requireCapability("ladder.msp-operator
 router.get("/admin/kanban-tasks", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const projectId = req.query.projectId ? parseInt(String(req.query.projectId), 10) : null;
   if (!projectId || isNaN(projectId)) { res.status(400).json({ error: "projectId query param required" }); return; }
+  const scope = await requireProjectScope(req, res);
+  if (!scope) return;
+  if (!(await findScopedProject(scope, projectId))) { res.status(404).json({ error: "Project not found" }); return; }
   const tasks = await db.select().from(kanbanTasksTable)
     .where(eq(kanbanTasksTable.projectId, projectId))
     .orderBy(asc(kanbanTasksTable.order));
@@ -708,6 +840,10 @@ router.post("/admin/kanban-tasks", requireCapability("ladder.msp-operator"), asy
   };
   if (!projectId || !title) { res.status(400).json({ error: "projectId and title are required" }); return; }
 
+  const scope = await requireProjectScope(req, res);
+  if (!scope) return;
+  if (!(await findScopedProject(scope, projectId))) { res.status(404).json({ error: "Project not found" }); return; }
+
   const [task] = await db.insert(kanbanTasksTable).values({
     projectId,
     title,
@@ -751,7 +887,9 @@ router.patch("/admin/kanban-tasks/:id", requireCapability("ladder.msp-operator")
     taskType?: string | null; taskMetadata?: Record<string, unknown> | null;
   };
 
-  const [existingTask] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, id));
+  const scope = await requireProjectScope(req, res);
+  if (!scope) return;
+  const existingTask = await findScopedTask(scope, id);
   if (!existingTask) { res.status(404).json({ error: "Task not found" }); return; }
 
   const updates: Partial<typeof kanbanTasksTable.$inferInsert & { updatedAt: Date }> = { updatedAt: new Date() };
@@ -851,7 +989,9 @@ router.post("/admin/kanban-tasks/:id/checklist/:itemId/completion-schema", requi
   if (isNaN(id)) { res.status(400).json({ error: "Invalid task ID" }); return; }
   if (!itemId) { res.status(400).json({ error: "Invalid item ID" }); return; }
 
-  const [task] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, id));
+  const scope = await requireProjectScope(req, res);
+  if (!scope) return;
+  const task = await findScopedTask(scope, id);
   if (!task) { res.status(404).json({ error: "Task not found" }); return; }
 
   const meta = (task.taskMetadata ?? {}) as Record<string, unknown>;
@@ -912,7 +1052,9 @@ router.patch("/admin/kanban-tasks/:id/checklist/:itemId", requireCapability("lad
   const { checked, closureData } = req.body as { checked?: boolean; closureData?: { schema: unknown; answers: unknown } };
   if (typeof checked !== "boolean") { res.status(400).json({ error: "checked (boolean) is required" }); return; }
 
-  const [existingTask] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, id));
+  const scope = await requireProjectScope(req, res);
+  if (!scope) return;
+  const existingTask = await findScopedTask(scope, id);
   if (!existingTask) { res.status(404).json({ error: "Task not found" }); return; }
 
   const currentMeta = (existingTask.taskMetadata ?? {}) as Record<string, unknown>;
@@ -951,7 +1093,10 @@ router.patch("/admin/kanban-tasks/:id/checklist/:itemId", requireCapability("lad
 router.delete("/admin/kanban-tasks/:id", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
-  const [existing] = await db.select({ projectId: kanbanTasksTable.projectId }).from(kanbanTasksTable).where(eq(kanbanTasksTable.id, id));
+  const scope = await requireProjectScope(req, res);
+  if (!scope) return;
+  const existing = await findScopedTask(scope, id);
+  if (!existing) { res.status(404).json({ error: "Task not found" }); return; }
   await db.delete(kanbanTasksTable).where(eq(kanbanTasksTable.id, id));
   if (existing?.projectId) await syncProjectProgress(existing.projectId);
   if (existing?.projectId) broadcastKanbanChange(existing.projectId, { action: "deleted", task: { id } });
@@ -965,17 +1110,10 @@ router.get("/admin/projects/:id/report-autofill", requireCapability("ladder.msp-
   const sinceParam = typeof req.query.since === "string" ? req.query.since : null;
   const sinceDate = sinceParam ? new Date(sinceParam) : null;
 
-  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, id));
+  const scope = await requireProjectScope(req, res);
+  if (!scope) return;
+  const project = await findScopedProject(scope, id);
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
-
-  // Git #4251 — 404 (not 403) on cross-MSP access, same as `msp-invoices.ts`'s
-  // `findMspInvoice`, so an unauthorized caller can't distinguish "not mine"
-  // from "doesn't exist."
-  const mspId = await resolveMspIdOrZero(req);
-  if (!(await projectVisibleToMsp(project.clientUserId, mspId))) {
-    res.status(404).json({ error: "Project not found" });
-    return;
-  }
 
   const [client] = project.clientUserId
     ? await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, company: usersTable.company })
@@ -1071,7 +1209,9 @@ router.post("/admin/projects/:id/closure-request", requireCapability("ladder.msp
   const projectId = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(projectId)) { res.status(400).json({ error: "Invalid project ID" }); return; }
 
-  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
+  const scope = await requireProjectScope(req, res);
+  if (!scope) return;
+  const project = await findScopedProject(scope, projectId);
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
   if (project.status !== "completed") {
     res.status(422).json({ error: "Closure can only be requested for completed projects" });
@@ -1106,6 +1246,10 @@ router.post("/admin/projects/:id/closure-request", requireCapability("ladder.msp
 router.get("/admin/projects/:id/closure", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const projectId = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(projectId)) { res.status(400).json({ error: "Invalid project ID" }); return; }
+
+  const scope = await requireProjectScope(req, res);
+  if (!scope) return;
+  if (!(await findScopedProject(scope, projectId))) { res.status(404).json({ error: "No closure record found" }); return; }
 
   const [closure] = await db.select().from(projectClosuresTable).where(eq(projectClosuresTable.projectId, projectId));
   if (!closure) { res.status(404).json({ error: "No closure record found" }); return; }
