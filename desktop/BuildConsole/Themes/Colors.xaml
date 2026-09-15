@@ -51,6 +51,7 @@
          consistently with the new solid AccentBrush instead of the old
          Catppuccin blue. -->
     <SolidColorBrush x:Key="AccentWashLightBrush"  Color="#1A7C8CF0"/>
+    <SolidColorBrush x:Key="AccentWashBrush"       Color="#2A7C8CF0"/>
     <SolidColorBrush x:Key="AccentWashMediumBrush" Color="#337C8CF0"/>
 
     <!-- Status colors (desaturated, never neon, brightened slightly for
