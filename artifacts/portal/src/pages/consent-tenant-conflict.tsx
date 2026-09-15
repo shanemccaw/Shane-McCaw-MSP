@@ -1,4 +1,4 @@
-import { ConsentOnboardingShell, ConsentCard } from "@/components/consent/ConsentOnboardingShell";
+import { ConsentOnboardingShell, ConsentCard, ConsentLedger } from "@/components/consent/ConsentOnboardingShell";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -39,6 +39,7 @@ export default function ConsentTenantConflictPage() {
           </Button>
         </div>
       </ConsentCard>
+      <ConsentLedger />
     </ConsentOnboardingShell>
   );
 }

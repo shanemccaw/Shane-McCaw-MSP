@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, ArrowRight, Loader2 } from "lucide-react";
-import { ConsentOnboardingShell, ConsentCard } from "@/components/consent/ConsentOnboardingShell";
+import { CheckCircle2, AlertCircle, ArrowRight, Loader2 } from "lucide-react";
+import { ConsentOnboardingShell, ConsentCard, ConsentLedger } from "@/components/consent/ConsentOnboardingShell";
 import { CaptchaGate } from "@/components/consent/CaptchaGate";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -77,6 +77,13 @@ export default function ConsentSuccessPage() {
   const seats = sessionInfo?.seats ?? 1;
   const termsAccepted = guestInfo?.termsAccepted === true;
   const canFinalizeInline = isFinalize && isFree === true && !!service && !!guestInfo && termsAccepted;
+
+  function goToCheckout() {
+    const seatsParam = seats > 1 ? `&seats=${seats}` : "";
+    window.location.href = sessionInfo
+      ? `${window.location.origin}/checkout/${encodeURIComponent(sessionInfo.productSlug)}?session=${encodeURIComponent(sessionId ?? "")}${seatsParam}`
+      : "/portal/";
+  }
 
   async function handleFinalize() {
     if (!service || !guestInfo || !captchaToken) return;
@@ -169,6 +176,7 @@ export default function ConsentSuccessPage() {
             </Button>
           </div>
         </ConsentCard>
+        <ConsentLedger />
       </ConsentOnboardingShell>
     );
   }
@@ -190,6 +198,7 @@ export default function ConsentSuccessPage() {
             <ArrowRight className="ml-2 size-4" />
           </Button>
         </ConsentCard>
+        <ConsentLedger />
       </ConsentOnboardingShell>
     );
   }
@@ -234,6 +243,12 @@ export default function ConsentSuccessPage() {
                   detail: "One contract per service, PDF generated and filed to your SharePoint contracts folder when possible — a filing failure never fails the signing.",
                   done: finalizing || error !== null,
                 },
+                {
+                  n: "4",
+                  title: "Free registration completed",
+                  detail: "Creates your project, service record and a $0 invoice. Replaying the same order later changes nothing.",
+                  done: finalized,
+                },
               ].map((st) => (
                 <div key={st.n} className="flex items-start gap-3 border-b border-border/40 py-2.5">
                   <span
@@ -252,17 +267,35 @@ export default function ConsentSuccessPage() {
             </div>
 
             {error ? (
-              <Alert variant={error.is409 ? "warning" : "destructive"}>
-                <AlertDescription>
-                  <p>{error.message}</p>
-                  {error.is409 ? (
-                    <p className="mt-1 text-xs">
-                      Registration was refused rather than creating an account that belongs to no
-                      tenant — that has gone wrong before, and this stop exists because of it.
-                    </p>
-                  ) : null}
-                </AlertDescription>
-              </Alert>
+              error.is409 ? (
+                <div className="flex gap-2.5 rounded-xl border border-dashed border-status-amber/50 bg-status-amber/[0.06] p-3.5">
+                  <AlertCircle className="mt-0.5 size-[15px] flex-none text-status-amber" />
+                  <div className="flex flex-1 flex-col gap-1.5">
+                    <span className="text-[13px] font-semibold text-foreground">
+                      Your Microsoft 365 connection hasn't been set up yet
+                    </span>
+                    <span className="text-xs leading-relaxed text-muted-foreground">
+                      Please complete the connection step first so your order can be linked to
+                      your organization. Registration was refused rather than creating an account
+                      that belongs to no tenant — that has gone wrong before, and this stop exists
+                      because of it.
+                    </span>
+                    <span className="font-mono text-[11px] text-status-amber">409 · consent-first</span>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <Button size="sm" onClick={goToCheckout}>
+                        Reconnect Microsoft 365
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => window.history.back()}>
+                        Contact your provider
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <Alert variant="destructive">
+                  <AlertDescription>{error.message}</AlertDescription>
+                </Alert>
+              )
             ) : null}
 
             {canFinalizeInline ? (
@@ -288,14 +321,7 @@ export default function ConsentSuccessPage() {
                 </div>
               </div>
             ) : !service || isFree !== true ? (
-              <Button
-                onClick={() => {
-                  const seatsParam = seats > 1 ? `&seats=${seats}` : "";
-                  window.location.href = sessionInfo
-                    ? `${window.location.origin}/checkout/${encodeURIComponent(sessionInfo.productSlug)}?session=${encodeURIComponent(sessionId ?? "")}${seatsParam}`
-                    : "/portal/";
-                }}
-              >
+              <Button onClick={goToCheckout}>
                 Continue to checkout{productName ? ` for ${productName}` : ""}
                 <ArrowRight className="ml-2 size-4" />
               </Button>
@@ -303,6 +329,7 @@ export default function ConsentSuccessPage() {
           </>
         )}
       </ConsentCard>
+      <ConsentLedger />
     </ConsentOnboardingShell>
   );
 }
