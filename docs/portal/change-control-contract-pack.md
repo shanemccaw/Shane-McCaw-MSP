@@ -461,15 +461,21 @@ removed member doesn't orphan history); `change_freeze_windows.workload` /
 **Correction to this issue's own body:** "no wire code exists yet for Change Control in
 artifacts/portal" is no longer accurate. `artifacts/portal/src/components/settingsChangeControlWire.ts`
 (pure shapes/normalizers) and `settingsChangeControlLive.ts` (`useChangeControlSettingsLive()` hook)
-both exist, dated to #1592/#1759. **No page imports the hook yet** — it is real, backend-ready,
-unconsumed client code, not a HARD RULE violation (no fixture fallback anywhere in the file; on
-fetch failure it sets an `error` string and leaves state at its honest wire-level defaults).
+both exist, dated to #1592/#1759. **`PolicySection.tsx:1-6` now imports the hook and renders it live**
+inside `/change-control`'s own page (`#1717`), gated behind a collapsible "Your change policy" panel
+(`PolicySection.tsx:36-51`, `data-testid="change-control-policy"` at `:43`) — this is real, live-wired
+UI, not unconsumed client code (previously stale here; see `docs/portal/settings-contract-pack.md §3`
+for the correction and full detail). No fixture fallback anywhere in the file — on fetch failure it
+sets an `error` string and leaves state at its honest wire-level defaults.
 
 **Endpoints (§1 table above).** Policy shape (`WireCcPolicy`): `on`, `gated: Record<string,
 boolean>` (normalized against a fixed gate-key catalogue so an unset gate reads `false`, not
 `undefined`), `approvals.requiredSignatures` (min 1, default 1), `separate.requireSeparateApprover`
 (default `true`), `freeze.enforceFreezeCalendar` (real — read by the CR-raise path, §3),
-`emergency.allowEmergencyPath`.
+`maintenanceWindows.enforceMaintenanceWindows` (`#1504`/`#1717`, real — enforced by the
+catalog-execute gate `#3044` as well as the CR-raise path: `portal-change-catalog.ts:192-198`,
+`portal-change-control-raise.ts:138-144`, `msp-changes.ts:189-202`), `emergency.allowEmergencyPath`
+(persisted only, no enforcement consumer found — see `docs/portal/settings-contract-pack.md §6`).
 
 **Notification rules (`portal_change_control_notifications`):** 7 fixed event keys —
 `ms_enforcement_approaching`, `message_center_impact`, `cr_raised`, `cr_awaiting_signature`,
