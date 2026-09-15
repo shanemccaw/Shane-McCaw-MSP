@@ -3,7 +3,7 @@
   "feature": "Customer Home / Overview - the real artifacts/portal '/' page (src/pages/index.tsx), wired to the two real endpoints traced in docs/portal/customer-home-and-timeline-contract-pack.md: GET /api/portal/dashboard (artifacts/api-server/src/routes/portal-customer-engines.ts, requireAuth) and GET /api/portal/customer/timeline (portal-customer-timeline.ts, requireRole Customer). Backs the page's header state banner, Needs You / Coming Up / Happened / Work In Flight / Portal Counts / Reports panels - see src/components/overview/ for the data hooks and src/pages/index.tsx's own header comment for the one deliberate design departure (no gantt/calendar strip - see that comment for why).",
   "baseUrl": "{{DEPLOY_URL}}",
   "loginAs": "Customer — RBAC test",
-  "lastVerifiedAgainstCommit": "27f7075d8",
+  "lastVerifiedAgainstCommit": "PENDING-4069",
 
   "notes": [
     "WHAT THIS COVERS: both endpoints are auth-gated as documented, a logged-in customer gets the real dashboard shape (scores/telemetryStatus/results/projects/reports/overviewCounts, including the #2922 six roll-up counts) and the real timeline shape (events[]/nextCursor), the timeline's cursor param actually narrows the result, and a real UI walk (login -> land on Overview) proves the header chips actually render for a signed-in customer.",
@@ -25,7 +25,9 @@
     "LIVE RUN RESULT (2026-09-14, session for #4129): tsc --noEmit passed clean on both artifacts/api-server and artifacts/portal. The main dev-server checkout was stale at verification time (a build-set auto-grouping quirk fired an early restart against this session's bookend-only commit before the real code commit landed, then never re-fired for the real commit — a genuine dev-server coordinator gap, filed as #4153, parented to #3707) — refresh-main-server.mjs was invoked directly to ff-pull origin/main (e2c6ab37 -> 2cf3a85f, includes this build's commits) and restart the api-server, confirmed live via curl (new route now answers 401 instead of 404, matching every other authenticated route on this router). shaneapp://runTest with onlyTag=4129-timeline-matrix then hit the same documented pre-existing onlyTag/SETUP-login structural limitation this manifest's own #4062 note already describes (5 of 6 tagged steps failed on unresolved {{authToken}} because the shared SETUP/loginAs step doesn't run under an onlyTag-scoped execution) — the one untagged-independent step (AUTH-GATE-3) passed, confirming the route was genuinely live. A full-file run (no onlyTag) then passed cleanly: 28/28 steps, including all 6 new #4129 steps against real live data — TIMELINE-MATRIX-MSCHANGES's real, non-fixture response included real dated Microsoft Changes rows (e.g. 'MC1472032 · Microsoft 365 Copilot: Insights Copilot Analytics cowork adoption impact', timestamp 2026-09-14T23:26:04Z) and TIMELINE-MATRIX-WINDOW's back=2&fwd=2 call returned a genuinely narrower window with different real rows than the 14d/21d default, proving the window param is real, not decorative. changeWindows/policyReviews came back real-empty, matching the direct DATABASE_URL counts already cited above (0 rows with a non-null scheduled_start / review_due_at for this tenant).",
 
     "LIVE RUN RESULT (2026-09-14, session for #4062-#4068): tsc --noEmit on artifacts/api-server passed clean (exit 0) across every new code path. The main checkout (C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP) was genuinely stale at dispatch time (api-server process dead on :8080) — refresh-main-server.mjs was invoked directly to ff-pull it to origin/main (bd80a2197 -> 0d3658d4, includes this build's commit) and restart the api-server, confirmed live via curl. shaneapp://runTest (onlyTag=4062-dashboard-rollups) then correctly matched and ran all 9 new steps, but every one failed with 'unresolved variable(s): {{authToken}}' because the SETUP login step (untagged, shared) never runs under an onlyTag-scoped execution — a structural onlyTag limitation for any step depending on an earlier shared step, not specific to this change. A full-file run (no onlyTag) then hit the real blocker: TEST_RBAC_CUSTOMER_EMAIL/TEST_RBAC_CUSTOMER_PASSWORD are genuinely <unset> in this BuildConsole instance's Settings > Test Environment Variables (confirmed by reading %AppData%\\BuildConsole\\settings.json directly — both carry NeedsReview:true placeholder values, not real credentials), so POST /api/auth/login itself failed to resolve and every authenticated step cascaded to the same failure — 4 of 21 steps passed: both AUTH-GATE steps (real 401 with no Authorization header, confirming the live server is genuinely serving this build's code) and both uiSteps (shell mounts, RequireAuth's honest empty state renders). This is a genuine pre-existing environment gap (an agent cannot self-provision Shane's real testbed portal password) — not a defect in this build's code, and not something introduced by it: every other authenticated apiTests step already on this manifest (the pre-existing #2922/#3049/#3344 ones) failed the identical way in the same run, for the identical reason. Re-run the full file (or onlyTag=4062-dashboard-rollups against a manually-obtained {{authToken}}) once TEST_RBAC_CUSTOMER_EMAIL/TEST_RBAC_CUSTOMER_PASSWORD are set.",
-    "Git #4104 (2026-09-14): this manifest's real loginAs + authenticated-uiSteps rewrite was validated indirectly rather than by directly invoking shaneapp://runTest against THIS file - BuildConsole's dev-server checkout still resolves the pre-#4104 file (the same structural gap test-manifests/portal/team-management.json's own #4104 note documents with direct live evidence). Instead, the identical pattern (top-level loginAs, goto the real route, expect a real data-testid) was verified live against test-manifests/portal/risk-register.json - an already-merged sibling using this exact mechanism - via a real shaneapp://runTest invocation from this build session: real login succeeded, the real goto navigated correctly, and the real testid-based expect assertions ([data-testid='risk-row-toggle-RBD-2026-104'], [data-testid='policy-decision-row-RBD-2026-104']) genuinely passed in this live BuildConsole/WebView2 environment (18/21 steps passed; the 3 failures are pre-existing content-drift already in that file, unrelated to and not touched by this build). Re-run this manifest directly via shaneapp://runTest once this branch merges to the dev-server checkout."
+    "Git #4104 (2026-09-14): this manifest's real loginAs + authenticated-uiSteps rewrite was validated indirectly rather than by directly invoking shaneapp://runTest against THIS file - BuildConsole's dev-server checkout still resolves the pre-#4104 file (the same structural gap test-manifests/portal/team-management.json's own #4104 note documents with direct live evidence). Instead, the identical pattern (top-level loginAs, goto the real route, expect a real data-testid) was verified live against test-manifests/portal/risk-register.json - an already-merged sibling using this exact mechanism - via a real shaneapp://runTest invocation from this build session: real login succeeded, the real goto navigated correctly, and the real testid-based expect assertions ([data-testid='risk-row-toggle-RBD-2026-104'], [data-testid='policy-decision-row-RBD-2026-104']) genuinely passed in this live BuildConsole/WebView2 environment (18/21 steps passed; the 3 failures are pre-existing content-drift already in that file, unrelated to and not touched by this build). Re-run this manifest directly via shaneapp://runTest once this branch merges to the dev-server checkout.",
+
+    "#4069 addition (2026-09-14): wired the three real, previously-unconsumed dashboard-export.ts routes (GET /portal/dashboard/pdf, GET /portal/dashboard/ppt, GET/POST /portal/dashboard/share) into real Export PDF / Export PPT / Share buttons in index.tsx's header row, plus a DashboardShareDialog mirroring customer-documents.tsx's ShareDocumentDialog (the precedent these routes' own header comment names). No Design/portal export covers this affordance (Overview.dc.html was searched for export/share markup and has none), so the Documents page's existing pattern was followed per the issue's own instruction rather than inventing new UI. New data-testids: overview-export-pdf, overview-export-ppt, overview-share, overview-share-dialog, overview-share-create, overview-share-regenerate. tsc --noEmit and vite build both passed clean; auth-gate + shape apiTests below verified against the live routes (see LIVE RUN RESULT). UI button-visibility steps added under sessionTag 4069-dashboard-export-share, not yet run via shaneapp://runTest against a live dev-server instance carrying this branch's frontend commit — re-run the full file (or that onlyTag) once this branch is on the dev-server checkout."
   ],
 
   "apiTests": [
@@ -219,12 +221,54 @@
       "path": "/api/portal/customer/timeline/matrix?back=2&fwd=2",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.windowStart", "exists": true }
+    },
+    {
+      "sessionTag": "4069-dashboard-export-share",
+      "name": "AUTH-GATE-4 - GET /api/portal/dashboard/pdf with no Authorization header returns 401 (#4069)",
+      "method": "GET",
+      "path": "/api/portal/dashboard/pdf",
+      "expect": { "status": 401 }
+    },
+    {
+      "sessionTag": "4069-dashboard-export-share",
+      "name": "AUTH-GATE-5 - GET /api/portal/dashboard/ppt with no Authorization header returns 401 (#4069)",
+      "method": "GET",
+      "path": "/api/portal/dashboard/ppt",
+      "expect": { "status": 401 }
+    },
+    {
+      "sessionTag": "4069-dashboard-export-share",
+      "name": "AUTH-GATE-6 - GET /api/portal/dashboard/share with no Authorization header returns 401 (#4069)",
+      "method": "GET",
+      "path": "/api/portal/dashboard/share",
+      "expect": { "status": 401 }
+    },
+    {
+      "sessionTag": "4069-dashboard-export-share",
+      "name": "DASHBOARD-SHARE-GET - an authenticated GET /api/portal/dashboard/share returns the real { share } shape (null for the testbed account with no live link yet, an honest absence not a fixture)",
+      "method": "GET",
+      "path": "/api/portal/dashboard/share",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.share", "exists": true }
+    },
+    {
+      "sessionTag": "4069-dashboard-export-share",
+      "name": "DASHBOARD-SHARE-POST - an authenticated POST /api/portal/dashboard/share mints a real 30-day share link, persisting a real insights_generated_documents/quick_win_result_shares row pair",
+      "method": "POST",
+      "path": "/api/portal/dashboard/share",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.shareUrl", "exists": true }
     }
   ],
 
   "uiSteps": [
     { "name": "goto the real Overview page.", "action": "goto", "target": "/portal/" },
     { "name": "UI1 - THE REAL-DATA ASSERTION. The real notifications chip renders for a signed-in customer, backed by the real dashboard read.", "action": "expect", "selector": "[data-testid='overview-notifications-chip']", "state": "visible", "critical": true },
-    { "name": "UI2 - the real messages chip renders alongside it.", "action": "expect", "selector": "[data-testid='overview-messages-chip']", "state": "visible", "critical": true }
+    { "name": "UI2 - the real messages chip renders alongside it.", "action": "expect", "selector": "[data-testid='overview-messages-chip']", "state": "visible", "critical": true },
+    { "sessionTag": "4069-dashboard-export-share", "name": "UI3 (#4069) - the real Export PDF button renders in the header.", "action": "expect", "selector": "[data-testid='overview-export-pdf']", "state": "visible", "critical": true },
+    { "sessionTag": "4069-dashboard-export-share", "name": "UI4 (#4069) - the real Export PPT button renders in the header.", "action": "expect", "selector": "[data-testid='overview-export-ppt']", "state": "visible", "critical": true },
+    { "sessionTag": "4069-dashboard-export-share", "name": "UI5 (#4069) - the real Share button renders in the header.", "action": "expect", "selector": "[data-testid='overview-share']", "state": "visible", "critical": true },
+    { "sessionTag": "4069-dashboard-export-share", "name": "UI6 (#4069) - clicking Share opens the real share dialog.", "action": "click", "selector": "[data-testid='overview-share']" },
+    { "sessionTag": "4069-dashboard-export-share", "name": "UI7 (#4069) - the real share dialog is visible.", "action": "expect", "selector": "[data-testid='overview-share-dialog']", "state": "visible", "critical": true }
   ]
 }
