@@ -43,14 +43,14 @@ export default function SignInPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<{ tone: "critical" | "warning"; code: string; text: string } | null>(null);
+  const [error, setError] = useState<{ tone: "critical" | "warning"; text: string } | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
     if (!email || !password) {
-      setError({ tone: "critical", code: "400 · missing fields", text: "email and password are required" });
+      setError({ tone: "critical", text: "email and password are required" });
       return;
     }
 
@@ -76,7 +76,6 @@ export default function SignInPage() {
           const lockedUntil = typeof err.body.lockedUntil === "string" ? new Date(err.body.lockedUntil) : null;
           setError({
             tone: "critical",
-            code: "423 · accountLocked",
             text: lockedUntil
               ? `${err.message} Locked until ${lockedUntil.toLocaleTimeString()}.`
               : err.message,
@@ -85,14 +84,14 @@ export default function SignInPage() {
           // The distinguishable 401 (Git #3814) — a real account with no
           // password yet, not a wrong-credentials guess. Amber, not red, and
           // the message itself already points at the recovery path.
-          setError({ tone: "warning", code: "401 · no password set", text: err.message });
+          setError({ tone: "warning", text: err.message });
         } else if (err.status === 401) {
-          setError({ tone: "critical", code: "401 · Invalid email or password", text: err.message });
+          setError({ tone: "critical", text: err.message });
         } else {
-          setError({ tone: "critical", code: `${err.status}`, text: err.message });
+          setError({ tone: "critical", text: err.message });
         }
       } else {
-        setError({ tone: "critical", code: "Network error", text: "Could not reach the server. Try again." });
+        setError({ tone: "critical", text: "Could not reach the server. Try again." });
       }
     } finally {
       setLoading(false);
@@ -128,7 +127,7 @@ export default function SignInPage() {
           />
         </label>
 
-        {error && <InlineMessage tone={error.tone} code={error.code} text={error.text} />}
+        {error && <InlineMessage tone={error.tone} text={error.text} />}
 
         <PrimaryButton type="submit" disabled={loading}>
           {loading ? "Signing in…" : "Sign in"}

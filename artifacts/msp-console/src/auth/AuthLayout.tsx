@@ -132,7 +132,7 @@ export function GhostButton({
 
 export type MessageTone = "critical" | "warning" | "ok" | "info";
 
-export function InlineMessage({ tone, code, text: body }: { tone: MessageTone; code?: string; text: string }) {
+export function InlineMessage({ tone, text: body }: { tone: MessageTone; text: string }) {
   const t = signal[tone];
   return (
     <div
@@ -141,7 +141,6 @@ export function InlineMessage({ tone, code, text: body }: { tone: MessageTone; c
         padding: "11px 12px", display: "flex", flexDirection: "column", gap: 4,
       }}
     >
-      {code && <span style={{ fontSize: 11.5, fontWeight: 700, color: t.strong }}>{code}</span>}
       <span style={{ fontSize: 12, color: text.secondary, textWrap: "pretty" }}>{body}</span>
     </div>
   );

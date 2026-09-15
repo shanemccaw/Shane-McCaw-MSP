@@ -196,7 +196,7 @@ function DecisionsTab({
   if (customerId == null) {
     return emptyState(
       "shield-alert", "blue", "Pick a customer to see their policy decisions",
-      "policy_decisions is scoped per customer (GET /api/msp/policy-decisions/:customerId) — select one from the dropdown above.",
+      "Policy decisions are scoped per customer — select one from the dropdown above.",
     );
   }
 
@@ -293,8 +293,7 @@ function ResolveClearanceDrawer({
     <Overlay onClose={onClose} width={440}>
       <DrawerHeader eyebrow="RESOLVE CLEARANCE" eyebrowColor={signal.warning.text} title={decision.title} onClose={onClose} />
       <span style={{ fontSize: 12, color: text.secondary, textWrap: "pretty" }}>
-        Records that the dependency actually resolved: <em>{decision.clearanceCondition}</em>. This calls
-        {" "}<code style={{ fontFamily: "Menlo, monospace", fontSize: 11 }}>PATCH /api/msp/policy-decisions/{customerId}/{decision.id}/clearance/resolve</code>, guarded at the DB by a race check — a concurrent second resolve loses the race.
+        Records that the dependency actually resolved: <em>{decision.clearanceCondition}</em>. This is guarded at the database by a race check — a concurrent second resolve loses the race.
       </span>
       <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
         <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".08em", color: text.faint }}>NOTE — HOW THIS WAS CONFIRMED</span>
@@ -323,7 +322,7 @@ function ObligationRegisterPanel({
 }: { entries: ObligationRegisterEntry[]; loading: boolean; error: boolean }) {
   return (
     <div style={cardStyle({ padding: 14, display: "flex", flexDirection: "column", gap: 9 })}>
-      <span style={labelSpan()}>OBLIGATION REGISTER — GET /api/msp/rbd/available-obligations</span>
+      <span style={labelSpan()}>OBLIGATION REGISTER</span>
       <span style={{ fontSize: 11.5, color: text.muted, textWrap: "pretty" }}>
         The full cited-authority catalog (Git #1525): platform-seeded regimes (GDPR, ISO 27001…) plus any authority this MSP has authored for one of its own tenants — one catalog, both kinds tagged below.
       </span>
@@ -517,7 +516,7 @@ function StandingPolicyDetail({
       <div style={{ display: "flex", gap: 9, padding: "10px 12px", borderRadius: 9, border: `1px solid ${signal.info.border}`, background: signal.info.tint }}>
         <Icon name="info" size={14} color={signal.info.strong} style={{ flex: "0 0 14px", marginTop: 2 }} />
         <span style={{ fontSize: 11.5, color: text.secondary, textWrap: "pretty" }}>
-          OU membership is not just <code style={{ fontFamily: "Menlo, monospace" }}>ou_id</code>. A manual per-object assignment (set by the MSP via <code style={{ fontFamily: "Menlo, monospace" }}>/api/msp/active-directory/ou/:id/assignments</code>) is read first, and a department-name guess only second. This screen doesn't manage those assignments — that's the dedicated AD OU Assignment screen (per tenant, Access &amp; identity).
+          OU membership is not just <code style={{ fontFamily: "Menlo, monospace" }}>ou_id</code>. A manual per-object assignment, set by the MSP by hand, is read first, and a department-name guess only second. This screen doesn't manage those assignments — that's the dedicated AD OU Assignment screen (per tenant, Access &amp; identity).
         </span>
       </div>
     </div>

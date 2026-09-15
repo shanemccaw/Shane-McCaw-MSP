@@ -278,17 +278,7 @@ export function MarketplacePurchase({ customerId, customerName }: { customerId: 
           )}
 
           {result && <OutcomeCard result={result} />}
-          {errorResult && <ErrorOutcomeCard status={errorResult.status} message={errorResult.message} />}
-
-          <div style={cardStyle({ padding: 16, display: "flex", flexDirection: "column", gap: 11, minWidth: 0 })}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: text.title }}>What this screen does and doesn&apos;t give you</span>
-            {NOTES.map((n, idx) => (
-              <div key={idx} style={{ display: "flex", gap: 9, alignItems: "flex-start", minWidth: 0 }}>
-                <span style={{ width: 6, height: 6, borderRadius: 999, background: n.dot, marginTop: 6, flex: "none" }} />
-                <span style={{ fontSize: 11.5, color: text.secondary, lineHeight: 1.55, minWidth: 0 }}>{n.text}</span>
-              </div>
-            ))}
-          </div>
+          {errorResult && <ErrorOutcomeCard message={errorResult.message} />}
         </div>
       </div>
     </div>
@@ -326,11 +316,9 @@ function OutcomeCard({ result }: { result: CheckoutResult }) {
   }
 
   const tone = result.offerId === null ? AMBER : GREEN;
-  const code = isFree ? "201 · free_activated" : `201 · payment_processed`;
 
   return (
     <div style={{ border: `1px solid ${tone.border}`, borderRadius: 14, background: tone.tint, padding: 16, display: "flex", flexDirection: "column", gap: 11, minWidth: 0 }}>
-      <span style={{ fontSize: 12.5, fontWeight: 700, fontFamily: "Menlo, monospace", color: tone.strong }}>{code}</span>
       <span style={{ fontSize: 12, color: text.secondary, lineHeight: 1.6 }}>{result.message}</span>
       <div style={{ display: "flex", flexDirection: "column", gap: 7, borderTop: `1px solid ${border.soft}`, paddingTop: 11 }}>
         <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", color: text.muted }}>WHAT NOW EXISTS</span>
@@ -345,10 +333,9 @@ function OutcomeCard({ result }: { result: CheckoutResult }) {
   );
 }
 
-function ErrorOutcomeCard({ status, message }: { status: number; message: string }) {
+function ErrorOutcomeCard({ message }: { message: string }) {
   return (
     <div style={{ border: `1px solid ${RED.border}`, borderRadius: 14, background: RED.tint, padding: 16, display: "flex", flexDirection: "column", gap: 11, minWidth: 0 }}>
-      <span style={{ fontSize: 12.5, fontWeight: 700, fontFamily: "Menlo, monospace", color: RED.strong }}>{status || "—"} · request failed</span>
       <span style={{ fontSize: 12, color: text.secondary, lineHeight: 1.6 }}>{message}</span>
       <div style={{ display: "flex", flexDirection: "column", gap: 7, borderTop: `1px solid ${border.soft}`, paddingTop: 11 }}>
         <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", color: text.muted }}>WHAT NOW EXISTS</span>
@@ -362,30 +349,3 @@ function ErrorOutcomeCard({ status, message }: { status: number; message: string
     </div>
   );
 }
-
-const NOTES: { dot: string; text: string }[] = [
-  {
-    dot: GREEN.strong,
-    text: "The accepted-before-charged bug (#3400) is fixed: nothing is written or pushed to the customer until a free item is activated or a paid charge actually succeeds.",
-  },
-  {
-    dot: GREEN.strong,
-    text: "The billed-once-instead-of-recurring bug (#3403) is fixed: every live retainer item now opens a real, recurring Stripe Subscription instead of a one-time charge.",
-  },
-  {
-    dot: AMBER.strong,
-    text: "Still real and still open (#3404): an item whose fulfilment type matches nothing the platform knows about charges the card and accepts the offer while provisioning nothing. This screen flags it per item, above, from the real fulfilment_types table — it does not invent a workaround.",
-  },
-  {
-    dot: AMBER.strong,
-    text: "Still open (#3405), but inert on every real item today: the free path doesn't check the per-item flag that can forbid free activation. No live $0 item has that flag set.",
-  },
-  {
-    dot: BLUE.strong,
-    text: "The catalog shown is deliberately the customer's full catalog, not narrowed to what their own plan tier would let them browse, because you are acting on their behalf.",
-  },
-  {
-    dot: text.muted,
-    text: "Neither route accepts an MSP identifier from you — the owning MSP is always derived from the customer you're buying for, and your own staff scoping applies on every call.",
-  },
-];

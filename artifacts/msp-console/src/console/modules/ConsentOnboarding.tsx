@@ -52,13 +52,12 @@ function pill(t: { strong: string; text: string; tint: string; border: string },
     ...extra,
   };
 }
-function emptyState(icon: string, title: string, body: string, wire?: string) {
+function emptyState(icon: string, title: string, body: string) {
   return (
     <div style={{ border: `1px dashed ${border.card}`, borderRadius: 10, padding: 22, display: "flex", flexDirection: "column", gap: 6, alignItems: "center", textAlign: "center" }}>
       <Icon name={icon} size={18} color={text.faint} />
       <span style={{ fontSize: 13, fontWeight: 700, color: text.strong }}>{title}</span>
       <span style={{ fontSize: 11.5, color: text.muted, maxWidth: 360, textWrap: "pretty" }}>{body}</span>
-      {wire && <span style={{ fontSize: 11, fontFamily: "Menlo, monospace", color: text.faint }}>{wire}</span>}
     </div>
   );
 }
@@ -77,15 +76,6 @@ function ghostBtn(disabled?: boolean): React.CSSProperties {
   };
 }
 function labelSpan(): React.CSSProperties { return { fontSize: 10, fontWeight: 700, letterSpacing: ".1em", color: text.label }; }
-
-const NOTES: { dot: string; text: string }[] = [
-  { dot: signal.warning.strong, text: "Who approved a grant (an admin address and display name) is stored on the record and now included on this wire for all three keys — consentRow() projects adminEmail/adminDisplayName alongside consentStatus." },
-  { dot: signal.warning.strong, text: "The list route hides any tenant with no consent activity, while the detail route returns the same tenant with three empty grants. From the list alone, a tenant that is not yours and a tenant that has never consented look identical — open a tenant to tell them apart." },
-  { dot: signal.warning.strong, text: "The updated date on each row belongs to the tenant record, not to any one grant. Three grants with three different dates share one updated stamp." },
-  { dot: signal.info.strong, text: "An invite is one single-use token. The read flow's TTL is caller-chosen, clamped between one hour and a week; write-back and SharePoint invites are fixed at 72 hours. The tenant id is read off the customer row and never trusted from the client." },
-  { dot: signal.info.strong, text: "Revoking checks ownership twice — once before the read and again inside the write — and a stamp that matches no row answers not-found rather than a silent success." },
-  { dot: text.faint, text: "Onboarding links come back newest first, two hundred at most. The service and the issuing staff member are raw ids with no name joined on this wire, so this screen shows the id rather than inventing a lookup." },
-];
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 
@@ -126,16 +116,6 @@ export function ConsentOnboarding() {
 
       {tab === "consent" && <ConsentTab listed={listed} loading={listQuery.isLoading} error={listQuery.isError} />}
       {tab === "links" && <LinksTab links={links} loading={linksQuery.isLoading} error={linksQuery.isError} />}
-
-      <div style={cardStyle({ padding: 16, display: "flex", flexDirection: "column", gap: 11 })}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: text.strong }}>What these routes do and don't give this screen</span>
-        {NOTES.map((n, i) => (
-          <div key={i} style={{ display: "flex", gap: 9, alignItems: "flex-start", minWidth: 0 }}>
-            <span style={{ width: 6, height: 6, borderRadius: 999, background: n.dot, marginTop: 6, flex: "none" }} />
-            <span style={{ fontSize: 11.5, color: text.secondary, lineHeight: 1.55, textWrap: "pretty", minWidth: 0 }}>{n.text}</span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -171,7 +151,6 @@ function ConsentTab({ listed, loading, error }: { listed: ConsentTenantRow[]; lo
          listed.length === 0 ? emptyState(
             "shield-alert", "No tenant has started a consent flow",
             "The list route drops every tenant with three empty grants, so an MSP whose customers have not yet consented to anything sees an empty array here — not the customers with nothing against them.",
-            "GET /api/msp/consent → []",
           ) :
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {listed.map((t) => <TenantRow key={t.customerId} tenant={t} open={t.customerId === openId} onSelect={() => setOpenId(t.customerId)} />)}
@@ -223,7 +202,7 @@ function TenantRow({ tenant, open, onSelect }: { tenant: ConsentTenantRow; open:
 function TenantDetail({ customerId }: { customerId: number }) {
   const detail = useConsentDetail(customerId);
   const [ttl, setTtl] = useState("72");
-  const [result, setResult] = useState<{ code: string; text: string; tone: keyof typeof TONE; url?: string; expiresAt?: string; scopes?: string[] } | null>(null);
+  const [result, setResult] = useState<{ text: string; tone: keyof typeof TONE; url?: string; expiresAt?: string; scopes?: string[] } | null>(null);
 
   const readInvite = useCreateReadConsentInvite(customerId);
   const writeStart = useStartWriteConsent(customerId);
@@ -240,17 +219,17 @@ function TenantDetail({ customerId }: { customerId: number }) {
       const raw = parseInt(ttl, 10);
       const clamped = Math.min(Math.max(isNaN(raw) ? 72 : raw, 1), 168);
       readInvite.mutate(clamped, {
-        onSuccess: (r) => setResult({ code: "200 · read-consent invite minted", text: `Single-use token, valid ${clamped} hours.`, tone: "blue", url: r.consentUrl, expiresAt: r.expiresAt, scopes: r.scopes }),
+        onSuccess: (r) => setResult({ text: `Single-use token, valid ${clamped} hours.`, tone: "blue", url: r.consentUrl, expiresAt: r.expiresAt, scopes: r.scopes }),
         onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to mint invite"),
       });
     } else if (key === "writeBack") {
       writeStart.mutate(undefined, {
-        onSuccess: (r) => setResult({ code: "200 · write-back consent invite minted", text: "Single-use token, valid 72 hours (fixed).", tone: "blue", url: r.consentUrl, expiresAt: r.expiresAt }),
+        onSuccess: (r) => setResult({ text: "Single-use token, valid 72 hours (fixed).", tone: "blue", url: r.consentUrl, expiresAt: r.expiresAt }),
         onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to mint invite"),
       });
     } else {
       sharepointStart.mutate(undefined, {
-        onSuccess: (r) => setResult({ code: "200 · SharePoint consent invite minted", text: "Single-use token, valid 72 hours (fixed).", tone: "blue", url: r.consentUrl, expiresAt: r.expiresAt, scopes: r.permissions }),
+        onSuccess: (r) => setResult({ text: "Single-use token, valid 72 hours (fixed).", tone: "blue", url: r.consentUrl, expiresAt: r.expiresAt, scopes: r.permissions }),
         onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to mint invite"),
       });
     }
@@ -259,7 +238,7 @@ function TenantDetail({ customerId }: { customerId: number }) {
   function doRevoke(key: ConsentKey) {
     setResult(null);
     revoke.mutate(key, {
-      onSuccess: (r) => { toast.success(`${SHORT[key]} consent revoked`); setResult({ code: `200 · { ok: true, customerId: ${r.customerId}, key: "${r.key}" }`, text: "Stamped revoked with a server-side timestamp. The scopes stay on the record as history of what was held.", tone: "red" }); },
+      onSuccess: () => { toast.success(`${SHORT[key]} consent revoked`); setResult({ text: "Stamped revoked with a server-side timestamp. The scopes stay on the record as history of what was held.", tone: "red" }); },
       onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to revoke"),
     });
   }
@@ -331,7 +310,6 @@ function TenantDetail({ customerId }: { customerId: number }) {
 
       {result && (
         <div style={{ border: `1px solid ${TONE[result.tone]!.border}`, borderRadius: 12, background: TONE[result.tone]!.tint, padding: 13, display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
-          <span style={{ fontSize: 11.5, fontWeight: 700, fontFamily: "Menlo, monospace", color: TONE[result.tone]!.strong }}>{result.code}</span>
           <span style={{ fontSize: 12, color: text.secondary, textWrap: "pretty" }}>{result.text}</span>
           {result.url && (
             <div style={{ display: "flex", flexDirection: "column", gap: 5, borderTop: `1px solid ${border.soft}`, paddingTop: 9, minWidth: 0 }}>
@@ -377,7 +355,6 @@ function LinksTab({ links, loading, error }: { links: OnboardingLink[]; loading:
        links.length === 0 ? emptyState(
           "inbox", "No onboarding links issued",
           "A real empty array. Links are created by the sibling generate-link route; this list is a straight read of what that route wrote.",
-          "GET /api/msp/onboarding/links → []",
         ) :
         <div style={{ overflowX: "auto", minWidth: 0 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 780 }}>

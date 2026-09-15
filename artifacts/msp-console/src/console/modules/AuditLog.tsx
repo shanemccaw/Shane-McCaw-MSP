@@ -331,25 +331,6 @@ function SecurityEventsTab({
           )}
         </div>
       </div>
-
-      <div style={{ border: `1px solid ${border.card}`, borderRadius: 14, background: surface.card, padding: 16, display: "flex", flexDirection: "column", gap: 11, minWidth: 0 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: text.strong }}>What this one route does and doesn't give this screen</span>
-        {[
-          { dot: signal.critical.strong, text: "The email slot can hold a role name. When no user row resolves for an actor, the route falls back to the stored role in the address field and nothing marks that it did — a screen that trusts the field renders “MSPAdmin” where an address should be. This one checks the shape first." },
-          { dot: signal.warning.strong, text: "A row left at partial means a write tool recorded its attempt and the process died before finalising it. It is a real, load-bearing state the filter exposes and the route does not explain." },
-          { dot: signal.warning.strong, text: `Six stored columns never reach the wire: ${HIDDEN_COLUMNS.join(", ")}. The customer can be filtered on — that landed in #3671 — but still cannot be shown on a row.` },
-          { dot: signal.warning.strong, text: "Search covers the action, the entity type, its label and the actor's role. It does not search the actor's name or address, ids or metadata, so “who did things” is not a question the search box answers." },
-          { dot: signal.warning.strong, text: "Action types have no shared vocabulary anywhere. Three spellings coexist and every value is a bare string chosen at its own call site." },
-          { dot: signal.info.strong, text: "Who may read this log is enforced server-side by the ladder.msp-admin capability. An MSP administrator is pinned to their own MSP and the MSP parameter is ignored for them. A platform administrator sees every MSP unless one is named." },
-          { dot: signal.info.strong, text: "The end date runs to the last millisecond of that day, so a range ending on the 13th includes the whole of the 13th. An unreadable date or an unknown outcome is dropped silently rather than refused." },
-          { dot: signal.neutral.strong, text: "Newest first with no tiebreaker: two rows at the same instant have no fixed order between page loads. Timestamps mark when the event happened, not when the row was written." },
-        ].map((n) => (
-          <div key={n.text} style={{ display: "flex", gap: 9, alignItems: "flex-start", minWidth: 0 }}>
-            <span style={{ width: 6, height: 6, borderRadius: 999, background: n.dot, marginTop: 6, flex: "none" }} />
-            <span style={{ fontSize: 11.5, color: text.secondary, lineHeight: 1.55, textWrap: "pretty", minWidth: 0 }}>{n.text}</span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

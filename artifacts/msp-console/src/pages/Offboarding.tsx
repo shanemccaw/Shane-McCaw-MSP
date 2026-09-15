@@ -151,20 +151,7 @@ function actionFor(v: OffboardingState, isPlatform: boolean): ActionDef {
   };
 }
 
-interface ResultBanner { code: string; text: string; tone: Tone; }
-
-const NOTES: { dot: string; text: string }[] = [
-  { dot: signal.critical.strong, text: "Nothing resets this state. Once cancellation is recorded, no route in the system returns the MSP to normal — which is why the first step carries the heaviest warning on the screen rather than a quiet confirm." },
-  { dot: signal.critical.strong, text: "The export step does not verify that cancellation was ever requested. It refuses only an already-archived MSP, so it would run from the untouched state too — the sequence is enforced here, not by the route." },
-  { dot: signal.critical.strong, text: "Archival sets the MSP's status to suspended, the same value non-payment produces. Any screen showing status alone cannot tell an archived MSP from a delinquent one; the offboarding state is the only thing that disambiguates." },
-  { dot: signal.warning.strong, text: "Archival is the one action taken by the platform rather than the MSP, and the one that names its target explicitly rather than reading it from the session — so it must always be tied to the MSP actually on screen." },
-  { dot: signal.warning.strong, text: "Re-requesting cancellation is a conflict, re-exporting silently succeeds without a second audit row, and re-archiving reports success. Three steps, three different repeat behaviours — the copy has to set the right expectation each time." },
-  { dot: signal.warning.strong, text: "Only the first export is recorded in the audit trail. Later regenerations leave no trace, so the log cannot answer how many times a customer's data was exported." },
-  { dot: signal.info.strong, text: "There is no MSP-to-MSP transfer. The package is the entire handover, and its fixed notice tells the customer to re-onboard elsewhere themselves." },
-  { dot: signal.info.strong, text: "The MSP record is retained, never deleted. Nothing in this surface removes rows, so an archived MSP stays visible to the platform afterwards." },
-  { dot: text.muted, text: "The current state is one field on a much larger dashboard response, not its own endpoint — a screen that needs only this has to read the whole payload." },
-  { dot: text.muted, text: "Two of the three lifecycle events land in the event feed without a real severity because the feed matches on a prefix none of them carry. An events view would show them as routine information." },
-];
+interface ResultBanner { text: string; tone: Tone; }
 
 function ExportPackageCard({ pkg, onRegenerate, regenerating }: {
   pkg: OffboardingExportPackage; onRegenerate: () => void; regenerating: boolean;
@@ -256,11 +243,10 @@ export function OffboardingPage({ profile }: { profile: MspUserProfile }) {
     if (v === null) {
       requestMutation.mutate(undefined, {
         onSuccess: () => setResult({
-          code: "200 · cancellation_requested",
           text: "Recorded, with an event and an audit row naming you. Asking again now answers with a conflict rather than doing nothing quietly — and there is no route that puts this back.",
           tone: signal.warning,
         }),
-        onError: (err) => setResult({ code: `${(err as { status?: number }).status ?? "error"}`, text: err.message, tone: signal.critical }),
+        onError: (err) => setResult({ text: err.message, tone: signal.critical }),
       });
       return;
     }
@@ -269,12 +255,11 @@ export function OffboardingPage({ profile }: { profile: MspUserProfile }) {
         onSuccess: (data) => {
           setExportPackage(data.export);
           setResult({
-            code: "200 · export_ready",
             text: "The package was built from live data and the state advanced. Worth knowing: this route does not actually check that the cancellation step happened — it refuses only an already-archived MSP, so it would have run straight from the beginning too.",
             tone: signal.info,
           });
         },
-        onError: (err) => setResult({ code: `${(err as { status?: number }).status ?? "error"}`, text: err.message, tone: signal.critical }),
+        onError: (err) => setResult({ text: err.message, tone: signal.critical }),
       });
       return;
     }
@@ -282,21 +267,20 @@ export function OffboardingPage({ profile }: { profile: MspUserProfile }) {
       if (!isPlatform) return; // button disabled; the gate banner below already explains why
       const targetMspId = status.mspId ?? profile.mspId ?? null;
       if (targetMspId == null) {
-        setResult({ code: "error", text: "No MSP id resolved for this session — cannot confirm archival.", tone: signal.critical });
+        setResult({ text: "No MSP id resolved for this session — cannot confirm archival.", tone: signal.critical });
         return;
       }
       archiveMutation.mutate({ mspId: targetMspId }, {
         onSuccess: (data) => {
           if (!data.alreadyArchived) setArchivedAtLocal((data as { archivedAt: string }).archivedAt);
           setResult({
-            code: data.alreadyArchived ? "200 · alreadyArchived: true" : "200 · archival_flagged",
             text: data.alreadyArchived
               ? "Nothing left to do. This last step is genuinely repeatable — it reports success rather than a conflict — but the state is terminal either way."
               : "Archived. The MSP's status was also set to suspended and the record kept rather than deleted. Calling this again is a no-op that reports success, unlike the first two steps.",
             tone: signal.critical,
           });
         },
-        onError: (err) => setResult({ code: `${(err as { status?: number }).status ?? "error"}`, text: err.message, tone: signal.critical }),
+        onError: (err) => setResult({ text: err.message, tone: signal.critical }),
       });
     }
   };
@@ -306,12 +290,11 @@ export function OffboardingPage({ profile }: { profile: MspUserProfile }) {
       onSuccess: (data) => {
         setExportPackage(data.export);
         setResult({
-          code: "200 · fresh package",
           text: "Regenerated from current data. No second audit row was written, because only the first generation records the state advance.",
           tone: signal.neutral,
         });
       },
-      onError: (err) => setResult({ code: `${(err as { status?: number }).status ?? "error"}`, text: err.message, tone: signal.critical }),
+      onError: (err) => setResult({ text: err.message, tone: signal.critical }),
     });
   };
 
@@ -389,25 +372,14 @@ export function OffboardingPage({ profile }: { profile: MspUserProfile }) {
 
           {result && (
             <div style={{ border: `1px solid ${result.tone.border}`, borderRadius: 10, background: result.tone.tint, padding: 13, display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={{ fontSize: 11.5, fontWeight: 700, fontFamily: "Menlo, monospace", color: result.tone.text ?? result.tone.strong }}>{result.code}</span>
               <span style={{ fontSize: 12, color: text.secondary }}>{result.text}</span>
             </div>
           )}
         </div>
 
-        {/* The export package + notes */}
+        {/* The export package */}
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           {exportPackage && <ExportPackageCard pkg={exportPackage} onRegenerate={regenerate} regenerating={exportMutation.isPending} />}
-
-          <div style={{ border: `1px solid ${border.card}`, borderRadius: 14, background: "rgba(15,23,42,.6)", padding: 16, display: "flex", flexDirection: "column", gap: 11 }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: text.strong }}>What these routes do and don't give this screen</span>
-            {NOTES.map((n, i) => (
-              <div key={i} style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
-                <span style={{ width: 6, height: 6, borderRadius: 999, background: n.dot, marginTop: 6, flex: "none" }} />
-                <span style={{ fontSize: 11.5, color: text.secondary, lineHeight: 1.55 }}>{n.text}</span>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
     </div>

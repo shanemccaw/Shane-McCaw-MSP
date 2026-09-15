@@ -582,15 +582,6 @@ export function PoamsPage({
             </>
           )}
 
-          <div style={{ border: `1px solid ${CARD_LINE}`, borderRadius: 14, background: CARD_BG, padding: 16, display: "flex", flexDirection: "column", gap: 11, minWidth: 0 }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: text.title }}>What these eight routes do and don't give this screen</span>
-            {NOTES.map((n, i) => (
-              <div key={i} style={{ display: "flex", gap: 9, alignItems: "flex-start", minWidth: 0 }}>
-                <span style={{ width: 6, height: 6, borderRadius: 999, background: n.dot, marginTop: 6, flex: "none" }} />
-                <span style={{ fontSize: 11.5, color: text.secondary, lineHeight: 1.55, textWrap: "pretty", minWidth: 0 }}>{n.text}</span>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
 
@@ -647,19 +638,6 @@ function EmptyPanel({ title, body }: { title: string; body: string }) {
     </div>
   );
 }
-
-const NOTES: { dot: string; text: string }[] = [
-  { dot: "#60a5fa", text: "Cancelling and converting are both ladder.msp-admin-gated on their own dedicated routes — and, since #3452 and #3635 both landed, the generic edit route now refuses the same statuses outright, so there is no operator-floor bypass left. This screen disables those buttons for a non-admin session, but the server was already the real gate." },
-  { dot: "#f87171", text: "Completed is reachable only through the generic edit route. There is no dedicated completion route, no elevated role and no condition — a plan can be marked complete with every milestone still open, and nothing anywhere computes progress from the milestones." },
-  { dot: "#f87171", text: "A completed milestone is frozen against edits by the PATCH route, yet the DELETE route on that same milestone has no status check at all, so the record of a finished step can be removed outright with no trace on the plan." },
-  { dot: "#fbbf24", text: "The routes return the bare database row with no derived fields, so overdue and signed are computed here in the client. The customer's own portal computes both server-side for the same table, which means the two surfaces can disagree about the same plan." },
-  { dot: "#fbbf24", text: "Every mutation answers with a bare acknowledgement rather than the updated row, so this screen re-reads the plan after each action rather than trusting an optimistic copy." },
-  { dot: "#60a5fa", text: "The original target date is stamped at creation and can never be rewritten, which makes a slip permanently visible — but there is no reason field on the edit route, so the why of a moved date lives nowhere." },
-  { dot: "#60a5fa", text: "Signature, the accountable-holder trail and the move to active are written exclusively by the customer's portal. This surface authors the plan and reads the signature back; it can never produce one." },
-  { dot: "#94a3b8", text: "The reference code is assigned server-side with a reserved placeholder, so two operators creating at once cannot collide." },
-  { dot: "#94a3b8", text: "The tenant is free text with no real reference on this table, and this route takes no customerId — so this list is the whole book, not a filtered view of the tenant node it was opened from, and a plan cannot be reliably linked back to a real tenant record." },
-  { dot: "#94a3b8", text: "The list route takes no filter, no search and no pagination, and the create route accepts an empty primary domain silently — both are real, as-built behavior, not gaps this screen papers over." },
-];
 
 function ConvertDrawer({
   plan, onClose, onConvert,
@@ -721,7 +699,7 @@ function ConvertDrawer({
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(470px,94%)", height: "100%", background: "#0b1728", borderLeft: `1px solid ${border.card}`, padding: 20, display: "flex", flexDirection: "column", gap: 15, overflowY: "auto", minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, flex: 1 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".12em", color: "#93c5fd" }}>CONVERT · POST /api/msp/poams/{plan.poamId}/convert-to-risk-acceptance</span>
+            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".12em", color: "#93c5fd" }}>CONVERT</span>
             <span style={{ fontSize: 17, fontWeight: 700, color: "#f8fafc", letterSpacing: "-.01em" }}>Convert to a risk acceptance</span>
           </div>
           <button onClick={onClose} style={{ width: 28, height: 28, flex: "0 0 28px", borderRadius: 8, border: "1px solid transparent", background: "transparent", color: text.muted, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>

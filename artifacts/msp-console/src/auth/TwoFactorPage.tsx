@@ -35,7 +35,7 @@ export default function TwoFactorPage() {
   const [smsSent, setSmsSent] = useState(false);
   const [smsMask, setSmsMask] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<{ code: string; text: string } | null>(null);
+  const [error, setError] = useState<{ text: string } | null>(null);
   const [expired, setExpired] = useState(false);
 
   useEffect(() => {
@@ -51,17 +51,17 @@ export default function TwoFactorPage() {
       if (err.status === 401 && err.message.toLowerCase().includes("expired mfa session")) {
         setExpired(true);
         clearMfaChallenge();
-        setError({ code: "401 · MFA session expired", text: err.message });
+        setError({ text: err.message });
         return;
       }
       if (err.status === 403) {
-        setError({ code: "403 · passkey only", text: err.message });
+        setError({ text: err.message });
         setMethod("passkey");
         return;
       }
-      setError({ code: `${err.status}`, text: err.message });
+      setError({ text: err.message });
     } else {
-      setError({ code: "Network error", text: "Could not reach the server. Try again." });
+      setError({ text: "Could not reach the server. Try again." });
     }
   }
 
@@ -107,7 +107,7 @@ export default function TwoFactorPage() {
       afterSession(result, setSession, setLocation);
     } catch (err) {
       if (err instanceof Error && err.name === "NotAllowedError") {
-        setError({ code: "Cancelled", text: "Passkey authentication was cancelled." });
+        setError({ text: "Passkey authentication was cancelled." });
       } else {
         handleAuthError(err);
       }
@@ -176,7 +176,7 @@ export default function TwoFactorPage() {
         </label>
       )}
 
-      {error && <InlineMessage tone="critical" code={error.code} text={error.text} />}
+      {error && <InlineMessage tone="critical" text={error.text} />}
 
       {expired ? (
         <PrimaryButton onClick={() => setLocation("/login")}>Back to sign in</PrimaryButton>

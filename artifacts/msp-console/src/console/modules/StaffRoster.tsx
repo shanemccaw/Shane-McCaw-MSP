@@ -69,7 +69,7 @@ const ROLE_TONE: Record<string, Tone> = {
   ServiceAccount: signal.neutral,
 };
 
-interface LastResult { code: string; text: string; tone: Tone }
+interface LastResult { text: string; tone: Tone }
 
 /**
  * Git #4088 — the label was a two-way ternary (`PlatformAdmin` / `CustomerUser` /
@@ -126,10 +126,9 @@ function Chip({ label, on, onClick }: { label: string; on: boolean; onClick: () 
   );
 }
 
-function ResultPanel({ code, text: body, tone }: LastResult) {
+function ResultPanel({ text: body, tone }: LastResult) {
   return (
     <div style={{ border: `1px solid ${tone.border}`, borderRadius: 12, background: tone.tint, padding: 13, display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-      <span style={{ fontSize: 11.5, fontWeight: 700, fontFamily: "Menlo, monospace", color: tone.text ?? tone.strong }}>{code}</span>
       <span style={{ fontSize: 12, color: text.secondary, textWrap: "pretty" }}>{body}</span>
     </div>
   );
@@ -138,7 +137,7 @@ function ResultPanel({ code, text: body, tone }: LastResult) {
 function errorResult(err: unknown): LastResult {
   const apiErr = err instanceof StaffRosterApiError ? err : null;
   const tone = apiErr?.status === 403 || apiErr?.status === 400 ? signal.warning : signal.critical;
-  return { code: apiErr ? String(apiErr.status) : "error", text: apiErr?.message ?? "Request failed", tone };
+  return { text: apiErr?.message ?? "Request failed", tone };
 }
 
 function formatWhen(iso: string | null): string {
@@ -204,7 +203,7 @@ export function StaffRoster({ profile }: { profile: MspUserProfile }) {
       { userId: selected.id, mspRole },
       {
         onSuccess: () => {
-          setLastResult({ code: "200", text: "Role written with a fresh updated stamp. The response does not say what the role now is — this screen re-reads the roster to show it.", tone: signal.info });
+          setLastResult({ text: "Role written with a fresh updated stamp. The response does not say what the role now is — this screen re-reads the roster to show it.", tone: signal.info });
           toast.success(`Role set to ${mspRole}.`);
         },
         onError: (err) => { const r = errorResult(err); setLastResult(r); toast.error(r.text); },
@@ -221,7 +220,6 @@ export function StaffRoster({ profile }: { profile: MspUserProfile }) {
         onSuccess: (data) => {
           setDraftScopes(null);
           setLastResult({
-            code: `200 · assignedCustomerIds [${data.assignedCustomerIds.join(", ")}]`,
             text: data.unrestricted
               ? "Every scope row for this person was deleted and none written back — they now see the whole book again."
               : `Every existing scope row was deleted and these ${data.assignedCustomerIds.length} written in one transaction — a full replace, not a merge.`,
@@ -240,7 +238,7 @@ export function StaffRoster({ profile }: { profile: MspUserProfile }) {
       { userId: selected.id, canApprovePurchases: !selected.canApprovePurchases },
       {
         onSuccess: () => {
-          setLastResult({ code: "200", text: "Flag written. This is the one route that touches it; the approval gate on SOW charges reads it live.", tone: signal.info });
+          setLastResult({ text: "Flag written. This is the one route that touches it; the approval gate on SOW charges reads it live.", tone: signal.info });
           toast.success(selected.canApprovePurchases ? "Approval right withdrawn." : "Approval right granted.");
         },
         onError: (err) => { const r = errorResult(err); setLastResult(r); toast.error(r.text); },
@@ -255,7 +253,6 @@ export function StaffRoster({ profile }: { profile: MspUserProfile }) {
       {
         onSuccess: (data) => {
           setLastResult({
-            code: `200 · isActive ${data.isActive}`,
             text: data.isActive
               ? "Reactivated. The same flag removal set; nothing else about the account changed."
               : "Marked inactive. Their live sessions are not closed by this call — use the sessions action for that.",
@@ -272,7 +269,7 @@ export function StaffRoster({ profile }: { profile: MspUserProfile }) {
     if (!selected) return;
     removeMutation.mutate(selected.id, {
       onSuccess: () => {
-        setLastResult({ code: "200 · removed (soft)", text: "Not a delete: the account is set inactive and stays in the roster route's output. Reactivate undoes it.", tone: signal.critical });
+        setLastResult({ text: "Not a delete: the account is set inactive and stays in the roster route's output. Reactivate undoes it.", tone: signal.critical });
         toast.success("Removed from this MSP.");
       },
       onError: (err) => { const r = errorResult(err); setLastResult(r); toast.error(r.text); },
@@ -283,7 +280,7 @@ export function StaffRoster({ profile }: { profile: MspUserProfile }) {
     if (!selected) return;
     revokeSessionsMutation.mutate(selected.id, {
       onSuccess: (data) => {
-        setLastResult({ code: `200 · revokedCount ${data.revokedCount}`, text: "A real count from a real revoke.", tone: signal.critical });
+        setLastResult({ text: `Revoked ${data.revokedCount} session${data.revokedCount === 1 ? "" : "s"} — a real count from a real revoke.`, tone: signal.critical });
         toast.success(`Revoked ${data.revokedCount} session${data.revokedCount === 1 ? "" : "s"}.`);
       },
       onError: (err) => { const r = errorResult(err); setLastResult(r); toast.error(r.text); },
@@ -293,7 +290,7 @@ export function StaffRoster({ profile }: { profile: MspUserProfile }) {
   const doSendInvite = () => {
     const email = inviteEmail.trim().toLowerCase();
     if (!email) {
-      setInviteResult({ code: "400", text: "An email and one of the two roles are required.", tone: signal.warning });
+      setInviteResult({ text: "An email and one of the two roles are required.", tone: signal.warning });
       return;
     }
     sendInviteMutation.mutate(
@@ -302,7 +299,7 @@ export function StaffRoster({ profile }: { profile: MspUserProfile }) {
         onSuccess: (invite) => {
           setInviteEmail("");
           setJustCreatedInvite(invite);
-          setInviteResult({ code: "201 · the full invite row, token included", text: "The raw token comes back to you in full so you can confirm the send; the email itself goes out fire-and-forget. Valid 72 hours.", tone: signal.ok });
+          setInviteResult({ text: "The raw token comes back to you in full so you can confirm the send; the email itself goes out fire-and-forget. Valid 72 hours.", tone: signal.ok });
           toast.success(`Invite sent to ${email}.`);
         },
         onError: (err) => { const r = errorResult(err); setInviteResult(r); toast.error(r.text); },
@@ -314,7 +311,7 @@ export function StaffRoster({ profile }: { profile: MspUserProfile }) {
     revokeInviteMutation.mutate(invite.id, {
       onSuccess: () => {
         if (justCreatedInvite?.id === invite.id) setJustCreatedInvite(null);
-        setInviteResult({ code: "200 · deleted", text: "A hard delete, scoped to pending invites only. An already-accepted invite answers not-found here and is kept.", tone: signal.neutral });
+        setInviteResult({ text: "A hard delete, scoped to pending invites only. An already-accepted invite answers not-found here and is kept.", tone: signal.neutral });
         toast.success("Invite revoked.");
       },
       onError: (err) => { const r = errorResult(err); setInviteResult(r); toast.error(r.text); },
@@ -325,12 +322,12 @@ export function StaffRoster({ profile }: { profile: MspUserProfile }) {
     fetchWithAuth(`/api/msp/settings/sessions/${session.tokenHash}`, { method: "DELETE" })
       .then((res) => {
         if (!res.ok) throw new Error(`Request failed (${res.status})`);
-        setSessionResult({ code: "200 · revoked", text: "That one refresh token is stamped revoked.", tone: signal.critical });
+        setSessionResult({ text: "That one refresh token is stamped revoked.", tone: signal.critical });
         void sessionsQuery.refetch();
         toast.success("Session revoked.");
       })
       .catch(() => {
-        setSessionResult({ code: "error", text: "Could not revoke that session.", tone: signal.critical });
+        setSessionResult({ text: "Could not revoke that session.", tone: signal.critical });
         toast.error("Could not revoke that session.");
       });
   };
@@ -341,7 +338,6 @@ export function StaffRoster({ profile }: { profile: MspUserProfile }) {
       <div style={{ border: `1px solid ${border.card}`, borderRadius: 12, background: surface.card, padding: 22, display: "flex", flexDirection: "column", gap: 10 }}>
         <span style={{ fontSize: 16, fontWeight: 700, color: text.title }}>{status === 403 ? "MSPAdmin or above is required" : "The roster could not be loaded"}</span>
         <span style={{ fontSize: 13, color: text.muted }}>{rosterQuery.error.message}</span>
-        <span style={{ fontFamily: "Menlo, monospace", fontSize: 10.5, color: text.faint }}>GET /api/msp/settings/users · {status ?? "error"}</span>
       </div>
     );
   }
@@ -642,7 +638,6 @@ export function StaffRoster({ profile }: { profile: MspUserProfile }) {
               <div style={{ border: "1px dashed rgba(148,163,184,.25)", borderRadius: 10, padding: 22, display: "flex", flexDirection: "column", gap: 6, alignItems: "center", textAlign: "center" }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: text.secondary }}>No pending invites</span>
                 <span style={{ fontSize: 11.5, color: text.muted, textWrap: "pretty", maxWidth: 360 }}>A real empty array. No invite has ever been sent from this MSP, so this is also the live state.</span>
-                <span style={{ fontSize: 11, fontFamily: "Menlo, monospace", color: text.faint }}>GET /api/msp/settings/invites → []</span>
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>

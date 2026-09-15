@@ -19,7 +19,7 @@
  * instead of that stale claim, and keeps the design's own explicitly-labelled
  * "not live data" shape preview untouched (it never claimed to be live).
  */
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { border, signal, surface, text } from "@/console/tokens";
 import {
   useDecideAcceleration, useDiscussRestore, useRetentionQueue,
@@ -121,7 +121,7 @@ export function RetentionQueue() {
   const [note, setNote] = useState("");
   const [reason, setReason] = useState("");
   const [shapeSettled, setShapeSettled] = useState<Record<number, "approved" | "declined" | "restored">>({});
-  const [shapeResult, setShapeResult] = useState<[string, string, Tone] | null>(null);
+  const [shapeResult, setShapeResult] = useState<[string, Tone] | null>(null);
 
   const liveRows = queueQuery.data?.queue ?? [];
   const openLive = liveRows.find((r) => r.deletionId === openLiveId) ?? null;
@@ -152,36 +152,24 @@ export function RetentionQueue() {
     if (!openShapeRow) return;
     const id = openShapeRow.id;
     setShapeSettled((s) => ({ ...s, [id]: "approved" }));
-    setShapeResult(["200 · purged", "Approved and destroyed in the same request. The ledger row survives as the record of what was deleted and why — the record itself does not.", RED]);
+    setShapeResult(["Approved and destroyed in the same request. The ledger row survives as the record of what was deleted and why — the record itself does not.", RED]);
   };
   const declineShape = () => {
     if (!openShapeRow) return;
     const id = openShapeRow.id;
     setShapeSettled((s) => ({ ...s, [id]: "declined" }));
-    setShapeResult(["200 · declined", "Request closed and the holding period resumed. Nothing was lost.", GREY]);
+    setShapeResult(["Request closed and the holding period resumed. Nothing was lost.", GREY]);
   };
   const discussShape = () => {
     if (!openShapeRow) return;
     if (!reason.trim()) {
-      setShapeResult(["400 · A restore reason is required", "The restore is refused without one.", AMBER]);
+      setShapeResult(["The restore is refused without one.", AMBER]);
       return;
     }
     const id = openShapeRow.id;
     setShapeSettled((s) => ({ ...s, [id]: "restored" }));
-    setShapeResult(["200 · restored", "Declined and fully restored in one call, and the customer was notified (best-effort).", GREEN]);
+    setShapeResult(["Declined and fully restored in one call, and the customer was notified (best-effort).", GREEN]);
   };
-
-  const notes = useMemo(() => ([
-    { dot: RED[2], text: "Approving purges inside the same request. There is no staged approval, no undo and no confirmation step in the route, so whatever guard exists has to be in the screen." },
-    { dot: AMBER[2], text: "The approval field is read strictly: anything other than the exact boolean true is treated as a decline, with no validation error. A malformed approval silently becomes the opposite decision." },
-    { dot: AMBER[2], text: "Restore requires a reason, but a missing one arrives as an empty string and is only caught deeper in, so the refusal surfaces as a late error rather than a form validation." },
-    { dot: AMBER[2], text: "Restoring attaches a fixed, hardcoded note to the record rather than the operator's own words. The reason typed here goes to the restore, not to the declined request." },
-    { dot: BLUE_DOT, text: "The two reasons are deliberately separate fields: why the record was deleted, and why it should go early. A design that showed only one would erase the distinction the data model exists to preserve." },
-    { dot: BLUE_DOT, text: "A request on a customer outside your assigned set answers not-found rather than forbidden, so a scoped operator cannot even learn it exists. Staff scoping currently has no rows anywhere, so everyone sees the whole book." },
-    { dot: text.muted, text: "Every operator collapses to one audit identity regardless of their real role, so the trail cannot distinguish an operator's decision from an admin's." },
-    { dot: text.muted, text: "The claimed replacement record is free text with no lookup behind it — nothing verifies it exists, so checking the claim is manual." },
-    { dot: text.muted, text: "There is no paging and no parameters, and the count returned is the size of the list. It counts pending requests only, so it says nothing about records quietly working through their holding period." },
-  ]), []);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
@@ -330,9 +318,6 @@ export function RetentionQueue() {
 
                     {(decide.isError || discuss.isError) && (
                       <div style={{ border: `1px solid ${RED[1]}`, borderRadius: 12, background: RED[0], padding: 13, display: "flex", flexDirection: "column", gap: 4 }}>
-                        <span style={{ fontSize: 11.5, fontWeight: 700, fontFamily: "Menlo, monospace", color: RED[2] }}>
-                          {(decide.error as (Error & { status?: number }) | null)?.status ?? (discuss.error as (Error & { status?: number }) | null)?.status ?? "error"}
-                        </span>
                         <span style={{ fontSize: 12, color: text.secondary }}>{decide.error?.message ?? discuss.error?.message}</span>
                       </div>
                     )}
@@ -471,9 +456,8 @@ export function RetentionQueue() {
                     )}
 
                     {shapeResult && (
-                      <div style={{ border: `1px solid ${shapeResult[2][1]}`, borderRadius: 12, background: shapeResult[2][0], padding: 13, display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-                        <span style={{ fontSize: 11.5, fontWeight: 700, fontFamily: "Menlo, monospace", color: shapeResult[2][2] }}>{shapeResult[0]}</span>
-                        <span style={{ fontSize: 12, color: text.secondary, textWrap: "pretty" as const }}>{shapeResult[1]}</span>
+                      <div style={{ border: `1px solid ${shapeResult[1][1]}`, borderRadius: 12, background: shapeResult[1][0], padding: 13, display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+                        <span style={{ fontSize: 12, color: text.secondary, textWrap: "pretty" as const }}>{shapeResult[0]}</span>
                       </div>
                     )}
                   </Panel>
@@ -484,20 +468,9 @@ export function RetentionQueue() {
         </>
       )}
 
-      <div style={{ border: `1px solid ${border.card}`, borderRadius: 14, background: surface.card, padding: 16, display: "flex", flexDirection: "column", gap: 11, minWidth: 0 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: text.title }}>What these three routes do and don't give this screen</span>
-        {notes.map((n, i) => (
-          <div key={i} style={{ display: "flex", gap: 9, alignItems: "flex-start", minWidth: 0 }}>
-            <span style={{ width: 6, height: 6, borderRadius: 999, background: n.dot, marginTop: 6, flex: "none" }} />
-            <span style={{ fontSize: 11.5, color: text.secondary, lineHeight: 1.55, textWrap: "pretty" as const, minWidth: 0 }}>{n.text}</span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
-
-const BLUE_DOT = "#60a5fa";
 
 function btnStyle(color: string, background: string, borderColor: string): React.CSSProperties {
   return {

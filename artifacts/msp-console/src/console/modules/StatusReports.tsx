@@ -47,7 +47,6 @@ const LIMIT = 50;
 type Mode = { kind: "none" } | { kind: "creating" } | { kind: "editing"; id: number } | { kind: "viewing"; id: number };
 
 interface ResultBanner {
-  code: string;
   text: string;
   tone: "ok" | "warning" | "critical";
 }
@@ -119,16 +118,15 @@ export function StatusReports({ customerId }: { customerId: number }) {
     setResult(null);
   };
 
-  const errorBanner = (err: unknown, fallbackCode: string): ResultBanner => {
+  const errorBanner = (err: unknown): ResultBanner => {
     if (err instanceof StatusReportsApiError) {
       const summary = fieldErrorSummary(err.details);
       return {
-        code: `${err.status} · ${err.message}`,
         text: summary ?? "The server rejected this request.",
         tone: err.status >= 500 ? "critical" : "warning",
       };
     }
-    return { code: fallbackCode, text: "The request failed. Try again shortly.", tone: "critical" };
+    return { text: "The request failed. Try again shortly.", tone: "critical" };
   };
 
   const save = () => {
@@ -137,7 +135,7 @@ export function StatusReports({ customerId }: { customerId: number }) {
 
     if (mode.kind === "creating") {
       if (!period || !body || !asOfDate.trim()) {
-        setResult({ code: "400 · Invalid request body", text: "Period, as-of date and content are all required.", tone: "warning" });
+        setResult({ text: "Period, as-of date and content are all required.", tone: "warning" });
         return;
       }
       createReport.mutate(
@@ -145,9 +143,9 @@ export function StatusReports({ customerId }: { customerId: number }) {
         {
           onSuccess: ({ report }) => {
             setMode({ kind: "viewing", id: report.id });
-            setResult({ code: "201 · report created", text: "Saved as a draft. The author is taken from your session.", tone: "ok" });
+            setResult({ text: "Saved as a draft. The author is taken from your session.", tone: "ok" });
           },
-          onError: (err) => setResult(errorBanner(err, "400 · Invalid request body")),
+          onError: (err) => setResult(errorBanner(err)),
         },
       );
       return;
@@ -155,7 +153,7 @@ export function StatusReports({ customerId }: { customerId: number }) {
 
     if (mode.kind === "editing") {
       if (!period || !body) {
-        setResult({ code: "400 · Invalid request body", text: "Period and content cannot be blanked out.", tone: "warning" });
+        setResult({ text: "Period and content cannot be blanked out.", tone: "warning" });
         return;
       }
       updateReport.mutate(
@@ -163,9 +161,9 @@ export function StatusReports({ customerId }: { customerId: number }) {
         {
           onSuccess: ({ report }) => {
             setMode({ kind: "viewing", id: report.id });
-            setResult({ code: "200 · report updated", text: "Only the fields you sent were written; state is untouched.", tone: "ok" });
+            setResult({ text: "Only the fields you sent were written; state is untouched.", tone: "ok" });
           },
-          onError: (err) => setResult(errorBanner(err, "400 · Invalid request body")),
+          onError: (err) => setResult(errorBanner(err)),
         },
       );
     }
@@ -176,8 +174,8 @@ export function StatusReports({ customerId }: { customerId: number }) {
     updateReport.mutate(
       { id: mode.id, input: {} },
       {
-        onSuccess: () => setResult({ code: "200 · report updated", text: "Unexpected — an empty patch should be rejected.", tone: "warning" }),
-        onError: (err) => setResult(errorBanner(err, "400 · No fields to update")),
+        onSuccess: () => setResult({ text: "Unexpected — an empty patch should be rejected.", tone: "warning" }),
+        onError: (err) => setResult(errorBanner(err)),
       },
     );
   };
@@ -193,11 +191,11 @@ export function StatusReports({ customerId }: { customerId: number }) {
     publishReport.mutate(open.id, {
       onSuccess: () => {
         setConfirming(false);
-        setResult({ code: "200 · report published", text: "State moved to published. There is no route back.", tone: "ok" });
+        setResult({ text: "State moved to published. There is no route back.", tone: "ok" });
       },
       onError: (err) => {
         setConfirming(false);
-        setResult(errorBanner(err, "409 · Status report is already published"));
+        setResult(errorBanner(err));
       },
     });
   };
@@ -226,7 +224,6 @@ export function StatusReports({ customerId }: { customerId: number }) {
             tone={signal.critical}
             title="Status reports could not be loaded"
             body={listQuery.error instanceof StatusReportsApiError ? listQuery.error.message : "The request failed."}
-            wire={`GET /api/msp/customers/${customerId}/status-reports`}
           />
         ) : reports.length === 0 && !listQuery.isLoading ? (
           <div style={{ border: "1px dashed rgba(148,163,184,.25)", borderRadius: 10, padding: "24px 18px", display: "flex", flexDirection: "column", gap: 7, alignItems: "center", textAlign: "center" }}>
@@ -403,7 +400,6 @@ export function StatusReports({ customerId }: { customerId: number }) {
 
         {result && (
           <div style={{ border: `1px solid ${toneColors(result.tone).border}`, borderRadius: 12, background: toneColors(result.tone).tint, padding: 13, display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-            <span style={{ fontSize: 11.5, fontWeight: 700, fontFamily: "Menlo, monospace", color: toneColors(result.tone).strong }}>{result.code}</span>
             <span style={{ fontSize: 12, color: text.secondary, textWrap: "pretty" }}>{result.text}</span>
           </div>
         )}
@@ -412,7 +408,7 @@ export function StatusReports({ customerId }: { customerId: number }) {
   );
 }
 
-function StatePanel({ tone, title, body, wire }: { tone: { strong: string; text: string; tint: string; border: string }; title: string; body: string; wire: string }) {
+function StatePanel({ tone, title, body }: { tone: { strong: string; text: string; tint: string; border: string }; title: string; body: string }) {
   return (
     <div style={{ border: `1px solid ${tone.border}`, borderRadius: 12, background: tone.tint, padding: 18, display: "flex", flexDirection: "column", gap: 8 }}>
       <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -420,7 +416,6 @@ function StatePanel({ tone, title, body, wire }: { tone: { strong: string; text:
         <span style={{ fontSize: 13, fontWeight: 700, color: text.strong }}>{title}</span>
       </span>
       <span style={{ fontSize: 12, color: text.secondary, textWrap: "pretty" }}>{body}</span>
-      <span style={{ fontFamily: "Menlo, monospace", fontSize: 10.5, color: text.faint }}>{wire}</span>
     </div>
   );
 }

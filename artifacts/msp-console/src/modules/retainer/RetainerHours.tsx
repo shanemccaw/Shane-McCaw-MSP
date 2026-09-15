@@ -16,7 +16,7 @@
  * the UI, the same convention `Sales`/`Reports`/`PoamsPage` already use for
  * their own admin-only actions on this console.
  */
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { border, signal, surface, text } from "@/console/tokens";
 import {
   useAdjustClosedRetainerPeriod, useAdjustRetainerEntry, useApprovePendingRetainerEntry,
@@ -180,16 +180,6 @@ export function RetainerHours({ mspId, isAdmin }: { mspId: number | null; isAdmi
   const selectedSummary = customers.find((c) => c.customerId === effectiveSelId);
   const detail = detailQuery.data;
   const pendingEntries = pendingQuery.data?.entries ?? [];
-
-  const notes = useMemo(() => ([
-    { dot: RED[2], text: "overHours is the honest, uncapped over-allotment signal. remainingHours floors at zero and is also true for a customer who used exactly their allotment — over-month must be read from overHours, never inferred from remaining hitting zero." },
-    { dot: AMBER[2], text: "Periods are anniversary-anchored to each customer's own subscription start day, not calendar months, and unused retained hours roll forward once before expiring. A customer whose anchor day shifts mid-history can end up with period keys that don't line up across the change — a known, documented edge case, not a bug." },
-    { dot: AMBER[2], text: "Resolved (#4098, follow-up to #4026): the tracker byproduct hook that logs closed-ticket hours automatically (change control / remediation tracker completions) now honors the same period-close lock as every other writer. When its target period is closed, the entry lands in the Pending approval panel above instead of writing past the lock or silently skipping — an MSPAdmin approves it into the ledger (with a reason, recorded the same way as an adjust-after-close override) or rejects it outright." },
-    { dot: BLUE[2], text: "Allotment, hourly rate and architect name are read-only here — they are written only from AdminV2. This screen can log, adjust, delete and move entries between open periods, close or reopen a period, and — as MSP admin only — make a reasoned override into an already-closed period." },
-    { dot: BLUE[2], text: "Reopening a period hard-deletes its frozen snapshot rather than archiving it — there is no history table. Once reopened, the only surviving trace of who closed it and when lives in the audit log, not in the retainer data itself." },
-    { dot: text.muted, text: "Moving an entry's date into a different period requires that target period to also be open — a move between two open periods succeeds, but nothing can be moved into a closed one, even from an open one, outside the admin override path." },
-    { dot: text.muted, text: "The error envelope on every route here is a bare { error } string, with no error code field." },
-  ]), []);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
@@ -448,16 +438,6 @@ export function RetainerHours({ mspId, isAdmin }: { mspId: number | null; isAdmi
           )}
         </div>
       </div>
-
-      <Panel>
-        <span style={{ fontSize: 12, fontWeight: 700, color: text.title }}>What this router does and doesn't give this screen</span>
-        {notes.map((n, i) => (
-          <div key={i} style={{ display: "flex", gap: 9, alignItems: "flex-start", minWidth: 0 }}>
-            <span style={{ width: 6, height: 6, borderRadius: 999, background: n.dot, marginTop: 6, flex: "none" }} />
-            <span style={{ fontSize: 11.5, color: text.secondary, lineHeight: 1.55, textWrap: "pretty" as const, minWidth: 0 }}>{n.text}</span>
-          </div>
-        ))}
-      </Panel>
     </div>
   );
 }

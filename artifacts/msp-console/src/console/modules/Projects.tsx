@@ -319,8 +319,7 @@ export function Projects({
       <div style={{ display: "flex", alignItems: "center", gap: 9, paddingTop: 2 }}>
         <Icon name="info" size={13} color={text.faint} />
         <span style={{ fontSize: 11, color: text.faint, textWrap: "pretty" }}>
-          Every bucket and card here comes from <code>GET /api/msp/customers/:customerId/kanban/buckets</code>
-          {" "}(<code>msp-kanban.ts</code>). A card can only move to a bucket on this same customer's board, and
+          A card can only move to a bucket on this same customer's board, and
           position is never renumbered by the server — new buckets and cards are always appended to the end.
         </span>
       </div>
@@ -356,7 +355,7 @@ function AdvisoryPanel({ status }: { status?: number }) {
       <span style={{ fontSize: 12, color: text.muted, textWrap: "pretty" }}>
         {is404
           ? "No tenant row exists for this customerId, or it isn't in your MSP's book."
-          : `GET /api/msp/customers/:customerId/kanban/buckets returned ${status ?? "an error"}.`}
+          : "The board could not be loaded. Try again shortly."}
       </span>
     </div>
   );

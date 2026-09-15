@@ -47,17 +47,17 @@ import {
 
 type Tab = "defs" | "runs" | "canvases" | "waste";
 
-interface ResultBanner { code: string; text: string; tone: "ok" | "warning" | "critical" | "info" }
+interface ResultBanner { text: string; tone: "ok" | "warning" | "critical" | "info" }
 
 function toneColors(tone: ResultBanner["tone"]) {
   return signal[tone === "info" ? "info" : tone];
 }
 
-function errorBanner(err: unknown, fallbackCode: string): ResultBanner {
+function errorBanner(err: unknown): ResultBanner {
   if (err instanceof MspReportsApiError) {
-    return { code: `${err.status} · ${err.message}`, text: "The server rejected this request.", tone: err.status >= 500 ? "critical" : "warning" };
+    return { text: "The server rejected this request.", tone: err.status >= 500 ? "critical" : "warning" };
   }
-  return { code: fallbackCode, text: "The request failed. Try again shortly.", tone: "critical" };
+  return { text: "The request failed. Try again shortly.", tone: "critical" };
 }
 
 const cardStyle: React.CSSProperties = { border: `1px solid ${border.card}`, borderRadius: 14, background: surface.card, padding: 16, display: "flex", flexDirection: "column", gap: 12, minWidth: 0 };
@@ -86,7 +86,7 @@ function EmptyState({ title, body, action }: { title: string; body: string; acti
   );
 }
 
-function ErrorPanel({ title, body, wire }: { title: string; body: string; wire: string }) {
+function ErrorPanel({ title, body }: { title: string; body: string }) {
   return (
     <div style={{ border: `1px solid ${signal.critical.border}`, borderRadius: 12, background: signal.critical.tint, padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
       <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -94,7 +94,6 @@ function ErrorPanel({ title, body, wire }: { title: string; body: string; wire: 
         <span style={{ fontSize: 13, fontWeight: 700, color: text.strong }}>{title}</span>
       </span>
       <span style={{ fontSize: 12, color: text.secondary, textWrap: "pretty" }}>{body}</span>
-      <span style={{ fontFamily: "Menlo, monospace", fontSize: 10.5, color: text.faint }}>{wire}</span>
     </div>
   );
 }
@@ -104,7 +103,6 @@ function ResultBannerView({ result }: { result: ResultBanner | null }) {
   const t = toneColors(result.tone);
   return (
     <div style={{ border: `1px solid ${t.border}`, borderRadius: 12, background: t.tint, padding: 13, display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-      <span style={{ fontSize: 11.5, fontWeight: 700, fontFamily: "Menlo, monospace", color: t.strong }}>{result.code}</span>
       <span style={{ fontSize: 12, color: text.secondary, textWrap: "pretty" }}>{result.text}</span>
     </div>
   );
@@ -196,46 +194,45 @@ function DefinitionsTab({
 
   const submitCreate = () => {
     if (!name.trim()) {
-      setResult({ code: "400 · name is required", text: "The only required field. Everything else falls back to a default, including the document type and the delivery method.", tone: "warning" });
+      setResult({ text: "The only required field. Everything else falls back to a default, including the document type and the delivery method.", tone: "warning" });
       return;
     }
     createDef.mutate(
       { name: name.trim(), description: description.trim() || undefined, docType, deliveryMethod, deliveryEmail: deliveryEmail.trim() || undefined },
       {
-        onSuccess: () => { setCreating(false); setResult({ code: "201 · definition created", text: "Saved. Your session is recorded as the author, though that field is not a real reference to a user — nothing enforces it.", tone: "ok" }); },
-        onError: (err) => setResult(errorBanner(err, "400 · Invalid request body")),
+        onSuccess: () => { setCreating(false); setResult({ text: "Saved. Your session is recorded as the author, though that field is not a real reference to a user — nothing enforces it.", tone: "ok" }); },
+        onError: (err) => setResult(errorBanner(err)),
       },
     );
   };
 
   const trigger = (def: ReportDefinition) => {
     if (!def.isActive) {
-      setResult({ code: "400 · Report definition is inactive", text: "The only route that checks the active flag. Turning the definition back on and re-triggering is allowed, by design.", tone: "warning" });
+      setResult({ text: "The only route that checks the active flag. Turning the definition back on and re-triggering is allowed, by design.", tone: "warning" });
       return;
     }
     triggerReport.mutate(def.definitionId, {
-      onSuccess: () => setResult({ code: "202 · accepted", text: "A run row was written as pending and the response returned before any work started. If generation fails after this point, nothing tells you — you find out by watching the run's status on the Runs tab.", tone: "info" }),
-      onError: (err) => setResult(errorBanner(err, "400 · error")),
+      onSuccess: () => setResult({ text: "A run row was written as pending and the response returned before any work started. If generation fails after this point, nothing tells you — you find out by watching the run's status on the Runs tab.", tone: "info" }),
+      onError: (err) => setResult(errorBanner(err)),
     });
   };
 
   const toggleActive = (def: ReportDefinition) => {
     updateDef.mutate({ definitionId: def.definitionId, patch: { isActive: !def.isActive } }, {
       onSuccess: () => setResult({
-        code: "200 · definition updated",
         text: def.isActive
           ? "Set inactive through the generic edit route. Note the edit route does not re-validate the document type or delivery method the way create does — any string would be accepted there."
           : "Set active again. Nothing prevents re-activating and re-running a definition that was deactivated.",
         tone: "info",
       }),
-      onError: (err) => setResult(errorBanner(err, "400 · error")),
+      onError: (err) => setResult(errorBanner(err)),
     });
   };
 
   const remove = (def: ReportDefinition) => {
     deleteDef.mutate(def.definitionId, {
-      onSuccess: () => setResult({ code: "200 · { ok: true }", text: "This is a soft delete — the row stays and its active flag flips off. It will keep appearing in this list, so “deleted” and “paused” are the same state on the wire.", tone: "warning" }),
-      onError: (err) => setResult(errorBanner(err, err instanceof MspReportsApiError && err.status === 403 ? "403 · admin only" : "error")),
+      onSuccess: () => setResult({ text: "This is a soft delete — the row stays and its active flag flips off. It will keep appearing in this list, so “deleted” and “paused” are the same state on the wire.", tone: "warning" }),
+      onError: (err) => setResult(errorBanner(err)),
     });
   };
 
@@ -253,7 +250,7 @@ function DefinitionsTab({
         </div>
 
         {defsQuery.isError ? (
-          <ErrorPanel title="Report definitions could not be loaded" body={defsQuery.error instanceof MspReportsApiError ? defsQuery.error.message : "The request failed."} wire="GET /api/msp/reports/definitions" />
+          <ErrorPanel title="Report definitions could not be loaded" body={defsQuery.error instanceof MspReportsApiError ? defsQuery.error.message : "The request failed."} />
         ) : defs.length === 0 && !defsQuery.isLoading ? (
           <EmptyState
             title="No report definitions"
@@ -315,7 +312,7 @@ function DefinitionsTab({
                     <button
                       key={dt}
                       onClick={() => machine
-                        ? setResult({ code: "Not selectable here", text: "This type is not an AI generation at all — it is a deterministic render of a signed risk decision, written by a different part of the system. Its definition is created automatically.", tone: "info" })
+                        ? setResult({ text: "This type is not an AI generation at all — it is a deterministic render of a signed risk decision, written by a different part of the system. Its definition is created automatically.", tone: "info" })
                         : setDocType(dt)}
                       style={pillBtn(docType === dt, machine)}
                     >
@@ -356,23 +353,6 @@ function DefinitionsTab({
         )}
 
         <ResultBannerView result={result} />
-
-        <div style={cardStyle}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: text.strong }}>What these nineteen routes do and don't give this screen</span>
-          {[
-            "A run whose email delivery fails is left marked generated, with the failure only in an error field. A screen reading the status alone reports success. The Runs tab shows the warning on the row instead.",
-            "Triggering answers accepted before any work happens, and every later failure is logged server-side only. Polling the run list is the sole way to learn that generation failed.",
-            "The run list caps at fifty, a hundred at most, and has no offset. The total it returns is the size of that page, so older runs are unreachable.",
-            "Create validates the document type and delivery method; edit does not. The column is plain text with no database constraint.",
-            "Delete is a soft flag, not a removal, and the row keeps listing afterwards. Deleted and paused are indistinguishable on the wire.",
-            "Schedules store a cadence, recipients and an enabled flag, but nothing executes them and the run timestamps are never written.",
-          ].map((n, i) => (
-            <div key={i} style={{ display: "flex", gap: 9, alignItems: "flex-start", minWidth: 0 }}>
-              <span style={{ width: 5, height: 5, borderRadius: 999, background: signal.warning.strong, marginTop: 6, flex: "0 0 5px" }} />
-              <span style={{ fontSize: 11.5, color: text.secondary, flex: 1, textWrap: "pretty" }}>{n}</span>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   );
@@ -395,28 +375,28 @@ function RunsTab({
 
   const download = (r: ReportRun) => {
     if (r.status === "pending" || r.status === "generating") {
-      setResult({ code: "409 · not ready", text: "The document does not exist yet. This is why the button is held closed until a run leaves the generating stage.", tone: "warning" });
+      setResult({ text: "The document does not exist yet. This is why the button is held closed until a run leaves the generating stage.", tone: "warning" });
       return;
     }
     if (r.status === "failed") {
-      setResult({ code: "422 · nothing to download", text: "The run failed, so there is no document. The error text is the only artefact.", tone: "critical" });
+      setResult({ text: "The run failed, so there is no document. The error text is the only artefact.", tone: "critical" });
       return;
     }
     downloadRun.mutate(r, {
-      onSuccess: () => setResult({ code: "200 · PDF", text: "Served as a binary attachment. The HTML and the PDF are only ever returned by this route — neither appears on the list or detail responses.", tone: "ok" }),
-      onError: (err) => setResult(errorBanner(err, "error")),
+      onSuccess: () => setResult({ text: "Served as a binary attachment. The HTML and the PDF are only ever returned by this route — neither appears on the list or detail responses.", tone: "ok" }),
+      onError: (err) => setResult(errorBanner(err)),
     });
   };
 
   const retry = (r: ReportRun) => {
     const def = defsById.get(r.definitionId);
     if (!def) {
-      setResult({ code: "error", text: "The definition behind this run could not be found in the current list — refresh Definitions first.", tone: "critical" });
+      setResult({ text: "The definition behind this run could not be found in the current list — refresh Definitions first.", tone: "critical" });
       return;
     }
     triggerReport.mutate(def.definitionId, {
-      onSuccess: () => setResult({ code: "202 · accepted", text: "There is no retry route. This is a brand-new run of the same definition — the failed attempt stays as its own row, and nothing links the two.", tone: "info" }),
-      onError: (err) => setResult(errorBanner(err, "error")),
+      onSuccess: () => setResult({ text: "There is no retry route. This is a brand-new run of the same definition — the failed attempt stays as its own row, and nothing links the two.", tone: "info" }),
+      onError: (err) => setResult(errorBanner(err)),
     });
   };
 
@@ -431,7 +411,7 @@ function RunsTab({
     <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
       <ResultBannerView result={result} />
       {runsQuery.isError ? (
-        <ErrorPanel title="Runs could not be loaded" body={runsQuery.error instanceof MspReportsApiError ? runsQuery.error.message : "The request failed."} wire="GET /api/msp/reports/runs" />
+        <ErrorPanel title="Runs could not be loaded" body={runsQuery.error instanceof MspReportsApiError ? runsQuery.error.message : "The request failed."} />
       ) : runs.length === 0 && !runsQuery.isLoading ? (
         <EmptyState
           title="No runs"
@@ -533,63 +513,63 @@ function CanvasesTab({
 
   const submitCanvas = () => {
     if (!canvasName.trim()) {
-      setResult({ code: "400 · name is required", text: "A canvas needs a name before it can be saved.", tone: "warning" });
+      setResult({ text: "A canvas needs a name before it can be saved.", tone: "warning" });
       return;
     }
     if (widgets.size === 0) {
-      setResult({ code: "client-side check", text: "Pick at least one widget — an empty canvas has nothing to compile.", tone: "warning" });
+      setResult({ text: "Pick at least one widget — an empty canvas has nothing to compile.", tone: "warning" });
       return;
     }
     const widgetList = Array.from(widgets).map((type, i) => ({ i: `w${i}`, x: 0, y: i, w: 12, h: 1, type }));
     createCanvas.mutate(
       { name: canvasName.trim(), canvasLayout: { widgets: widgetList }, deliveryConfig: { sendAsHtmlEmail: false, attachPdf: true, recipientType: "msp_admin" } },
       {
-        onSuccess: () => { setCreatingCanvas(false); setCanvasName(""); setWidgets(new Set(["rich_text"])); setResult({ code: "201 · canvas created", text: "Saved. Compiled to HTML on-demand for a test send — nothing renders it unless you ask it to.", tone: "ok" }); },
-        onError: (err) => setResult(errorBanner(err, "error")),
+        onSuccess: () => { setCreatingCanvas(false); setCanvasName(""); setWidgets(new Set(["rich_text"])); setResult({ text: "Saved. Compiled to HTML on-demand for a test send — nothing renders it unless you ask it to.", tone: "ok" }); },
+        onError: (err) => setResult(errorBanner(err)),
       },
     );
   };
 
   const removeCanvas = (id: string) => {
     deleteCanvas.mutate(id, {
-      onSuccess: () => setResult({ code: "200 · canvas deleted", text: "Gone outright. There is no version history and no restore.", tone: "warning" }),
-      onError: (err) => setResult(errorBanner(err, "error")),
+      onSuccess: () => setResult({ text: "Gone outright. There is no version history and no restore.", tone: "warning" }),
+      onError: (err) => setResult(errorBanner(err)),
     });
   };
 
   const runSendTest = (canvasId: string) => {
     sendTest.mutate({ canvasId }, {
-      onSuccess: (r) => setResult({ code: "200 · test sent", text: `Compiled to HTML and sent through Exchange Online to ${r.recipient}. The recipient type stored on the canvas is never consulted — a test always goes to whoever asked for it.`, tone: "ok" }),
-      onError: (err) => setResult(errorBanner(err, err instanceof MspReportsApiError && err.status === 400 ? "400 · error" : "error")),
+      onSuccess: (r) => setResult({ text: `Compiled to HTML and sent through Exchange Online to ${r.recipient}. The recipient type stored on the canvas is never consulted — a test always goes to whoever asked for it.`, tone: "ok" }),
+      onError: (err) => setResult(errorBanner(err)),
     });
   };
 
   const submitSchedule = () => {
     if (!scheduleCanvasId) {
-      setResult({ code: "400 · canvasId and cadence are required", text: "Pick a canvas to schedule first.", tone: "warning" });
+      setResult({ text: "Pick a canvas to schedule first.", tone: "warning" });
       return;
     }
     const emails = recipients.split(",").map((s) => s.trim()).filter(Boolean);
     createSchedule.mutate(
       { canvasId: scheduleCanvasId, cadence, recipientEmails: emails },
       {
-        onSuccess: () => { setCreatingSchedule(false); setRecipients(""); setResult({ code: "201 · schedule created", text: "Stored faithfully — cadence, recipients and enabled flag. Nothing executes it yet: no scheduler exists, so last-run and next-run stay unset.", tone: "warning" }); },
-        onError: (err) => setResult(errorBanner(err, "error")),
+        onSuccess: () => { setCreatingSchedule(false); setRecipients(""); setResult({ text: "Stored faithfully — cadence, recipients and enabled flag. Nothing executes it yet: no scheduler exists, so last-run and next-run stay unset.", tone: "warning" }); },
+        onError: (err) => setResult(errorBanner(err)),
       },
     );
   };
 
   const toggleSchedule = (id: string, enabled: boolean) => {
     updateSchedule.mutate({ id, patch: { enabled: !enabled } }, {
-      onSuccess: () => setResult({ code: "200 · schedule updated", text: enabled ? "Disabled." : "Enabled — though there is still nothing that reads this flag to actually fire a send.", tone: "info" }),
-      onError: (err) => setResult(errorBanner(err, "error")),
+      onSuccess: () => setResult({ text: enabled ? "Disabled." : "Enabled — though there is still nothing that reads this flag to actually fire a send.", tone: "info" }),
+      onError: (err) => setResult(errorBanner(err)),
     });
   };
 
   const removeSchedule = (id: string) => {
     deleteSchedule.mutate(id, {
-      onSuccess: () => setResult({ code: "200 · { success: true }", text: "Removed.", tone: "warning" }),
-      onError: (err) => setResult(errorBanner(err, "error")),
+      onSuccess: () => setResult({ text: "Removed.", tone: "warning" }),
+      onError: (err) => setResult(errorBanner(err)),
     });
   };
 
@@ -628,7 +608,7 @@ function CanvasesTab({
           )}
 
           {canvasesQuery.isError ? (
-            <ErrorPanel title="Canvases could not be loaded" body={canvasesQuery.error instanceof MspReportsApiError ? canvasesQuery.error.message : "The request failed."} wire="GET /api/msp/reports/canvases" />
+            <ErrorPanel title="Canvases could not be loaded" body={canvasesQuery.error instanceof MspReportsApiError ? canvasesQuery.error.message : "The request failed."} />
           ) : canvases.length === 0 && !canvasesQuery.isLoading ? (
             <EmptyState title="No canvases" body="Editing a canvas overwrites it in place — there is no version history to fall back on, so the first save is the only record." />
           ) : (
@@ -693,7 +673,7 @@ function CanvasesTab({
           )}
 
           {schedulesQuery.isError ? (
-            <ErrorPanel title="Schedules could not be loaded" body={schedulesQuery.error instanceof MspReportsApiError ? schedulesQuery.error.message : "The request failed."} wire="GET /api/msp/reports/schedules" />
+            <ErrorPanel title="Schedules could not be loaded" body={schedulesQuery.error instanceof MspReportsApiError ? schedulesQuery.error.message : "The request failed."} />
           ) : schedules.length === 0 && !schedulesQuery.isLoading ? (
             <span style={{ fontSize: 11.5, color: text.muted, textWrap: "pretty" }}>No schedules. Given nothing executes them, a test send is the only way a canvas reaches anyone today.</span>
           ) : (
@@ -727,7 +707,7 @@ function CanvasesTab({
 
 function WasteTab({ wasteQuery }: { wasteQuery: ReturnType<typeof useLicenseWaste> }) {
   if (wasteQuery.isError) {
-    return <ErrorPanel title="License waste could not be loaded" body={wasteQuery.error instanceof MspReportsApiError ? wasteQuery.error.message : "The request failed."} wire="GET /api/msp/reports/license-waste" />;
+    return <ErrorPanel title="License waste could not be loaded" body={wasteQuery.error instanceof MspReportsApiError ? wasteQuery.error.message : "The request failed."} />;
   }
   const data = wasteQuery.data;
   const loading = wasteQuery.isLoading || !data;

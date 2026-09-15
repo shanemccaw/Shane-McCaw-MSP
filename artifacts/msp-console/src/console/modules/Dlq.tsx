@@ -76,30 +76,7 @@ function Pill({ label, tone }: { label: string; tone: Tone }) {
   );
 }
 
-interface LastResult { code: string; text: string; tone: Tone }
-
-const NOTES: ReadonlyArray<{ dot: string; text: string }> = [
-  {
-    dot: signal.info.strong,
-    text: "Replay only works for items written by the workflow engine, because it recreates a workflow run from the workflowKey in the payload. Items from the job drainers carry no such key — the replayable flag on each row (computed server-side, Git #3446) tells you which is which before you click.",
-  },
-  {
-    dot: signal.warning.strong,
-    text: "Replaying creates a brand-new workflow run rather than retrying the failed one in place. The original run is not re-executed, and the attempt count on this row is never incremented by anything.",
-  },
-  {
-    dot: signal.warning.strong,
-    text: "Editing a payload replaces it whole, not merged, and there is no fix-and-replay in one step — the save and the replay are two separate calls with nothing holding the row still between them.",
-  },
-  {
-    dot: signal.ok.strong,
-    text: "Resolution is write-once and a person can only write discarded or handled-by-hand. Replayed is reserved for the replay route itself, so the record can't claim a re-run that never happened.",
-  },
-  {
-    dot: signal.neutral.strong,
-    text: "The list route takes no parameters — no filter, no page, no cap — and returns every row for this MSP in one response. The filters above are this screen narrowing what it already holds, not a fetch.",
-  },
-];
+interface LastResult { text: string; tone: Tone }
 
 export function Dlq() {
   const itemsQuery = useDlqItems();
@@ -137,7 +114,7 @@ export function Dlq() {
 
   const onError = (err: unknown) => {
     const apiErr = err instanceof DlqApiError ? err : null;
-    setLastResult({ code: apiErr ? String(apiErr.status) : "error", text: apiErr?.message ?? "Request failed", tone: signal.critical });
+    setLastResult({ text: apiErr?.message ?? "Request failed", tone: signal.critical });
     toast.error(apiErr?.message ?? "Request failed");
   };
 
@@ -151,7 +128,7 @@ export function Dlq() {
     if (!open) return;
     replayMutation.mutate(open.dlqId, {
       onSuccess: (data) => {
-        setLastResult({ code: "200", text: `${data.message} (new run ${data.newRunId})`, tone: signal.ok });
+        setLastResult({ text: `${data.message} (new run ${data.newRunId})`, tone: signal.ok });
         toast.success(data.message);
       },
       onError,
@@ -165,7 +142,6 @@ export function Dlq() {
       onSuccess: (data) => {
         const failed = data.results.filter((r) => !r.success).length;
         setLastResult({
-          code: "200",
           text: `Replayed ${data.replayedCount} of ${ids.length}${failed > 0 ? `, ${failed} failed` : ""}.`,
           tone: failed > 0 ? signal.warning : signal.ok,
         });
@@ -181,7 +157,6 @@ export function Dlq() {
     resolveMutation.mutate({ dlqId: open.dlqId, resolution }, {
       onSuccess: (data) => {
         setLastResult({
-          code: "200",
           text: resolution === "discarded"
             ? "Closed as discarded. The row stays in the table with its payload and error intact — this is bookkeeping, not a delete."
             : "Closed as handled by hand. The queue stops showing it as outstanding.",
@@ -206,13 +181,13 @@ export function Dlq() {
     try {
       parsed = JSON.parse(draftPayload);
     } catch {
-      setLastResult({ code: "400", text: "Invalid JSON — the route validates that the payload is an object, so malformed text is refused before anything is written.", tone: signal.warning });
+      setLastResult({ text: "Invalid JSON — the route validates that the payload is an object, so malformed text is refused before anything is written.", tone: signal.warning });
       return;
     }
     saveMutation.mutate({ dlqId: open.dlqId, payload: parsed }, {
       onSuccess: (data) => {
         setEditing(false);
-        setLastResult({ code: "200", text: `${data.message}. Replay re-reads whatever is stored at the moment it runs — save then replay is two calls with a gap in between.`, tone: signal.neutral });
+        setLastResult({ text: `${data.message}. Replay re-reads whatever is stored at the moment it runs — save then replay is two calls with a gap in between.`, tone: signal.neutral });
       },
       onError,
     });
@@ -237,7 +212,6 @@ export function Dlq() {
           {status === 403 ? "MSP context required" : "The dead letter queue could not be loaded"}
         </span>
         <span style={{ fontSize: 13, color: text.muted }}>{itemsQuery.error.message}</span>
-        <span style={{ fontFamily: "Menlo, monospace", fontSize: 10.5, color: text.faint }}>GET /api/msp/dlq · {status ?? "error"}</span>
       </div>
     );
   }
@@ -518,20 +492,9 @@ export function Dlq() {
 
           {lastResult && (
             <div style={{ border: `1px solid ${lastResult.tone.border}`, borderRadius: 12, background: lastResult.tone.tint, padding: 13, display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-              <span style={{ fontSize: 11.5, fontWeight: 700, fontFamily: "Menlo, monospace", color: lastResult.tone.text ?? lastResult.tone.strong }}>{lastResult.code}</span>
               <span style={{ fontSize: 12, color: text.secondary, textWrap: "pretty" }}>{lastResult.text}</span>
             </div>
           )}
-
-          <div style={{ border: `1px solid ${border.card}`, borderRadius: 14, background: surface.card, padding: 16, display: "flex", flexDirection: "column", gap: 11, minWidth: 0 }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: text.strong }}>What these four routes do and don't give this screen</span>
-            {NOTES.map((n) => (
-              <div key={n.text} style={{ display: "flex", gap: 9, alignItems: "flex-start", minWidth: 0 }}>
-                <span style={{ width: 6, height: 6, borderRadius: 999, background: n.dot, marginTop: 6, flex: "none" }} />
-                <span style={{ fontSize: 11.5, color: text.secondary, lineHeight: 1.55, textWrap: "pretty", minWidth: 0 }}>{n.text}</span>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
     </div>

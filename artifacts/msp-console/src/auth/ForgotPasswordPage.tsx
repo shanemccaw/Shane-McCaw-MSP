@@ -62,7 +62,7 @@ function ForgotPasswordForm() {
           {loading ? "Sending…" : sent ? "Link sent" : "Send reset link"}
         </PrimaryButton>
         {sent && (
-          <InlineMessage tone="ok" code="200 · { ok: true }" text="If an account exists for that address, a link is on its way. Check your inbox." />
+          <InlineMessage tone="ok" text="If an account exists for that address, a link is on its way. Check your inbox." />
         )}
       </form>
 
@@ -82,7 +82,7 @@ function ResetPasswordForm({ token }: { token: string }) {
   const [newPassword, setNewPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
-  const [error, setError] = useState<{ code: string; text: string } | null>(null);
+  const [error, setError] = useState<{ text: string } | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -93,9 +93,9 @@ function ResetPasswordForm({ token }: { token: string }) {
       setDone(true);
     } catch (err) {
       if (err instanceof AuthApiError) {
-        setError({ code: `${err.status} · ${err.status === 400 && err.message.startsWith("Password must") ? "too short" : "invalid link"}`, text: err.message });
+        setError({ text: err.message });
       } else {
-        setError({ code: "Network error", text: "Could not reach the server. Try again." });
+        setError({ text: "Could not reach the server. Try again." });
       }
     } finally {
       setLoading(false);
@@ -113,7 +113,7 @@ function ResetPasswordForm({ token }: { token: string }) {
 
       {done ? (
         <>
-          <InlineMessage tone="ok" code="200 · { ok: true }" text="Password updated. Sign in with your new password." />
+          <InlineMessage tone="ok" text="Password updated. Sign in with your new password." />
           <PrimaryButton onClick={() => setLocation("/login")}>Go to sign in</PrimaryButton>
         </>
       ) : (
@@ -129,7 +129,7 @@ function ResetPasswordForm({ token }: { token: string }) {
               autoComplete="new-password"
             />
           </label>
-          {error && <InlineMessage tone="critical" code={error.code} text={error.text} />}
+          {error && <InlineMessage tone="critical" text={error.text} />}
           <PrimaryButton type="submit" disabled={loading}>
             {loading ? "Setting…" : "Set password"}
           </PrimaryButton>

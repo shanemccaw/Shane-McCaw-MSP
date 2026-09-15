@@ -226,18 +226,6 @@ function WorksheetPanel({ worksheet }: { worksheet: { disclaimer: string; bundle
   );
 }
 
-const NOTES: string[] = [
-  "The resale half of this screen is not revenue and is drawn differently on purpose. MSPs invoice their own customers entirely outside this platform, so no figure here has ever been charged, collected or checked against an invoice — they are numbers somebody typed.",
-  "The two halves must never be totalled together. One is verified against the payment processor, the other is a planning model, and a single combined figure would be a claim the data cannot support.",
-  "A bundle with no assignments and a bundle whose every assignment was revoked are identical on the wire. Nothing distinguishes never-sold from no-longer-sold, so neither can be stated.",
-  "The monthly cost is absent rather than zero when the subscribed service carries no price.",
-  "The cost side of each bundle is computed by the platform from the packages inside it; only the resale price is the MSP's own number. The response itself does not mark that difference, so the labels here carry it.",
-  "Draft and archived bundles never appear, even to the MSP that owns them. There is no parameter to include them, so this surface cannot answer what an unfinished bundle would earn.",
-  "There is no history, no invoice list, no date range and no pagination — one current-state row and the full active-bundle set. Any trend or last-quarter question needs a different surface.",
-  "The tenant count is a stored snapshot taken at billing time, not a live count, so it can legitimately disagree with the number of tenants visible elsewhere in the console.",
-  "This route reads only, never writes, and cannot see another MSP's figures at all — not even for a platform administrator, who gets their own organisation's numbers like anyone else.",
-];
-
 export function PartnerRevenue({ embedded = true, forceEmpty = false }: { embedded?: boolean; forceEmpty?: boolean }) {
   const revenueQuery = usePartnerRevenue();
 
@@ -279,16 +267,6 @@ export function PartnerRevenue({ embedded = true, forceEmpty = false }: { embedd
 
       <SpendPanel spend={spend} />
       <WorksheetPanel worksheet={worksheet} />
-
-      <div style={{ border: `1px solid ${border.card}`, borderRadius: 14, background: surface.card, padding: 16, display: "flex", flexDirection: "column", gap: 11, minWidth: 0 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: text.title }}>What this one route does and doesn't give this screen</span>
-        {NOTES.map((n, i) => (
-          <div key={i} style={{ display: "flex", gap: 9, alignItems: "flex-start", minWidth: 0 }}>
-            <span style={{ width: 6, height: 6, borderRadius: 999, background: text.muted, marginTop: 6, flex: "none" }} />
-            <span style={{ fontSize: 11.5, color: text.secondary, lineHeight: 1.55, textWrap: "pretty" as const, minWidth: 0 }}>{n}</span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

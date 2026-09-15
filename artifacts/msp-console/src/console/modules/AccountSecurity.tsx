@@ -60,48 +60,6 @@ const ROLE_TONE: Record<AccountSecurityRole, Tone> = {
   RetainerConsented: signal.neutral,
 };
 
-/** Notes shown at the bottom of the page — real, current documentation of
- * what this surface can and cannot do, kept honest against the routes it
- * calls (see the file header for why note 2 differs from the design's copy). */
-const NOTES: ReadonlyArray<{ dot: string; text: string }> = [
-  {
-    dot: signal.critical.strong,
-    text: "The five credential routes and the session revoke are the entire surface — one file, six routes, shared verbatim with the MSP Staff roster feature. A fix to one changes both.",
-  },
-  {
-    dot: signal.ok.strong,
-    text: "A target-role ceiling is enforced server-side on every one of these six routes (Git #3032, #3896): a caller cannot act on a target at an equal or higher tier. The server returns a real 403 — nothing here is a UI-only guard.",
-  },
-  {
-    dot: signal.critical.strong,
-    text: "Nothing here is scoped by tenant. No route resolves a managed-tenant customer's account for any of these actions — only accounts carrying this MSP's own mspId are reachable.",
-  },
-  {
-    dot: signal.warning.strong,
-    text: "A row that also carries a real tenant id is a customer user caught by a legacy id from the pre-merge users table, not one of this MSP's own staff — check each row's scope before acting on it.",
-  },
-  {
-    dot: signal.warning.strong,
-    text: "The temporary password is handed to you, not the account, and nothing forces a change at next sign-in — the response's requireChange flag is advisory only. Prefer the emailed reset link, which never exposes a credential.",
-  },
-  {
-    dot: signal.warning.strong,
-    text: "MFA reset is a hard delete across four tables with no undo, and its notice email is inline HTML rather than the platform's templated mail.",
-  },
-  {
-    dot: signal.info.strong,
-    text: "Every action here writes a real audit row naming the actor, the target and what changed — including the enforcement toggle, which logs even when its update matched zero rows.",
-  },
-  {
-    dot: signal.neutral.strong,
-    text: "Suspension is a boolean. No reason, no expiry, no scheduled reactivation, and no separate suspended state to distinguish it from an account that was never activated.",
-  },
-  {
-    dot: signal.neutral.strong,
-    text: "Impersonation exists elsewhere and is deliberately out of scope here — it is a shared/bypass credential mechanism, a different trust model from performing one named, audited action.",
-  },
-];
-
 function formatWhen(iso: string | null): string {
   if (!iso) return "never";
   const d = new Date(iso);
@@ -109,7 +67,7 @@ function formatWhen(iso: string | null): string {
   return d.toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-function StatePanel({ icon, tone, title, body, wire }: { icon: IconName; tone: Tone; title: string; body: string; wire: string }) {
+function StatePanel({ icon, tone, title, body }: { icon: IconName; tone: Tone; title: string; body: string }) {
   return (
     <div style={{ border: `1px solid ${border.card}`, borderRadius: 12, background: surface.card, padding: 22, display: "flex", flexDirection: "column", gap: 12, alignItems: "flex-start" }}>
       <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 44, height: 44, borderRadius: 13, background: tone.tint, border: `1px solid ${tone.border}` }}>
@@ -117,7 +75,6 @@ function StatePanel({ icon, tone, title, body, wire }: { icon: IconName; tone: T
       </span>
       <span style={{ fontSize: 16, fontWeight: 700, color: text.title }}>{title}</span>
       <span style={{ fontSize: 13, color: text.muted, textWrap: "pretty", lineHeight: 1.5 }}>{body}</span>
-      <span style={{ fontFamily: "Menlo, monospace", fontSize: 10.5, color: text.faint, wordBreak: "break-all" }}>{wire}</span>
     </div>
   );
 }
@@ -134,7 +91,7 @@ function Pill({ label, tone }: { label: string; tone: Tone }) {
   );
 }
 
-interface LastResult { code: string; text: string; tone: Tone }
+interface LastResult { text: string; tone: Tone }
 
 export function AccountSecurity() {
   const rosterQuery = useAccountRoster();
@@ -163,7 +120,7 @@ export function AccountSecurity() {
   const onError = (err: unknown) => {
     const apiErr = err instanceof AccountSecurityApiError ? err : null;
     const tone = apiErr?.status === 403 ? signal.critical : signal.warning;
-    setLastResult({ code: apiErr ? String(apiErr.status) : "error", text: apiErr?.message ?? "Request failed", tone });
+    setLastResult({ text: apiErr?.message ?? "Request failed", tone });
     toast.error(apiErr?.message ?? "Request failed");
   };
 
@@ -171,7 +128,7 @@ export function AccountSecurity() {
     if (!selected) return;
     passwordResetMutation.mutate(selected.id, {
       onSuccess: (data) => {
-        setLastResult({ code: "200", text: data.message, tone: signal.ok });
+        setLastResult({ text: data.message, tone: signal.ok });
         toast.success(data.message);
       },
       onError,
@@ -193,7 +150,7 @@ export function AccountSecurity() {
     if (!selected) return;
     resetMfaMutation.mutate(selected.id, {
       onSuccess: (data) => {
-        setLastResult({ code: "200", text: data.message, tone: signal.warning });
+        setLastResult({ text: data.message, tone: signal.warning });
         toast.success(data.message);
       },
       onError,
@@ -206,7 +163,7 @@ export function AccountSecurity() {
       { userId: selected.id, enforced: !selected.mfaEnforced },
       {
         onSuccess: (data) => {
-          setLastResult({ code: "200", text: `mfa_enforced set to ${data.enforced}.`, tone: signal.info });
+          setLastResult({ text: `mfa_enforced set to ${data.enforced}.`, tone: signal.info });
           toast.success(data.enforced ? "MFA is now required on this account." : "MFA enforcement turned off for this account.");
         },
         onError,
@@ -220,7 +177,7 @@ export function AccountSecurity() {
       { userId: selected.id, isActive: !selected.isActive },
       {
         onSuccess: (data) => {
-          setLastResult({ code: "200", text: data.isActive ? "Reactivated." : "Suspended.", tone: signal.warning });
+          setLastResult({ text: data.isActive ? "Reactivated." : "Suspended.", tone: signal.warning });
           toast.success(data.isActive ? "Account reactivated." : "Account suspended.");
         },
         onError,
@@ -232,7 +189,7 @@ export function AccountSecurity() {
     if (!selected) return;
     revokeSessionsMutation.mutate(selected.id, {
       onSuccess: (data) => {
-        setLastResult({ code: "200", text: `revokedCount ${data.revokedCount}.`, tone: data.revokedCount > 0 ? signal.ok : signal.neutral });
+        setLastResult({ text: `revokedCount ${data.revokedCount}.`, tone: data.revokedCount > 0 ? signal.ok : signal.neutral });
         toast.success(`Revoked ${data.revokedCount} session${data.revokedCount === 1 ? "" : "s"}.`);
       },
       onError,
@@ -267,7 +224,6 @@ export function AccountSecurity() {
         tone={status === 403 ? signal.critical : signal.warning}
         title={status === 403 ? "MSPAdmin or above is required" : "The account roster could not be loaded"}
         body={rosterQuery.error.message}
-        wire={`GET /api/msp/settings/users · ${status ?? "error"}`}
       />
     );
   }
@@ -339,13 +295,13 @@ export function AccountSecurity() {
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
                   {[
-                    { name: "Send a password reset email", detail: "They set their own password from a one-hour link. The only action here that never puts a credential in your hands.", route: `POST /msp/settings/users/${selected.id}/reset-password`, btnLabel: "Send link", run: doResetPassword, pending: passwordResetMutation.isPending, danger: false },
-                    { name: "Set a temporary password", detail: "Generated, hashed and written directly to their account. Returned to you in plaintext, once.", route: `POST /msp/settings/users/${selected.id}/temp-password`, btnLabel: "Generate", run: doTempPassword, pending: tempPasswordMutation.isPending, danger: true },
-                    { name: "Clear their MFA", detail: "Deletes every enrollment, challenge and passkey credential so they can start again.", route: `POST /msp/settings/users/${selected.id}/reset-mfa`, btnLabel: "Clear MFA", run: doResetMfa, pending: resetMfaMutation.isPending, danger: true },
-                    { name: "Require MFA on this account", detail: selected.mfaEnforced ? "On. Sign-in is gated until a method is enrolled." : "Off. They can sign in with a password alone outside production.", route: `PATCH /msp/settings/users/${selected.id}/mfa-enforcement`, btnLabel: selected.mfaEnforced ? "Turn off" : "Turn on", run: doToggleEnforcement, pending: mfaEnforcementMutation.isPending, danger: false },
-                    { name: selected.isActive ? "Suspend the account" : "Reactivate the account", detail: selected.isActive ? "A boolean flag. No reason field, no expiry, no scheduled restore." : "Currently suspended. Reactivating restores access immediately.", route: `PATCH /msp/settings/users/${selected.id}/status`, btnLabel: selected.isActive ? "Suspend" : "Reactivate", run: doToggleStatus, pending: statusMutation.isPending, danger: selected.isActive },
+                    { key: "reset-password", name: "Send a password reset email", detail: "They set their own password from a one-hour link. The only action here that never puts a credential in your hands.", btnLabel: "Send link", run: doResetPassword, pending: passwordResetMutation.isPending, danger: false },
+                    { key: "temp-password", name: "Set a temporary password", detail: "Generated, hashed and written directly to their account. Returned to you in plaintext, once.", btnLabel: "Generate", run: doTempPassword, pending: tempPasswordMutation.isPending, danger: true },
+                    { key: "reset-mfa", name: "Clear their MFA", detail: "Deletes every enrollment, challenge and passkey credential so they can start again.", btnLabel: "Clear MFA", run: doResetMfa, pending: resetMfaMutation.isPending, danger: true },
+                    { key: "mfa-enforcement", name: "Require MFA on this account", detail: selected.mfaEnforced ? "On. Sign-in is gated until a method is enrolled." : "Off. They can sign in with a password alone outside production.", btnLabel: selected.mfaEnforced ? "Turn off" : "Turn on", run: doToggleEnforcement, pending: mfaEnforcementMutation.isPending, danger: false },
+                    { key: "status", name: selected.isActive ? "Suspend the account" : "Reactivate the account", detail: selected.isActive ? "A boolean flag. No reason field, no expiry, no scheduled restore." : "Currently suspended. Reactivating restores access immediately.", btnLabel: selected.isActive ? "Suspend" : "Reactivate", run: doToggleStatus, pending: statusMutation.isPending, danger: selected.isActive },
                   ].map((a) => (
-                    <div key={a.route} style={{ border: `1px solid ${a.danger ? signal.critical.border : border.soft}`, borderRadius: 10, background: "rgba(2,6,23,.4)", padding: 13, display: "flex", flexDirection: "column", gap: 9, minWidth: 0 }}>
+                    <div key={a.key} style={{ border: `1px solid ${a.danger ? signal.critical.border : border.soft}`, borderRadius: 10, background: "rgba(2,6,23,.4)", padding: 13, display: "flex", flexDirection: "column", gap: 9, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
                         <span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 170, flex: 1 }}>
                           <span style={{ fontSize: 12.5, fontWeight: 700, color: text.strong }}>{a.name}</span>
@@ -366,7 +322,6 @@ export function AccountSecurity() {
                           {a.pending ? "Working…" : a.btnLabel}
                         </button>
                       </div>
-                      <span style={{ fontSize: 10.5, fontFamily: "Menlo, monospace", color: text.faint, wordBreak: "break-all" }}>{a.route}</span>
                     </div>
                   ))}
                 </div>
@@ -383,7 +338,6 @@ export function AccountSecurity() {
 
                 {lastResult && (
                   <div style={{ border: `1px solid ${lastResult.tone.border}`, borderRadius: 10, background: lastResult.tone.tint, padding: 12, display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={{ fontSize: 11.5, fontWeight: 700, color: lastResult.tone.text ?? lastResult.tone.strong }}>{lastResult.code}</span>
                     <span style={{ fontSize: 12, color: text.secondary, textWrap: "pretty" }}>{lastResult.text}</span>
                   </div>
                 )}
@@ -460,17 +414,6 @@ export function AccountSecurity() {
                 No audit history yet for this account. Every action here writes a real row naming you, the target and what changed — including the enforcement toggle when it silently matched no rows.
               </span>
             )}
-          </div>
-
-          {/* Notes */}
-          <div style={{ border: `1px solid ${border.card}`, borderRadius: 14, background: surface.card, padding: 16, display: "flex", flexDirection: "column", gap: 11, minWidth: 0 }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: text.strong }}>What this surface can and cannot do</span>
-            {NOTES.map((n) => (
-              <div key={n.text} style={{ display: "flex", gap: 9, alignItems: "flex-start", minWidth: 0 }}>
-                <span style={{ width: 6, height: 6, borderRadius: 999, background: n.dot, marginTop: 6, flex: "none" }} />
-                <span style={{ fontSize: 11.5, color: text.secondary, lineHeight: 1.55, textWrap: "pretty", minWidth: 0 }}>{n.text}</span>
-              </div>
-            ))}
           </div>
         </div>
       </div>

@@ -47,7 +47,7 @@ const STATUS_TONE: Record<MspSubscriptionStatus, { bg: string; line: string; fg:
   unpaid: { bg: "rgba(248,113,113,.1)", line: "rgba(248,113,113,.22)", fg: "#f87171", label: "Unpaid" },
 };
 
-interface LogEntry { code: number | string; path: string; message: string }
+interface LogEntry { message: string }
 
 function money(cents: number | null): string {
   if (cents === null) return "—";
@@ -90,7 +90,6 @@ export function PlanSelfService() {
           icon="shield-alert" tone={signal.critical}
           title="Not available to this session"
           body="Every route behind this screen requires the ladder.msp-admin capability. Your session doesn't carry it, the same gate every MSPAdmin-only route in this console enforces."
-          wire="requireCapability(&quot;ladder.msp-admin&quot;) · 403"
         />
       );
     }
@@ -99,7 +98,6 @@ export function PlanSelfService() {
         icon="triangle-alert" tone={signal.warning}
         title="Could not load your plan"
         body="The request to load the current subscription failed. Try again shortly."
-        wire={`GET /api/msp/plan/current · ${status ?? "error"}`}
       />
     );
   }
@@ -131,12 +129,9 @@ export function PlanSelfService() {
       { targetServiceId: target.id, targetInterval },
       {
         onSuccess: (result) => pushLog({
-          code: 200, path: "POST /api/msp/plan/change",
           message: `Scheduled. ${result.pendingChange.serviceName}, ${result.pendingChange.billingInterval === "month" ? "monthly" : "annual"}, effective ${fmtDate(result.effectiveAt)}.`,
         }),
         onError: (err) => pushLog({
-          code: err instanceof MspPlanApiError ? err.status : "error",
-          path: "POST /api/msp/plan/change",
           message: err instanceof Error ? err.message : "Failed to schedule plan change",
         }),
       },
@@ -145,10 +140,8 @@ export function PlanSelfService() {
 
   const cancelPending = () => {
     cancelChange.mutate(undefined, {
-      onSuccess: () => pushLog({ code: 200, path: "POST /api/msp/plan/cancel-pending-change", message: "Pending columns cleared. Schedule release is best-effort — a release failure is logged, not surfaced." }),
+      onSuccess: () => pushLog({ message: "Pending columns cleared. Schedule release is best-effort — a release failure is logged, not surfaced." }),
       onError: (err) => pushLog({
-        code: err instanceof MspPlanApiError ? err.status : "error",
-        path: "POST /api/msp/plan/cancel-pending-change",
         message: err instanceof Error ? err.message : "Failed to cancel the pending change",
       }),
     });
@@ -325,27 +318,11 @@ export function PlanSelfService() {
           <div style={{ display: "flex", flexDirection: "column", gap: 7, borderTop: `1px solid ${border.faint}`, paddingTop: 12 }}>
             {log.map((l, i) => (
               <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 9, flexWrap: "wrap", minWidth: 0 }}>
-                <span style={{ fontFamily: "Menlo, monospace", fontSize: 11, fontWeight: 700, color: l.code === 200 ? signal.ok.strong : signal.critical.strong, whiteSpace: "nowrap" }}>{l.code}</span>
-                <span style={{ fontFamily: "Menlo, monospace", fontSize: 11, color: text.label, whiteSpace: "nowrap" }}>{l.path}</span>
                 <span style={{ fontSize: 11.5, color: text.muted, flex: 1, minWidth: 160, textWrap: "pretty" }}>{l.message}</span>
               </div>
             ))}
           </div>
         )}
-      </div>
-
-      <div style={{ border: "1px solid rgba(251,191,36,.2)", borderRadius: 12, background: "rgba(251,191,36,.05)", padding: 15, display: "flex", flexDirection: "column", gap: 9, minWidth: 0 }}>
-        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".12em", color: "#fbbf24" }}>STATE OF THE BACKEND</span>
-        {[
-          "Annual billing 400s for all three real tiers: annual_price_cents is unset on Free, Growth and Pro. That's an admin data-entry step in Plan Management, not a code fix — the Annual toggle above stays live so that 400 is honest rather than hidden.",
-          "Nothing on this surface writes the live tier. It only ever writes stripe_schedule_id plus the pending_* columns; the billing webhook flips the live columns once Stripe enters the target phase.",
-          "Canceling a pending change clears local state even if the Stripe release call fails — deliberate best-effort on the server, with an orphaned-schedule edge case still open.",
-        ].map((n, i) => (
-          <span key={i} style={{ display: "flex", alignItems: "flex-start", gap: 9, minWidth: 0 }}>
-            <span style={{ width: 5, height: 5, borderRadius: 999, background: "#fbbf24", marginTop: 6, flex: "0 0 5px" }} />
-            <span style={{ fontSize: 12, color: text.secondary, flex: 1, textWrap: "pretty" }}>{n}</span>
-          </span>
-        ))}
       </div>
     </div>
   );
@@ -409,10 +386,10 @@ function Fact({ label, value, note, color }: { label: string; value: string; not
 }
 
 function StatePanel({
-  icon, tone, title, body, wire,
+  icon, tone, title, body,
 }: {
   icon: string; tone: { strong: string; text: string; tint: string; border: string };
-  title: string; body: string; wire: string;
+  title: string; body: string;
 }) {
   return (
     <div style={{ border: `1px solid ${border.card}`, borderRadius: 12, background: surface.card, padding: 22, display: "flex", flexDirection: "column", gap: 12, alignItems: "flex-start" }}>
@@ -421,7 +398,6 @@ function StatePanel({
       </span>
       <span style={{ fontSize: 16, fontWeight: 700, color: text.title }}>{title}</span>
       <span style={{ fontSize: 13, color: text.muted, textWrap: "pretty", lineHeight: 1.5 }}>{body}</span>
-      <span style={{ fontFamily: "Menlo, monospace", fontSize: 10.5, color: text.faint, wordBreak: "break-all" }}>{wire}</span>
     </div>
   );
 }

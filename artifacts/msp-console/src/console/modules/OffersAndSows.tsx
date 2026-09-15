@@ -99,11 +99,10 @@ function secondaryBtn(): React.CSSProperties {
 type ResultTone = "green" | "amber" | "red" | "blue" | "slate";
 const RESULT_TONE: Record<ResultTone, Tone> = { green: GREEN, amber: AMBER, red: RED, blue: BLUE, slate: SLATE };
 
-function ResultCard({ code, tone, text: body }: { code: string; tone: ResultTone; text: string }) {
+function ResultCard({ tone, text: body }: { tone: ResultTone; text: string }) {
   const t = RESULT_TONE[tone];
   return (
     <div style={{ border: `1px solid ${t.border}`, borderRadius: 12, background: t.tint, padding: 13, display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-      <span style={{ fontSize: 11.5, fontWeight: 700, fontFamily: "Menlo, monospace", color: t.strong }}>{code}</span>
       <span style={{ fontSize: 12, color: text.secondary, lineHeight: 1.55 }}>{body}</span>
     </div>
   );
@@ -207,7 +206,7 @@ function SowsTab({ mspId, customerId }: { mspId: number | null; customerId: numb
   const [openId, setOpenId] = useState<string | null>(null);
   const [signer, setSigner] = useState("");
   const [signature, setSignature] = useState<string | null>(null);
-  const [result, setResult] = useState<{ code: string; tone: ResultTone; text: string } | null>(null);
+  const [result, setResult] = useState<{ tone: ResultTone; text: string } | null>(null);
 
   const listQuery = useSowsForCustomer(mspId, customerId, filter);
   const rows = useMemo(() => listQuery.data?.items ?? [], [listQuery.data]);
@@ -240,18 +239,18 @@ function SowsTab({ mspId, customerId }: { mspId: number | null; customerId: numb
   function sign() {
     if (!sow) return;
     if (!signer.trim()) {
-      setResult({ code: "400 · signerName is required", tone: "amber", text: "Name between one and two hundred characters." });
+      setResult({ tone: "amber", text: "Name between one and two hundred characters." });
       return;
     }
     if (!signature) {
-      setResult({ code: "400 · signature required", tone: "amber", text: "Draw a signature in the pad above before signing — the route requires real signature data, at least ten characters long." });
+      setResult({ tone: "amber", text: "Draw a signature in the pad above before signing — the route requires real signature data, at least ten characters long." });
       return;
     }
     signMutation.mutate(
       { sowId: sow.sowId, signerName: signer.trim(), signatureData: signature },
       {
-        onSuccess: (r) => setResult({ code: `200 · status: "${r.status}"`, tone: "green", text: r.message }),
-        onError: (err) => setResult({ code: (err as Error & { status?: number }).status ? `${(err as Error & { status?: number }).status} · sign failed` : "sign failed", tone: "red", text: err instanceof Error ? err.message : "The request failed." }),
+        onSuccess: (r) => setResult({ tone: "green", text: r.message }),
+        onError: (err) => setResult({ tone: "red", text: err instanceof Error ? err.message : "The request failed." }),
       },
     );
   }
@@ -259,24 +258,24 @@ function SowsTab({ mspId, customerId }: { mspId: number | null; customerId: numb
     if (!sow) return;
     chargeMutation.mutate(sow.sowId, {
       onSuccess: (r) => {
-        if (r.status === "paid") setResult({ code: `200 · { success: true, status: "paid"${r.stripePaymentIntentId ? ", stripePaymentIntentId" : ""} }`, tone: "green", text: "Charged and recorded in the charges ledger; fulfilment unlocked best-effort." });
-        else if (r.status === "pending_action") setResult({ code: `200 · { success: false, status: "pending_action" }`, tone: "amber", text: "The payment intent was created unconfirmed — there is no saved card on file, so nothing here will confirm it. The workflow still treats this as a non-error." });
-        else setResult({ code: `200 · { success: false, status: "failed" }`, tone: "red", text: r.error ?? "The charge failed." });
+        if (r.status === "paid") setResult({ tone: "green", text: "Charged and recorded in the charges ledger; fulfilment unlocked best-effort." });
+        else if (r.status === "pending_action") setResult({ tone: "amber", text: "The payment intent was created unconfirmed — there is no saved card on file, so nothing here will confirm it. The workflow still treats this as a non-error." });
+        else setResult({ tone: "red", text: r.error ?? "The charge failed." });
       },
-      onError: (err) => setResult({ code: "charge failed", tone: "red", text: err instanceof Error ? err.message : "The request failed." }),
+      onError: (err) => setResult({ tone: "red", text: err instanceof Error ? err.message : "The request failed." }),
     });
   }
   function expire() {
     if (!sow || sow.status === "paid") return;
     expireMutation.mutate(sow.sowId, {
-      onSuccess: () => setResult({ code: "200 · expired · { manual: true }", tone: "slate", text: "The field that distinguishes an operator's expiry from the scheduled sweep." }),
-      onError: (err) => setResult({ code: "expire failed", tone: "red", text: err instanceof Error ? err.message : "The request failed." }),
+      onSuccess: () => setResult({ tone: "slate", text: "The field that distinguishes an operator's expiry from the scheduled sweep." }),
+      onError: (err) => setResult({ tone: "red", text: err instanceof Error ? err.message : "The request failed." }),
     });
   }
   function openDoc() {
     if (!sow) return;
     openDocMutation.mutate(sow.sowId, {
-      onError: (err) => setResult({ code: "document failed", tone: "red", text: err instanceof Error ? err.message : "The request failed." }),
+      onError: (err) => setResult({ tone: "red", text: err instanceof Error ? err.message : "The request failed." }),
     });
   }
 
@@ -446,7 +445,7 @@ function OffersTab({ mspId, customerId }: { mspId: number | null; customerId: nu
   const offersQuery = useCustomerOffers(mspId, customerId);
   const offers = useMemo(() => offersQuery.data?.offers ?? [], [offersQuery.data]);
   const [openId, setOpenId] = useState<number | null>(null);
-  const [result, setResult] = useState<{ code: string; tone: ResultTone; text: string } | null>(null);
+  const [result, setResult] = useState<{ tone: ResultTone; text: string } | null>(null);
   const accept = useAcceptOfferForCustomer(mspId, customerId);
 
   const selected = offers.find((o) => o.id === openId) ?? null;
@@ -468,15 +467,12 @@ function OffersTab({ mspId, customerId }: { mspId: number | null; customerId: nu
     if (!selected || !acceptable) return;
     accept.mutate(selected.id, {
       onSuccess: (r: AcceptOfferResult) => {
-        if (r.outcome === "sow_created") setResult({ code: `201 · { outcome: "sow_created", sowId: "${r.sowId}" }`, tone: "green", text: r.message });
-        else if (r.outcome === "free_activated") setResult({ code: "200 · { outcome: \"free_activated\" }", tone: "green", text: r.message });
-        else if (r.outcome === "checkout_required") setResult({ code: `200 · { outcome: "checkout_required" }`, tone: "blue", text: r.checkoutUrl ? `Checkout session created: ${r.checkoutUrl}` : "Checkout session created — no URL was returned." });
-        else setResult({ code: `200 · { outcome: "payment_processed" }`, tone: "green", text: r.message });
+        if (r.outcome === "sow_created") setResult({ tone: "green", text: r.message });
+        else if (r.outcome === "free_activated") setResult({ tone: "green", text: r.message });
+        else if (r.outcome === "checkout_required") setResult({ tone: "blue", text: r.checkoutUrl ? `Checkout session created: ${r.checkoutUrl}` : "Checkout session created — no URL was returned." });
+        else setResult({ tone: "green", text: r.message });
       },
-      onError: (err) => {
-        const status = (err as Error & { status?: number }).status;
-        setResult({ code: status ? `${status} · accept failed` : "accept failed", tone: "red", text: err instanceof Error ? err.message : "The request failed." });
-      },
+      onError: (err) => setResult({ tone: "red", text: err instanceof Error ? err.message : "The request failed." }),
     });
   }
 
@@ -563,7 +559,7 @@ function OffersTab({ mspId, customerId }: { mspId: number | null; customerId: nu
 function ClickwrapTab({ customerId, customerName }: { customerId: number; customerName: string }) {
   const cwQuery = useClickwrapStatus(customerId);
   const record = useRecordClickwrap(customerId);
-  const [result, setResult] = useState<{ code: string; tone: ResultTone; text: string } | null>(null);
+  const [result, setResult] = useState<{ tone: ResultTone; text: string } | null>(null);
 
   if (cwQuery.isLoading) {
     return <span style={{ fontSize: 11.5, color: text.muted }}>Loading the agreement status for {customerName}…</span>;
@@ -576,8 +572,8 @@ function ClickwrapTab({ customerId, customerName }: { customerId: number; custom
 
   function doRecord() {
     record.mutate(undefined, {
-      onSuccess: (r) => setResult({ code: "201 · clickwrap row written", tone: "amber", text: `${r.message} Attributed to your own login for ${customerName}, with an agreement-text snapshot, your IP address and user agent.` }),
-      onError: (err) => setResult({ code: "record failed", tone: "red", text: err instanceof Error ? err.message : "The request failed." }),
+      onSuccess: (r) => setResult({ tone: "amber", text: `${r.message} Attributed to your own login for ${customerName}, with an agreement-text snapshot, your IP address and user agent.` }),
+      onError: (err) => setResult({ tone: "red", text: err instanceof Error ? err.message : "The request failed." }),
     });
   }
 
