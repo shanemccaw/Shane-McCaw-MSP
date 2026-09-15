@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:svc="clr-namespace:BuildConsole.Services"
              mc:Ignorable="d" 
              d:DesignHeight="800" d:DesignWidth="1200"
              Background="{StaticResource BaseBrush}">
@@ -44,7 +45,7 @@
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
                 <!-- Left Panel: Epic Tree -->
-                <ColumnDefinition Width="280" MinWidth="180" x:Name="ColEpicTree"/>
+                <ColumnDefinition Width="280" MinWidth="200" x:Name="ColEpicTree"/>
                 <!-- Splitter 1 -->
                 <ColumnDefinition Width="4"/>
                 <!-- Middle Panel: Issue Grid -->
@@ -55,37 +56,74 @@
                 <ColumnDefinition Width="360" MinWidth="200" x:Name="ColIssueDetails"/>
             </Grid.ColumnDefinitions>
 
-            <!-- ── Left Panel (Epic Tree Placeholder) ── -->
+            <!-- ── Left Panel (Epic Tree) ── -->
             <Border Grid.Column="0"
                     Background="{StaticResource CrustBrush}"
                     BorderBrush="{StaticResource Surface0Brush}"
                     BorderThickness="0,0,1,0">
-                <Grid Margin="12">
+                <Grid Margin="8,10">
                     <Grid.RowDefinitions>
+                        <!-- Header -->
                         <RowDefinition Height="Auto"/>
+                        <!-- Tree View -->
                         <RowDefinition Height="*"/>
+                        <!-- Footer Status -->
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <DockPanel Grid.Row="0" Margin="0,0,0,12">
-                        <TextBlock Text="Epic Tree Placeholder"
-                                   FontWeight="SemiBold"
-                                   FontSize="13"
-                                   Foreground="{StaticResource Subtext1Brush}"/>
+                    <!-- Left Panel Header Bar -->
+                    <DockPanel Grid.Row="0" Margin="4,0,4,10" LastChildFill="False">
+                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                            <TextBlock Text="EPIC TREE"
+                                       FontWeight="Bold"
+                                       FontSize="12"
+                                       Foreground="{StaticResource TextBrush}"
+                                       VerticalAlignment="Center"/>
+                            <Border x:Name="TreeCountBadge"
+                                    Background="{StaticResource Surface0Brush}"
+                                    CornerRadius="4"
+                                    Padding="5,1"
+                                    Margin="8,0,0,0"
+                                    VerticalAlignment="Center">
+                                <TextBlock x:Name="TxtTreeCount"
+                                           Text="Loading..."
+                                           FontSize="11"
+                                           Foreground="{StaticResource Subtext0Brush}"/>
+                            </Border>
+                        </StackPanel>
+
+                        <Button x:Name="BtnRefreshTree"
+                                DockPanel.Dock="Right"
+                                Style="{StaticResource IconButton}"
+                                Width="26" Height="26"
+                                ToolTip="Refresh from Postgres"
+                                Click="BtnRefreshTree_Click">
+                            <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{StaticResource Subtext0Brush}"/>
+                        </Button>
                     </DockPanel>
 
-                    <Border Grid.Row="1"
-                            BorderBrush="{StaticResource Surface0Brush}"
-                            BorderThickness="1"
-                            CornerRadius="6"
-                            Background="{StaticResource Surface0Brush}"
-                            Opacity="0.4"
-                            Padding="16">
-                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <TextBlock Text="&#xE71C;" FontFamily="Segoe MDL2 Assets" FontSize="32" Foreground="{StaticResource MauveBrush}" HorizontalAlignment="Center" Margin="0,0,0,10"/>
-                            <TextBlock Text="Epic Tree Placeholder" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
-                            <TextBlock Text="Left Panel Container" FontSize="11" Foreground="{StaticResource Subtext0Brush}" HorizontalAlignment="Center" Margin="0,4,0,0"/>
-                        </StackPanel>
-                    </Border>
+                    <!-- TreeView -->
+                    <TreeView x:Name="EpicTree"
+                              Grid.Row="1"
+                              Background="Transparent"
+                              BorderThickness="0"
+                              SelectedItemChanged="EpicTree_SelectedItemChanged">
+                        <TreeView.Resources>
+                            <!-- Custom Item Style -->
+                            <Style TargetType="{x:Type TreeViewItem}" BasedOn="{StaticResource {x:Type TreeViewItem}}">
+                                <Setter Property="IsExpanded" Value="True"/>
+                                <Setter Property="Padding" Value="2,3"/>
+                            </Style>
+                        </TreeView.Resources>
+                    </TreeView>
+
+                    <!-- Tree Loading / Footer Status -->
+                    <TextBlock x:Name="TxtTreeStatus"
+                               Grid.Row="2"
+                               Text="Postgres data source"
+                               FontSize="11"
+                               Foreground="{StaticResource Overlay0Brush}"
+                               Margin="4,6,4,2"/>
                 </Grid>
             </Border>
 
@@ -122,7 +160,7 @@
                         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                             <TextBlock Text="&#xE8A5;" FontFamily="Segoe MDL2 Assets" FontSize="36" Foreground="{StaticResource BlueBrush}" HorizontalAlignment="Center" Margin="0,0,0,10"/>
                             <TextBlock Text="Issue Grid Placeholder" FontWeight="SemiBold" FontSize="14" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
-                            <TextBlock Text="Middle Panel Container" FontSize="11" Foreground="{StaticResource Subtext0Brush}" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                            <TextBlock x:Name="TxtMiddleFilterState" Text="Middle Panel Container (Filter Active)" FontSize="11" Foreground="{StaticResource Subtext0Brush}" HorizontalAlignment="Center" Margin="0,4,0,0"/>
                         </StackPanel>
                     </Border>
                 </Grid>
