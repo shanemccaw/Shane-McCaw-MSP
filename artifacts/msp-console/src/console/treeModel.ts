@@ -421,6 +421,16 @@ export function pageMeta(sel: Selection, customers: DirectoryCustomer[]): PageMe
         note: "Password reset, temporary password, MFA and session actions against a real account — every one audited, and every one held to a real server-side role ceiling.",
       };
     }
+    // #2606 — Settings' eyebrow/title/note. No Claude Design export exists
+    // for this screen (see the module's own header) — this copy is agent-
+    // authored, not carried over from a `.dc.html` logic class.
+    if (sel.page === "settings") {
+      return {
+        eyebrow: "MSP SETTINGS",
+        title: "Settings",
+        note: "Organization profile, connector + Exchange Online, outbound mailbox, service accounts, billing, email templates, the customer agreement template, and your own notification preferences.",
+      };
+    }
     if (sel.page === "config") {
       return {
         eyebrow: "CONFIGURATION STATE",

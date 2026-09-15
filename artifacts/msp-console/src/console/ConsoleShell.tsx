@@ -27,6 +27,7 @@ import { PolicyEngine } from "./modules/PolicyEngine";
 import { ConsentOnboarding } from "./modules/ConsentOnboarding";
 import { AccountSecurity } from "./modules/AccountSecurity";
 import { StaffRoster } from "./modules/StaffRoster";
+import { Settings } from "./modules/Settings";
 import { Dlq } from "./modules/Dlq";
 import { PlanSelfService } from "./modules/PlanSelfService";
 import { Reports } from "./modules/Reports";
@@ -462,6 +463,14 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
   }
   if (sel.kind === "msp" && sel.page === "acctsec") {
     return <AccountSecurity />;
+  }
+  if (sel.kind === "msp" && sel.page === "settings") {
+    // Settings (#2606, Feature #1690) — organization profile, connector +
+    // Exchange Online, outbound mailbox, service accounts, billing, email
+    // templates, agreement template and this staff member's own notification
+    // preferences. Groups E/F/G/K of the same backend are Staff Roster/
+    // Account Security's, not duplicated here.
+    return <Settings />;
   }
   if (sel.kind === "msp" && sel.page === "staff") {
     return <StaffRoster profile={profile} />;
