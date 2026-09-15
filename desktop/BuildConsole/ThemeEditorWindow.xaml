@@ -241,17 +241,17 @@
                                                 <!-- Diagnostic Flags & Usage -->
                                                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                                                     <!-- Warning Chips -->
-                                                    <Border Style="{StaticResource WarningChip}" Background="#4A3B18"
+                                                    <Border Style="{StaticResource WarningChip}" Background="{StaticResource YellowWashMediumBrush}"
                                                             Visibility="{Binding IsTooBright, Converter={StaticResource BoolToVis}}"
                                                             ToolTip="Brightness warning: color is unusually bright or high-glare for dark theme">
                                                         <TextBlock Text="⚠ Bright" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource YellowBrush}" FontWeight="Bold"/>
                                                     </Border>
-                                                    <Border Style="{StaticResource WarningChip}" Background="#4A2020"
+                                                    <Border Style="{StaticResource WarningChip}" Background="{StaticResource RedWashMediumBrush}"
                                                             Visibility="{Binding IsLowContrast, Converter={StaticResource BoolToVis}}"
                                                             ToolTip="Low contrast: does not meet recommended WCAG contrast against #0D1117">
                                                         <TextBlock Text="⚠ Low CR" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource RedBrush}" FontWeight="Bold"/>
                                                     </Border>
-                                                    <Border Style="{StaticResource WarningChip}" Background="#3A1E4A"
+                                                    <Border Style="{StaticResource WarningChip}" Background="{StaticResource MauveWashMediumBrush}"
                                                             Visibility="{Binding IsOutlier, Converter={StaticResource BoolToVis}}"
                                                             ToolTip="Outlier: high saturation or harsh magenta/neon outside muted palette">
                                                         <TextBlock Text="⚠ Outlier" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource MauveBrush}" FontWeight="Bold"/>
@@ -530,7 +530,7 @@
                                                     <TextBlock Text="Contrast against #0D1117:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}"/>
                                                     <TextBlock x:Name="TxtEditorContrastPreview" Text="6.8:1 (WCAG AAA Pass)" FontWeight="Bold" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource StatusSuccessBrush}"/>
                                                 </StackPanel>
-                                                <Border x:Name="BadgeWcag" Grid.Column="1" Background="#234A2E" CornerRadius="3" Padding="6,2" VerticalAlignment="Center">
+                                                <Border x:Name="BadgeWcag" Grid.Column="1" Background="{StaticResource StatusSuccessWashMediumBrush}" CornerRadius="3" Padding="6,2" VerticalAlignment="Center">
                                                     <TextBlock Text="PASS AAA" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                                                 </Border>
                                             </Grid>
@@ -851,7 +851,7 @@
                                     Padding="10" Margin="0,0,6,0">
                                 <StackPanel>
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                        <Border Background="#2B2745" CornerRadius="3" Padding="5,1" Margin="0,0,6,0">
+                                        <Border Background="{StaticResource MauveWashMediumBrush}" CornerRadius="3" Padding="5,1" Margin="0,0,6,0">
                                             <TextBlock Text="EPIC #803" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource MauveBrush}"/>
                                         </Border>
                                         <TextBlock Text="EpicCard: Automated Test Architecture" FontWeight="Bold" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource TextPrimaryBrush}"/>

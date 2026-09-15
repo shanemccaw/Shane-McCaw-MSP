@@ -73,6 +73,21 @@
     <SolidColorBrush x:Key="RosewaterBrush" Color="#F5E0DC"/>
     <SolidColorBrush x:Key="MaroonBrush"    Color="#EBA0AC"/>
 
+    <!-- Low-opacity washes for the Yellow/Red/Mauve chip/badge backgrounds
+         (Git #4206) — same 20% "Medium" wash tier already established by
+         Colors.xaml's AccentWashMediumBrush/StatusSuccessWashMediumBrush/etc,
+         just applied to these three decorative Catppuccin colors instead.
+         Declared here (not Colors.xaml, which is merged before this
+         dictionary and can't resolve YellowBrush/RedBrush/MauveBrush) for
+         ThemeEditorWindow's diagnostic chips ("⚠ Bright"/"⚠ Low CR"/
+         "⚠ Outlier") and mockup badges ("EPIC #803"), each of which pairs a
+         wash background with the matching brush as its foreground — the
+         same tint+solid-foreground pattern AccentWashMediumBrush+BlueBrush
+         already uses for the "ISSUE #2126" badge two rows down. -->
+    <SolidColorBrush x:Key="YellowWashMediumBrush" Color="#33F9E2AF"/> <!-- same Color as YellowBrush -->
+    <SolidColorBrush x:Key="RedWashMediumBrush"    Color="#33F38BA8"/> <!-- same Color as RedBrush -->
+    <SolidColorBrush x:Key="MauveWashMediumBrush"  Color="#33CBA6F7"/> <!-- same Color as MauveBrush -->
+
     <!-- ══════════════════════════════════════════════════════════════════
          PRIMARY-ACTION TINT FILLS (Git #3812) — the tint+border pattern
          GitDoctorView.xaml.cs's "Ask Claude" button already proved
