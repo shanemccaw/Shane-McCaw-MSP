@@ -551,10 +551,18 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   }
 
   // ── Cross-MSP tenant boundary guard ──
-  // Runs for every consent whose owning MSP is known up front:
+  // Runs for every consent that does not name a customer up front:
   //   - a checkout session always belongs to the isDirectBusiness MSP
   //     (checkout_sessions has no mspId column);
-  //   - an MSP-issued onboarding invite (#4010) names its MSP on the token.
+  //   - an MSP-issued onboarding invite (#4010) names its MSP on the token;
+  //   - an invite token naming neither a customer nor an MSP (POST
+  //     /consent/invite-link without a customerId) takes the create path
+  //     below, which attaches to the isDirectBusiness MSP — so that is the
+  //     MSP it is checked against (#4043). Without this, resolveOrCreateDirectTenant
+  //     handed back another MSP's existing customer as-is and the grant, plus
+  //     a brand-new Customer account for invited_email, landed on it.
+  // A token that DOES name a customer is bound by resolveCallbackTenant below
+  // (the customer is authoritative, the GUID must match it), not by this guard.
   // If the Microsoft tenant that just consented is ALREADY
   // registered as a customer under a DIFFERENT MSP, letting this purchase proceed
   // would silently cross-link the buyer to that other MSP's customer record —
@@ -565,16 +573,37 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   // ensureClientMspUser (lib/direct-tenant-provisioning.ts) is a post-payment backstop for this same case.
   // One guard for both: a second copy for the onboarding path is exactly how
   // this class of leak comes back.
+  // The refusal every cross-MSP check below ends with. The only popup ending
+  // that deliberately does NOT close itself: this is a terminal refusal the
+  // buyer has to actually read, and the flow behind it will never advance (the
+  // session was not marked consented). Closing the window silently would
+  // strand them on "waiting for approval" with no explanation of why it never
+  // comes. An invite token is portal-origin, so it gets the redirect.
+  const endTenantConflict = () =>
+    endConsentCallback(
+      res,
+      uiOrigin,
+      {
+        title: "Organisation already connected",
+        heading: "This Microsoft organisation is already connected",
+        detail:
+          "Your tenant is already registered with another provider on this platform, so this order cannot continue. Please contact support — you can close this window.",
+        tone: "warn",
+        autoClose: false,
+      },
+      () => `${hostBase}/portal/consent/tenant-conflict?tenant=${encodeURIComponent(tenant)}`,
+    );
+
   let expectedMspId: number | null = null;
-  if (isCheckoutSession && state) {
+  if (inviteRecord?.mspId != null) {
+    expectedMspId = inviteRecord.mspId;
+  } else if ((isCheckoutSession && state) || (inviteRecord && inviteRecord.customerId == null)) {
     const [directMsp] = await db
       .select({ id: mspsTable.id })
       .from(mspsTable)
       .where(eq(mspsTable.isDirectBusiness, true))
       .limit(1);
     expectedMspId = directMsp?.id ?? null;
-  } else if (inviteRecord?.mspId != null) {
-    expectedMspId = inviteRecord.mspId;
   }
 
   if (expectedMspId != null) {
@@ -599,24 +628,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
         },
         "Consent callback: REJECTED cross-MSP tenant conflict — this Microsoft tenant is already connected to a customer under a different MSP; not marking the checkout session / invite consented",
       );
-      // The only popup ending that deliberately does NOT close itself: this is
-      // a terminal refusal the buyer has to actually read, and the flow behind
-      // it will never advance (the session was not marked consented). Closing
-      // the window silently would strand them on "waiting for approval" with no
-      // explanation of why it never comes.
-      endConsentCallback(
-        res,
-        uiOrigin,
-        {
-          title: "Organisation already connected",
-          heading: "This Microsoft organisation is already connected",
-          detail:
-            "Your tenant is already registered with another provider on this platform, so this order cannot continue. Please contact support — you can close this window.",
-          tone: "warn",
-          autoClose: false,
-        },
-        () => `${hostBase}/portal/consent/tenant-conflict?tenant=${encodeURIComponent(tenant)}`,
-      );
+      endTenantConflict();
       return;
     }
   }
@@ -738,16 +750,31 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
         { tenant, expectedMspId: inviteMspId, existingMspId: resolved.mspId, customerId: resolved.id },
         "Consent callback: REFUSED — MSP invite's tenant resolved to a customer under a different MSP after the guard; no grant recorded",
       );
-      res.redirect(`${hostBase}/portal/consent/tenant-conflict?tenant=${encodeURIComponent(tenant)}`);
+      endTenantConflict();
       return;
     }
     consentTenant = resolved ? { id: resolved.id } : null;
   } else {
-    consentTenant = await resolveOrCreateDirectTenant(
+    const resolved = await resolveOrCreateDirectTenant(
       tenant,
       updatedSession?.company?.trim() || updatedSession?.fullName?.trim() || inviteRecord?.invitedName?.trim() || "Direct Customer",
       updatedSession?.industry,
     );
+    // resolveOrCreateDirectTenant returns an existing row as-is, whatever MSP
+    // owns it. The guard above already refused another MSP's tenant; this
+    // re-checks the row actually returned, so a tenant raced in under a
+    // different MSP after the guard — or an expectedMspId the guard never had
+    // (no isDirectBusiness MSP) — still fails closed instead of granting onto
+    // someone else's customer (#4043).
+    if (resolved && resolved.mspId !== expectedMspId) {
+      log.warn(
+        { tenant, expectedMspId, existingMspId: resolved.mspId, customerId: resolved.id, isCheckoutSession },
+        "Consent callback: REFUSED — tenant resolved to a customer under a different MSP than the direct-business create path; no grant recorded",
+      );
+      endTenantConflict();
+      return;
+    }
+    consentTenant = resolved ? { id: resolved.id } : null;
   }
 
   if (!consentTenant) {

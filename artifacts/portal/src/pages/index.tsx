@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
-import { Loader2, AlertCircle } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Loader2, AlertCircle, Download, FileText as PptIcon, Share2, Check, Copy } from "lucide-react";
+import { toast } from "sonner";
 import { comingSoonHref } from "@/components/shell/moduleNav";
 import { useOverviewDashboard } from "@/components/overview/useOverviewDashboard";
 import { useOverviewTimeline } from "@/components/overview/useOverviewTimeline";
@@ -18,6 +19,10 @@ import {
   formatReportPeriod,
   formatCents,
 } from "@/components/overview/overviewDisplay";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useDownloadDashboardPdf, useDownloadDashboardPpt, useDashboardShareStatus, useCreateDashboardShare } from "@/lib/dashboard-export-api";
 
 const HAIRLINE = "rgba(255,255,255,.09)";
 const CARD_BG = "rgba(255,255,255,.02)";
@@ -71,6 +76,10 @@ export default function OverviewPage() {
   const dashboard = useOverviewDashboard();
   const timeline = useOverviewTimeline();
   const openOffers = useOpenOffers();
+  const [sharing, setSharing] = useState(false);
+
+  const downloadPdf = useDownloadDashboardPdf();
+  const downloadPpt = useDownloadDashboardPpt();
 
   const d = dashboard.data;
   const showError = dashboard.error && !d && dashboard.loaded;
@@ -142,9 +151,9 @@ export default function OverviewPage() {
       title: "Risk acceptances waiting for your signature",
       ink: "#f8fafc",
       action: "Review and sign",
-      href: comingSoonHref("Risk Register", "module"),
+      href: "/risk-register",
       alt: "Risk register",
-      altHref: comingSoonHref("Risk Register", "module"),
+      altHref: "/risk-register",
     });
   }
   if (d && d.overviewCounts.remediationInProgress > 0) {
@@ -157,27 +166,27 @@ export default function OverviewPage() {
       action: "Open tracker",
       href: "/remediation-tracking",
       alt: "Policy decisions",
-      altHref: comingSoonHref("Policy Decisions", "module"),
+      altHref: "/policy-decisions",
     });
   }
 
   const comingRows = d
     ? [
-        { count: d.overviewCounts.microsoftChangesThisWeek, label: "Microsoft changes this week", href: comingSoonHref("Microsoft Changes", "module"), color: BLU },
+        { count: d.overviewCounts.microsoftChangesThisWeek, label: "Microsoft changes this week", href: "/microsoft-changes", color: BLU },
         { count: d.overviewCounts.changeScheduleThisWeek, label: "Change windows this week", href: "/change-control", color: "#00B4D8" },
-        { count: d.overviewCounts.policiesExpiringSoon, label: "Policies due for review", href: comingSoonHref("Policy Decisions", "module"), color: AMB },
+        { count: d.overviewCounts.policiesExpiringSoon, label: "Policies due for review", href: "/policy-decisions", color: AMB },
       ].filter((r) => r.count > 0)
     : [];
 
   const portalCounts = d
     ? [
         { value: d.overviewCounts.raciPendingAcceptance, label: "RACI roles awaiting you", href: "/ownership", ink: VIO },
-        { value: d.overviewCounts.rbdWaiting, label: "Risk decisions waiting", href: comingSoonHref("Risk Register", "module"), ink: AMB },
-        { value: d.overviewCounts.rbdActive, label: "Risk acceptances active", href: comingSoonHref("Risk Register", "module"), ink: NEUTRAL },
-        { value: d.overviewCounts.microsoftChangesThisWeek, label: "MS changes this week", href: comingSoonHref("Microsoft Changes", "module"), ink: BLU },
+        { value: d.overviewCounts.rbdWaiting, label: "Risk decisions waiting", href: "/risk-register", ink: AMB },
+        { value: d.overviewCounts.rbdActive, label: "Risk acceptances active", href: "/risk-register", ink: NEUTRAL },
+        { value: d.overviewCounts.microsoftChangesThisWeek, label: "MS changes this week", href: "/microsoft-changes", ink: BLU },
         { value: d.overviewCounts.changeScheduleThisWeek, label: "Change windows this week", href: "/change-control", ink: BLU },
         { value: d.overviewCounts.remediationInProgress, label: "Remediation outstanding", href: "/remediation-tracking", ink: RED },
-        { value: d.overviewCounts.policiesExpiringSoon, label: "Policies due for review", href: comingSoonHref("Policy Decisions", "module"), ink: AMB },
+        { value: d.overviewCounts.policiesExpiringSoon, label: "Policies due for review", href: "/policy-decisions", ink: AMB },
       ]
     : [];
 
@@ -201,6 +210,46 @@ export default function OverviewPage() {
         ) : null}
         <span className="text-[11.5px] text-[#64748b]">{tenantSub}</span>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              downloadPdf.mutate(undefined, {
+                onError: (err) => toast.error(err instanceof Error ? err.message : "Could not export the dashboard as PDF"),
+              })
+            }
+            disabled={downloadPdf.isPending}
+            className="flex items-center gap-[7px] rounded-lg px-[10px] py-[5px] text-[11px] text-[#94a3b8] transition-colors hover:border-[#0078D480] disabled:opacity-60"
+            style={{ border: "1px solid rgba(255,255,255,.1)" }}
+            data-testid="overview-export-pdf"
+          >
+            {downloadPdf.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+            Export PDF
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              downloadPpt.mutate(undefined, {
+                onError: (err) => toast.error(err instanceof Error ? err.message : "Could not export the dashboard as PPT"),
+              })
+            }
+            disabled={downloadPpt.isPending}
+            className="flex items-center gap-[7px] rounded-lg px-[10px] py-[5px] text-[11px] text-[#94a3b8] transition-colors hover:border-[#0078D480] disabled:opacity-60"
+            style={{ border: "1px solid rgba(255,255,255,.1)" }}
+            data-testid="overview-export-ppt"
+          >
+            {downloadPpt.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <PptIcon className="size-3.5" />}
+            Export PPT
+          </button>
+          <button
+            type="button"
+            onClick={() => setSharing(true)}
+            className="flex items-center gap-[7px] rounded-lg px-[10px] py-[5px] text-[11px] text-[#94a3b8] transition-colors hover:border-[#0078D480]"
+            style={{ border: "1px solid rgba(255,255,255,.1)" }}
+            data-testid="overview-share"
+          >
+            <Share2 className="size-3.5" />
+            Share
+          </button>
           <a
             href={comingSoonHref("Portal Alerts", "module")}
             className="flex items-center gap-[7px] rounded-lg px-[10px] py-[5px] transition-colors hover:border-[#0078D480]"
@@ -469,6 +518,98 @@ export default function OverviewPage() {
           </div>
         </div>
       )}
+
+      {sharing && <DashboardShareDialog onClose={() => setSharing(false)} />}
     </div>
   );
+}
+
+/**
+ * Mirrors `ShareDocumentDialog` in `customer-documents.tsx` — the existing,
+ * already-shipped share pattern `dashboard-export.ts`'s own header comment
+ * names as the precedent it reuses (same `quick_win_result_shares`
+ * token/expiry mechanism under the hood).
+ */
+function DashboardShareDialog({ onClose }: { onClose: () => void }) {
+  const status = useDashboardShareStatus(true);
+  const createShare = useCreateDashboardShare();
+  const [copied, setCopied] = useState(false);
+
+  const existing = status.data?.share ?? null;
+  const created = createShare.data;
+  const share = created ?? existing;
+
+  const handleCreate = () => {
+    createShare.mutate(undefined, {
+      onError: (err) => toast.error(err instanceof Error ? err.message : "Could not generate a share link"),
+    });
+  };
+
+  const handleCopy = () => {
+    if (!share?.shareUrl) return;
+    navigator.clipboard
+      .writeText(share.shareUrl)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => {});
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-md" data-testid="overview-share-dialog">
+        <DialogHeader>
+          <DialogTitle>Share your dashboard</DialogTitle>
+        </DialogHeader>
+        {status.isLoading ? (
+          <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" />
+            Checking for an existing share link…
+          </div>
+        ) : status.isError ? (
+          <p className="text-sm text-muted-foreground">Could not check for an existing share link. Please try again.</p>
+        ) : share ? (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <Input readOnly value={share.shareUrl} className="font-mono text-xs" onFocus={(e) => e.target.select()} />
+              <Button size="sm" variant="outline" className="shrink-0 gap-1.5" onClick={handleCopy}>
+                {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+                {copied ? "Copied" : "Copy"}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Anyone with this link can view a snapshot of this dashboard without signing in, until {formatDate(share.expiresAt)}.
+              Generating a new link replaces this one.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-fit gap-1.5"
+              disabled={createShare.isPending}
+              onClick={handleCreate}
+              data-testid="overview-share-regenerate"
+            >
+              {createShare.isPending ? <Loader2 className="size-3.5 animate-spin" /> : null}
+              Generate new link
+            </Button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">No live share link yet. Create one to share a read-only snapshot of this dashboard.</p>
+            <Button size="sm" disabled={createShare.isPending} onClick={handleCreate} data-testid="overview-share-create">
+              {createShare.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Share2 className="size-3.5" />}
+              Create share link
+            </Button>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }

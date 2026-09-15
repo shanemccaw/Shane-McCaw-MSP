@@ -6,6 +6,7 @@
  * Wired to the real, live routes in `artifacts/api-server/src/routes/portal-poams.ts`
  * (`docs/portal/poams-contract-pack.md`):
  *   GET    /api/portal/poams
+ *   GET    /api/portal/poams/available-checks
  *   GET    /api/portal/poams/:poamId
  *   POST   /api/portal/poams
  *   POST   /api/portal/poams/:poamId/sign
@@ -35,6 +36,7 @@ import type {
   RequestAccelerationResponse,
   SignPoamRequest,
   SignPoamResponse,
+  WireAvailableCheck,
   WirePoam,
 } from "@/lib/poams-types";
 
@@ -101,6 +103,40 @@ export function useListPoams(): ListPoamsResult {
     tierGated: query.data?.tierGated === true,
     refetch: () => void query.refetch(),
     isRefetching: query.isRefetching,
+  };
+}
+
+export interface ListAvailableChecksResult {
+  readonly checks: readonly WireAvailableCheck[] | null;
+  readonly isLoading: boolean;
+  /** True on a 402 `TIER_UPGRADE_REQUIRED` — same read gate as `useListPoams`. */
+  readonly tierGated: boolean;
+}
+
+/**
+ * This tenant's own current findings, checkKey + human label (#4050), for
+ * the create form's "Check this plan answers" picker. Same 402→tierGated
+ * shape as `useListPoams` — this is part of the same gated read surface, not
+ * a separate error state. An empty (non-gated) result means the tenant has
+ * no completed scan yet, or its latest scan raised no findings; the caller
+ * falls back to the honest free-text field in either case.
+ */
+export function useAvailableChecks(): ListAvailableChecksResult {
+  const { fetchWithAuth } = useAuth();
+  const query = useQuery({
+    queryKey: ["portal", "poams", "available-checks"] as const,
+    queryFn: async (): Promise<{ checks: readonly WireAvailableCheck[]; tierGated: false } | { checks: null; tierGated: true }> => {
+      const res = await fetchWithAuth(`${POAMS_URL}/available-checks`, undefined, { silent: true });
+      if (res.status === 402) return { checks: null, tierGated: true };
+      const data = await parseJsonOrThrow<{ checks: WireAvailableCheck[] }>(res);
+      return { checks: data.checks, tierGated: false };
+    },
+  });
+
+  return {
+    checks: query.data?.checks ?? null,
+    isLoading: query.isLoading,
+    tierGated: query.data?.tierGated === true,
   };
 }
 

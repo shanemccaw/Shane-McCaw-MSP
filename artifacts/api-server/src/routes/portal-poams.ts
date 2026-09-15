@@ -4,6 +4,10 @@
  * the Risk Register's "we accept the consequence" (`portal-risk-register.ts`).
  *
  *   GET  /api/portal/poams               — this customer's POA&Ms
+ *   GET  /api/portal/poams/available-checks — this tenant's own current
+ *                                           findings, checkKey + human label,
+ *                                           so the create form can offer a
+ *                                           real picker (Git #4050)
  *   GET  /api/portal/poams/:poamId       — one, with its milestones
  *   POST /api/portal/poams               — customer raises a new plan (#1933's
  *                                           "raise a POA&M to disable the
@@ -49,7 +53,14 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { createHash } from "node:crypto";
-import { db, mspPoamsTable, mspPoamMilestonesTable, type ClientApprover } from "@workspace/db";
+import {
+  db,
+  mspPoamsTable,
+  mspPoamMilestonesTable,
+  mspDiagnosticRunsTable,
+  mspDiagnosticFindingsTable,
+  type ClientApprover,
+} from "@workspace/db";
 import { and, eq, desc, asc, isNull, inArray } from "drizzle-orm";
 import { z } from "zod";
 
@@ -276,6 +287,97 @@ router.get(
       });
     } catch (err: unknown) {
       log.error({ err }, "GET /portal/poams failed");
+      apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
+    }
+  },
+);
+
+/** The wire shape of one candidate check a customer's own plan can point at. */
+interface WireAvailableCheck {
+  readonly checkKey: string;
+  readonly checkLabel: string;
+  readonly severity: string;
+  readonly title: string;
+}
+
+const AVAILABLE_CHECK_SEVERITY_RANK: Record<string, number> = { critical: 0, warning: 1, info: 2 };
+
+/**
+ * #4050 — a real, customer-scoped catalogue of this tenant's own current
+ * findings, so the create form can offer a picker instead of asking a
+ * customer to already know the drift-check vocabulary's internal id string.
+ * Sourced from `msp_diagnostic_findings` (the same table
+ * `portal-mission-control.ts`'s findings feed reads) for the customer's own
+ * latest completed/partial scan — never a fabricated list. A tenant with no
+ * completed scan yet simply has no candidates; the free-text field remains
+ * the fallback (see PoamCreatePanel.tsx).
+ */
+router.get(
+  "/portal/poams/available-checks",
+  requireCapability("ladder.customer-user"),
+  // Same tier gate as the other customer-facing POA&Ms READ route above —
+  // this is part of the same read surface, not a lower-gated escape hatch.
+  requireTierFeature(PORTAL_TIER_MODULE_KEYS.poams),
+  async (req: Request, res: Response) => {
+    const customerId = resolveCustomerId(req);
+    try {
+      if (customerId === null) {
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "Customer context required");
+        return;
+      }
+
+      const [lastCompleted] = await db
+        .select({ runId: mspDiagnosticRunsTable.runId })
+        .from(mspDiagnosticRunsTable)
+        .where(
+          and(
+            eq(mspDiagnosticRunsTable.customerId, customerId),
+            inArray(mspDiagnosticRunsTable.status, ["completed", "partial"]),
+          ),
+        )
+        .orderBy(desc(mspDiagnosticRunsTable.createdAt))
+        .limit(1);
+
+      if (!lastCompleted) {
+        res.json({ checks: [] });
+        return;
+      }
+
+      const findingRows = await db
+        .select({
+          checkKey: mspDiagnosticFindingsTable.checkKey,
+          checkLabel: mspDiagnosticFindingsTable.checkLabel,
+          severity: mspDiagnosticFindingsTable.severity,
+          title: mspDiagnosticFindingsTable.title,
+          createdAt: mspDiagnosticFindingsTable.createdAt,
+        })
+        .from(mspDiagnosticFindingsTable)
+        .where(eq(mspDiagnosticFindingsTable.runId, lastCompleted.runId))
+        .orderBy(desc(mspDiagnosticFindingsTable.createdAt));
+
+      // One entry per checkKey — several findings can share a check; the
+      // most recently written one for that key wins (rows are already
+      // ordered newest-first above).
+      const byCheckKey = new Map<string, WireAvailableCheck>();
+      for (const row of findingRows) {
+        if (byCheckKey.has(row.checkKey)) continue;
+        byCheckKey.set(row.checkKey, {
+          checkKey: row.checkKey,
+          checkLabel: row.checkLabel,
+          severity: row.severity,
+          title: row.title,
+        });
+      }
+
+      const checks = [...byCheckKey.values()].sort(
+        (a, b) =>
+          (AVAILABLE_CHECK_SEVERITY_RANK[a.severity] ?? 9) - (AVAILABLE_CHECK_SEVERITY_RANK[b.severity] ?? 9) ||
+          a.checkLabel.localeCompare(b.checkLabel),
+      );
+
+      res.json({ checks });
+    } catch (err: unknown) {
+      log.error({ err, customerId }, "GET /portal/poams/available-checks failed");
       apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
     }
   },

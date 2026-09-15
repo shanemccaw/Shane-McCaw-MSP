@@ -23,7 +23,12 @@ if (!raw) {
   process.exit(1);
 }
 
-const privateKey = raw.replace(/\\n/g, "\n");
+// Git #4156 — canonical form is single-line base64 of the PEM; a legacy raw PEM
+// (real newlines or literal \n) is still accepted. Mirrors decodeMtAppCertPrivateKey()
+// in artifacts/api-server/src/lib/mt-app-cert-key.ts (scripts/ can't import api-server).
+const privateKey = raw.includes("-----BEGIN")
+  ? raw.trim().replace(/\\n/g, "\n")
+  : Buffer.from(raw.replace(/\s+/g, ""), "base64").toString("utf8");
 
 try {
   const keyObject = createPrivateKey({ key: privateKey, format: "pem" });

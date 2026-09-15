@@ -4,33 +4,43 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useCreatePoam } from "@/lib/poams-api";
+import { useAvailableChecks, useCreatePoam } from "@/lib/poams-api";
 import type { CreatePoamRequest } from "@/lib/poams-types";
 
 const TEXT_MAX = 4000;
 const TITLE_MAX = 300;
+
+/** Sentinel for the picker's own "type it in myself" option — never a real checkKey. */
+const MANUAL_CHECK_OPTION = "__manual__";
 
 /**
  * "Raise a plan" (#4037, design: `POAMs.dc.html`'s `creating` scene). A
  * customer-authored plan still starts `pending_signature` and goes through
  * the same real signature ceremony as any other plan — there is no bypass.
  *
- * `checkKey` and `sowId` are real, free-form optional fields on the wire
- * (`portal-poams.ts`'s `createPoamSchema`); there is no small, honest catalog
- * of either to pick from here (check keys span the whole drift-check
- * vocabulary, SOWs are not served to this app), so both are typed in rather
- * than offered from an invented dropdown.
+ * `checkKey` is real and optional on the wire (`portal-poams.ts`'s
+ * `createPoamSchema`). Where this tenant's own current findings are
+ * available (`GET /portal/poams/available-checks`, #4050), the field is a
+ * real picker sourced from them; free text remains the fallback for a
+ * tenant with no completed scan yet, or for a check that predates the
+ * tenant's current findings list. `sowId` still has no honest catalog to
+ * offer (SOWs are not served to this app), so it stays typed in.
  */
 export function PoamCreatePanel({ onCreated, onCancel }: { onCreated: (id: string) => void; onCancel: () => void }) {
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("");
   const [checkKey, setCheckKey] = useState("");
+  const [checkMode, setCheckMode] = useState<"picker" | "manual">("picker");
   const [sowId, setSowId] = useState("");
   const [weakness, setWeakness] = useState("");
   const [interim, setInterim] = useState("");
   const [resources, setResources] = useState("");
   const createMutation = useCreatePoam();
+  const { checks: availableChecks } = useAvailableChecks();
+  const hasPicker = (availableChecks?.length ?? 0) > 0;
+  const showPicker = hasPicker && checkMode === "picker";
 
   const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
   const canCreate =
@@ -92,7 +102,53 @@ export function PoamCreatePanel({ onCreated, onCancel }: { onCreated: (id: strin
             <Label htmlFor="poam-check">
               Check this plan answers <span className="text-muted-foreground">(optional)</span>
             </Label>
-            <Input id="poam-check" value={checkKey} onChange={(e) => setCheckKey(e.target.value)} placeholder="e.g. exo.legacy_auth_enabled" data-testid="poam-create-check" />
+            {showPicker ? (
+              <Select
+                value={checkKey || undefined}
+                onValueChange={(value) => {
+                  if (value === MANUAL_CHECK_OPTION) {
+                    setCheckMode("manual");
+                    setCheckKey("");
+                    return;
+                  }
+                  setCheckKey(value);
+                }}
+              >
+                <SelectTrigger id="poam-check" data-testid="poam-create-check-select">
+                  <SelectValue placeholder="No check — pick one of your own findings" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableChecks?.map((c) => (
+                    <SelectItem key={c.checkKey} value={c.checkKey}>
+                      {c.checkLabel}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value={MANUAL_CHECK_OPTION}>Other — type the check key myself</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input
+                id="poam-check"
+                value={checkKey}
+                onChange={(e) => setCheckKey(e.target.value)}
+                placeholder="e.g. exo.legacy_auth_enabled"
+                data-testid="poam-create-check"
+              />
+            )}
+            {hasPicker && !showPicker && (
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="h-auto w-fit p-0 text-[10.5px]"
+                onClick={() => {
+                  setCheckMode("picker");
+                  setCheckKey("");
+                }}
+              >
+                Pick from your own findings instead
+              </Button>
+            )}
             <span className="text-[10.5px] text-muted-foreground/70">
               With no check, no workload owner applies — any signed-in person here may sign it.
             </span>
