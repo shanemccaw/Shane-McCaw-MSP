@@ -26,6 +26,11 @@ namespace BuildConsole.Services
         public List<GitHubLabel> Labels { get; set; } = new();
         [JsonPropertyName("html_url")]
         public string HtmlUrl { get; set; } = "";
+        /// <summary>Git #4202 — the Search Issues API returns the full issue body (not a trimmed
+        /// preview) same as `GET /issues/{n}`; carried here so a label-search result (e.g.
+        /// <see cref="WaitingOnYouService"/>'s live-fallback "Shane To-Do" query) can show the
+        /// same real first-body-line excerpt the mirror-backed path gets, with no second fetch.</summary>
+        public string? Body { get; set; }
 
         public bool IsClosed => string.Equals(State, "closed", StringComparison.OrdinalIgnoreCase);
         public bool HasInFlightLabel => Labels.Any(l => string.Equals(l.Name, "in-flight", StringComparison.OrdinalIgnoreCase));

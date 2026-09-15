@@ -596,6 +596,19 @@
                                            Foreground="{StaticResource PinkBrush}"/>
                             </StackPanel>
                         </Button>
+                        <!-- Git #4202 — Shane: "How do I track this. How do I know what's waiting
+                             for me." Opens/focuses the read-only Waiting On You document tab: every
+                             real open "Shane To-Do" issue plus every real open "Ask Shane" board
+                             item, repo-wide. No live count badge — this is a viewer, same as
+                             What's Remaining / Git Manager. -->
+                        <Button x:Name="BtnWaitingOnYou"
+                                AutomationProperties.AutomationId="BtnWaitingOnYou"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Waiting On You"
+                                Click="BtnWaitingOnYou_Click"
+                                Padding="6,4">
+                            <TextBlock Text="⏳" FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center"/>
+                        </Button>
                         <Button Style="{StaticResource IconButton}"
                                 ToolTip="Toggle Primary Side Bar (Ctrl+B)"
                                 Click="ToggleSidebar_Click"

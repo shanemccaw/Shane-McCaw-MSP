@@ -408,6 +408,25 @@ gh label create "Shane To-Do" --color b60205 --description "An action Shane need
 
 - **At the DONE bookend**, if the work leaves such an action: `gh issue edit <number> --add-label "Shane To-Do"`. Say plainly in the issue row what the action is.
 
+- **A Design export needing to be commissioned is a `Shane To-Do` case, named explicitly (Git
+  #4202).** When a Feature under a `.dc.html`-driven module can't proceed until Shane himself
+  goes to Claude Design and produces that export, that blocks the same way a manual SQL
+  migration or a server restart does — label it `Shane To-Do` and say plainly in the issue which
+  export is needed. Real precedent this closes: #4009, #3894, #3963, #2825/#2866 all hit this
+  exact gap and were written as bare prose instead, invisible to any structured query.
+
+- **`Shane To-Do` vs. the real "Ask Shane" board status — pick by action vs. decision, never
+  default either to prose (Git #4202).** Both are real, structured lanes for something an agent
+  cannot resolve itself, but they are not interchangeable: `Shane To-Do` is for something only
+  Shane can physically DO (run SQL, restart a server, commission a Design export, grant an Azure
+  role, rotate a cert); the **"Ask Shane" board status** (option id `404998bb` — the same lane
+  the "Board status" section's "question-review lane" above routes a filed finding to) is for a
+  real open product/UX decision with **no proposed build at all** — something only Shane can
+  DECIDE, not do. A product decision that's already been made and just needs Shane to physically
+  execute or approve a specific next step is a `Shane To-Do`; a genuinely open question with two
+  or more live options is "Ask Shane". Don't write either as prose in an issue body/comment
+  instead of the real label or the real board-status move.
+
 - **EXCEPTION — manual SQL migrations are NOT `Shane To-Do`.** You run additive migrations
   against local PostgreSQL yourself, in-session (see the Database section). Local is therefore
   already current; only Replit/staging is not, and that is a release-time action, not a blocker.
