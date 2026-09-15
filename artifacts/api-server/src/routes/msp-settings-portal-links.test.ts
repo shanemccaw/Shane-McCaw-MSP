@@ -142,7 +142,7 @@ vi.mock("../lib/logger.ts", () => {
   return { logger: { child, info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } };
 });
 
-import router, { bindMailboxCallbackTenant } from "./msp-settings.ts";
+import router, { bindMailboxCallbackTenant, checkMspOwnTenant } from "./msp-settings.ts";
 import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
 import { sendEmailFromTemplate } from "../lib/mailer.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
@@ -368,6 +368,64 @@ describe("msp-settings.ts portal links (#154)", () => {
       .send({ mailboxUpn: "support@mccawsoft2.onmicrosoft.com", fromDisplayName: "Support" });
     expect(foreign.status).toBe(409);
     expect(insertCalls.filter((c) => (c.values as any)?.state)).toHaveLength(0);
+  });
+
+  it("POST .../connector/mailbox/connect REFUSES a mailbox outside the MSP's recorded own tenant, e.g. its own customer's (#4242)", async () => {
+    // mailbox domain resolves to MSP_TENANT (a same-MSP customer here); the MSP's own tenant is OTHER_TENANT
+    mockSelectResultsQueue = [[], [{ entraTenantId: OTHER_TENANT }]];
+
+    const res = await request(app)
+      .post("/api/msp/settings/connector/mailbox/connect")
+      .set("Authorization", `Bearer ${makeMspAdminToken(7)}`)
+      .send({ mailboxUpn: "support@mccawsoft2.onmicrosoft.com", fromDisplayName: "Support" });
+
+    expect(res.status).toBe(403);
+    expect(insertCalls.filter((c) => (c.values as any)?.state)).toHaveLength(0);
+  });
+
+  it("POST .../connector/mailbox/connect allows a mailbox in the MSP's recorded own tenant (#4242)", async () => {
+    mockSelectResultsQueue = [[], [{ entraTenantId: MSP_TENANT.toUpperCase() }]];
+
+    const res = await request(app)
+      .post("/api/msp/settings/connector/mailbox/connect")
+      .set("Authorization", `Bearer ${makeMspAdminToken(7)}`)
+      .send({ mailboxUpn: "support@mccawsoft2.onmicrosoft.com", fromDisplayName: "Support" });
+
+    expect(res.status).toBe(200);
+    expect(insertCalls.filter((c) => (c.values as any)?.state)).toHaveLength(1);
+  });
+
+  it("GET .../connector/mailbox/callback REFUSES a bound tenant that is not the MSP's own, before asking Microsoft (#4242)", async () => {
+    // state bound to MSP_TENANT at mint; a platform admin has since recorded OTHER_TENANT as the MSP's own
+    mockSelectResultsQueue = [[stateRow()], [], [{ entraTenantId: OTHER_TENANT }]];
+
+    const res = await request(app)
+      .get("/api/msp/settings/connector/mailbox/callback")
+      .query({ tenant: MSP_TENANT, admin_consent: "true", state: "abc123" });
+
+    expect(res.status).toBe(403);
+    expect(res.headers.location).toBeUndefined();
+    expect(verifyConsentMock).not.toHaveBeenCalled();
+    expect(insertCalls).toHaveLength(0);
+  });
+
+  it("GET .../connector/mailbox/callback activates when the bound tenant is the MSP's own (#4242)", async () => {
+    mockSelectResultsQueue = [[stateRow()], [], [{ entraTenantId: MSP_TENANT }]];
+
+    const res = await request(app)
+      .get("/api/msp/settings/connector/mailbox/callback")
+      .query({ tenant: MSP_TENANT, admin_consent: "true", state: "abc123" });
+
+    expect(res.status).toBe(302);
+    expect(insertCalls).toHaveLength(1);
+    expect((insertCalls[0].values as any).tenantId).toBe(MSP_TENANT);
+  });
+
+  it("checkMspOwnTenant enforces only once the MSP's own tenant is recorded (#4242)", () => {
+    expect(checkMspOwnTenant(null, MSP_TENANT)).toEqual({ ok: true, enforced: false });
+    expect(checkMspOwnTenant("  ", MSP_TENANT)).toEqual({ ok: true, enforced: false });
+    expect(checkMspOwnTenant(MSP_TENANT.toUpperCase(), MSP_TENANT)).toEqual({ ok: true, enforced: true });
+    expect(checkMspOwnTenant(OTHER_TENANT, MSP_TENANT)).toEqual({ ok: false, reason: "not_msp_own_tenant" });
   });
 
   it("bindMailboxCallbackTenant compares case-insensitively and fails closed (#4227)", () => {

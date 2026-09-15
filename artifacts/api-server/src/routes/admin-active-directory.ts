@@ -352,6 +352,7 @@ router.get("/admin/active-directory/msp/:id", requireAdmin, async (req: Request,
         primaryContactPhone: mspsTable.primaryContactPhone,
         address: mspsTable.address,
         notes: mspsTable.notes,
+        entraTenantId: mspsTable.entraTenantId,
         createdAt: mspsTable.createdAt,
       })
       .from(mspsTable)

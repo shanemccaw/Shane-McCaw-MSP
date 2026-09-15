@@ -239,6 +239,7 @@ export interface MspProfileRow {
   primaryContactPhone: string | null;
   address: string | null;
   notes: string | null;
+  entraTenantId: string | null;
   createdAt: Date;
 }
 

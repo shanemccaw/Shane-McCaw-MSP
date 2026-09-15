@@ -112,6 +112,8 @@ export interface AdMspProfile {
   primaryContactPhone: string | null;
   address: string | null;
   notes: string | null;
+  /** The MSP's own Entra tenant GUID (#4242); the mailbox connector is bound to it once set. */
+  entraTenantId: string | null;
   createdAt: string;
 }
 

@@ -189,7 +189,11 @@ multi-tenant app uses `client_credentials` after consent (`:1252-1253`).
 Entra tenant GUID that owns `mailboxUpn`'s domain from Microsoft's public OpenID discovery
 document (`resolveEntraTenantForDomain`, `lib/consent-verification.ts`) — `400` if the domain is
 not a Microsoft 365 domain, `503` if Microsoft is unreachable, `409` if that tenant is a customer
-of a different MSP. Mints a `state` token (32 random bytes hex), stores it in
+of a different MSP. **#4242:** `403` if the MSP has `msps.entra_tenant_id` recorded and that
+tenant is not it (so not one of the MSP's own customers either); when unset, allowed with a
+`log.warn` that the MSP has no own tenant recorded. `entra_tenant_id` is written only by a
+platform admin via `PATCH /api/admin/msps/:mspId` (AdminV2 Active Directory MSP canvas, "Edit
+profile"). Mints a `state` token (32 random bytes hex), stores it in
 `mspMailboxConsentStatesTable` with a **10-minute** expiry and that GUID as
 `expectedTenantId`, builds the admin-consent URL via `buildAdminConsentUrl(expectedTenantId,
 state, callbackUrl, MT_APP_CLIENT_ID)` — the tenant hint is the mailbox's own tenant (was
@@ -209,7 +213,9 @@ module** (no `requireCapability` guard at all, Microsoft calls it directly). Thr
    used"` otherwise (`:1389-1393`). **#4227:** refuses (`400`, state burned, nothing activated)
    unless `tenant` equals the state's `expectedTenantId` (`bindMailboxCallbackTenant`; a state
    with no `expectedTenantId` is refused too), refuses (`409`) a tenant registered as another
-   MSP's customer, and requires Microsoft to confirm the read app's consent **with `Mail.Send`**
+   MSP's customer, **#4242:** refuses (`403`, state burned) a tenant that is not the MSP's
+   current `msps.entra_tenant_id` when one is set (re-read at callback time, warned when unset),
+   and requires Microsoft to confirm the read app's consent **with `Mail.Send`**
    (`verifyTenantConsentWithMicrosoft(..., { requireAnyRole: ["Mail.Send"] })`, #4197/#4227). The
    connector's `tenantId` is the bound GUID, never the query string. Then burns the token; upserts
    `mspMailboxConnectorsTable` keyed on `mspId` (unique, `:1414-1425`) — a second consent for the

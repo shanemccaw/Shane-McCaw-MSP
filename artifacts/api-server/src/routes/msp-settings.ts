@@ -1447,6 +1447,12 @@ router.put("/msp/settings/agreement-template", requireCapability("ladder.msp-adm
 // mailbox's domain, resolved from Microsoft at step 2 and recorded on the state. The
 // callback's `tenant` parameter is unsigned and only has to agree with it. A tenant
 // that is a customer of a different MSP is refused at both steps.
+//
+// Own-tenant binding (#4242): the mailbox domain can still belong to one of this
+// MSP's OWN customers, and the unsigned callback cannot tell that apart from the
+// MSP's own organisation. Once a platform admin records msps.entra_tenant_id, the
+// mailbox tenant must equal it at both steps. Unset keeps the #4227 binding and
+// logs a warning, so an unconfigured MSP stays visible.
 // ──────────────────────────────────────────────────────────────────────────────
 
 /** Application permission sendMailViaGraphForMsp needs on the MSP's tenant. */
@@ -1465,6 +1471,29 @@ export function bindMailboxCallbackTenant(
   if (!expected) return { ok: false, reason: "unbound_state" };
   if (tenantFromMicrosoft?.trim().toLowerCase() !== expected) return { ok: false, reason: "tenant_mismatch" };
   return { ok: true, tenantId: expected };
+}
+
+/**
+ * Git #4242: the mailbox tenant against the MSP's own recorded Entra tenant.
+ * `unset` is the #4227 fallback — allowed, but the caller logs it. Exported for tests.
+ */
+export function checkMspOwnTenant(
+  mspEntraTenantId: string | null | undefined,
+  mailboxTenantId: string,
+): { ok: true; enforced: boolean } | { ok: false; reason: "not_msp_own_tenant" } {
+  const own = mspEntraTenantId?.trim().toLowerCase();
+  if (!own) return { ok: true, enforced: false };
+  if (mailboxTenantId.trim().toLowerCase() !== own) return { ok: false, reason: "not_msp_own_tenant" };
+  return { ok: true, enforced: true };
+}
+
+async function loadMspEntraTenantId(mspId: number): Promise<string | null> {
+  const [row] = await db
+    .select({ entraTenantId: mspsTable.entraTenantId })
+    .from(mspsTable)
+    .where(eq(mspsTable.id, mspId))
+    .limit(1);
+  return row?.entraTenantId ?? null;
 }
 
 /** A customer row carrying this Microsoft tenant under an MSP other than `mspId`, if any. */
@@ -1558,6 +1587,24 @@ router.post("/msp/settings/connector/mailbox/connect", requireCapability("ladder
     );
     apiError(res, 409, "This mailbox belongs to an organisation registered with another provider on this platform, so it cannot be connected.");
     return;
+  }
+
+  // #4242: only the MSP's own organisation, never one of its customers.
+  const mspEntraTenantId = await loadMspEntraTenantId(mspId);
+  const ownTenant = checkMspOwnTenant(mspEntraTenantId, owner.tenantId);
+  if (!ownTenant.ok) {
+    log.warn(
+      { mspId, expectedTenantId: owner.tenantId, mspEntraTenantId, mailboxDomain },
+      "MSP mailbox connect: REFUSED — mailbox domain is not in the MSP's own Entra tenant",
+    );
+    apiError(res, 403, "This mailbox is not in your organisation's own Microsoft 365 tenant, so it cannot be connected. Use a mailbox from your own organisation.");
+    return;
+  }
+  if (!ownTenant.enforced) {
+    log.warn(
+      { mspId, expectedTenantId: owner.tenantId, mailboxDomain },
+      "MSP mailbox connect: MSP has no own Entra tenant recorded (msps.entra_tenant_id) — cannot rule out a same-MSP customer tenant; a platform admin should set it (#4242)",
+    );
   }
 
   const state = randomBytes(32).toString("hex");
@@ -1680,6 +1727,29 @@ router.get("/msp/settings/connector/mailbox/callback", async (req: Request, res:
       .where(eq(mspMailboxConsentStatesTable.state, state));
     res.status(409).send("This organisation is registered with another provider on this platform, so the mailbox was not connected.");
     return;
+  }
+
+  // #4242: re-read, not carried on the state — a platform admin may have set
+  // or changed the MSP's own tenant inside the state's ten-minute window.
+  const mspEntraTenantId = await loadMspEntraTenantId(stateRow.mspId);
+  const ownTenant = checkMspOwnTenant(mspEntraTenantId, boundTenantId);
+  if (!ownTenant.ok) {
+    log.warn(
+      { mspId: stateRow.mspId, tenant: boundTenantId, mspEntraTenantId },
+      "MSP mailbox consent: REFUSED — tenant is not the MSP's own Entra tenant; connector not activated",
+    );
+    await db
+      .update(mspMailboxConsentStatesTable)
+      .set({ usedAt: now })
+      .where(eq(mspMailboxConsentStatesTable.state, state));
+    res.status(403).send("This organisation is not your own organisation's Microsoft 365 tenant, so the mailbox was not connected.");
+    return;
+  }
+  if (!ownTenant.enforced) {
+    log.warn(
+      { mspId: stateRow.mspId, tenant: boundTenantId },
+      "MSP mailbox consent: MSP has no own Entra tenant recorded (msps.entra_tenant_id) — cannot rule out a same-MSP customer tenant; a platform admin should set it (#4242)",
+    );
   }
 
   // #4197: confirm with Microsoft that this tenant is real and consented to the
