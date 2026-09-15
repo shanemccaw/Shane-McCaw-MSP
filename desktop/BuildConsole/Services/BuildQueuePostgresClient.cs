@@ -2911,13 +2911,21 @@ namespace BuildConsole.Services
             return items;
         }
 
+        /// <summary>Git #1641 — bt_build_queue.account stores NULL for the default "primary" account
+        /// and the literal "secondary" string for the overflow account (see Git #1416's own
+        /// normalization in QueueAsync/UpdateAsync); mirrors that same convention for the account-scoped
+        /// reads/writes below. Any value other than a case-insensitive "secondary" maps to NULL (primary).</summary>
+        private static string? AccountColumnValue(string? account) =>
+            string.Equals(account?.Trim(), "secondary", StringComparison.OrdinalIgnoreCase) ? "secondary" : null;
+
         /// <summary>
-        /// The auto-restart itself: every limit-paused row back to 'queued' in one
-        /// statement (resume_session_id already set by MarkLimitPausedAsync), so the
-        /// next tick's GetNextAsync picks them all up and resumes their sessions.
-        /// Returns the resumed rows for logging/UI refresh.
+        /// The auto-restart itself, SCOPED TO ONE ACCOUNT (Git #1641 — previously this resumed every
+        /// limit-paused row regardless of account; Primary and Secondary have independent session
+        /// limits, so a timer firing for one account must never touch the other's paused rows).
+        /// resume_session_id is already set by MarkLimitPausedAsync, so the next tick's GetNextAsync
+        /// picks these up and resumes their sessions. Returns the resumed rows for logging/UI refresh.
         /// </summary>
-        public async Task<List<QueueItem>> ResumeLimitPausedAsync()
+        public async Task<List<QueueItem>> ResumeLimitPausedAsync(string? account)
         {
             await using var conn = await OpenAsync();
             await using var cmd = new NpgsqlCommand(@"
@@ -2925,11 +2933,13 @@ namespace BuildConsole.Services
                    SET status     = 'queued',
                        updated_at = NOW()
                  WHERE status = @status
+                   AND account IS NOT DISTINCT FROM @account
                 RETURNING id, title, prompt, model, effort, cwd,
                           github_number, blocked_by_number, blocked_by_numbers,
                           status, exit_code, session_id, resume_session_id,
                           originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at", conn);
             cmd.Parameters.AddWithValue("@status", SessionLimitAutoRestartService.LimitPausedStatus);
+            cmd.Parameters.AddWithValue("@account", (object?)AccountColumnValue(account) ?? DBNull.Value);
             var items = new List<QueueItem>();
             await using (var reader = await cmd.ExecuteReaderAsync())
             {
@@ -2938,6 +2948,28 @@ namespace BuildConsole.Services
             }
             await PopulateAssociatedIssueNumbersAsync(items, conn);
             return items;
+        }
+
+        /// <summary>Git #1641 — of the given ids, which are currently NON-terminal (queued, running, or
+        /// verifying)? Used by SessionLimitAutoRestartService.FireAsync to check whether a manually
+        /// force-started ("Build Now") sibling from the same limit-paused batch is still in flight before
+        /// blanket-resuming the rest of that account's batch. Empty input short-circuits without a query.</summary>
+        public async Task<List<int>> GetNonTerminalIdsAsync(IReadOnlyCollection<int> ids)
+        {
+            var result = new List<int>();
+            if (ids == null || ids.Count == 0) return result;
+
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                SELECT id FROM bt_build_queue
+                 WHERE id = ANY(@ids)
+                   AND status IN ('queued', 'running', @verifyingStatus)", conn);
+            cmd.Parameters.AddWithValue("@ids", ids.ToArray());
+            cmd.Parameters.AddWithValue("@verifyingStatus", VerifyingStatus);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                result.Add(reader.GetInt32(0));
+            return result;
         }
 
         /// <summary>
@@ -2965,7 +2997,12 @@ namespace BuildConsole.Services
             return await cmd.ExecuteNonQueryAsync() > 0;
         }
 
-        /// <summary>Per-item "Resume Now": flips ONE limit-paused row back to 'queued' ahead of the timer (resume_session_id already preserved). Returns true when the row was actually limit-paused.</summary>
+        /// <summary>Per-item "Build Now" (Git #1641; was "Resume Now"): flips ONE limit-paused row back
+        /// to 'queued' ahead of the timer (resume_session_id already preserved). Returns true when the
+        /// row was actually limit-paused. The caller (BuildQueuePanel's right-click handler) follows a
+        /// successful flip with SessionLimitAutoRestartService.RegisterManualOverride so the account's
+        /// auto-restart timer knows to wait for this manually-started sibling before blanket-resuming
+        /// the rest of the batch.</summary>
         public async Task<bool> RequeueLimitPausedAsync(int id)
         {
             await using var conn = await OpenAsync();

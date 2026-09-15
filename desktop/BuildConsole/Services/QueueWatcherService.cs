@@ -132,6 +132,13 @@ namespace BuildConsole.Services
             /// returned outcome exists, to check the worktree's own bookend for a self-block — see
             /// the reap loop's Git #3628 block below.</summary>
             public int? GithubNumber;
+            /// <summary>Git #1641 — this row's own bt_build_queue.account ("secondary", or null for
+            /// the default "primary"), captured from the claimed QueueItem at launch so the reap loop
+            /// can pass it straight to SessionLimitAutoRestartService.RegisterLimitHit without a
+            /// second DB round-trip. Primary and secondary have independent session limits, so this
+            /// is what lets the auto-restart timer stay account-scoped instead of one global timer
+            /// covering both.</summary>
+            public string? Account;
 
             /// <summary>Git #1792 — the per-build Windows Job Object this build's process (and every
             /// process it spawns, including detached node.exe grandchildren) is assigned to at launch.
@@ -1683,6 +1690,7 @@ namespace BuildConsole.Services
                 OwnerRepo = item.OwnerRepo,
                 IsMainRepo = string.Equals(item.OwnerRepo, BuildConsoleSettings.Load().GitHubOwnerRepo, StringComparison.OrdinalIgnoreCase),
                 GithubNumber = item.GithubNumber,
+                Account = item.Account,
                 // Seed from the DB's already-persisted early session id (#826); the replay confirms
                 // or overwrites it from the real stream-json.
                 SessionId = string.IsNullOrWhiteSpace(item.SessionId) ? null : item.SessionId,
@@ -1973,7 +1981,7 @@ namespace BuildConsole.Services
                             await _db.MarkLimitPausedAsync(id, entry.SessionId);
                             limitParked = true;
                             ActivityLog.Log("session-limit", $"Parked queue #{id} ({entry.Title}) limit-paused (exit {exitCode}); it will be re-queued automatically after the session-limit reset.");
-                            SessionLimitAutoRestart?.RegisterLimitHit(id, limitResetLabel);
+                            SessionLimitAutoRestart?.RegisterLimitHit(id, limitResetLabel, entry.Account);
                         }
                         catch (Exception ex)
                         {
@@ -2828,6 +2836,7 @@ namespace BuildConsole.Services
                 OwnerRepo = resolvedOwnerRepo,
                 IsMainRepo = resolvedIsMain,
                 GithubNumber = item.GithubNumber,
+                Account = item.Account,
             };
 
             // Git #2103 — the actual dispatch call site: this is the moment a queue item's

@@ -7057,29 +7057,32 @@ namespace BuildConsole.Controls
             }
             else if (item.Status == Services.SessionLimitAutoRestartService.LimitPausedStatus)
             {
-                // Session-limit park — normally re-queued automatically after the
-                // reset; Resume Now skips the wait for just this build.
-                var miResumeNow = new MenuItem { Header = "▶ Resume Now (skip the wait)" };
+                // Session-limit park — normally re-queued automatically after the reset; Build Now
+                // (Git #1641; was "Resume Now") skips the wait for just this build, and registers it
+                // with SessionLimitAutoRestartService so the account's auto-restart timer defers
+                // resuming the REST of this batch until this manually-started sibling finishes.
+                var miResumeNow = new MenuItem { Header = "▶ Build Now (skip the wait)" };
                 miResumeNow.Click += async (_, _) =>
                 {
                     if (_db == null)
                     {
-                        ToastEngine.Warning("Resume", "No direct DB connection — can't resume.");
+                        ToastEngine.Warning("Build Now", "No direct DB connection — can't resume.");
                         return;
                     }
                     try
                     {
                         if (await _db.RequeueLimitPausedAsync(item.Id))
                         {
-                            ToastEngine.Success("Resumed", $"Back in the queue: {item.Title}");
-                            ActivityLog.Log("session-limit", $"Manually resumed limit-paused queue item #{item.Id} ({item.Title}) ahead of the auto-restart.");
+                            ToastEngine.Success("Build Now", $"Back in the queue: {item.Title}");
+                            ActivityLog.Log("session-limit", $"Build Now: manually resumed limit-paused queue item #{item.Id} ({item.Title}) ahead of the auto-restart.");
+                            _sessionLimitAutoRestart?.RegisterManualOverride(item.Id, item.Account);
                         }
                         else
-                            ToastEngine.Warning("Resume", $"No longer limit-paused: {item.Title}");
+                            ToastEngine.Warning("Build Now", $"No longer limit-paused: {item.Title}");
                     }
                     catch (Exception ex)
                     {
-                        ToastEngine.Error("Resume Failed", $"Couldn't resume: {ex.Message}");
+                        ToastEngine.Error("Build Now Failed", $"Couldn't resume: {ex.Message}");
                     }
                     await RefreshAsync();
                 };
