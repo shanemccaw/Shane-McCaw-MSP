@@ -44,11 +44,11 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,16,0">
-                    <TextBlock Text="&#x1F9EA;" FontSize="14" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                    <TextBlock Text="WPF Control Tester" FontSize="12" FontWeight="SemiBold"
+                    <TextBlock Text="&#x1F9EA;" FontSize="{StaticResource BodyFontSize}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="WPF Control Tester" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
                     <Border Background="{StaticResource Surface0Brush}" CornerRadius="3" Padding="6,2" Margin="10,0,0,0">
-                        <TextBlock x:Name="TxtRenderStatus" Text="Ready" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}"/>
+                        <TextBlock x:Name="TxtRenderStatus" Text="Ready" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusSuccessBrush}"/>
                     </Border>
                 </StackPanel>
 
@@ -56,30 +56,30 @@
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
                             HorizontalAlignment="Right" Margin="0,0,16,0"
                             WindowChrome.IsHitTestVisibleInChrome="True">
-                    <TextBlock Text="Control:" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
+                    <TextBlock Text="Control:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}"
                                VerticalAlignment="Center" Margin="0,0,6,0"/>
                     <ComboBox x:Name="CmbControlPicker" Width="220" Height="26"
                               SelectionChanged="CmbControlPicker_SelectionChanged"
-                              VerticalContentAlignment="Center" FontSize="11"/>
+                              VerticalContentAlignment="Center" FontSize="{StaticResource CaptionFontSize}"/>
 
                     <Separator Width="1" Height="20" Background="{StaticResource Surface1Brush}" Margin="12,0"/>
 
-                    <TextBlock Text="W:" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
+                    <TextBlock Text="W:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}"
                                VerticalAlignment="Center" Margin="0,0,4,0"/>
-                    <TextBox x:Name="TxtOverrideWidth" Width="54" Height="26" Text="Auto" FontSize="11"
+                    <TextBox x:Name="TxtOverrideWidth" Width="54" Height="26" Text="Auto" FontSize="{StaticResource CaptionFontSize}"
                              VerticalContentAlignment="Center" TextChanged="TxtOverrideDimension_TextChanged"
                              ToolTip="Preview width (Auto = fill panel)"/>
-                    <TextBlock Text="H:" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
+                    <TextBlock Text="H:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}"
                                VerticalAlignment="Center" Margin="8,0,4,0"/>
-                    <TextBox x:Name="TxtOverrideHeight" Width="54" Height="26" Text="Auto" FontSize="11"
+                    <TextBox x:Name="TxtOverrideHeight" Width="54" Height="26" Text="Auto" FontSize="{StaticResource CaptionFontSize}"
                              VerticalContentAlignment="Center" TextChanged="TxtOverrideDimension_TextChanged"
                              ToolTip="Preview height (Auto = fill panel)"/>
 
                     <Separator Width="1" Height="20" Background="{StaticResource Surface1Brush}" Margin="12,0"/>
 
-                    <TextBlock Text="BG:" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
+                    <TextBlock Text="BG:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}"
                                VerticalAlignment="Center" Margin="0,0,4,0"/>
-                    <ComboBox x:Name="CmbBgOverride" Width="110" Height="26" FontSize="11"
+                    <ComboBox x:Name="CmbBgOverride" Width="110" Height="26" FontSize="{StaticResource CaptionFontSize}"
                               VerticalContentAlignment="Center" SelectionChanged="CmbBgOverride_SelectionChanged">
                         <ComboBoxItem Content="Default (Base)" IsSelected="True" Tag="default"/>
                         <ComboBoxItem Content="Checkerboard" Tag="checker"/>
@@ -94,7 +94,7 @@
                             BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1" ToolTip="Reload control">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#x1F504;" Margin="0,0,5,0"/>
-                            <TextBlock Text="Reload" FontSize="11"/>
+                            <TextBlock Text="Reload" FontSize="{StaticResource CaptionFontSize}"/>
                         </StackPanel>
                     </Button>
 
@@ -104,7 +104,7 @@
                             ToolTip="Save PNG snapshot to Desktop">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#x1F4F7;" Margin="0,0,5,0"/>
-                            <TextBlock Text="Screenshot" FontSize="11"/>
+                            <TextBlock Text="Screenshot" FontSize="{StaticResource CaptionFontSize}"/>
                         </StackPanel>
                     </Button>
                 </StackPanel>
@@ -143,7 +143,7 @@
                         <!-- Control Info -->
                         <Border Style="{StaticResource ToolCard}">
                             <StackPanel>
-                                <TextBlock Text="CONTROL INFO" FontWeight="SemiBold" FontSize="10"
+                                <TextBlock Text="CONTROL INFO" FontWeight="SemiBold" FontSize="{StaticResource CaptionFontSize}"
                                            Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,8"/>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -156,17 +156,17 @@
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
-                                    <TextBlock Text="Name:" FontSize="11" Foreground="{StaticResource TextDisabledBrush}" VerticalAlignment="Top" Margin="0,2"/>
-                                    <TextBlock x:Name="TxtInfoName" Grid.Column="1" Text="—" FontSize="11" FontWeight="SemiBold"
+                                    <TextBlock Text="Name:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextDisabledBrush}" VerticalAlignment="Top" Margin="0,2"/>
+                                    <TextBlock x:Name="TxtInfoName" Grid.Column="1" Text="—" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" Margin="0,0,0,5"/>
-                                    <TextBlock Grid.Row="1" Text="Type:" FontSize="11" Foreground="{StaticResource TextDisabledBrush}" VerticalAlignment="Top" Margin="0,2"/>
-                                    <TextBlock x:Name="TxtInfoType" Grid.Row="1" Grid.Column="1" Text="—" FontSize="11"
+                                    <TextBlock Grid.Row="1" Text="Type:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextDisabledBrush}" VerticalAlignment="Top" Margin="0,2"/>
+                                    <TextBlock x:Name="TxtInfoType" Grid.Row="1" Grid.Column="1" Text="—" FontSize="{StaticResource CaptionFontSize}"
                                                Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,5"/>
-                                    <TextBlock Grid.Row="2" Text="Actual size:" FontSize="11" Foreground="{StaticResource TextDisabledBrush}" Margin="0,2"/>
-                                    <TextBlock x:Name="TxtInfoSize" Grid.Row="2" Grid.Column="1" Text="—" FontSize="11"
+                                    <TextBlock Grid.Row="2" Text="Actual size:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextDisabledBrush}" Margin="0,2"/>
+                                    <TextBlock x:Name="TxtInfoSize" Grid.Row="2" Grid.Column="1" Text="—" FontSize="{StaticResource CaptionFontSize}"
                                                Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,5"/>
-                                    <TextBlock Grid.Row="3" Text="Visuals:" FontSize="11" Foreground="{StaticResource TextDisabledBrush}" Margin="0,2"/>
-                                    <TextBlock x:Name="TxtInfoVisuals" Grid.Row="3" Grid.Column="1" Text="—" FontSize="11"
+                                    <TextBlock Grid.Row="3" Text="Visuals:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextDisabledBrush}" Margin="0,2"/>
+                                    <TextBlock x:Name="TxtInfoVisuals" Grid.Row="3" Grid.Column="1" Text="—" FontSize="{StaticResource CaptionFontSize}"
                                                Foreground="{StaticResource TextSecondaryBrush}"/>
                                 </Grid>
                             </StackPanel>
@@ -175,29 +175,29 @@
                         <!-- Live Dimensions -->
                         <Border Style="{StaticResource ToolCard}">
                             <StackPanel>
-                                <TextBlock Text="LIVE DIMENSIONS" FontWeight="SemiBold" FontSize="10"
+                                <TextBlock Text="LIVE DIMENSIONS" FontWeight="SemiBold" FontSize="{StaticResource CaptionFontSize}"
                                            Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,8"/>
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <StackPanel>
-                                        <TextBlock Text="Actual Width" FontSize="10" Foreground="{StaticResource TextDisabledBrush}"/>
-                                        <TextBlock x:Name="TxtLiveWidth" Text="—" FontSize="18" FontWeight="Bold" Foreground="{StaticResource BlueBrush}"/>
+                                        <TextBlock Text="Actual Width" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextDisabledBrush}"/>
+                                        <TextBlock x:Name="TxtLiveWidth" Text="—" FontSize="{StaticResource HeaderFontSize}" FontWeight="Bold" Foreground="{StaticResource BlueBrush}"/>
                                     </StackPanel>
                                     <StackPanel Grid.Column="1">
-                                        <TextBlock Text="Actual Height" FontSize="10" Foreground="{StaticResource TextDisabledBrush}"/>
-                                        <TextBlock x:Name="TxtLiveHeight" Text="—" FontSize="18" FontWeight="Bold" Foreground="{StaticResource MauveBrush}"/>
+                                        <TextBlock Text="Actual Height" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextDisabledBrush}"/>
+                                        <TextBlock x:Name="TxtLiveHeight" Text="—" FontSize="{StaticResource HeaderFontSize}" FontWeight="Bold" Foreground="{StaticResource MauveBrush}"/>
                                     </StackPanel>
                                 </Grid>
                                 <Separator Margin="0,8" Background="{StaticResource Surface1Brush}"/>
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <StackPanel>
-                                        <TextBlock Text="Desired W" FontSize="10" Foreground="{StaticResource TextDisabledBrush}"/>
-                                        <TextBlock x:Name="TxtDesiredWidth" Text="—" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                        <TextBlock Text="Desired W" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextDisabledBrush}"/>
+                                        <TextBlock x:Name="TxtDesiredWidth" Text="—" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}"/>
                                     </StackPanel>
                                     <StackPanel Grid.Column="1">
-                                        <TextBlock Text="Desired H" FontSize="10" Foreground="{StaticResource TextDisabledBrush}"/>
-                                        <TextBlock x:Name="TxtDesiredHeight" Text="—" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                        <TextBlock Text="Desired H" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextDisabledBrush}"/>
+                                        <TextBlock x:Name="TxtDesiredHeight" Text="—" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}"/>
                                     </StackPanel>
                                 </Grid>
                             </StackPanel>
@@ -206,10 +206,10 @@
                         <!-- Visual Tree -->
                         <Border Style="{StaticResource ToolCard}">
                             <StackPanel>
-                                <TextBlock Text="VISUAL TREE" FontWeight="SemiBold" FontSize="10"
+                                <TextBlock Text="VISUAL TREE" FontWeight="SemiBold" FontSize="{StaticResource CaptionFontSize}"
                                            Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,8"/>
                                 <TreeView x:Name="VisualTree" MinHeight="140" MaxHeight="240"
-                                          Background="Transparent" BorderThickness="0" FontSize="11"
+                                          Background="Transparent" BorderThickness="0" FontSize="{StaticResource CaptionFontSize}"
                                           SelectedItemChanged="VisualTree_SelectedItemChanged"/>
                             </StackPanel>
                         </Border>
@@ -217,13 +217,13 @@
                         <!-- Selected Element Properties -->
                         <Border Style="{StaticResource ToolCard}">
                             <StackPanel>
-                                <TextBlock Text="SELECTED ELEMENT" FontWeight="SemiBold" FontSize="10"
+                                <TextBlock Text="SELECTED ELEMENT" FontWeight="SemiBold" FontSize="{StaticResource CaptionFontSize}"
                                            Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,8"/>
-                                <TextBlock x:Name="TxtSelectedElement" Text="(none)" FontSize="11"
+                                <TextBlock x:Name="TxtSelectedElement" Text="(none)" FontSize="{StaticResource CaptionFontSize}"
                                            Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,6"/>
                                 <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto">
                                     <TextBlock x:Name="TxtSelectedProperties" Text=""
-                                               FontFamily="Cascadia Code, Consolas" FontSize="10"
+                                               FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource MonospaceFontSize}"
                                                Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap"/>
                                 </ScrollViewer>
                             </StackPanel>
@@ -232,14 +232,14 @@
                         <!-- Width Presets -->
                         <Border Style="{StaticResource ToolCard}">
                             <StackPanel>
-                                <TextBlock Text="WIDTH PRESETS" FontWeight="SemiBold" FontSize="10"
+                                <TextBlock Text="WIDTH PRESETS" FontWeight="SemiBold" FontSize="{StaticResource CaptionFontSize}"
                                            Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,8"/>
                                 <WrapPanel>
-                                    <Button Content="280" Tag="280" Margin="0,0,4,4" Padding="10,3" FontSize="11" Click="SizePreset_Click"/>
-                                    <Button Content="360" Tag="360" Margin="0,0,4,4" Padding="10,3" FontSize="11" Click="SizePreset_Click"/>
-                                    <Button Content="480" Tag="480" Margin="0,0,4,4" Padding="10,3" FontSize="11" Click="SizePreset_Click"/>
-                                    <Button Content="640" Tag="640" Margin="0,0,4,4" Padding="10,3" FontSize="11" Click="SizePreset_Click"/>
-                                    <Button Content="Fill" Tag="Auto" Margin="0,0,4,4" Padding="10,3" FontSize="11" Click="SizePreset_Click"/>
+                                    <Button Content="280" Tag="280" Margin="0,0,4,4" Padding="10,3" FontSize="{StaticResource CaptionFontSize}" Click="SizePreset_Click"/>
+                                    <Button Content="360" Tag="360" Margin="0,0,4,4" Padding="10,3" FontSize="{StaticResource CaptionFontSize}" Click="SizePreset_Click"/>
+                                    <Button Content="480" Tag="480" Margin="0,0,4,4" Padding="10,3" FontSize="{StaticResource CaptionFontSize}" Click="SizePreset_Click"/>
+                                    <Button Content="640" Tag="640" Margin="0,0,4,4" Padding="10,3" FontSize="{StaticResource CaptionFontSize}" Click="SizePreset_Click"/>
+                                    <Button Content="Fill" Tag="Auto" Margin="0,0,4,4" Padding="10,3" FontSize="{StaticResource CaptionFontSize}" Click="SizePreset_Click"/>
                                 </WrapPanel>
                             </StackPanel>
                         </Border>
@@ -260,11 +260,11 @@
                     <StackPanel x:Name="PnlEmpty" HorizontalAlignment="Center" VerticalAlignment="Center"
                                 Visibility="Visible">
                         <TextBlock Text="&#x1F9EA;" FontSize="48" HorizontalAlignment="Center" Opacity="0.3"/>
-                        <TextBlock Text="Select a control to render" FontSize="16" FontWeight="SemiBold"
+                        <TextBlock Text="Select a control to render" FontSize="{StaticResource SubHeaderFontSize}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextDisabledBrush}"
                                    HorizontalAlignment="Center" Margin="0,12,0,4"/>
                         <TextBlock Text="Use the dropdown in the toolbar to pick any BuildConsole UserControl."
-                                   FontSize="12" Foreground="{StaticResource TextDisabledBrush}"
+                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextDisabledBrush}"
                                    HorizontalAlignment="Center" TextWrapping="Wrap" MaxWidth="360" TextAlignment="Center"/>
                     </StackPanel>
 
@@ -273,9 +273,9 @@
                             Background="#3A1818" BorderBrush="{StaticResource StatusErrorBrush}"
                             BorderThickness="1" CornerRadius="6" Padding="20">
                         <StackPanel>
-                            <TextBlock Text="&#x26A0; Render Error" FontWeight="Bold" FontSize="14"
+                            <TextBlock Text="&#x26A0; Render Error" FontWeight="Bold" FontSize="{StaticResource BodyFontSize}"
                                        Foreground="{StaticResource StatusErrorBrush}" Margin="0,0,0,8"/>
-                            <TextBlock x:Name="TxtErrorMessage" Text="" FontFamily="Cascadia Code, Consolas" FontSize="11"
+                            <TextBlock x:Name="TxtErrorMessage" Text="" FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource MonospaceFontSize}"
                                        Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" MaxWidth="500"/>
                         </StackPanel>
                     </Border>
@@ -293,9 +293,9 @@
                             BorderThickness="0,0,0,1" Padding="10,7">
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="Event Log" FontWeight="SemiBold" FontSize="12"
+                            <TextBlock Text="Event Log" FontWeight="SemiBold" FontSize="{StaticResource CaptionFontSize}"
                                        Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
-                            <Button Grid.Column="1" Content="Clear" Click="BtnClearLog_Click" Padding="8,2" FontSize="10"
+                            <Button Grid.Column="1" Content="Clear" Click="BtnClearLog_Click" Padding="8,2" FontSize="{StaticResource CaptionFontSize}"
                                     Background="{StaticResource Surface0Brush}" Foreground="{StaticResource TextSecondaryBrush}"
                                     BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1"/>
                         </Grid>
@@ -303,9 +303,9 @@
                     <Border DockPanel.Dock="Top" Padding="10,4"
                             BorderBrush="{StaticResource BorderDividerBrush}" BorderThickness="0,0,0,1">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock x:Name="TxtLogCount" Text="0 events" FontSize="10" Foreground="{StaticResource TextDisabledBrush}"/>
-                            <TextBlock Text=" • " Foreground="{StaticResource TextDisabledBrush}" FontSize="10"/>
-                            <TextBlock x:Name="TxtLogLastTime" Text="—" FontSize="10" Foreground="{StaticResource TextDisabledBrush}"/>
+                            <TextBlock x:Name="TxtLogCount" Text="0 events" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextDisabledBrush}"/>
+                            <TextBlock Text=" • " Foreground="{StaticResource TextDisabledBrush}" FontSize="{StaticResource CaptionFontSize}"/>
+                            <TextBlock x:Name="TxtLogLastTime" Text="—" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextDisabledBrush}"/>
                         </StackPanel>
                     </Border>
                     <ScrollViewer x:Name="LogScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -324,16 +324,16 @@
                                                         <Setter Property="Background" Value="#2A2010"/>
                                                     </DataTrigger>
                                                     <DataTrigger Binding="{Binding Level}" Value="Success">
-                                                        <Setter Property="Background" Value="#102010"/>
+                                                        <Setter Property="Background" Value="{StaticResource StatusSuccessWashLightBrush}"/>
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
                                         </Border.Style>
                                         <StackPanel>
                                             <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
-                                                <TextBlock Text="{Binding TimeStr}" FontSize="9"
+                                                <TextBlock Text="{Binding TimeStr}" FontSize="{StaticResource MonospaceFontSize}"
                                                            Foreground="{StaticResource TextDisabledBrush}"
-                                                           FontFamily="Cascadia Code, Consolas" Margin="0,0,6,0"/>
+                                                           FontFamily="{StaticResource MonospaceFontFamily}" Margin="0,0,6,0"/>
                                                 <Border CornerRadius="2" Padding="4,0">
                                                     <Border.Style>
                                                         <Style TargetType="Border">
@@ -346,12 +346,12 @@
                                                                     <Setter Property="Background" Value="#5A4010"/>
                                                                 </DataTrigger>
                                                                 <DataTrigger Binding="{Binding Level}" Value="Success">
-                                                                    <Setter Property="Background" Value="#105A10"/>
+                                                                    <Setter Property="Background" Value="{StaticResource StatusSuccessWashMediumBrush}"/>
                                                                 </DataTrigger>
                                                             </Style.Triggers>
                                                         </Style>
                                                     </Border.Style>
-                                                    <TextBlock Text="{Binding Level}" FontSize="9" FontWeight="Bold">
+                                                    <TextBlock Text="{Binding Level}" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold">
                                                         <TextBlock.Style>
                                                             <Style TargetType="TextBlock">
                                                                 <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
@@ -360,7 +360,7 @@
                                                                         <Setter Property="Foreground" Value="{StaticResource StatusErrorBrush}"/>
                                                                     </DataTrigger>
                                                                     <DataTrigger Binding="{Binding Level}" Value="Warning">
-                                                                        <Setter Property="Foreground" Value="#F9E2AF"/>
+                                                                        <Setter Property="Foreground" Value="{StaticResource YellowBrush}"/>
                                                                     </DataTrigger>
                                                                     <DataTrigger Binding="{Binding Level}" Value="Success">
                                                                         <Setter Property="Foreground" Value="{StaticResource StatusSuccessBrush}"/>
@@ -371,7 +371,7 @@
                                                     </TextBlock>
                                                 </Border>
                                             </StackPanel>
-                                            <TextBlock Text="{Binding Message}" FontSize="10.5"
+                                            <TextBlock Text="{Binding Message}" FontSize="{StaticResource CaptionFontSize}"
                                                        Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap"/>
                                         </StackPanel>
                                     </Border>
