@@ -13,9 +13,15 @@
  * those apart) and a thrown/5xx read are distinct, honestly-rendered states.
  */
 import { useEffect, useRef } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
-import type { ApiErrorBody, KanbanChangeEvent, WireProjectDetail } from "@/lib/projects-types";
+import type {
+  ApiErrorBody,
+  KanbanChangeEvent,
+  SignProjectClosureRequest,
+  WireProjectClosure,
+  WireProjectDetail,
+} from "@/lib/projects-types";
 
 async function parseJsonOrThrow<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -47,6 +53,32 @@ export function useProjectDetail(id: string) {
     },
     enabled: !!id,
     retry: false,
+  });
+}
+
+/**
+ * `POST /api/portal/projects/:id/closure` (#4058) — the customer sign-off act
+ * itself (#4025). This route only ever UPDATES the closure row the admin's
+ * closure-request already inserted; it 404s if none exists and 409s if it's
+ * already signed. On settle, invalidate the project-detail query rather than
+ * optimistically patch it — the same reasoning as `useSignRbdDocument`'s
+ * `onSettled`, since a 409 means our local view of `closure` was stale.
+ */
+export function useSignProjectClosure(id: string) {
+  const { fetchWithAuth } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: SignProjectClosureRequest) => {
+      const res = await fetchWithAuth(`/api/portal/projects/${id}/closure`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      return parseJsonOrThrow<WireProjectClosure>(res);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: QK.project(id) });
+    },
   });
 }
 

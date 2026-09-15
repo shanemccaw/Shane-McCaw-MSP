@@ -128,6 +128,13 @@ export interface WireProjectClosure {
   signedAt: string | null;
 }
 
+/** Body for `POST /api/portal/projects/:id/closure` (#4058, wired for #4025). */
+export interface SignProjectClosureRequest {
+  signatureDataUrl: string;
+  permissionGranted: boolean;
+  feedback?: string;
+}
+
 /** `portal-projects.ts:167` (+ this build's `closure` addition) — the route's actual response shape. */
 export interface WireProjectDetail {
   project: WireProject;

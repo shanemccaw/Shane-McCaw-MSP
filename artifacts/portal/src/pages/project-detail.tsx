@@ -1,10 +1,15 @@
 import { useMemo, useState } from "react";
 import { useParams } from "wouter";
-import { AlertTriangle, ExternalLink, FileText, Folder, Loader2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ExternalLink, FileText, Folder, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { useProjectDetail, useProjectKanbanEvents } from "@/lib/projects-api";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { SignaturePad } from "@/components/risk-register/SignaturePad";
+import { useProjectDetail, useProjectKanbanEvents, useSignProjectClosure } from "@/lib/projects-api";
 import type {
   KanbanColumn,
   ProjectStatus,
@@ -31,9 +36,12 @@ import { cn } from "@/lib/utils";
  *   - The coupon line draws the earliest invoice's discount only — the
  *     route's own comment claims a sum, the query returns one row (pack's
  *     §1a finding). Not fixed here; drawing what the API actually returns.
- *   - The closure-requested banner (#4025) is a real dead end: a real
- *     request, a real email link, no customer sign-off route anywhere in the
- *     codebase. No fake confirmation form.
+ *   - The closure-requested banner (#4025) is now a real sign-off ceremony —
+ *     drawn signature (`SignaturePad`, the same component the RBD document
+ *     and SOW share-link ceremonies use), a permission checkbox, and
+ *     optional feedback, posted to `POST /api/portal/projects/:id/closure`
+ *     (#4058). Honors the route's real 404 (no closure request exists) and
+ *     409 (already signed elsewhere) responses rather than assuming success.
  *   - `previewTasks` render in their own "Coming up" strip, never inside
  *     Backlog — they are a read-only template projection, not real tasks.
  */
@@ -90,8 +98,8 @@ const LEDGER: Array<{ gap: string; where: string }> = [
     where: "§1a",
   },
   {
-    gap: "Sign-off cannot happen here. A closure request is real and its email links to this page, but no customer route writes the closure — the request is drawn as a dead end, never as a form that pretends to record a signature.",
-    where: "§1c · #4025",
+    gap: "Sign-off happens here now: a drawn signature, a permission checkbox, and optional feedback, posted to the real closure route. It only ever updates a closure row an admin already requested — it never creates one, and it refuses a second signature (409).",
+    where: "§1c · #4025 · #4058",
   },
   {
     gap: "Progress is your MSP's arithmetic — completed tasks over all tasks, recomputed when they change a card. Preview cards do not count and this page does not recompute it.",
@@ -151,6 +159,44 @@ export default function ProjectDetailPage() {
   useProjectKanbanEvents(id, live);
 
   const [ledgerOpen, setLedgerOpen] = useState(true);
+
+  // Closure sign-off ceremony state (#4025) — a drawn signature, an optional
+  // permission checkbox, and optional feedback, all local until submitted.
+  const signClosure = useSignProjectClosure(id);
+  const [closureSignatureData, setClosureSignatureData] = useState<string | null>(null);
+  const [closurePermissionGranted, setClosurePermissionGranted] = useState(false);
+  const [closureFeedback, setClosureFeedback] = useState("");
+
+  function handleSignClosure() {
+    if (!closureSignatureData) {
+      toast.error("Draw your signature before signing off.");
+      return;
+    }
+    signClosure.mutate(
+      {
+        signatureDataUrl: closureSignatureData,
+        permissionGranted: closurePermissionGranted,
+        feedback: closureFeedback.trim() || undefined,
+      },
+      {
+        onSuccess: () => {
+          toast.success("Project signed off. Your MSP has been notified.");
+        },
+        onError: (e) => {
+          const status = (e as Error & { status?: number }).status;
+          toast.error(
+            status === 409
+              ? "This closure has already been signed."
+              : status === 404
+                ? "No closure request exists for this project anymore."
+                : e instanceof Error
+                  ? e.message
+                  : "Signing failed. Please try again.",
+          );
+        },
+      },
+    );
+  }
 
   const tasksByColumn = useMemo(() => {
     const map = new Map<KanbanColumn, WireKanbanTask[]>();
@@ -372,27 +418,76 @@ export default function ProjectDetailPage() {
 
           {data.closure && !data.closure.signedAt && (
             <Card className="border-primary/35 bg-primary/[.06]" data-testid="project-detail-closure">
-              <CardContent className="flex flex-col gap-2.5 pt-6">
+              <CardContent className="flex flex-col gap-3 pt-6">
                 <span className="text-[13.5px] font-semibold text-foreground">Your MSP has asked you to sign this project off</span>
                 <span className="max-w-[720px] text-xs leading-relaxed text-foreground/90">
                   The last step closed on {formatDate(data.closure.requestedAt)} and the project is marked
                   completed. Signing off records your feedback, your permission for the work to be referenced,
                   and your signature against the project.
                 </span>
-                <div className="flex gap-2.5 rounded-xl border border-dashed border-status-amber/45 bg-status-amber/[.05] p-3.5">
-                  <AlertTriangle className="mt-0.5 size-4 flex-none text-status-amber" />
-                  <div className="flex flex-col gap-1">
-                    <span className="text-[12.5px] font-semibold text-foreground">There is no way to sign off here yet</span>
-                    <span className="text-[11.5px] leading-relaxed text-muted-foreground">
-                      The request is real and the email that brought you here is real, but no customer route
-                      writes the sign-off — the loop has an MSP half only. Reply to your MSP directly for now;
-                      this page will not pretend a signature was recorded.
+                <div className="flex flex-col gap-3 border-t border-primary/20 pt-3">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="closure-feedback" className="text-[11px] text-muted-foreground">
+                      Feedback for your MSP (optional)
+                    </Label>
+                    <Textarea
+                      id="closure-feedback"
+                      value={closureFeedback}
+                      onChange={(e) => setClosureFeedback(e.target.value)}
+                      placeholder="Anything you'd like your MSP to know about this project"
+                      disabled={signClosure.isPending}
+                      data-testid="closure-feedback"
+                      className="min-h-[72px] bg-background/60"
+                    />
+                  </div>
+                  <div className="flex items-start gap-2.5">
+                    <Checkbox
+                      id="closure-permission"
+                      checked={closurePermissionGranted}
+                      onCheckedChange={(v) => setClosurePermissionGranted(v === true)}
+                      disabled={signClosure.isPending}
+                      data-testid="closure-permission-granted"
+                    />
+                    <Label htmlFor="closure-permission" className="text-[11.5px] leading-relaxed text-foreground/90">
+                      I give permission for this work to be referenced as a case study or reference project.
+                    </Label>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label className="text-[11px] text-muted-foreground">Your signature</Label>
+                    <SignaturePad onChange={setClosureSignatureData} disabled={signClosure.isPending} />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <span className="max-w-[480px] text-[10.5px] leading-relaxed text-muted-foreground/70">
+                      Signing off is final for this project — it cannot be undone from here.
                     </span>
-                    <span className="font-mono text-[10.5px] text-muted-foreground/70">project_closures · no portal write · #4025</span>
+                    <Button
+                      className="ml-auto gap-2 whitespace-nowrap"
+                      onClick={handleSignClosure}
+                      disabled={signClosure.isPending || !closureSignatureData}
+                      data-testid="closure-sign-submit"
+                    >
+                      {signClosure.isPending && <Loader2 className="size-3.5 animate-spin" />}
+                      Sign off on this project
+                    </Button>
                   </div>
                 </div>
               </CardContent>
             </Card>
+          )}
+
+          {data.closure && data.closure.signedAt && (
+            <div className="flex flex-col gap-1 rounded-xl border border-status-green/25 bg-status-green/[.06] p-3.5" data-testid="project-detail-closure-signed">
+              <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-foreground">
+                <CheckCircle2 className="size-3.5 text-status-green" />
+                Signed off {formatDate(data.closure.signedAt)}
+              </span>
+              <span className="text-[11.5px] leading-relaxed text-muted-foreground">
+                {data.closure.permissionGranted
+                  ? "You gave permission for this work to be referenced as a case study or reference project."
+                  : "You did not give permission for this work to be referenced as a case study or reference project."}
+                {data.closure.feedback ? ` Feedback left: "${data.closure.feedback}"` : ""}
+              </span>
+            </div>
           )}
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
