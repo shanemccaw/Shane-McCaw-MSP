@@ -12,12 +12,6 @@
  */
 
 export const STATIC_NODE_SAMPLES: Record<string, Record<string, unknown>> = {
-  // ── AI ────────────────────────────────────────────────────────────────────
-  ask_ai: {
-    aiResponse: "This is a sample AI-generated text response.",
-    model: "claude-haiku-4-5",
-  },
-
   // ── Intelligence Engines ──────────────────────────────────────────────────
   calculate_priority: {
     engine: "priority",
@@ -166,16 +160,6 @@ export const STATIC_NODE_SAMPLES: Record<string, Record<string, unknown>> = {
     articleId: 1,
     title: "Sample Article Title",
   },
-  topic_picker: {
-    articleTopic: "Microsoft Copilot for M365",
-    topicCategory: "AI & Copilot",
-    topicRationale: "High interest among enterprise IT decision-makers.",
-  },
-  generate_image: {
-    imageUrl: "/api/uploads/generated-images/sample-uuid.png",
-    revisedPrompt: "A professional illustration of Microsoft 365 services.",
-  },
-
   // ── Marketing ─────────────────────────────────────────────────────────────
   define_campaign_goal: { campaignGoal: "Drive awareness of Copilot AI adoption services." },
   define_target_audience: { targetAudience: "IT Directors at mid-market enterprises using Microsoft 365." },
@@ -195,13 +179,6 @@ export const STATIC_NODE_SAMPLES: Record<string, Record<string, unknown>> = {
     slug: "copilot-quick-start",
     published: true,
     wasAlreadyPublished: false,
-  },
-  generate_landing_page: {
-    landingPageId: 1,
-    slug: "copilot-quick-start",
-    headline: "Unlock Microsoft Copilot for Your Team",
-    subheadline: "Get started in days with expert-led onboarding.",
-    published: false,
   },
   send_campaign_email: {
     sent: true,

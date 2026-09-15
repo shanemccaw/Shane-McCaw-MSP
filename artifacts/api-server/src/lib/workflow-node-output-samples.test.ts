@@ -20,7 +20,6 @@ import {
 describe("STATIC_NODE_SAMPLES", () => {
   it("has at least one entry for each major fixed-shape node category", () => {
     const requiredNodeTypes = [
-      "ask_ai",
       "calculate_priority",
       "calculate_pricing_engine",
       "calculate_health",
@@ -42,12 +41,6 @@ describe("STATIC_NODE_SAMPLES", () => {
       // Samples must not have error keys at the top level
       expect(sample).not.toHaveProperty("error");
     }
-  });
-
-  it("ask_ai sample has aiResponse and model fields", () => {
-    const s = STATIC_NODE_SAMPLES["ask_ai"];
-    expect(s).toHaveProperty("aiResponse");
-    expect(s).toHaveProperty("model");
   });
 
   it("calculate_priority sample matches expected output schema", () => {
@@ -108,7 +101,6 @@ describe("FIXED_SHAPE_NODE_TYPES", () => {
     expect(FIXED_SHAPE_NODE_TYPES.has("calculate_priority")).toBe(true);
     expect(FIXED_SHAPE_NODE_TYPES.has("calculate_msp")).toBe(true);
     expect(FIXED_SHAPE_NODE_TYPES.has("get_tenant_signals")).toBe(true);
-    expect(FIXED_SHAPE_NODE_TYPES.has("ask_ai")).toBe(true);
     expect(FIXED_SHAPE_NODE_TYPES.has("generate_document")).toBe(true);
   });
 });
@@ -198,12 +190,6 @@ vi.mock("@workspace/db", () => {
 });
 
 describe("Sample capture: STATIC_NODE_SAMPLES keys match executor output shapes", () => {
-  it("ask_ai sample keys match the declared NODE_OUTPUTS schema", () => {
-    const sample = STATIC_NODE_SAMPLES["ask_ai"];
-    expect(Object.keys(sample)).toContain("aiResponse");
-    expect(Object.keys(sample)).toContain("model");
-  });
-
   it("calculate_priority sample keys match all NODE_OUTPUTS keys", () => {
     const sample = STATIC_NODE_SAMPLES["calculate_priority"];
     const expectedKeys = ["engine", "score", "breakdown", "rawSignals", "timestamp"];

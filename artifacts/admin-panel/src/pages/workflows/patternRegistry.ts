@@ -176,52 +176,10 @@ export const PATTERNS: WorkflowPattern[] = [
     ],
   },
 
-  // ── 4. AI Summarise + Publish ────────────────────────────────────────────────
-  {
-    id: "ai-summarise-publish",
-    name: "AI Summarise + Publish",
-    description: "Uses Ask AI to draft content, generates an article, and publishes it — wired with an error fallback.",
-    icon: "✨",
-    category: "AI",
-    tags: ["ai", "article", "publish", "content"],
-    nodes: [
-      {
-        id: "p4-ai",
-        type: "ask_ai",
-        position: { x: 0, y: 0 },
-        data: {
-          nodeType: "ask_ai",
-          label: "AI Draft",
-          prompt: "Write a concise summary of: {{topic}}",
-          model: "claude-haiku-4-5",
-          outputVar: "draft",
-        },
-      },
-      {
-        id: "p4-article",
-        type: "generate_article",
-        position: { x: 0, y: 100 },
-        data: { nodeType: "generate_article", label: "Generate Article", topic: "{{topic}}", content: "{{draft}}" },
-      },
-      {
-        id: "p4-publish",
-        type: "publish_article",
-        position: { x: 0, y: 200 },
-        data: { nodeType: "publish_article", label: "Publish Article" },
-      },
-      {
-        id: "p4-err",
-        type: "action",
-        position: { x: 260, y: 150 },
-        data: { nodeType: "action", label: "Handle Publish Error", annotation: "Alert Shane on failure" },
-      },
-    ],
-    edges: [
-      { id: "p4-e1", source: "p4-ai", target: "p4-article" },
-      { id: "p4-e2", source: "p4-article", target: "p4-publish" },
-      { id: "p4-e3", source: "p4-publish", target: "p4-err", sourceHandle: "onError" },
-    ],
-  },
+  // Pattern 4 ("AI Summarise + Publish") was removed in #4034 (Complete Decommission
+  // of Dead Workflow Node Types): it was built on the `ask_ai` node type, which was
+  // decommissioned per #3956/#4034, so inserting it would have produced a workflow
+  // the executor cannot run.
 
   // Pattern 5 ("Lead Score → Branch → Notify") was removed in #135 (Decommission
   // Legacy CRM Phase A): it was built entirely on the `score_lead` and

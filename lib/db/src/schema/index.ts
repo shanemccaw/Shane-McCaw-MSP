@@ -3289,9 +3289,8 @@ export interface WfNode {
     | "validate_m365_permissions" | "update_intelligence_tables"
     | "generate_diff_report" | "notify_major_changes"
     // Marketing Actions
-    | "send_campaign_email" | "create_marketing_campaign" | "publish_landing_page" | "generate_landing_page"
+    | "send_campaign_email" | "create_marketing_campaign" | "publish_landing_page"
     | "define_campaign_goal" | "define_target_audience" | "create_campaign_offer"
-    | "ask_ai"
     // Social Media
     | "post_linkedin" | "post_twitter" | "post_facebook"
     // Project Actions
@@ -3303,7 +3302,7 @@ export interface WfNode {
     | "create_phase"
     | "save_presentation_phases"
     // Content
-    | "generate_article" | "publish_article" | "topic_picker" | "generate_image"
+    | "generate_article" | "publish_article"
     | "fetch_news_headlines"
     // Data
     | "find_object"

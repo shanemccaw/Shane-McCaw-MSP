@@ -945,30 +945,6 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     description: "Pauses the run for a human hand-off — an admin generates and tenant-verifies a PowerShell script, then completes it into the Script Library",
   },
   {
-    nodeType: "ask_ai",
-    isAIDependent: true,
-    aiCostOwner: "msp",
-    description: "General-purpose AI call with a custom prompt — billed to MSP",
-  },
-  {
-    nodeType: "topic_picker",
-    isAIDependent: true,
-    aiCostOwner: "msp",
-    description: "AI-selected content topic for article generation — billed to MSP",
-  },
-  {
-    nodeType: "generate_image",
-    isAIDependent: true,
-    aiCostOwner: "msp",
-    description: "AI image generation via OpenAI gpt-image-1 — billed to MSP",
-  },
-  {
-    nodeType: "generate_landing_page",
-    isAIDependent: true,
-    aiCostOwner: "msp",
-    description: "AI-generated landing page content — billed to MSP",
-  },
-  {
     nodeType: "fetch_news_headlines",
     isAIDependent: true,
     aiCostOwner: "msp",
