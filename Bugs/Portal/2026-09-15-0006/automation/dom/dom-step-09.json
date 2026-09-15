@@ -1,0 +1,14 @@
+{
+  "StepIndex": 9,
+  "Route": "http://localhost:5175/portal/accept-agreement",
+  "Selector": "[data-testid=\u0027accept-agreement-checkbox\u0027]",
+  "Description": "expect [data-testid=\u0027accept-agreement-checkbox\u0027]",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 20,
+  "Changes": [
+    "Captured DOM scope: 20 total element nodes under \u0027[data-testid=\u0027accept-agreement-checkbox\u0027]\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-15T00:07:03.7792026-04:00"
+}

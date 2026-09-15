@@ -1,0 +1,373 @@
+{
+  "testName": "Issue #0 - Accept Agreement (#4009, Feature #1649) \u2014 STUB UI PENDING DESIGN REVIEW, authorized by Shane 2026-09-15 (\u0027a stub is better than nothing\u0027). Standalone, authenticated gate at /portal/accept-agreement, wired to the 3 real endpoints restored by #4048 (platform-agreements.ts): GET /api/platform/agreement/current (public), GET .../acceptance-status and POST .../accept (both requireCapability(\u0027ladder.free\u0027)). Not a nav item \u2014 reached by direct link/redirect only.",
+  "productName": "Portal",
+  "sessionId": "2026-09-15-0006",
+  "startedAt": "2026-09-15T00:06:12.5735312-04:00",
+  "endedAt": "2026-09-15T00:07:05.0508690-04:00",
+  "durationSeconds": 52.48,
+  "success": true,
+  "summary": "\u2714 TEST PASSED (9/9 Steps)",
+  "urlsVisited": [
+    "http://localhost:5175/portal/login"
+  ],
+  "steps": [
+    {
+      "index": 1,
+      "action": "goto",
+      "selector": "/portal/login",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "navigation to http://localhost:5175/portal/login succeeds",
+      "actual": "succeeded",
+      "passed": true,
+      "durationMs": 1690,
+      "detail": "Navigated to http://localhost:5175/portal/login",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260915000603\\screenshots\\1.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 2,
+      "action": "expect",
+      "selector": "#email",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "#email state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 83,
+      "detail": "#email \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260915000603\\screenshots\\2.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 3,
+      "action": "input",
+      "selector": "#email",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "input on \u0027#email\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 201,
+      "detail": "Executed input on #email",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260915000603\\screenshots\\3.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 4,
+      "action": "input",
+      "selector": "#password",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "input on \u0027#password\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 41,
+      "detail": "Executed input on #password",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260915000603\\screenshots\\4.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 5,
+      "action": "click",
+      "selector": "[data-testid=\u0027login-submit\u0027]",
+      "targetUrl": "http://localhost:5175/portal/",
+      "expected": "click on \u0027[data-testid=\u0027login-submit\u0027]\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 1641,
+      "detail": "Executed click on [data-testid=\u0027login-submit\u0027]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260915000603\\screenshots\\5.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 6,
+      "action": "goto",
+      "selector": "/portal/accept-agreement",
+      "targetUrl": "http://localhost:5175/portal/accept-agreement",
+      "expected": "navigation to http://localhost:5175/portal/accept-agreement succeeds",
+      "actual": "succeeded",
+      "passed": true,
+      "durationMs": 1444,
+      "detail": "Navigated to http://localhost:5175/portal/accept-agreement",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260915000603\\screenshots\\6.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 7,
+      "action": "expect",
+      "selector": "[data-testid=\u0027accept-agreement-up-to-date\u0027]",
+      "targetUrl": "http://localhost:5175/portal/accept-agreement",
+      "expected": "[data-testid=\u0027accept-agreement-up-to-date\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 70,
+      "detail": "[data-testid=\u0027accept-agreement-up-to-date\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260915000603\\screenshots\\7.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 8,
+      "action": "expect",
+      "selector": "[data-testid=\u0027accept-agreement-up-to-date\u0027]",
+      "targetUrl": "http://localhost:5175/portal/accept-agreement",
+      "expected": "[data-testid=\u0027accept-agreement-up-to-date\u0027] state == \u0027visible\u0027; textContains any of [\u0022You\u0027re up to date\u0022]",
+      "actual": "found=True, visible=True; text=\u0022You\u0027re up to date There is nothing to accept right now \u2014 no newer platform agreement has been published since you last signed in. Continue to the portal\u0022",
+      "passed": true,
+      "durationMs": 32,
+      "detail": "[data-testid=\u0027accept-agreement-up-to-date\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained \u0022You\u0027re up to date\u0022",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260915000603\\screenshots\\8.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 9,
+      "action": "expect",
+      "selector": "[data-testid=\u0027accept-agreement-checkbox\u0027]",
+      "targetUrl": "http://localhost:5175/portal/accept-agreement",
+      "expected": "[data-testid=\u0027accept-agreement-checkbox\u0027] state == \u0027absent\u0027",
+      "actual": "found=False, visible=False",
+      "passed": true,
+      "durationMs": 24,
+      "detail": "[data-testid=\u0027accept-agreement-checkbox\u0027] \u2014 state \u0027absent\u0027 matched (found=False, visible=False)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260915000603\\screenshots\\9.png",
+      "domSnapshotPath": null
+    }
+  ],
+  "consoleErrors": [],
+  "apiFailures": [
+    {
+      "name": "get-favicon.ico",
+      "method": "GET",
+      "requestUrl": "http://localhost:5175/favicon.ico",
+      "statusCode": 404,
+      "durationMs": 0,
+      "reason": "HTTP 404",
+      "timestamp": "2026-09-15T00:06:38.7491444-04:00"
+    },
+    {
+      "name": "post-api-auth-refresh",
+      "method": "POST",
+      "requestUrl": "http://localhost:5175/api/auth/refresh",
+      "statusCode": 401,
+      "durationMs": 0,
+      "reason": "HTTP 401",
+      "timestamp": "2026-09-15T00:06:42.2606496-04:00"
+    }
+  ],
+  "executedCommands": [],
+  "screenshotPaths": [
+    "screenshots/screenshot-01.png",
+    "screenshots/screenshot-02.png",
+    "screenshots/screenshot-03.png",
+    "screenshots/screenshot-04.png",
+    "screenshots/screenshot-05.png",
+    "screenshots/screenshot-06.png",
+    "screenshots/screenshot-07.png",
+    "screenshots/screenshot-08.png",
+    "screenshots/screenshot-09.png"
+  ],
+  "screenshotDiffs": [
+    {
+      "StepIndex": 1,
+      "StepLabel": "goto /portal/login",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260915000603\\screenshots\\1.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\accept-agreement\\1.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 2,
+      "StepLabel": "expect #email",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260915000603\\screenshots\\2.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\accept-agreement\\2.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 3,
+      "StepLabel": "input #email",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260915000603\\screenshots\\3.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\accept-agreement\\3.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 4,
+      "StepLabel": "input #password",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260915000603\\screenshots\\4.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\accept-agreement\\4.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 5,
+      "StepLabel": "click [data-testid=\u0027login-submit\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260915000603\\screenshots\\5.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\accept-agreement\\5.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 6,
+      "StepLabel": "goto /portal/accept-agreement",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260915000603\\screenshots\\6.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\accept-agreement\\6.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 7,
+      "StepLabel": "expect [data-testid=\u0027accept-agreement-up-to-date\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260915000603\\screenshots\\7.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\accept-agreement\\7.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 8,
+      "StepLabel": "expect [data-testid=\u0027accept-agreement-up-to-date\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260915000603\\screenshots\\8.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\accept-agreement\\8.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 9,
+      "StepLabel": "expect [data-testid=\u0027accept-agreement-checkbox\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260915000603\\screenshots\\9.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\accept-agreement\\9.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    }
+  ],
+  "domDiffs": [
+    {
+      "StepIndex": 1,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "/portal/login",
+      "Description": "goto /portal/login",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [],
+      "SnapshotPath": "dom/dom-step-01.json",
+      "Timestamp": "2026-09-15T00:06:42.6063185-04:00"
+    },
+    {
+      "StepIndex": 2,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "#email",
+      "Description": "expect #email",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027#email\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-02.json",
+      "Timestamp": "2026-09-15T00:06:44.4247074-04:00"
+    },
+    {
+      "StepIndex": 3,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "#email",
+      "Description": "input #email",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027#email\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-03.json",
+      "Timestamp": "2026-09-15T00:06:46.9084197-04:00"
+    },
+    {
+      "StepIndex": 4,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "#password",
+      "Description": "input #password",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027#password\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-04.json",
+      "Timestamp": "2026-09-15T00:06:48.7680858-04:00"
+    },
+    {
+      "StepIndex": 5,
+      "Route": "http://localhost:5175/portal/",
+      "Selector": "[data-testid=\u0027login-submit\u0027]",
+      "Description": "click [data-testid=\u0027login-submit\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 126,
+      "Changes": [
+        "Captured DOM scope: 126 total element nodes under \u0027[data-testid=\u0027login-submit\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-05.json",
+      "Timestamp": "2026-09-15T00:06:52.2390083-04:00"
+    },
+    {
+      "StepIndex": 6,
+      "Route": "http://localhost:5175/portal/accept-agreement",
+      "Selector": "/portal/accept-agreement",
+      "Description": "goto /portal/accept-agreement",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [],
+      "SnapshotPath": "dom/dom-step-06.json",
+      "Timestamp": "2026-09-15T00:06:58.6993455-04:00"
+    },
+    {
+      "StepIndex": 7,
+      "Route": "http://localhost:5175/portal/accept-agreement",
+      "Selector": "[data-testid=\u0027accept-agreement-up-to-date\u0027]",
+      "Description": "expect [data-testid=\u0027accept-agreement-up-to-date\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 8,
+      "Changes": [
+        "Captured DOM scope: 8 total element nodes under \u0027[data-testid=\u0027accept-agreement-up-to-date\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-07.json",
+      "Timestamp": "2026-09-15T00:07:00.4288126-04:00"
+    },
+    {
+      "StepIndex": 8,
+      "Route": "http://localhost:5175/portal/accept-agreement",
+      "Selector": "[data-testid=\u0027accept-agreement-up-to-date\u0027]",
+      "Description": "expect [data-testid=\u0027accept-agreement-up-to-date\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 8,
+      "Changes": [
+        "Captured DOM scope: 8 total element nodes under \u0027[data-testid=\u0027accept-agreement-up-to-date\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-08.json",
+      "Timestamp": "2026-09-15T00:07:02.1519193-04:00"
+    },
+    {
+      "StepIndex": 9,
+      "Route": "http://localhost:5175/portal/accept-agreement",
+      "Selector": "[data-testid=\u0027accept-agreement-checkbox\u0027]",
+      "Description": "expect [data-testid=\u0027accept-agreement-checkbox\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 20,
+      "Changes": [
+        "Captured DOM scope: 20 total element nodes under \u0027[data-testid=\u0027accept-agreement-checkbox\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-09.json",
+      "Timestamp": "2026-09-15T00:07:03.7792026-04:00"
+    }
+  ],
+  "recommendations": "All automated UI steps passed. Review baseline screenshots for visual drift."
+}

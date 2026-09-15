@@ -1,0 +1,12 @@
+{
+  "StepIndex": 6,
+  "Route": "http://localhost:5175/portal/accept-agreement",
+  "Selector": "/portal/accept-agreement",
+  "Description": "goto /portal/accept-agreement",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 0,
+  "Changes": [],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-15T00:06:58.6993455-04:00"
+}

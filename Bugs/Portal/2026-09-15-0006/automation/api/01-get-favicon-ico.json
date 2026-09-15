@@ -1,0 +1,33 @@
+{
+  "name": "get-favicon.ico",
+  "method": "GET",
+  "requestUrl": "http://localhost:5175/favicon.ico",
+  "statusCode": 404,
+  "durationMs": 0,
+  "reason": "HTTP 404",
+  "requestHeaders": {
+    "Accept": "image/avif,image/webp,image/apng,image/svg\u002Bxml,image/*,*/*;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br, zstd",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Connection": "keep-alive",
+    "Host": "localhost:5175",
+    "Referer": "http://localhost:5175/portal/login",
+    "Sec-Fetch-Dest": "image",
+    "Sec-Fetch-Mode": "no-cors",
+    "Sec-Fetch-Site": "same-origin",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36 Edg/152.0.0.0",
+    "sec-ch-ua": "\u0022Microsoft Edge\u0022;v=\u0022152\u0022, \u0022Not?A_Brand\u0022;v=\u002224\u0022, \u0022Chromium\u0022;v=\u0022152\u0022, \u0022Microsoft Edge WebView2\u0022;v=\u0022152\u0022",
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": "\u0022Windows\u0022"
+  },
+  "responseHeaders": {
+    "Connection": "keep-alive",
+    "Content-Type": "text/plain",
+    "Date": "Tue, 15 Sep 2026 04:06:38 GMT",
+    "Keep-Alive": "timeout=5",
+    "Transfer-Encoding": "chunked",
+    "Vary": "Origin"
+  },
+  "responseBody": null,
+  "timestamp": "2026-09-15T00:06:38.7491444-04:00"
+}

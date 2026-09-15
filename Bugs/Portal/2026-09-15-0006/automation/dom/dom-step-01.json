@@ -1,0 +1,12 @@
+{
+  "StepIndex": 1,
+  "Route": "http://localhost:5175/portal/login",
+  "Selector": "/portal/login",
+  "Description": "goto /portal/login",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 0,
+  "Changes": [],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-15T00:06:42.6063185-04:00"
+}

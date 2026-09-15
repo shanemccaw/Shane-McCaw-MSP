@@ -1,0 +1,14 @@
+{
+  "StepIndex": 7,
+  "Route": "http://localhost:5175/portal/accept-agreement",
+  "Selector": "[data-testid=\u0027accept-agreement-up-to-date\u0027]",
+  "Description": "expect [data-testid=\u0027accept-agreement-up-to-date\u0027]",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 8,
+  "Changes": [
+    "Captured DOM scope: 8 total element nodes under \u0027[data-testid=\u0027accept-agreement-up-to-date\u0027]\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-15T00:07:00.4288126-04:00"
+}
