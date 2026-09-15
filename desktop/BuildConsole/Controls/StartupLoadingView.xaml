@@ -116,16 +116,16 @@
             <!-- Wordmark + Badge -->
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,2">
                 <TextBlock Text="BuildConsole"
-                           FontSize="28" FontWeight="Bold"
+                           FontSize="{StaticResource HeaderFontSize}" FontWeight="Bold"
                            Foreground="{StaticResource TextBrush}"
                            VerticalAlignment="Center"/>
                 <Border Background="{DynamicResource Surface0Brush}" CornerRadius="4" Padding="6,2" Margin="10,0,0,0" VerticalAlignment="Center">
-                    <TextBlock Text="PRO" FontSize="10" FontWeight="Bold" Foreground="{StaticResource BlueBrush}"/>
+                    <TextBlock Text="PRO" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource BlueBrush}"/>
                 </Border>
             </StackPanel>
             
             <TextBlock x:Name="PhraseText" Text="Warming up the flux capacitor…"
-                       FontSize="13" Foreground="{StaticResource Subtext1Brush}"
+                       FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource Subtext1Brush}"
                        HorizontalAlignment="Center" Margin="0,4,0,0"/>
 
             <!-- ── The runner stage ──────────────────────────────────────── -->
@@ -245,12 +245,12 @@
                     <!-- Header with count & progress bar -->
                     <DockPanel Margin="0,0,0,8">
                         <TextBlock Text="Initializing Subsystems"
-                                   FontSize="12" FontWeight="SemiBold"
+                                   FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                    Foreground="{StaticResource Subtext0Brush}"
                                    VerticalAlignment="Center"/>
                         <TextBlock x:Name="ProgressCounterText"
                                    Text="0 ready"
-                                   FontSize="11" FontWeight="SemiBold"
+                                   FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                    Foreground="{StaticResource BlueBrush}"
                                    HorizontalAlignment="Right"
                                    VerticalAlignment="Center"/>

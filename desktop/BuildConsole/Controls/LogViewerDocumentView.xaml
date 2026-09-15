@@ -38,7 +38,7 @@
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                     <StackPanel x:Name="LogViewerStreamSwitch" Orientation="Horizontal" Margin="0,0,10,0"/>
                     <TextBlock x:Name="LogViewerStatusPill" VerticalAlignment="Center" Padding="8,3"
-                               FontFamily="Cascadia Code, Consolas, Courier New" FontSize="10"
+                               FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource CaptionFontSize}"
                                FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -62,9 +62,9 @@
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="8,8,8,0">
                         <Button x:Name="BtnLogViewerRailSources" Content="Sources" Width="Auto" Height="26" Padding="10,0" Margin="0,0,4,0"
-                                Style="{StaticResource IconButton}" Click="BtnLogViewerRailSources_Click" FontSize="10.5"/>
+                                Style="{StaticResource IconButton}" Click="BtnLogViewerRailSources_Click" FontSize="{StaticResource CaptionFontSize}"/>
                         <Button x:Name="BtnLogViewerRailArchive" Content="Archive" Width="Auto" Height="26" Padding="10,0"
-                                Style="{StaticResource IconButton}" Click="BtnLogViewerRailArchive_Click" FontSize="10.5"/>
+                                Style="{StaticResource IconButton}" Click="BtnLogViewerRailArchive_Click" FontSize="{StaticResource CaptionFontSize}"/>
                     </StackPanel>
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <StackPanel x:Name="LogViewerRailContent" Margin="8"/>
@@ -80,9 +80,9 @@
                     <DockPanel>
                         <TextBlock DockPanel.Dock="Right" Text="Back to live sources" Cursor="Hand"
                                    MouseLeftButtonDown="LogViewerCloseArchiveBanner_Click"
-                                   Foreground="{StaticResource StatusWarningBrush}" FontSize="10.5" FontWeight="Bold"/>
+                                   Foreground="{StaticResource StatusWarningBrush}" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"/>
                         <TextBlock x:Name="LogViewerArchiveBannerText"
-                                   FontFamily="Cascadia Code, Consolas, Courier New" FontSize="10.5"
+                                   FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource CaptionFontSize}"
                                    Foreground="{StaticResource StatusWarningBrush}"/>
                     </DockPanel>
                 </Border>
@@ -98,24 +98,24 @@
                             </Grid.ColumnDefinitions>
                             <Grid Grid.Column="0" Margin="0,0,6,0">
                                 <TextBox x:Name="LogViewerSearchBox" Height="28"
-                                         FontFamily="Cascadia Code, Consolas, Courier New" FontSize="11.5"
+                                         FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource CaptionFontSize}"
                                          TextChanged="LogViewerSearchBox_TextChanged"/>
                                 <TextBlock x:Name="LogViewerSearchPlaceholder" Text="Search (plain text)…" Margin="9,0,0,0"
                                            VerticalAlignment="Center" IsHitTestVisible="False"
-                                           FontFamily="Cascadia Code, Consolas, Courier New" FontSize="11.5"
+                                           FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource CaptionFontSize}"
                                            Foreground="{StaticResource Subtext0Brush}"/>
                             </Grid>
                             <Button x:Name="BtnLogViewerRegex" Grid.Column="1" Content=".*" Width="30" Height="28" Margin="0,0,6,0"
                                     Style="{StaticResource IconButton}" Click="BtnLogViewerRegex_Click"
                                     ToolTip="Treat search as a regular expression"
-                                    FontFamily="Cascadia Code, Consolas, Courier New" FontSize="11"/>
+                                    FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource CaptionFontSize}"/>
                             <Grid Grid.Column="2">
                                 <TextBox x:Name="LogViewerExcludeBox" Height="28"
-                                         FontFamily="Cascadia Code, Consolas, Courier New" FontSize="11"
+                                         FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource CaptionFontSize}"
                                          Foreground="{StaticResource RedBrush}"
                                          TextChanged="LogViewerExcludeBox_TextChanged"/>
                                 <TextBlock x:Name="LogViewerExcludePlaceholder" Text="exclude, comma, separated…" Margin="9,0,0,0"
-                                           VerticalAlignment="Center" IsHitTestVisible="False" FontSize="11"
+                                           VerticalAlignment="Center" IsHitTestVisible="False" FontSize="{StaticResource CaptionFontSize}"
                                            Foreground="{StaticResource Subtext0Brush}"/>
                             </Grid>
                         </Grid>
@@ -123,18 +123,18 @@
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,7">
                             <Button x:Name="BtnLogViewerHighlight" Content="HIGHLIGHT" Height="24" Padding="10,0" Margin="0,0,10,0"
                                     Style="{StaticResource IconButton}" Width="Auto"
-                                    Click="BtnLogViewerHighlight_Click" FontSize="9" FontWeight="ExtraBold"/>
+                                    Click="BtnLogViewerHighlight_Click" FontSize="{StaticResource CaptionFontSize}" FontWeight="ExtraBold"/>
                             <StackPanel x:Name="LogViewerSavedFilters" Orientation="Horizontal" Margin="0,0,10,0"/>
                             <TextBlock Text="save current" Cursor="Hand" VerticalAlignment="Center"
                                        MouseLeftButtonDown="LogViewerSaveCurrentFilter_Click"
-                                       Foreground="{StaticResource BlueBrush}" FontSize="9.5" FontWeight="Bold"/>
+                                       Foreground="{StaticResource BlueBrush}" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"/>
                         </StackPanel>
 
                         <StackPanel x:Name="LogViewerLevelPills" Orientation="Horizontal" Margin="0,0,0,7"/>
 
                         <DockPanel>
                             <TextBlock x:Name="LogViewerScrubberReadout" DockPanel.Dock="Right" Margin="8,0,0,0" VerticalAlignment="Center"
-                                       FontFamily="Cascadia Code, Consolas, Courier New" FontSize="9.5"
+                                       FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource CaptionFontSize}"
                                        Foreground="{StaticResource Subtext0Brush}"/>
                             <Slider x:Name="LogViewerScrubber" Minimum="0" Maximum="1440" Value="0"
                                     ValueChanged="LogViewerScrubber_ValueChanged"
@@ -155,7 +155,7 @@
                     <Border DockPanel.Dock="Top" Padding="11,9" BorderThickness="0,0,0,1"
                             BorderBrush="{StaticResource Surface0Brush}">
                         <StackPanel>
-                            <TextBlock Text="ACTIVE FILTERS" Margin="0,0,0,6" FontSize="9"
+                            <TextBlock Text="ACTIVE FILTERS" Margin="0,0,0,6" FontSize="{StaticResource CaptionFontSize}"
                                        FontWeight="ExtraBold" Foreground="{StaticResource Subtext0Brush}"/>
                             <WrapPanel x:Name="LogViewerFilterChips"/>
                         </StackPanel>
@@ -170,13 +170,13 @@
                         <StackPanel>
                             <DockPanel Margin="0,0,0,7">
                                 <TextBlock DockPanel.Dock="Left" Text="SCRATCH PAD" VerticalAlignment="Center"
-                                           FontSize="9" FontWeight="ExtraBold" Foreground="{StaticResource Subtext0Brush}"/>
+                                           FontSize="{StaticResource CaptionFontSize}" FontWeight="ExtraBold" Foreground="{StaticResource Subtext0Brush}"/>
                                 <TextBlock x:Name="LogViewerScratchCopy" Text="copy" HorizontalAlignment="Right" Cursor="Hand"
                                            Margin="0,0,10,0" MouseLeftButtonDown="LogViewerScratchCopy_Click"
-                                           Foreground="{StaticResource BlueBrush}" FontSize="9.5" FontWeight="Bold"/>
+                                           Foreground="{StaticResource BlueBrush}" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"/>
                                 <TextBlock x:Name="LogViewerScratchSendToChat" Text="send to chat" HorizontalAlignment="Right" Cursor="Hand"
                                            MouseLeftButtonDown="LogViewerScratchSendToChat_Click"
-                                           Foreground="{StaticResource BlueBrush}" FontSize="9.5" FontWeight="Bold"/>
+                                           Foreground="{StaticResource BlueBrush}" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"/>
                             </DockPanel>
                         </StackPanel>
                     </Border>

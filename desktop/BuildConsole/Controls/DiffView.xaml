@@ -35,17 +35,17 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="&#177;" FontFamily="{StaticResource ChatPane.MonoFont}"
-                               FontWeight="Bold" FontSize="13" Foreground="{StaticResource ChatPane.AccentText1}"
+                               FontWeight="Bold" FontSize="{StaticResource MonospaceFontSize}" Foreground="{StaticResource ChatPane.AccentText1}"
                                VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <TextBlock Grid.Column="1" x:Name="FileNameText" Text="Code change"
-                               FontFamily="{StaticResource ChatPane.MonoFont}" FontSize="11.5"
+                               FontFamily="{StaticResource ChatPane.MonoFont}" FontSize="{StaticResource CaptionFontSize}"
                                Foreground="{StaticResource ChatPane.Muted2}" VerticalAlignment="Center"
                                TextTrimming="CharacterEllipsis"/>
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
                         <TextBlock x:Name="AddStatText" Text="+0" FontFamily="{StaticResource ChatPane.MonoFont}"
-                                   FontSize="11.5" FontWeight="SemiBold" Foreground="{StaticResource ChatPane.Success}"/>
+                                   FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource ChatPane.Success}"/>
                         <TextBlock x:Name="RemoveStatText" Text="&#8722;0" FontFamily="{StaticResource ChatPane.MonoFont}"
-                                   FontSize="11.5" FontWeight="SemiBold" Foreground="{StaticResource ChatPane.Danger}"
+                                   FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource ChatPane.Danger}"
                                    Margin="8,0,0,0"/>
                     </StackPanel>
                 </Grid>
@@ -58,8 +58,8 @@
                                    IsReadOnly="True"
                                    Background="Transparent"
                                    Foreground="{StaticResource ChatPane.Text3}"
-                                   FontFamily="Cascadia Code, Menlo, Consolas"
-                                   FontSize="12.5"
+                                   FontFamily="{StaticResource MonospaceFontFamily}"
+                                   FontSize="{StaticResource MonospaceFontSize}"
                                    Padding="4,6,8,6"
                                    ShowLineNumbers="False"
                                    WordWrap="False"

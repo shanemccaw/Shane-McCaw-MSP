@@ -53,7 +53,7 @@
                     <TextBlock x:Name="QueueHeader"
                                DockPanel.Dock="Left"
                                Text="Command queue"
-                               FontSize="11"
+                               FontSize="{StaticResource CaptionFontSize}"
                                FontWeight="SemiBold"
                                Foreground="{StaticResource Subtext1Brush}"
                                VerticalAlignment="Center"/>
@@ -72,20 +72,20 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,1">
                                     <TextBlock Text="{Binding StatusGlyph}"
                                                Foreground="{Binding StatusBrush}"
-                                               FontFamily="Cascadia Code, Consolas"
-                                               FontSize="12"
+                                               FontFamily="{StaticResource MonospaceFontFamily}"
+                                               FontSize="{StaticResource MonospaceFontSize}"
                                                Width="16"
                                                VerticalAlignment="Center"/>
                                     <TextBlock Text="{Binding Command}"
                                                Foreground="{StaticResource TextBrush}"
-                                               FontFamily="Cascadia Code, Consolas"
-                                               FontSize="12"
+                                               FontFamily="{StaticResource MonospaceFontFamily}"
+                                               FontSize="{StaticResource MonospaceFontSize}"
                                                TextTrimming="CharacterEllipsis"
                                                VerticalAlignment="Center"/>
                                     <TextBlock Text="{Binding Detail}"
                                                Foreground="{Binding StatusBrush}"
-                                               FontFamily="Cascadia Code, Consolas"
-                                               FontSize="11"
+                                               FontFamily="{StaticResource MonospaceFontFamily}"
+                                               FontSize="{StaticResource MonospaceFontSize}"
                                                Margin="8,0,0,0"
                                                VerticalAlignment="Center"/>
                                 </StackPanel>
@@ -135,8 +135,8 @@
                 <!-- Prompt label -->
                 <TextBlock DockPanel.Dock="Left"
                            Text="&gt;"
-                           FontFamily="Cascadia Code, Consolas"
-                           FontSize="13"
+                           FontFamily="{StaticResource MonospaceFontFamily}"
+                           FontSize="{StaticResource MonospaceFontSize}"
                            Foreground="{StaticResource GreenBrush}"
                            VerticalAlignment="Center"
                            Margin="0,0,8,0"/>
@@ -152,8 +152,8 @@
                         Margin="6,0,0,0"/>
                 <!-- Command input -->
                 <TextBox x:Name="InputBox"
-                         FontFamily="Cascadia Code, Consolas"
-                         FontSize="13"
+                         FontFamily="{StaticResource MonospaceFontFamily}"
+                         FontSize="{StaticResource MonospaceFontSize}"
                          Background="Transparent"
                          BorderThickness="0"
                          Foreground="{StaticResource TextBrush}"
