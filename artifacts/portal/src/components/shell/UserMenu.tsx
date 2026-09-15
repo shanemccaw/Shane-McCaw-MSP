@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { CreditCard, Webhook, Settings, ShieldCheck, LogOut, Users, KeyRound, DoorOpen, Lock, Ticket } from "lucide-react";
+import { CreditCard, Webhook, Settings, ShieldCheck, LogOut, Users, KeyRound, DoorOpen, Lock, Ticket, Cloud } from "lucide-react";
 import type { AuthUser } from "@/lib/auth-context";
 import { useAuth } from "@/lib/auth-context";
 
@@ -182,6 +182,15 @@ export function UserMenu({ user, onClose, onSignOut }: { user: AuthUser; onClose
           label="Account security"
           sub="Password · MFA · active sessions"
           testId="user-menu-account-security"
+          onNavigate={onClose}
+        />
+        {/* #3964 (Feature #3960) — customer self-service view + rotation of the Azure app credential. */}
+        <MenuRow
+          href="/azure-credential"
+          icon={Cloud}
+          label="Azure credential"
+          sub="Tenant connection · rotate secret"
+          testId="user-menu-azure-credential"
           onNavigate={onClose}
         />
         {showLeaving && (
