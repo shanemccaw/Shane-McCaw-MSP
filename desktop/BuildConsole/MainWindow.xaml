@@ -563,6 +563,17 @@
                                 Padding="6,4">
                             <TextBlock Text="📋" FontSize="12" VerticalAlignment="Center"/>
                         </Button>
+                        <!-- Git #4158 — Git Manager: a brand new, focused document tab showing
+                             big push/pull/fix action cards, distinct from Git Doctor's own
+                             existing entry point (🩺, still separate and untouched). -->
+                        <Button x:Name="BtnGitManager"
+                                AutomationProperties.AutomationId="BtnGitManager"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Git Manager"
+                                Click="BtnGitManager_Click"
+                                Padding="6,4">
+                            <TextBlock Text="🔀" FontSize="12" VerticalAlignment="Center"/>
+                        </Button>
                         <!-- Git #3700 (sub-issue of Feature #1788) — persistent "Ask Shane" counter:
                              every real, open issue currently sitting in the board's "Ask Shane"
                              status, needing Shane's own decision. Collapsed entirely at zero (not a

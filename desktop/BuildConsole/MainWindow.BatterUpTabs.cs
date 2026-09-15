@@ -30,9 +30,11 @@ namespace BuildConsole
         private const string BatterUpTabChannel = "batter-up";
         private const string AiBatterUpTabChannel = "ai-batter-up";
         private const string WhatsRemainingTabChannel = "whats-remaining";
+        private const string GitManagerTabChannel = "git-manager";
         private const string BatterUpTabKey = "batter-up:main";
         private const string AiBatterUpTabKey = "ai-batter-up:main";
         private const string WhatsRemainingTabKey = "whats-remaining:main";
+        private const string GitManagerTabKey = "git-manager:main";
 
         // Git #1872 — the SAME instances every existing wire in MainWindow.xaml.cs
         // (RowsAutoQueued, Initialize, the #1813 BoardRefreshCompleted cascade) already
@@ -44,6 +46,10 @@ namespace BuildConsole
         // Git #4149 — same persistent-singleton-field convention; this panel refreshes itself
         // (OnIsVisibleChanged) rather than needing a MainWindow-driven wire.
         private readonly WhatsRemainingPanel _whatsRemainingPanel = new();
+        // Git #4158 — same convention: Git Manager refreshes itself (OnIsVisibleChanged),
+        // reusing GitDoctorService entirely. Distinct from Git Doctor's own GitDoctorView,
+        // which stays hosted exactly where it already is (untouched by this issue).
+        private readonly Controls.GitManagerView _gitManagerPanel = new();
 
         /// <summary>Git #1872 — subscribes the two title-bar count badges to each panel's
         /// CountChanged event and seeds them with whatever count each panel already has
@@ -63,6 +69,8 @@ namespace BuildConsole
 
         private void BtnWhatsRemaining_Click(object sender, RoutedEventArgs e) => OpenWhatsRemainingTab();
 
+        private void BtnGitManager_Click(object sender, RoutedEventArgs e) => OpenGitManagerTab();
+
         /// <summary>Open (or focus, across every pane) the single Batter Up document tab.</summary>
         public void OpenBatterUpTab()
         {
@@ -71,7 +79,7 @@ namespace BuildConsole
                 ActivityLog.Log(BatterUpTabChannel, "focus existing tab");
                 return;
             }
-            AddBatterUpDocumentTab(BatterUpTabKey, "⚾", "Batter Up", _batterUpPanel, BatterUpTabChannel);
+            AddSingletonDocumentTab(BatterUpTabKey, "⚾", "Batter Up", _batterUpPanel, BatterUpTabChannel);
         }
 
         /// <summary>Open (or focus, across every pane) the single AI Batter Up document tab.</summary>
@@ -82,7 +90,7 @@ namespace BuildConsole
                 ActivityLog.Log(AiBatterUpTabChannel, "focus existing tab");
                 return;
             }
-            AddBatterUpDocumentTab(AiBatterUpTabKey, "🔍", "AI Batter Up", _aiBatterUpPanel, AiBatterUpTabChannel);
+            AddSingletonDocumentTab(AiBatterUpTabKey, "🔍", "AI Batter Up", _aiBatterUpPanel, AiBatterUpTabChannel);
         }
 
         /// <summary>Git #4149 — open (or focus, across every pane) the single What's Remaining
@@ -94,7 +102,21 @@ namespace BuildConsole
                 ActivityLog.Log(WhatsRemainingTabChannel, "focus existing tab");
                 return;
             }
-            AddBatterUpDocumentTab(WhatsRemainingTabKey, "📋", "What's Remaining", _whatsRemainingPanel, WhatsRemainingTabChannel);
+            AddSingletonDocumentTab(WhatsRemainingTabKey, "📋", "What's Remaining", _whatsRemainingPanel, WhatsRemainingTabChannel);
+        }
+
+        /// <summary>Git #4158 — open (or focus, across every pane) the single Git Manager
+        /// document tab, via the same recipe as Batter Up / AI Batter Up / What's Remaining.
+        /// A new, narrower surface than Git Doctor's own existing panel — that panel keeps
+        /// its own separate entry point, untouched.</summary>
+        public void OpenGitManagerTab()
+        {
+            if (FocusExistingDocumentTab(GitManagerTabKey))
+            {
+                ActivityLog.Log(GitManagerTabChannel, "focus existing tab");
+                return;
+            }
+            AddSingletonDocumentTab(GitManagerTabKey, "🔀", "Git Manager", _gitManagerPanel, GitManagerTabChannel);
         }
 
         /// <summary>Focus an already-open tab by its Tag key, scanning every split pane — mirrors
@@ -116,10 +138,14 @@ namespace BuildConsole
             return false;
         }
 
-        /// <summary>Build and add the document tab — same header/close/context-menu/drag recipe as
-        /// AddSettingsTab / AddGitDetailTab, always opened into the default EditorTabs pane (same
-        /// convention OpenSettingsTab uses; dragging to another pane is #893's job, not this one's).</summary>
-        private void AddBatterUpDocumentTab(string tabKey, string glyph, string title, UserControl view, string channel)
+        /// <summary>Build and add a persistent-singleton document tab — same header/close/
+        /// context-menu/drag recipe as AddSettingsTab / AddGitDetailTab, always opened into the
+        /// default EditorTabs pane (same convention OpenSettingsTab uses; dragging to another pane
+        /// is #893's job, not this one's). Generalized (Git #4158) from its original
+        /// Batter-Up-specific name — it already took a plain <see cref="UserControl"/>, so every
+        /// caller (Batter Up, AI Batter Up, What's Remaining, Git Manager) shares this one real
+        /// implementation rather than each growing its own copy.</summary>
+        private void AddSingletonDocumentTab(string tabKey, string glyph, string title, UserControl view, string channel)
         {
             // Git #1872 — these two tabs are the first to reuse a persistent UserControl instance
             // across close/reopen (every other tab type constructs fresh Content each open).
