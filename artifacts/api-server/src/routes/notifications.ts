@@ -40,6 +40,7 @@ export const CATEGORY_STYLES: Record<string, { icon: string; color: string }> = 
   project:        { icon: "layers",        color: "blue"   },
   onboarding:     { icon: "rocket",        color: "green"  },
   offer:          { icon: "gift",          color: "pink"   },
+  status_report_published: { icon: "clipboard-check", color: "indigo" },
 };
 
 // ── Admin: SSE stream for real-time notification updates ──────────────────────

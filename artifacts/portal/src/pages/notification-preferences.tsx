@@ -19,14 +19,16 @@ function toMap(list: Preference[]): PrefMap {
   return map;
 }
 
-// Human-readable label/description per category — carried forward verbatim
-// from the archived page's own CATEGORY_INFO (per CLAUDE.md "copy is final";
-// contract pack §3 confirms this is real, hand-written product copy with no
-// backend source, and matches the 15-key KNOWN_CATEGORIES vocabulary
-// (notification-preferences.ts:26 / notifications.ts:12-28) key-for-key).
+// Human-readable label/description per category. The first 15 are carried
+// forward verbatim from the archived page's own CATEGORY_INFO (per CLAUDE.md
+// "copy is final"; contract pack §3 confirms this is real, hand-written
+// product copy with no backend source). "status_report_published" (#4252) is
+// a new category with no archived-page precedent, so its copy is authored
+// here rather than carried forward.
 const CATEGORY_ORDER = [
   "fulfillment", "payment", "security", "ai", "sow", "signal", "message",
   "system", "lead", "dunning", "consent", "automation", "project", "onboarding", "offer",
+  "status_report_published",
 ] as const;
 
 const CATEGORY_INFO: Record<string, { label: string; description: string }> = {
@@ -45,6 +47,7 @@ const CATEGORY_INFO: Record<string, { label: string; description: string }> = {
   project: { label: "Projects", description: "Project status and milestone updates" },
   onboarding: { label: "Onboarding", description: "Setup and onboarding progress updates" },
   offer: { label: "Offers", description: "Remediation and service offers for you" },
+  status_report_published: { label: "Status Reports", description: "New status reports published by your MSP" },
 };
 
 // "What this page deliberately does not do" — real, contract-pack-derived

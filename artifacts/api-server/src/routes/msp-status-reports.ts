@@ -24,7 +24,10 @@
  *   POST   /api/msp/status-reports/:id/publish
  *     — Publish (draft -> published). Irreversible in v1 — no unpublish.
  *       Publishing an already-published report is a no-op 409, not a second
- *       publishedAt stamp.
+ *       publishedAt stamp. Notifies every subscribed, permission-filtered
+ *       customer-side user on the report's customer (Git #4252) — same
+ *       tenant-wide fan-out + `filterByStatusReportViewAccess` gate the
+ *       comments route below already uses, category "status_report_published".
  *
  *   GET    /api/msp/status-reports/:id/comments
  *     — The full two-sided comment thread on a report (Git #3888, phase 2 of
@@ -352,6 +355,33 @@ router.post(
         .returning();
 
       const [author] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, row.authoredByUserId)).limit(1);
+
+      // Notify every customer-side user on this report's customer who is both
+      // opted in to the "status_report_published" category (createNotification's
+      // own preference check) AND actually holds ladder.customer-user (#4252 —
+      // the exact permission-filter gap #1923/#3043 originally flagged, applied
+      // here from day one rather than shipped unfiltered). Deny wins: a
+      // recipient the RBAC model can't evaluate is skipped, never notified.
+      // Best-effort/non-blocking: createNotification never throws, so a
+      // delivery failure here can't fail the publish that already committed.
+      void (async () => {
+        const candidates = await db
+          .select({ id: usersTable.id, role: usersTable.role, mspRole: usersTable.mspRole })
+          .from(usersTable)
+          .where(and(eq(usersTable.tenantId, row.customerId), eq(usersTable.role, "client")));
+
+        const recipientIds = await filterByStatusReportViewAccess(candidates);
+        for (const recipientId of recipientIds) {
+          void createNotification({
+            title: `New status report published: ${row.periodLabel}`,
+            body: `Your MSP published a new status report for ${row.periodLabel}.`,
+            category: "status_report_published",
+            notifType: "document",
+            linkPath: `/status-reports/${row.id}`,
+            recipient: { type: "customer_user", userId: recipientId },
+          });
+        }
+      })();
 
       return res.json({ report: reportToWire(row, author?.name ?? null) });
     } catch (err) {
