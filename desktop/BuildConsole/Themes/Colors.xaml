@@ -54,6 +54,17 @@
     <SolidColorBrush x:Key="AccentWashBrush"       Color="#2A7C8CF0"/>
     <SolidColorBrush x:Key="AccentWashMediumBrush" Color="#337C8CF0"/>
 
+    <!-- Contrast text for use on top of a bright accent fill (e.g. a checked
+         segmented-toggle chip whose background is BlueBrush/SapphireBrush) —
+         needs a genuine opaque near-black, not TextPrimaryColor, or the text
+         reads muddy against the light accent. Git #4220: this is the exact
+         pre-Git-#2126 Catppuccin Crust base value (#11111B) that had no
+         surviving brush after CrustBrush itself was remapped to #CC0D1117
+         (same role, different value, plus alpha) — named for its actual
+         role here rather than reusing the Crust name. -->
+    <Color x:Key="OnAccentTextColor">#11111B</Color>
+    <SolidColorBrush x:Key="OnAccentTextBrush" Color="{StaticResource OnAccentTextColor}"/>
+
     <!-- Status colors (desaturated, never neon, brightened slightly for
          consistency with the accent's treatment) -->
     <Color x:Key="StatusSuccessColor">#8FC496</Color>
