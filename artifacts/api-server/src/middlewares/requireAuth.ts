@@ -13,6 +13,9 @@ import { and, eq } from "drizzle-orm";
 import { enrichRequestContext } from "../lib/request-context.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { userClearsLadderCapability } from "./rbac-ladder.ts";
+import { logger } from "../lib/logger.ts";
+
+const log = logger.child({ channel: "auth" });
 
 export interface AuthUser {
   id: number;
@@ -359,6 +362,10 @@ export function requireMspScope(source: "params" | "query" | "body" = "params") 
     }
 
     if (user.mspId !== requestedMspId) {
+      log.warn(
+        { userId: user.id, userMspId: user.mspId, requestedMspId, source },
+        "requireMspScope denied — user.mspId does not match requested mspId",
+      );
       apiError(res, 403, ApiErrorCode.FORBIDDEN, "Access to this MSP is not permitted");
       return;
     }
@@ -396,7 +403,13 @@ export async function assertCustomerAccess(user: AuthUser, customerId: number): 
   if (effectiveRole === LEGACY_ROLE.platformAdmin) return true;
 
   if (effectiveRole === LEGACY_ROLE.mspAdmin || effectiveRole === LEGACY_ROLE.mspOperator) {
-    if (!user.mspId) return false;
+    if (!user.mspId) {
+      log.warn(
+        { userId: user.id, customerId, effectiveRole },
+        "assertCustomerAccess denied — MSP staff user has no mspId claim",
+      );
+      return false;
+    }
     const [tenant] = await db
       .select({ id: tenantsTable.id })
       .from(tenantsTable)
@@ -405,18 +418,41 @@ export async function assertCustomerAccess(user: AuthUser, customerId: number): 
         eq(tenantsTable.mspId, user.mspId),
       ))
       .limit(1);
-    if (!tenant) return false;
+    if (!tenant) {
+      log.warn(
+        { userId: user.id, userMspId: user.mspId, customerId, effectiveRole },
+        "assertCustomerAccess denied — customer does not belong to user's mspId",
+      );
+      return false;
+    }
     // Per-staff-member tenant-access scoping (additive, opt-in). A staff member
     // with no scope rows is unrestricted (historical default); once scoped, they
     // may only reach customers in their assigned set — even within their own MSP.
-    if (await isCustomerBlockedByStaffScope(user, customerId)) return false;
+    if (await isCustomerBlockedByStaffScope(user, customerId)) {
+      log.warn(
+        { userId: user.id, userMspId: user.mspId, customerId, effectiveRole },
+        "assertCustomerAccess denied — blocked by per-staff-member customer scope",
+      );
+      return false;
+    }
     return true;
   }
 
   if (effectiveRole !== undefined && (LEGACY_CUSTOMER_TIER_ROLES as readonly string[]).includes(effectiveRole)) {
-    return user.customerId === customerId;
+    if (user.customerId !== customerId) {
+      log.warn(
+        { userId: user.id, userCustomerId: user.customerId, customerId, effectiveRole },
+        "assertCustomerAccess denied — user's own customerId does not match requested customerId",
+      );
+      return false;
+    }
+    return true;
   }
 
+  log.warn(
+    { userId: user.id, customerId, effectiveRole },
+    "assertCustomerAccess denied — role is not an MSP-staff or customer-tier role",
+  );
   return false;
 }
 
