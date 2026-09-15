@@ -46,6 +46,10 @@
     <SolidColorBrush x:Key="ChatPane.Muted6" Color="#7C8B9F"/>
     <SolidColorBrush x:Key="ChatPane.Muted7" Color="#64748B"/>
 
+    <!-- Git #4216: exact match for the user-message avatar badge background,
+         previously hardcoded as a raw literal in ChatSessionPane.xaml (Git #4183). -->
+    <SolidColorBrush x:Key="ChatPane.AvatarBadgeFill" Color="#24949CA6"/>
+
     <!-- Status -->
     <SolidColorBrush x:Key="ChatPane.Success" Color="#34D399"/>
     <SolidColorBrush x:Key="ChatPane.Warning" Color="#FBBF24"/>

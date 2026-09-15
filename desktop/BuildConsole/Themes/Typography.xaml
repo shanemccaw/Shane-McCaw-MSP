@@ -21,6 +21,12 @@
     <sys:Double x:Key="MonospaceFontSize">13</sys:Double>
     <sys:Double x:Key="CaptionFontSize">11</sys:Double>
 
+    <!-- Git #4211 — large, centered, decorative icon glyphs used in empty/placeholder
+         states (e.g. "📊" on an empty test-history list). None of the 5 sizes above
+         are appropriate for this role; sized to match the raw literals already in use
+         (42-48) so wiring existing call sites to this key causes no visual regression. -->
+    <sys:Double x:Key="DisplayIconFontSize">48</sys:Double>
+
     <!-- Font Families -->
     <FontFamily x:Key="DefaultFontFamily">Segoe UI</FontFamily>
     <FontFamily x:Key="MonospaceFontFamily">Cascadia Code, Consolas, Courier New</FontFamily>

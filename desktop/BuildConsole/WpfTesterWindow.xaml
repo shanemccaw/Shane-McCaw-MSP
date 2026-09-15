@@ -259,7 +259,7 @@
 
                     <StackPanel x:Name="PnlEmpty" HorizontalAlignment="Center" VerticalAlignment="Center"
                                 Visibility="Visible">
-                        <TextBlock Text="&#x1F9EA;" FontSize="48" HorizontalAlignment="Center" Opacity="0.3"/>
+                        <TextBlock Text="&#x1F9EA;" FontSize="{StaticResource DisplayIconFontSize}" HorizontalAlignment="Center" Opacity="0.3"/>
                         <TextBlock Text="Select a control to render" FontSize="{StaticResource SubHeaderFontSize}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextDisabledBrush}"
                                    HorizontalAlignment="Center" Margin="0,12,0,4"/>

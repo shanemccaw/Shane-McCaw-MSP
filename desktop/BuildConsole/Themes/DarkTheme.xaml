@@ -47,11 +47,21 @@
     <SolidColorBrush x:Key="Overlay0Brush" Color="{StaticResource TextDisabledColor}"/>  <!-- alias #6C7086 -->
     <SolidColorBrush x:Key="Overlay1Brush" Color="{StaticResource TextSecondaryColor}"/> <!-- alias #7F849C / secondary subtle text for diagnostics -->
     <SolidColorBrush x:Key="Overlay2Brush" Color="{StaticResource TextSecondaryColor}"/> <!-- alias #9399B2 -->
+
+    <!-- Vivid magenta pixel-diff highlight (Git #4212). VisualDiffWindow.xaml's heatmap
+         legend swatch used a raw #FF007F with no matching brush — checked against
+         RedBrush/PinkBrush/StatusErrorBrush/StatusFailedBrush, none close to this hue,
+         and the window's own code-behind has no matching color constant to align to.
+         Real named brush so the legend swatch and any future pixel-diff rendering can
+         share one resource, distinct from the app's semantic red/pink/error hues. -->
+    <SolidColorBrush x:Key="DiffHighlightBrush" Color="#FF007F"/>
     <SolidColorBrush x:Key="TextBrush"     Color="{StaticResource TextPrimaryColor}"/>    <!-- was #CDD6F4 -->
     <SolidColorBrush x:Key="Subtext0Brush" Color="{StaticResource TextSecondaryColor}"/>  <!-- was #BAC2DE -->
     <SolidColorBrush x:Key="Subtext1Brush" Color="{StaticResource TextSecondaryColor}"/>  <!-- was #A6ADC8 -->
     <SolidColorBrush x:Key="BlueBrush"     Color="{StaticResource AccentColor}"/>         <!-- was #89B4FA -->
     <SolidColorBrush x:Key="MauveBrush"    Color="#CBA6F7"/>
+    <SolidColorBrush x:Key="WhiteBrush"    Color="#FFFFFF"/> <!-- Git #4217 — pure-white ink swatch, no existing brush covers this -->
+
     <SolidColorBrush x:Key="GreenBrush"      Color="#A6E3A1"/>
     <SolidColorBrush x:Key="LightGreenBrush" Color="#A6E3A1"/> <!-- alias — used by VisualTestTrackerWindow, VisualDiffWindow, SessionSyncDialog -->
 

@@ -82,16 +82,14 @@
 
                     <!-- Color Picker Buttons -->
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
-                        <Button Tag="#F38BA8" Background="{StaticResource RedBrush}" Width="18" Height="18" Margin="2,0,2,0" ToolTip="Red" Click="Color_Click" BorderThickness="1" BorderBrush="#FFFFFF"/>
+                        <Button Tag="#F38BA8" Background="{StaticResource RedBrush}" Width="18" Height="18" Margin="2,0,2,0" ToolTip="Red" Click="Color_Click" BorderThickness="1" BorderBrush="{StaticResource WhiteBrush}"/>
                         <Button Tag="#FAB387" Background="{StaticResource PeachBrush}" Width="18" Height="18" Margin="2,0,2,0" ToolTip="Orange" Click="Color_Click" BorderThickness="0"/>
                         <Button Tag="#F9E2AF" Background="{StaticResource YellowBrush}" Width="18" Height="18" Margin="2,0,2,0" ToolTip="Yellow" Click="Color_Click" BorderThickness="0"/>
                         <Button Tag="#A6E3A1" Background="{StaticResource GreenBrush}" Width="18" Height="18" Margin="2,0,2,0" ToolTip="Green" Click="Color_Click" BorderThickness="0"/>
                         <Button Tag="#89DCEB" Background="{StaticResource SkyBrush}" Width="18" Height="18" Margin="2,0,2,0" ToolTip="Cyan" Click="Color_Click" BorderThickness="0"/>
                         <Button Tag="#CBA6F7" Background="{StaticResource MauveBrush}" Width="18" Height="18" Margin="2,0,2,0" ToolTip="Purple" Click="Color_Click" BorderThickness="0"/>
-                        <!-- Git #4182 — #FFFFFF (White swatch + its BorderBrush above) has no matching
-                             theme brush; a substitute would be inexact, so left raw per the issue's
-                             own instructions and filed as its own finding rather than guessed. -->
-                        <Button Tag="#FFFFFF" Background="#FFFFFF" Width="18" Height="18" Margin="2,0,2,0" ToolTip="White" Click="Color_Click" BorderThickness="0"/>
+                        <!-- Git #4217 — resolved by adding WhiteBrush to Themes/DarkTheme.xaml. -->
+                        <Button Tag="#FFFFFF" Background="{StaticResource WhiteBrush}" Width="18" Height="18" Margin="2,0,2,0" ToolTip="White" Click="Color_Click" BorderThickness="0"/>
                     </StackPanel>
 
                     <Rectangle Width="1" Height="20" Fill="{StaticResource Surface1Brush}" Margin="2,0,8,0" VerticalAlignment="Center"/>

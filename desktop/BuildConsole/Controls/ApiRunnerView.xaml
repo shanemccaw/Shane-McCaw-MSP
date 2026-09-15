@@ -171,7 +171,7 @@
             <Grid Grid.Column="2" Background="{StaticResource BaseBrush}">
                 <Grid x:Name="GridRunnerPlaceholder" Visibility="Visible">
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-40,0,0">
-                        <TextBlock Text="⚡" FontSize="48" Foreground="{StaticResource OverlayBrush}" HorizontalAlignment="Center"/>
+                        <TextBlock Text="⚡" FontSize="{StaticResource DisplayIconFontSize}" Foreground="{StaticResource OverlayBrush}" HorizontalAlignment="Center"/>
                         <TextBlock Text="Select an API endpoint to execute" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,12,0,0" HorizontalAlignment="Center"/>
                     </StackPanel>
                 </Grid>
