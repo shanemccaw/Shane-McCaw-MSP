@@ -28,7 +28,7 @@ import { useMemo, useRef, useState } from "react";
 import { Icon } from "@/console/icons";
 import { surface, text, signal, action, border } from "@/console/tokens";
 import {
-  useAcceptOfferForCustomer, useClickwrapStatus, useCustomerOffers, useExpireSow,
+  useAcceptOfferForCustomer, useClickwrapStatus, useCreateStandaloneSow, useCustomerOffers, useExpireSow,
   useOpenSowDocument, useRecordClickwrap, useSignSow, useSowDetail, useSowsForCustomer,
   useTriggerSowCharge,
   type MspSow, type MspSowStatus, type SalesOffer, type SalesOfferState,
@@ -207,6 +207,7 @@ function SowsTab({ mspId, customerId }: { mspId: number | null; customerId: numb
   const [signer, setSigner] = useState("");
   const [signature, setSignature] = useState<string | null>(null);
   const [result, setResult] = useState<{ tone: ResultTone; text: string } | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const listQuery = useSowsForCustomer(mspId, customerId, filter);
   const rows = useMemo(() => listQuery.data?.items ?? [], [listQuery.data]);
@@ -217,12 +218,14 @@ function SowsTab({ mspId, customerId }: { mspId: number | null; customerId: numb
   const chargeMutation = useTriggerSowCharge(mspId, customerId);
   const expireMutation = useExpireSow(mspId, customerId);
   const openDocMutation = useOpenSowDocument();
+  const createMutation = useCreateStandaloneSow(mspId, customerId);
 
   function select(row: MspSowSummary) {
     setOpenId(row.sowId);
     setResult(null);
     setSigner("");
     setSignature(null);
+    setCreating(false);
   }
 
   if (listQuery.isLoading) {
@@ -287,6 +290,12 @@ function SowsTab({ mspId, customerId }: { mspId: number | null; customerId: numb
           {SOW_STATUSES.map((s) => (
             <button key={s} onClick={() => setFilter(s)} style={chipStyle(filter === s)}>{s}</button>
           ))}
+          <button
+            onClick={() => { setCreating(true); setOpenId(null); setResult(null); }}
+            style={{ ...primaryBtn(), marginLeft: "auto" }}
+          >
+            <Icon name="file-plus" size={13} /> New SOW
+          </button>
         </div>
         {rows.length > 0 ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
@@ -319,7 +328,22 @@ function SowsTab({ mspId, customerId }: { mspId: number | null; customerId: numb
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
-        {sow ? (
+        {creating ? (
+          <NewSowPanel
+            pending={createMutation.isPending}
+            onCancel={() => setCreating(false)}
+            onCreate={(input) => {
+              createMutation.mutate(input, {
+                onSuccess: (created) => {
+                  setCreating(false);
+                  setOpenId(created.sowId);
+                  setResult({ tone: "green", text: `Created as a draft — SOW #${created.id}. Open the document, then send or sign it from here.` });
+                },
+                onError: (err) => setResult({ tone: "red", text: err instanceof Error ? err.message : "The request failed." }),
+              });
+            }}
+          />
+        ) : sow ? (
           <div style={cardStyle({ padding: 16, display: "flex", flexDirection: "column", gap: 14, minWidth: 0 })}>
             <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
               <span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 170, flex: 1 }}>
@@ -419,6 +443,64 @@ function SowsTab({ mspId, customerId }: { mspId: number | null; customerId: numb
             <span style={{ fontSize: 11.5, color: text.muted, maxWidth: 320 }}>Draft, sent, signed, paid — with failed and expired off to the side. Every SOW carries two thirty-day clocks that are not the same clock.</span>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** Standalone SOW creation (Git #4024) — `POST /api/msp/sows`, "used for
+ * manual project SOWs" per the route's own comment. Writes straight into
+ * `draft`; the document is generated server-side from these fields plus
+ * whatever customer-agreement template is configured for this MSP. */
+function NewSowPanel({ pending, onCancel, onCreate }: {
+  pending: boolean;
+  onCancel: () => void;
+  onCreate: (input: { title: string; description?: string; amountCents: number }) => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [amount, setAmount] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  function submit() {
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
+      setError("Title is required.");
+      return;
+    }
+    const dollars = Number(amount);
+    if (amount.trim() === "" || Number.isNaN(dollars) || dollars < 0) {
+      setError("Amount must be a real number, zero or more.");
+      return;
+    }
+    setError(null);
+    onCreate({ title: trimmedTitle, description: description.trim() || undefined, amountCents: Math.round(dollars * 100) });
+  }
+
+  return (
+    <div style={cardStyle({ padding: 16, display: "flex", flexDirection: "column", gap: 12, minWidth: 0 })}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: text.title }}>New statement of work</span>
+        <span style={{ fontSize: 11, color: text.muted }}>Standalone — not tied to any offer. For manual project SOWs.</span>
+      </div>
+      <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: text.muted }}>Title</span>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Q4 network remediation" style={{ height: 32, padding: "0 11px", borderRadius: 6, border: `1px solid ${border.card}`, background: "rgba(2,6,23,.6)", color: text.strong, fontSize: 12.5, fontFamily: "inherit", outline: "none" }} />
+      </label>
+      <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: text.muted }}>Description (optional)</span>
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder="What this SOW covers" style={{ padding: "8px 11px", borderRadius: 6, border: `1px solid ${border.card}`, background: "rgba(2,6,23,.6)", color: text.strong, fontSize: 12.5, fontFamily: "inherit", outline: "none", resize: "vertical" }} />
+      </label>
+      <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: text.muted }}>Amount (USD)</span>
+        <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" inputMode="decimal" style={{ height: 32, padding: "0 11px", borderRadius: 6, border: `1px solid ${border.card}`, background: "rgba(2,6,23,.6)", color: text.strong, fontSize: 12.5, fontFamily: "inherit", outline: "none", maxWidth: 160 }} />
+      </label>
+      {error && <span style={{ fontSize: 11.5, color: signal.critical.text }}>{error}</span>}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <button onClick={submit} disabled={pending} style={primaryBtn(pending)}>
+          <Icon name="file-plus" size={13} /> {pending ? "Creating…" : "Create as draft"}
+        </button>
+        <button onClick={onCancel} style={secondaryBtn()}>Cancel</button>
       </div>
     </div>
   );

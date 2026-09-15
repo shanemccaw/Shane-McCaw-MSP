@@ -16,6 +16,7 @@
  *     GET  /api/msp/:mspId/sales-offers?customerId=&state=   (customerId filter, new use here)
  *   artifacts/api-server/src/routes/msp-sow.ts
  *     GET  /api/msp/sows?customerId=&status=                 (the whole-book list, new use here)
+ *     POST /api/msp/sows                                      (standalone SOW creation, no offerId — Git #4024)
  *     POST /api/msp/sows/:sowId/sign                          (authenticated sign, not wired anywhere until now)
  *     GET  /api/msp/customers/:customerId/clickwrap
  *     POST /api/msp/customers/:customerId/clickwrap
@@ -120,6 +121,33 @@ export function useSowsForCustomer(mspId: number | null, customerId: number, sta
       return parseJsonOrThrow<{ items: import("./sales-api").MspSowSummary[]; total: number }>(res);
     },
     enabled: mspId != null,
+  });
+}
+
+/** Standalone SOW creation — no offerId, "used for manual project SOWs" per
+ * the route's own comment (Git #4024). Writes straight into `draft`, with no
+ * document-generation step in this call; the operator opens/sends it after. */
+export function useCreateStandaloneSow(mspId: number | null, customerId: number) {
+  const { fetchWithAuth } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { title: string; description?: string; amountCents: number }) => {
+      if (mspId == null) throw new Error("No MSP context available.");
+      const res = await fetchWithAuth(`/api/msp/sows`, {
+        method: "POST",
+        body: JSON.stringify({
+          mspId,
+          customerId,
+          title: input.title,
+          description: input.description || undefined,
+          amountCents: input.amountCents,
+        }),
+      });
+      return parseJsonOrThrow<MspSow>(res);
+    },
+    onSuccess: () => {
+      if (mspId != null) void queryClient.invalidateQueries({ queryKey: ["msp", "sows", "customer", mspId, customerId] });
+    },
   });
 }
 
