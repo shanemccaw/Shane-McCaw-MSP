@@ -18,7 +18,9 @@ import {
   clientHealthHistoryTable,
 } from "@workspace/db";
 import { eq, and, desc, count, inArray, sql, isNotNull, isNull, asc } from "drizzle-orm";
-import { requireAdmin, requireCapability } from "../middlewares/requireAuth.ts";
+import { requireAdmin, requireCapability, effectiveMspRole } from "../middlewares/requireAuth.ts";
+import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
+import { resolveMspId } from "../lib/resolve-msp-id.ts";
 import { logger } from "../lib/logger.ts";
 import { auditPrivilegedRead } from "../lib/audit.ts";
 
@@ -542,11 +544,56 @@ router.get("/admin/clients/:id/health/summary", requireAdmin, async (req: Reques
 // Project" client picker (relocated to msp-console) reads this same list;
 // every other route in this file stays requireAdmin (command-center, health
 // summary, Azure credentials — genuinely admin-only client management).
-router.get("/admin/clients", requireCapability("ladder.msp-operator"), async (_req: Request, res: Response) => {
-  const clients = await db.select().from(usersTable)
-    .where(eq(usersTable.role, "client"))
-    .orderBy(desc(usersTable.createdAt));
-  res.json(clients.map(c => ({ ...c, passwordHash: undefined })));
+//
+// #4256 — that re-gate added no MSP scoping, so any MSP's operator received
+// every `role='client'` user on the platform, including other MSPs' own staff
+// (staff rows carry `role='client'` too). Now:
+//   - scoped to the caller's MSP (resolveMspId; PlatformAdmin with no ?mspId=
+//     keeps the cross-platform list; MSP staff with no mspId claim → 403);
+//   - restricted to customer-facing ladder rungs, so staff, ServiceAccount and
+//     PlatformAdmin rows are never offered as a "client";
+//   - an explicit column list — exactly what the pickers render — so no other
+//     users column rides along by omission.
+const CLIENT_LADDER_ROLES = [
+  LEGACY_ROLE.free,
+  LEGACY_ROLE.retainerNoConsent,
+  LEGACY_ROLE.retainerConsented,
+  LEGACY_ROLE.customer,
+];
+
+router.get("/admin/clients", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
+  try {
+    const mspId = await resolveMspId(req);
+    if (mspId === null && effectiveMspRole(req.user!) !== LEGACY_ROLE.platformAdmin) {
+      log.warn({ userId: req.user?.id }, "GET /admin/clients: MSP-staff session has no mspId — denied");
+      res.status(403).json({ error: "No MSP context on this session" });
+      return;
+    }
+
+    const conditions = [
+      eq(usersTable.role, "client"),
+      inArray(usersTable.mspRole, CLIENT_LADDER_ROLES),
+    ];
+    if (mspId !== null) conditions.push(eq(usersTable.mspId, mspId));
+
+    const clients = await db
+      .select({
+        id: usersTable.id,
+        email: usersTable.email,
+        name: usersTable.name,
+        company: usersTable.company,
+        sharepointSiteId: usersTable.sharepointSiteId,
+        mspId: usersTable.mspId,
+        createdAt: usersTable.createdAt,
+      })
+      .from(usersTable)
+      .where(and(...conditions))
+      .orderBy(desc(usersTable.createdAt));
+    res.json(clients);
+  } catch (err) {
+    log.error({ err }, "Failed to fetch clients");
+    res.status(500).json({ error: "Failed to fetch clients" });
+  }
 });
 
 export default router;
