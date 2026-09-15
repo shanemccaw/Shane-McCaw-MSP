@@ -68,7 +68,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { randomBytes, createHmac, timingSafeEqual } from "crypto";
+import { randomBytes, createHash, createHmac, timingSafeEqual } from "crypto";
 import { db, tenantsTable, consentInviteTokensTable, checkoutSessionsTable, servicesTable, mspsTable, type TenantConsentRecord, type TenantConsentMap } from "@workspace/db";
 import { eq, and, isNull, gte, desc, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
@@ -84,6 +84,14 @@ import { getReadConsentRequirementForProduct, buildSessionReadConsentUrl } from 
 import { logger } from "../lib/logger.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 const log = logger.child({ channel: "auth" });
+
+// `state` carries a live bearer secret (invite token) or a checkout session id —
+// never log it raw (#4253). A fingerprint still lets log lines be correlated
+// without handing out anything redeemable.
+function stateFingerprint(state: string | undefined): string | undefined {
+  if (!state) return undefined;
+  return createHash("sha256").update(state).digest("hex").slice(0, 8);
+}
 
 const router: IRouter = Router();
 
@@ -570,7 +578,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
 
   // Microsoft declined callback — surface a clear message
   if (error === "access_denied" || error_subcode === "cancel") {
-    log.warn({ tenant, state, error, error_subcode }, "Consent callback: admin declined");
+    log.warn({ tenant, stateFingerprint: stateFingerprint(state), error, error_subcode }, "Consent callback: admin declined");
 
     // #4243: this branch is reachable by anyone — no Microsoft confirmation, and
     // the GUID is public — so the decline is recorded only against the customer
@@ -617,7 +625,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
 
   // Success callback must include tenant + admin_consent=True
   if (!tenant || admin_consent?.toLowerCase() !== "true") {
-    log.warn({ tenant, admin_consent, state }, "Consent callback: unexpected parameters");
+    log.warn({ tenant, admin_consent, stateFingerprint: stateFingerprint(state) }, "Consent callback: unexpected parameters");
     res.status(400).send("Invalid consent callback parameters.");
     return;
   }
@@ -649,7 +657,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       .limit(1);
 
     if (!row) {
-      log.warn({ state, tenant }, "Consent callback: invite token invalid, expired, or already used");
+      log.warn({ stateFingerprint: stateFingerprint(state), tenant }, "Consent callback: invite token invalid, expired, or already used");
       res.status(400).send("This consent link has expired or has already been used. Please request a new link.");
       return;
     }
@@ -758,7 +766,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       log.warn(
         {
           tenantId: tenant,
-          sessionId: isCheckoutSession ? state : undefined,
+          sessionId: isCheckoutSession ? stateFingerprint(state) : undefined,
           mspInvite: !isCheckoutSession,
           conflictingCustomerId: conflictingCustomer.id,
           existingMspId: conflictingCustomer.mspId,
@@ -777,7 +785,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       log.warn(
         {
           tenantId: tenant,
-          sessionId: isCheckoutSession ? state : undefined,
+          sessionId: isCheckoutSession ? stateFingerprint(state) : undefined,
           mspInvite: !isCheckoutSession,
           existingCustomerId: conflictingCustomer.id,
           existingMspId: conflictingCustomer.mspId,
@@ -992,9 +1000,9 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       });
 
     if (updatedSession) {
-      log.info({ sessionId: state, tenant }, "Checkout session marked consented via consent callback");
+      log.info({ sessionId: stateFingerprint(state), tenant }, "Checkout session marked consented via consent callback");
     } else {
-      log.warn({ sessionId: state, tenant }, "Consent callback: checkout session not found or expired — callback proceeds without session");
+      log.warn({ sessionId: stateFingerprint(state), tenant }, "Consent callback: checkout session not found or expired — callback proceeds without session");
     }
   }
 
@@ -1220,7 +1228,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
             // (verifyCustomerBridge), so this is not the last line of defense, but
             // it must never pass silently.
             log.error(
-              { tenant, sessionId: state, userId: prospect.userId },
+              { tenant, sessionId: stateFingerprint(state), userId: prospect.userId },
               "consent callback: Prospect user was created WITHOUT a tenant link (users.tenant_id) — customer provisioning failed; payment webhook will retry and alert",
             );
           }
@@ -1248,7 +1256,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
         // and NO users→tenants link is created here, and the paid webhook used
         // to assume this step had already run. Never skip this silently.
         log.error(
-          { tenant, sessionId: state, hadUpdatedSession: !!updatedSession },
+          { tenant, sessionId: stateFingerprint(state), hadUpdatedSession: !!updatedSession },
           "consent callback: checkout session resolved with NO email — Prospect provisioning SKIPPED; bridge now depends entirely on the payment webhook (which verifies and alerts)",
         );
       }
@@ -1300,7 +1308,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
     // provisioning silently didn't happen — the exact precursor to a paid,
     // non-functional account. The redirect still proceeds (never strand the
     // buyer at Microsoft), but this must be loud and greppable.
-    log.error({ err, tenant, sessionId: state }, "consent.granted: provisioning/emission FAILED — redirect proceeds, payment webhook must create the bridge");
+    log.error({ err, tenant, sessionId: stateFingerprint(state) }, "consent.granted: provisioning/emission FAILED — redirect proceeds, payment webhook must create the bridge");
   }
 
   // Fire-and-forget diagnostics run — must not delay the consent redirect.
@@ -1755,7 +1763,7 @@ router.get("/admin/write-consent/callback", async (req: Request, res: Response) 
 
   const verified = state ? verifyWriteConsentState(state) : null;
   if (!verified) {
-    log.warn({ state }, "Write-consent callback: state missing or failed HMAC verification");
+    log.warn({ stateFingerprint: stateFingerprint(state) }, "Write-consent callback: state missing or failed HMAC verification");
     res.status(400).send("Invalid consent callback state.");
     return;
   }
@@ -2126,7 +2134,7 @@ router.get("/admin/sharepoint-consent/callback", async (req: Request, res: Respo
 
   const verified = state ? verifySharePointConsentState(state) : null;
   if (!verified) {
-    log.warn({ state }, "SharePoint-consent callback: state missing or failed HMAC verification");
+    log.warn({ stateFingerprint: stateFingerprint(state) }, "SharePoint-consent callback: state missing or failed HMAC verification");
     res.status(400).send("Invalid consent callback state.");
     return;
   }
