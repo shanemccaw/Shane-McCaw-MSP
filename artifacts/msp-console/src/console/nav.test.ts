@@ -24,15 +24,13 @@ const customers = [
   { id: 11, name: "Delta LLC", domain: "delta.example", status: "active", tenantId: "t11", mspId: 1, createdAt: "2026-01-04T00:00:00Z", seats: 60, people: 5, lastScanAt: "2026-09-06T00:00:00Z", openSignals: 3, criticalSignals: 1 },
 ];
 
-test("IA has 7 tenant groups and 24 ops pages", () => {
+test("IA has 7 tenant groups and 22 ops pages", () => {
   assert.equal(CHILD_GROUPS.length, 7);
   // 13 original + dlq, plan, reports, retention, revenue (concurrent builds
   // #3814/#3815/#3906/#3796) + consent (Git #2627) + audit (Git #4012) +
-  // projects (Git #2621) + retainer (Git #2618, landed concurrently) + workflows,
-  // agents (Git #4080, real nav slots landed after this comment was last
-  // updated — the "22" this test asserted was already stale before #4150
-  // touched this file) = 24.
-  assert.equal(MSP_PAGES.length, 24);
+  // projects (Git #2621) + retainer (Git #2618, landed concurrently) = 22.
+  // (Workflows/Agents landed and were removed again concurrently, #4080/#4152.)
+  assert.equal(MSP_PAGES.length, 22);
   // 2 leaf groups (overview, audit) + 3 (monitor) + 7 (change control) + 5
   // (governance, #3897 added "poams") + 6 (access & identity: #3818 added
   // "ou", #3968 added "azurecred") + 6 (commercial: #3819 added
@@ -141,9 +139,9 @@ test("breadcrumb for a grouped page has root, tenant, group and page", () => {
 
 test("command palette lists root, every ops page, and tenant × page", () => {
   const cmds = buildCommands(customers, handlers);
-  // 1 root + 24 ops + 4 tenants * 29 pages — see the IA counts test above for
+  // 1 root + 22 ops + 4 tenants * 29 pages — see the IA counts test above for
   // how these totals are made up.
-  assert.equal(cmds.length, 1 + 24 + customers.length * 29);
+  assert.equal(cmds.length, 1 + 22 + customers.length * 29);
   assert.ok(cmds.some((c) => c.label === "Alpha Ltd › Risk Register" && c.group === "NODE"));
   assert.ok(cmds.some((c) => c.label === "Operations › Sales" && c.group === "MSP"));
 });
