@@ -475,8 +475,6 @@
                             </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
-                        </StackPanel>
-                    </ScrollViewer>
                 </Grid>
             </Border>
 
