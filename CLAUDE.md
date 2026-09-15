@@ -736,7 +736,7 @@ paths to services:
 | `artifacts/api-server/` | **API Server** (the one always-on service) |
 | `artifacts/shane-mccaw-consulting/` | **Marketing** |
 | `artifacts/admin-panel/` | **Admin** |
-| `artifacts/msp-portal/` | **Portal** |
+| `artifacts/portal/` | **Portal** |
 | `artifacts/msp-website/` | **Website** |
 | `lib/`, `packages/`, root build config (`package.json`, `pnpm-*`, `tsconfig*`) | **shared → ALL services** |
 | `test-manifests/`, `docs/`, `scripts/`, other non-shipped paths | **none** (no rebuild) |
@@ -1188,11 +1188,11 @@ The page's `*Data.ts` fixture import is gone and every row on screen came from a
 endpoint. Grep-verifiable, and checked before writing `DONE`:
 
 ```
-grep -rn 'portal-v2/[a-z]*Data"' artifacts/msp-portal/src/pages/
+grep -rn 'portal-v2/[a-z]*Data"' artifacts/portal/src/pages/
 ```
 
 
-**Scope: applies only to changes inside artifacts/msp-portal/ and
+**Scope: applies only to changes inside artifacts/portal/ and
 artifacts/shane-mccaw-consulting/.** Do not write test manifests for
 desktop/BuildConsole (the WPF app) or other internal tooling - those are
 Shane's own tools, not customer-facing product.
@@ -1262,7 +1262,7 @@ phase - not only when explicitly asked.
   independently-reachable endpoint to hit directly.
 - **Run what you write, in the same session.** Writing or updating a manifest
   is not the finish line. Once a real manifest is written/updated for a build
-  phase touching `artifacts/msp-portal/` or `artifacts/shane-mccaw-consulting/`,
+  phase touching `artifacts/portal/` or `artifacts/shane-mccaw-consulting/`,
   run it before the session ends via `shaneapp://runTest` (see
   `desktop/BuildConsole/AGENT_PROTOCOLS.md` section 2 for the invocation
   contract and result envelope) and report the real pass/fail result honestly
