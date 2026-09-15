@@ -100,20 +100,32 @@ function loadEnvFile(filePath) {
   }
   const vars = {};
   const lines = readFileSync(filePath, "utf8").split("\n");
+  let lastKey = null;
   for (const rawLine of lines) {
     const line = rawLine.trim();
     if (!line || line.startsWith("#")) continue;
     const eq = line.indexOf("=");
-    if (eq === -1) continue;
+    if (eq === -1) {
+      if (lastKey) {
+        console.error(
+          `Warning: ${filePath} has a line after ${lastKey} that isn't a KEY=value pair — it was dropped. If ${lastKey}'s value spans multiple lines, that continuation was silently lost.`
+        );
+      }
+      continue;
+    }
     const key = line.slice(0, eq).trim();
     let value = line.slice(eq + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
+    const quoteChar = value[0];
+    if (quoteChar === '"' || quoteChar === "'") {
+      if (value.length < 2 || value[value.length - 1] !== quoteChar) {
+        throw new Error(
+          `${filePath}: ${key} has a quoted value that does not close on the same line — refusing to silently truncate it. Combine it into a single line (or store it unquoted, base64-encoded).`
+        );
+      }
       value = value.slice(1, -1);
     }
     vars[key] = value;
+    lastKey = key;
   }
   return vars;
 }

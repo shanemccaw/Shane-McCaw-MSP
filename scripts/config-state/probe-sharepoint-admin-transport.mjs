@@ -46,13 +46,39 @@ const TENANT_ID = Number(arg("--tenant", "1"));
 
 async function loadEnv() {
   const out = {};
+  let txt;
   try {
-    const txt = await readFile(path.join(repoRoot, ".env.local"), "utf8");
-    for (const line of txt.split(/\r?\n/)) {
-      const m = /^([A-Z0-9_]+)\s*=\s*(.*)$/.exec(line.trim());
-      if (m) out[m[1]] = m[2].replace(/^["']|["']$/g, "");
-    }
+    txt = await readFile(path.join(repoRoot, ".env.local"), "utf8");
   } catch { /* fall through to process.env */ }
+  if (txt !== undefined) {
+    let lastKey = null;
+    for (const raw of txt.split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line || line.startsWith("#")) continue;
+      const m = /^([A-Z0-9_]+)\s*=\s*(.*)$/.exec(line);
+      if (!m) {
+        if (lastKey) {
+          console.error(
+            `Warning: .env.local has a line after ${lastKey} that isn't a KEY=value pair — it was dropped. If ${lastKey}'s value spans multiple lines, that continuation was silently lost.`
+          );
+        }
+        continue;
+      }
+      const key = m[1];
+      let value = m[2];
+      const quoteChar = value[0];
+      if (quoteChar === '"' || quoteChar === "'") {
+        if (value.length < 2 || value[value.length - 1] !== quoteChar) {
+          throw new Error(
+            `.env.local: ${key} has a quoted value that does not close on the same line — refusing to silently truncate it. Combine it into a single line (or store it unquoted, base64-encoded).`
+          );
+        }
+        value = value.slice(1, -1);
+      }
+      out[key] = value;
+      lastKey = key;
+    }
+  }
   return { ...out, ...process.env };
 }
 

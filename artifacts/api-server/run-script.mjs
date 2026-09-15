@@ -45,23 +45,41 @@ if (!entry) {
 
 // Load .env.local from the repo root the same way the dev server does, so a script gets
 // the real DATABASE_URL and tenant credentials without a separate bootstrap step.
+let envFileContents;
 try {
-  const env = await readFile(path.join(repoRoot, ".env.local"), "utf8");
-  for (const raw of env.split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line || line.startsWith("#")) continue;
-    const eq = line.indexOf("=");
-    if (eq < 0) continue;
-    const key = line.slice(0, eq).trim();
-    let value = line.slice(eq + 1).trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
-    if (!(key in process.env)) process.env[key] = value;
-  }
+  envFileContents = await readFile(path.join(repoRoot, ".env.local"), "utf8");
 } catch {
   // No .env.local is a real possibility on a fresh machine; the script itself will say
   // what it needed.
+}
+if (envFileContents !== undefined) {
+  let lastKey = null;
+  for (const raw of envFileContents.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq < 0) {
+      if (lastKey) {
+        console.error(
+          `Warning: .env.local has a line after ${lastKey} that isn't a KEY=value pair — it was dropped. If ${lastKey}'s value spans multiple lines, that continuation was silently lost.`
+        );
+      }
+      continue;
+    }
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+    const quoteChar = value[0];
+    if (quoteChar === '"' || quoteChar === "'") {
+      if (value.length < 2 || value[value.length - 1] !== quoteChar) {
+        throw new Error(
+          `.env.local: ${key} has a quoted value that does not close on the same line — refusing to silently truncate it. Combine it into a single line (or store it unquoted, base64-encoded).`
+        );
+      }
+      value = value.slice(1, -1);
+    }
+    if (!(key in process.env)) process.env[key] = value;
+    lastKey = key;
+  }
 }
 
 // The bundle must sit INSIDE this package, not in a temp directory: everything in
