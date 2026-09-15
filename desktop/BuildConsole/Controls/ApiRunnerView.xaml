@@ -96,10 +96,9 @@
                                         <Style TargetType="Border">
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding Method}" Value="GET">
-                                                    <!-- Git #4177: no GreenBrushTint exists in Colors.xaml/DarkTheme.xaml matching
-                                                         GreenBrush (#A6E3A1) at this wash opacity — filed as its own finding
-                                                         rather than picking an inexact substitute. -->
-                                                    <Setter Property="Background" Value="#25A6E3A1"/>
+                                                    <!-- Git #4219: real GreenBrushTint now exists in DarkTheme.xaml (same Color as
+                                                         GreenBrush, 0.13 opacity) — replaces the #4177-era raw hex literal. -->
+                                                    <Setter Property="Background" Value="{StaticResource GreenBrushTint}"/>
                                                     <Setter Property="BorderBrush" Value="{StaticResource GreenBrush}"/>
                                                     <Setter Property="BorderThickness" Value="1"/>
                                                 </DataTrigger>
@@ -119,10 +118,9 @@
                                                     <Setter Property="BorderThickness" Value="1"/>
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding Method}" Value="DELETE">
-                                                    <!-- Git #4177: no RedBrushTint exists in Colors.xaml/DarkTheme.xaml matching
-                                                         RedBrush (#F38BA8) at this wash opacity — filed as its own finding
-                                                         rather than picking an inexact substitute. -->
-                                                    <Setter Property="Background" Value="#25F38BA8"/>
+                                                    <!-- Git #4219: real RedBrushTint now exists in DarkTheme.xaml (same Color as
+                                                         RedBrush, 0.13 opacity) — replaces the #4177-era raw hex literal. -->
+                                                    <Setter Property="Background" Value="{StaticResource RedBrushTint}"/>
                                                     <Setter Property="BorderBrush" Value="{StaticResource RedBrush}"/>
                                                     <Setter Property="BorderThickness" Value="1"/>
                                                 </DataTrigger>
