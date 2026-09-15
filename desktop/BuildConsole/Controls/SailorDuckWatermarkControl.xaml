@@ -29,7 +29,7 @@
                     HorizontalAlignment="Center">
                 <TextBlock x:Name="QuipText"
                            Text="Ahoy! Smooth sailing on the codebase! ⛵"
-                           FontSize="12"
+                           FontSize="{StaticResource CaptionFontSize}"
                            FontWeight="Bold"
                            Foreground="{StaticResource TextBrush}"
                            HorizontalAlignment="Center"/>

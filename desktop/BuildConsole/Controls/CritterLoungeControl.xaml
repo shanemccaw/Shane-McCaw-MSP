@@ -92,9 +92,9 @@
                         MouseLeftButtonUp="SceneBadge_Click"
                         ToolTip="Click to switch to the next scene! 🎭">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock x:Name="SceneIcon" Text="🏖️ " FontSize="10" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="SceneTitleText" Text="SUNNY BEACH LOUNGE" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="SceneSubText" Text=" · chilling 🍹" FontSize="9" Foreground="{StaticResource PeachBrush}" Margin="4,0,0,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="SceneIcon" Text="🏖️ " FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="SceneTitleText" Text="SUNNY BEACH LOUNGE" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="SceneSubText" Text=" · chilling 🍹" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource PeachBrush}" Margin="4,0,0,0" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Border>
 
@@ -106,7 +106,7 @@
                             Padding="5,2"
                             Margin="0,0,4,0"
                             Click="BtnNextScene_Click">
-                        <TextBlock Text="🎬" FontSize="11"/>
+                        <TextBlock Text="🎬" FontSize="{StaticResource CaptionFontSize}"/>
                     </Button>
 
                     <Button x:Name="BtnCheer"
@@ -114,7 +114,7 @@
                             ToolTip="Cheer &amp; Action! ✨"
                             Padding="5,2"
                             Click="BtnCheer_Click">
-                        <TextBlock x:Name="CheerBtnIcon" Text="🎉" FontSize="11"/>
+                        <TextBlock x:Name="CheerBtnIcon" Text="🎉" FontSize="{StaticResource CaptionFontSize}"/>
                     </Button>
                 </StackPanel>
             </DockPanel>

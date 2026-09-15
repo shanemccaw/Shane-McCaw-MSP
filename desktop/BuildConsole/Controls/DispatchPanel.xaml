@@ -20,9 +20,9 @@
         <StackPanel Margin="10,8,10,8">
 
             <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                <TextBlock Text="🎯 Dispatch" FontWeight="SemiBold" FontSize="13"
+                <TextBlock Text="🎯 Dispatch" FontWeight="SemiBold" FontSize="{StaticResource BodyFontSize}"
                            Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
-                <TextBlock x:Name="TxtCountdown" FontSize="11.5" Margin="8,0,0,0"
+                <TextBlock x:Name="TxtCountdown" FontSize="{StaticResource CaptionFontSize}" Margin="8,0,0,0"
                            Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"
                            Visibility="Collapsed"/>
             </StackPanel>
@@ -34,11 +34,11 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Column="0" Text="#" FontSize="13" VerticalAlignment="Center"
+                <TextBlock Grid.Column="0" Text="#" FontSize="{StaticResource BodyFontSize}" VerticalAlignment="Center"
                            Foreground="{StaticResource Subtext0Brush}" Margin="0,0,2,0"/>
 
                 <TextBox x:Name="TxtIssueNumber" Grid.Column="1" Margin="0,0,6,0"
-                         VerticalContentAlignment="Center" FontSize="12"
+                         VerticalContentAlignment="Center" FontSize="{StaticResource CaptionFontSize}"
                          Background="{StaticResource Surface0Brush}"
                          Foreground="{StaticResource TextBrush}"
                          BorderBrush="{StaticResource Surface1Brush}"
@@ -49,7 +49,7 @@
                         Click="BtnDispatch_Click"/>
             </Grid>
 
-            <TextBlock x:Name="TxtStatus" Margin="0,6,0,0" FontSize="11.5"
+            <TextBlock x:Name="TxtStatus" Margin="0,6,0,0" FontSize="{StaticResource CaptionFontSize}"
                        TextWrapping="Wrap" Text=""
                        Foreground="{StaticResource Subtext0Brush}"
                        Visibility="Collapsed"/>
@@ -60,7 +60,7 @@
                 duplicates the tracked row; ForceDispatchAsync supersedes it first.
             -->
             <Button x:Name="BtnForceDispatch" Content="Dispatch anyway" Padding="10,4"
-                    Margin="0,6,0,0" HorizontalAlignment="Left" FontSize="11.5"
+                    Margin="0,6,0,0" HorizontalAlignment="Left" FontSize="{StaticResource CaptionFontSize}"
                     Background="{StaticResource Surface0Brush}"
                     Foreground="{StaticResource PeachBrush}"
                     BorderBrush="{StaticResource PeachBrush}"

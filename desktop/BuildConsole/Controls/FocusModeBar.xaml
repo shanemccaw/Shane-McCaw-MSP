@@ -26,19 +26,19 @@
 
                 <!-- FOCUS label -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="🎯" FontSize="13" VerticalAlignment="Center"/>
-                    <TextBlock Text="FOCUS" FontWeight="Bold" FontSize="10.5"
+                    <TextBlock Text="🎯" FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center"/>
+                    <TextBlock Text="FOCUS" FontWeight="Bold" FontSize="{StaticResource CaptionFontSize}"
                                Foreground="{StaticResource BlueBrush}"
                                Margin="6,0,12,0" VerticalAlignment="Center"/>
                 </StackPanel>
 
                 <!-- inactive: milestone picker -->
                 <StackPanel x:Name="PickerPanel" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <ComboBox x:Name="MilestoneCombo" Width="280" Height="24" FontSize="11"
+                    <ComboBox x:Name="MilestoneCombo" Width="280" Height="24" FontSize="{StaticResource CaptionFontSize}"
                               VerticalContentAlignment="Center"
                               ToolTip="Pick the one milestone you're working — everything else gets hidden."/>
                     <Button x:Name="StartFocusBtn" Content="Focus this" Height="24" Margin="8,0,0,0"
-                            Padding="12,0" FontSize="11" FontWeight="SemiBold" Cursor="Hand"
+                            Padding="12,0" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Cursor="Hand"
                             Style="{StaticResource PrimaryButton}" Click="StartFocusBtn_Click"/>
                 </StackPanel>
 
@@ -50,7 +50,7 @@
                             Effect="{StaticResource BlueGlowFaint}"
                             ToolTip="Open this milestone's detail tab">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock x:Name="ActiveTitle" FontWeight="SemiBold" FontSize="11.5"
+                            <TextBlock x:Name="ActiveTitle" FontWeight="SemiBold" FontSize="{StaticResource CaptionFontSize}"
                                        Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"
                                        MaxWidth="240" TextTrimming="CharacterEllipsis"/>
                         </StackPanel>
@@ -61,7 +61,7 @@
                         <Border x:Name="ProgressFill" Background="{StaticResource GreenBrush}" Width="0"
                                 Height="6" CornerRadius="3" HorizontalAlignment="Left"/>
                     </Border>
-                    <TextBlock x:Name="ProgressText" FontSize="10.5" Foreground="{StaticResource Subtext1Brush}"
+                    <TextBlock x:Name="ProgressText" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"
                                VerticalAlignment="Center" Margin="8,0,0,0"/>
                     <!-- Git #3869 — toggles the tile between the default real count and a stricter
                          "production scope" that excludes BuildConsole/#1202, MyArchitect/#3454, and
@@ -69,7 +69,7 @@
                     <Border x:Name="ScopeToggle" Background="{StaticResource Surface0Brush}" CornerRadius="8"
                             Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center" Cursor="Hand"
                             MouseLeftButtonUp="ScopeToggle_Click">
-                        <TextBlock x:Name="ScopeToggleText" FontSize="9.5" FontWeight="Bold"/>
+                        <TextBlock x:Name="ScopeToggleText" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"/>
                     </Border>
                 </StackPanel>
 
@@ -80,12 +80,12 @@
                          "Calculating…") stay single-line; only the long flat/negative-net-rate
                          sentence is tall enough to actually wrap. No TextTrimming: with wrapping
                          and no height cap the text just grows the row instead of truncating. -->
-                    <TextBlock x:Name="EtaText" FontSize="10.5" Foreground="{StaticResource BlueBrush}"
+                    <TextBlock x:Name="EtaText" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource BlueBrush}"
                                VerticalAlignment="Center" MaxWidth="560" TextWrapping="Wrap"/>
                     <!-- Git #3906 — manual re-trigger of the real underlying ETA recompute (the same
                          board fetch a manual Git refresh runs), not just a redraw of stale data. -->
                     <Button x:Name="EtaRefreshBtn" Content="⟳" Style="{StaticResource IconButton}"
-                            FontSize="11" Padding="4,0" Margin="6,0,0,0" Cursor="Hand"
+                            FontSize="{StaticResource CaptionFontSize}" Padding="4,0" Margin="6,0,0,0" Cursor="Hand"
                             ToolTip="Recompute the ETA now"
                             Click="EtaRefreshBtn_Click"/>
                     <!-- Git #2708 — swaps IN for PointsChip/AchvChip (not stacked alongside them) whenever
@@ -96,7 +96,7 @@
                             Visibility="Collapsed" MouseLeftButtonUp="OpenLastTabsChip_Click"
                             Effect="{StaticResource BlueGlowFaint}"
                             ToolTip="Reopen every chat tab left open from your last session">
-                        <TextBlock x:Name="OpenLastTabsText" FontSize="10.5" FontWeight="Bold"
+                        <TextBlock x:Name="OpenLastTabsText" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                    Foreground="{StaticResource BlueBrush}"/>
                     </Border>
                 </StackPanel>
@@ -104,7 +104,7 @@
                 <!-- right: exit -->
                 <StackPanel x:Name="RightPanel" Grid.Column="3" Orientation="Horizontal"
                             VerticalAlignment="Center" Visibility="Collapsed">
-                    <Button x:Name="ExitBtn" Content="Exit focus" Height="24" Padding="10,0" FontSize="11"
+                    <Button x:Name="ExitBtn" Content="Exit focus" Height="24" Padding="10,0" FontSize="{StaticResource CaptionFontSize}"
                             Cursor="Hand" Foreground="{StaticResource TextBrush}"
                             Background="{StaticResource Surface1Brush}" BorderThickness="0"
                             Click="ExitBtn_Click"/>
