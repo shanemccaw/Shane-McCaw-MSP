@@ -92,6 +92,15 @@
     <SolidColorBrush x:Key="StatusWarningWashLightBrush"  Color="#1AD4A56C"/>
     <SolidColorBrush x:Key="StatusWarningWashMediumBrush" Color="#33D4A56C"/>
 
+    <!-- Opaque dark banner backgrounds for a solid Border filled behind a
+         StatusError/WarningBrush border+text (not a semi-transparent wash
+         composited over a panel — these need to read as a solid card, e.g.
+         BuildQueuePanel.xaml's OrphanRecoveryBanner / BuildSetFilterWarningPopup).
+         Git #4214: exact values from that issue's own evidence, no existing
+         brush covered this opaque-banner role. -->
+    <SolidColorBrush x:Key="StatusErrorBannerBackgroundBrush"   Color="#3A1E26"/>
+    <SolidColorBrush x:Key="StatusWarningBannerBackgroundBrush" Color="#3A3200"/>
+
     <!-- Git #4205 — modal/overlay dim "scrim" brushes. Hue-independent (black at
          two fixed opacities), so these live here rather than under a hue section.
          Values are the two real tiers already in use app-wide before this issue —
