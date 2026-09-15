@@ -52,9 +52,6 @@ import {
   workflowStepsTable,
   workflowTemplateStepTasksTable,
   quickWinPresentationsTable,
-  powershellScriptsTable,
-  scriptModulesTable,
-  clientAppRegistrationsTable,
   servicesTable,
   documentTypesTable,
   checkoutSessionsTable,
@@ -68,8 +65,6 @@ import {
   type WfRun,
 } from "@workspace/db";
 
-import { createScriptJob, getJobStatus, getJobOutput, isTerminalStatus, isAzureConfigured, resolveScriptById, findActiveJobForScript } from "./azure-automation.ts";
-import { getSecretValue } from "./azure-keyvault.ts";
 import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "./news-fetcher.ts";
 import { sendWebPushToAdmins } from "./web-push.ts";
 import { createNotification, createNotificationForAllAdmins } from "./notification-center.ts";
@@ -2837,40 +2832,12 @@ function aiAttributionFor(
   };
 }
 
-// ── Runbook ID resolution ─────────────────────────────────────────────────────
-// The Execute Runbook node's "Runbook ID" field is populated from two very
-// different ID spaces depending on where it came from:
-//   1. An internal script-library UUID (workflow_template_step_tasks.runbook_id
-//      is a FK to powershell_scripts.id or script_modules.id — see
-//      admin-ps-scripts.ts "single source of truth" comments and the same
-//      resolution pattern used elsewhere for Azure Automation runbook IDs).
-//   2. A literal Azure Automation ARM resource ID, if the user typed/piped one
-//      in manually via the builder's Runbook ID field.
-// Internal UUIDs never match Azure's ARM-style `rb.id` values, so they must be
-// resolved against our own tables FIRST; only fall back to the Azure ARM-ID
-// lookup (resolveScriptById) when the value isn't one of our UUIDs.
+// ── Runbook ID matching ───────────────────────────────────────────────────────
+// workflow_template_step_tasks.runbook_id (and the historical Azure ARM
+// resource ID it could also hold) is an internal script-library UUID FK to
+// powershell_scripts.id or script_modules.id. Still used elsewhere in this
+// file to distinguish that shape from other ID formats.
 const RUNBOOK_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-async function resolveExecuteRunbookId(runbookId: string): Promise<string> {
-  if (RUNBOOK_UUID_RE.test(runbookId)) {
-    // The script name column has been removed — use the script UUID as the identifier
-    const [script] = await db
-      .select({ id: powershellScriptsTable.id })
-      .from(powershellScriptsTable)
-      .where(eq(powershellScriptsTable.id, runbookId))
-      .limit(1);
-    if (script) return script.id;
-
-    const [mod] = await db
-      .select({ id: scriptModulesTable.id })
-      .from(scriptModulesTable)
-      .where(eq(scriptModulesTable.id, runbookId))
-      .limit(1);
-    if (mod) return mod.id;
-    // Not a known internal script/module UUID — fall through.
-  }
-  return resolveScriptById(runbookId);
-}
 
 // ── Node execution ────────────────────────────────────────────────────────────
 
@@ -3026,219 +2993,15 @@ async function executeNode(
             }
           }
         } else if (actionType === "execute_runbook" || actionType === "update_m365_profile") {
-          // ── Multiple-runbook parallel path (execute_runbook only) ────────────
-          const runbooksParam = actionType === "execute_runbook"
-            ? (node.data.runbooks as string | undefined)
-            : undefined;
-          const resolvedRunbooksStr = runbooksParam ? interp(runbooksParam, payload) : undefined;
-          const runbookList = resolvedRunbooksStr ? coerceToRunbookArray(resolvedRunbooksStr) : null;
-
-          if (runbookList && runbookList.length > 0) {
-            // Parallel fan-out: fire all runbooks simultaneously via Promise.allSettled
-            if (!isAzureConfigured()) {
-              nodeError = true;
-              output = { error: "Azure Automation is not configured — add the required secrets" };
-            } else {
-              const POLL_INTERVAL_MS = 5_000;
-              const TIMEOUT_MS = 10 * 60 * 1_000;
-
-              let sharedParameters: Record<string, string> = {};
-              const rawParams = node.data.runbookParams as string | undefined;
-              if (rawParams?.trim()) {
-                try { sharedParameters = JSON.parse(interp(rawParams, payload) ?? "{}") as Record<string, string>; }
-                catch { /* ignore bad JSON — run with no params */ }
-              }
-              const mClientId = interp(node.data.clientId as string | undefined, payload);
-              if (mClientId) sharedParameters["ClientId"] = mClientId;
-              const mProjectId = interp(node.data.projectId as string | undefined, payload);
-              if (mProjectId) sharedParameters["ProjectId"] = mProjectId;
-
-              type SingleResult = {
-                runbook: string;
-                status: "succeeded" | "failed";
-                jobId: string;
-                output?: string;
-                error?: string;
-              };
-
-              const pollSingle = async (runbookName: string, jobId: string): Promise<SingleResult> => {
-                const deadline = Date.now() + TIMEOUT_MS;
-                let finalStatus = "New";
-                while (!isTerminalStatus(finalStatus)) {
-                  if (Date.now() >= deadline) {
-                    return { runbook: runbookName, status: "failed", jobId, error: "Timed out after 10 minutes" };
-                  }
-                  await new Promise<void>(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
-                  try {
-                    const statusResult = await getJobStatus(jobId);
-                    finalStatus = statusResult.status;
-                  } catch (e) {
-                    return { runbook: runbookName, status: "failed", jobId, error: (e as Error).message };
-                  }
-                }
-                const streams = await getJobOutput(jobId).catch(() => [] as Array<{ streamType: string; text: string }>);
-                const jobOutput = streams.filter(s => s.streamType === "Output").map(s => s.text).join("\n");
-                return {
-                  runbook: runbookName,
-                  status: finalStatus === "Completed" ? "succeeded" : "failed",
-                  jobId,
-                  output: jobOutput,
-                  ...(finalStatus !== "Completed" ? { error: `Azure status: ${finalStatus}` } : {}),
-                };
-              };
-
-              // Create all jobs in parallel (allSettled so one creation failure doesn't abort the rest)
-              const jobSettled = await Promise.allSettled(
-                runbookList.map(name => createScriptJob({ runbookName: name, parameters: { ...sharedParameters } })),
-              );
-
-              // Poll all created jobs in parallel; map creation failures to immediate failed results
-              const pollPromises = runbookList.map((name, i) => {
-                const settled = jobSettled[i]!;
-                if (settled.status === "rejected") {
-                  return Promise.resolve<SingleResult>({
-                    runbook: name,
-                    status: "failed",
-                    jobId: "n/a",
-                    error: String((settled as PromiseRejectedResult).reason),
-                  });
-                }
-                const { jobId } = (settled as PromiseFulfilledResult<{ jobId: string; status: string }>).value;
-                return pollSingle(name, jobId);
-              });
-
-              const results = await Promise.all(pollPromises);
-              const succeeded = results.filter(r => r.status === "succeeded").map(r => r.runbook);
-              const failed    = results.filter(r => r.status !== "succeeded").map(r => r.runbook);
-
-              output = { allSucceeded: failed.length === 0, results, succeeded, failed };
-              log.info(
-                { runId, nodeId: node.id, total: runbookList.length, succeeded: succeeded.length, failed: failed.length },
-                "wf-executor: execute_runbook multi-runbook fan-out complete",
-              );
-            }
-          } else {
-          // ── Single-runbook path (existing behaviour, unchanged) ───────────────
-          let runbookName = interp(node.data.runbookName as string | undefined, payload);
-          const runbookId = actionType === "execute_runbook" ? interp(node.data.runbookId as string | undefined, payload) : undefined;
-          if (!runbookName && !runbookId) {
-            nodeError = true;
-            output = { error: "execute_runbook requires either runbookName or runbookId" };
-          } else if (!isAzureConfigured()) {
-            nodeError = true;
-            output = { error: "Azure Automation is not configured — add the required secrets" };
-          } else {
-            // Runbook ID takes priority over name when both are set (matches
-            // the "overrides name" hint shown in the builder UI).
-            if (runbookId) {
-              try {
-                runbookName = await resolveExecuteRunbookId(runbookId);
-              } catch (err) {
-                nodeError = true;
-                output = { error: (err as Error).message ?? `Could not resolve runbook ID "${runbookId}"` };
-              }
-            }
-            if (!nodeError) {
-            let parameters: Record<string, string> = {};
-            const rawParams = node.data.runbookParams as string | undefined;
-            if (rawParams?.trim()) {
-              try { parameters = JSON.parse(interp(rawParams, payload) ?? "{}") as Record<string, string>; }
-              catch { /* ignore bad JSON — run with no params */ }
-            }
-            if (actionType === "update_m365_profile") {
-              const clientId = interp(node.data.clientId as string | undefined, payload);
-              if (clientId) parameters["ClientId"] = clientId;
-            }
-            if (actionType === "execute_runbook") {
-              // Resolve App Registration credentials from Key Vault so the
-              // runbook receives the real Azure AD TenantId, ClientId (app
-              // registration client ID), and ClientSecret — not raw DB integers.
-              // This mirrors the Key Vault credential-resolution pattern used elsewhere for Azure Automation.
-              const clientIdRaw = interp(node.data.clientId as string | undefined, payload);
-              const clientUserId = clientIdRaw ? parseInt(clientIdRaw, 10) : NaN;
-              if (!isNaN(clientUserId)) {
-                const [appReg] = await db
-                  .select()
-                  .from(clientAppRegistrationsTable)
-                  .where(
-                    and(
-                      eq(clientAppRegistrationsTable.clientUserId, clientUserId),
-                      eq(clientAppRegistrationsTable.status, "verified"),
-                    ),
-                  )
-                  .limit(1);
-
-                if (!appReg) {
-                  nodeError = true;
-                  output = { error: `No verified App Registration found for client #${clientUserId}` };
-                } else {
-                  let clientSecret: string;
-                  try {
-                    clientSecret = await getSecretValue(appReg.keyVaultSecretName);
-                  } catch (kvErr) {
-                    nodeError = true;
-                    output = { error: `Key Vault fetch failed for client #${clientUserId}: ${(kvErr as Error).message}` };
-                  }
-                  if (!nodeError) {
-                    parameters["TenantId"]     = appReg.tenantId;
-                    parameters["ClientId"]     = appReg.azureClientId;
-                    parameters["ClientSecret"] = clientSecret!;
-                  }
-                }
-              }
-            }
-            if (!nodeError) {
-            const job = await createScriptJob({ runbookName: runbookName!, parameters });
-            if (actionType === "execute_runbook") {
-              // Poll until the job reaches a terminal status (max 10 minutes).
-              const POLL_INTERVAL_MS = 5_000;
-              const TIMEOUT_MS = 10 * 60 * 1_000;
-              // Bail early if the job never leaves Queued/New/Activating —
-              // that almost always means the runbook isn't Published in Azure.
-              const STUCK_QUEUED_MS = 2 * 60 * 1_000;
-              const deadline = Date.now() + TIMEOUT_MS;
-              let finalStatus = job.status;
-              let firstQueuedAt: number | null = null;
-              while (!isTerminalStatus(finalStatus)) {
-                if (Date.now() >= deadline) {
-                  nodeError = true;
-                  output = { error: "Runbook timed out after 10 minutes", jobId: job.jobId };
-                  break;
-                }
-                await new Promise<void>(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
-                const statusResult = await getJobStatus(job.jobId);
-                finalStatus = statusResult.status;
-                // Stuck-Queued detection: if the job stays pre-execution for
-                // 2+ minutes it will likely never start.
-                if (finalStatus === "New" || finalStatus === "Queued" || finalStatus === "Activating") {
-                  if (!firstQueuedAt) firstQueuedAt = Date.now();
-                  if (Date.now() - firstQueuedAt >= STUCK_QUEUED_MS) {
-                    nodeError = true;
-                    output = {
-                      error: `Script job stuck in "${finalStatus}" for 2+ minutes — ensure the script is published and the Azure account has available workers`,
-                      jobId: job.jobId,
-                    };
-                    break;
-                  }
-                } else {
-                  firstQueuedAt = null;
-                }
-              }
-              if (!nodeError) {
-                const streams = await getJobOutput(job.jobId);
-                const jobOutput = streams
-                  .filter(s => s.streamType === "Output")
-                  .map(s => s.text)
-                  .join("\n");
-                output = { jobId: job.jobId, jobStatus: finalStatus, runbookName, jobOutput };
-              }
-            } else {
-              output = { jobId: job.jobId, jobStatus: job.status, runbookName };
-            }
-            } // end inner if (!nodeError) — app reg lookup guard
-            } // end outer if (!nodeError) — runbook ID resolution guard
-          }
-          } // end single-runbook path
+          // Azure Automation script execution was retired (see #4262/#4267).
+          // Neither runbook path has a live execution binding anymore — fail
+          // explicitly rather than silently no-op through a dead Azure branch.
+          nodeError = true;
+          output = {
+            error:
+              `"${actionType}" has no server-side execution binding — Azure Automation script execution ` +
+              "has been retired. Download the script from the library and run it against the tenant instead.",
+          };
         } else if (actionType === "generate_document") {
           // Mirrors POST /api/admin/insights/documents/generate exactly.
           // clientId and projectId are resolved from payload first, then from
@@ -4480,16 +4243,18 @@ async function executeNode(
 
       case "validate_m365_permissions": {
         const vpClientIdRaw = interp(node.data.clientId as string | undefined, payload);
-        const runbookName = interp(node.data.runbookName as string | undefined, payload) ?? "Validate-M365-Permissions";
         if (!vpClientIdRaw) {
           nodeError = true;
           output = { error: "validate_m365_permissions requires clientId" };
-        } else if (!isAzureConfigured()) {
-          nodeError = true;
-          output = { error: "Azure is not configured — add required secrets" };
         } else {
-          const job = await createScriptJob({ runbookName, parameters: { ClientId: vpClientIdRaw } });
-          output = { permissionsValid: true, missingCount: 0, jobId: job.jobId };
+          // Azure Automation script execution was retired (see #4262/#4267) —
+          // this node has no live execution binding anymore.
+          nodeError = true;
+          output = {
+            error:
+              `"validate_m365_permissions" has no server-side execution binding — Azure Automation script ` +
+              "execution has been retired. Download the script from the library and run it against the tenant instead.",
+          };
         }
         break;
       }
