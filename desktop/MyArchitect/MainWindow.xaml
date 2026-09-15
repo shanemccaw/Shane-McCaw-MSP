@@ -267,6 +267,10 @@
                         </Border>
 
                         <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
+                            <Button x:Name="DarkModeToggleButton" Style="{StaticResource NavBarButtonStyle}" ToolTip="Dark Mode: On (click to disable for this tab)" Margin="0,0,4,0" Click="DarkModeToggleButton_Click">
+                                <Path Data="M 12,3 C 7.03,3 3,7.03 3,12 C 3,16.97 7.03,21 12,21 C 16.97,21 21,16.97 21,12 C 21,11.54 20.96,11.08 20.9,10.64 C 19.92,12.01 18.32,12.9 16.5,12.9 C 13.52,12.9 11.1,10.48 11.1,7.5 C 11.1,5.68 11.99,4.08 13.36,3.1 C 12.92,3.04 12.46,3 12,3 Z"
+                                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Width="13" Height="13" Stretch="Uniform" />
+                            </Button>
                             <Button x:Name="ScreenClipButton" Style="{StaticResource NavBarButtonStyle}" ToolTip="Capture Region Screenshot (PrintScreen / Ctrl+Shift+S)" Margin="0,0,4,0" Click="ScreenClipButton_Click">
                                 <Path Data="M 9,2 L 7.17,4 L 4,4 C 2.9,4 2,4.9 2,6 L 2,18 C 2,19.1 2.9,20 4,20 L 20,20 C 21.1,20 22,19.1 22,18 L 22,6 C 22,4.9 21.1,4 20,4 L 16.83,4 L 15,2 L 9,2 Z M 12,17 C 9.24,17 7,14.76 7,12 C 7,9.24 9.24,7 12,7 C 14.76,7 17,9.24 17,12 C 17,14.76 14.76,17 12,17 Z"
                                       Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Width="13" Height="13" Stretch="Uniform" />

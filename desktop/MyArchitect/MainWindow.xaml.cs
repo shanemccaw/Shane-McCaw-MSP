@@ -59,6 +59,7 @@ public partial class MainWindow : FluentWindow
     private readonly IConsentService _consentService;
     private readonly IActivityContextService _activityContextService;
     private readonly IForegroundAppWatcher _foregroundAppWatcher;
+    private readonly IDarkModePreferenceService _darkModePreferenceService;
     private CancellationTokenSource? _taskQueueSseCts;
 
     private readonly ShellRegistry _shellRegistry = new();
@@ -113,6 +114,7 @@ public partial class MainWindow : FluentWindow
         _logStreamService = new LogStreamService();
         _alertsService = new AlertsService();
         _consentService = new ConsentService();
+        _darkModePreferenceService = new DarkModePreferenceService();
         _authService.SessionChanged += OnAuthSessionChanged;
         _consoleService.CommandExecuted += (s, record) => _consoleHistoryService.Add(record);
 
@@ -5593,7 +5595,8 @@ public partial class MainWindow : FluentWindow
             IconSymbol = icon,
             Url = url,
             WebView = webView,
-            IsLoading = true
+            IsLoading = true,
+            IsDarkMode = _darkModePreferenceService.IsDarkModeEnabled
         };
 
         webView.NavigationStarting += (s, e) =>
@@ -5640,6 +5643,11 @@ public partial class MainWindow : FluentWindow
             var env = await _profileService.GetEnvironmentForTenantAsync(tenant);
             await webView.EnsureCoreWebView2Async(env);
 
+            if (tab.IsDarkMode)
+            {
+                tab.DarkModeScriptId = await webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(BuildDarkModeInjectionScript());
+            }
+
             if (!string.IsNullOrWhiteSpace(url))
             {
                 webView.CoreWebView2.Navigate(url);
@@ -5677,6 +5685,7 @@ public partial class MainWindow : FluentWindow
         SetIsolatedProfileBadge(tab.DisplayBadge, armed: true);
         StatusProfileTextBlock.Text = tab.IsGlobal ? "Session: Global Claude Profile [claude.ai]" : $"Session Isolation: {tab.Tenant?.Name} [{tab.Tenant?.TenantGuid}]";
 
+        UpdateDarkModeToggleButtonState(tab);
         UpdateTabsState();
         UpdateNavigationButtonsState();
     }
@@ -5721,6 +5730,7 @@ public partial class MainWindow : FluentWindow
                 UrlTextBox.Text = string.Empty;
                 SetIsolatedProfileBadge("No Active Tab", armed: false);
                 StatusProfileTextBlock.Text = "Session Isolation: Standby";
+                UpdateDarkModeToggleButtonState(null);
             }
         }
 
@@ -5907,6 +5917,76 @@ public partial class MainWindow : FluentWindow
     private void ScreenClipButton_Click(object sender, RoutedEventArgs e)
     {
         TriggerScreenCapture();
+    }
+
+    // ---- Per-tab dark mode (#4274) ---------------------------------------------------------
+    // Invert-filter injection: works on arbitrary Microsoft admin-portal pages without per-site
+    // CSS variable overrides. Registered via AddScriptToExecuteOnDocumentCreatedAsync so it
+    // survives every navigation within the tab's WebView2 (M365 Admin/Azure/Entra routing all
+    // stay within one WebView2 instance); applied immediately to an already-loaded page via
+    // ExecuteScriptAsync when the operator toggles mid-session.
+    private const string DarkModeStyleElementId = "myarchitect-dark-mode-invert";
+
+    private static string BuildDarkModeInjectionScript() =>
+        "(function(){" +
+        $"var STYLE_ID='{DarkModeStyleElementId}';" +
+        "var existing=document.getElementById(STYLE_ID);" +
+        "if(existing){existing.remove();}" +
+        "var style=document.createElement('style');" +
+        "style.id=STYLE_ID;" +
+        "style.textContent='html{filter:invert(1) hue-rotate(180deg) !important;background:#fff !important;}" +
+        "img,video,canvas,iframe,svg,picture{filter:invert(1) hue-rotate(180deg) !important;}';" +
+        "(document.head||document.documentElement).appendChild(style);" +
+        "})();";
+
+    private static string BuildDarkModeRemovalScript() =>
+        "(function(){" +
+        $"var el=document.getElementById('{DarkModeStyleElementId}');" +
+        "if(el){el.remove();}" +
+        "})();";
+
+    private void UpdateDarkModeToggleButtonState(PortalTabItem? tab)
+    {
+        var isOn = tab?.IsDarkMode ?? true;
+        DarkModeToggleButton.Opacity = isOn ? 1.0 : 0.4;
+        DarkModeToggleButton.ToolTip = isOn
+            ? "Dark Mode: On (click to disable for this tab)"
+            : "Dark Mode: Off (click to enable for this tab)";
+    }
+
+    private async void DarkModeToggleButton_Click(object sender, RoutedEventArgs e)
+    {
+        var tab = _activeTab;
+        if (tab == null) return;
+
+        var enabled = !tab.IsDarkMode;
+        tab.IsDarkMode = enabled;
+
+        var coreWebView = tab.WebView.CoreWebView2;
+        if (coreWebView != null)
+        {
+            if (tab.DarkModeScriptId != null)
+            {
+                coreWebView.RemoveScriptToExecuteOnDocumentCreated(tab.DarkModeScriptId);
+                tab.DarkModeScriptId = null;
+            }
+
+            if (enabled)
+            {
+                tab.DarkModeScriptId = await coreWebView.AddScriptToExecuteOnDocumentCreatedAsync(BuildDarkModeInjectionScript());
+            }
+
+            _ = coreWebView.ExecuteScriptAsync(enabled ? BuildDarkModeInjectionScript() : BuildDarkModeRemovalScript());
+        }
+
+        // Preference is only the seed for the *next* newly-opened tab — this tab's own state
+        // (already flipped above) is independent from here on, per #4274's own scope.
+        _darkModePreferenceService.SetDarkModeEnabled(enabled);
+
+        if (tab == _activeTab)
+        {
+            UpdateDarkModeToggleButtonState(tab);
+        }
     }
 
     private void NewTabButton_Click(object sender, RoutedEventArgs e)

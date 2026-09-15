@@ -16,6 +16,7 @@ public sealed class PortalTabItem : INotifyPropertyChanged
     private string _url = string.Empty;
     private bool _isActive;
     private bool _isLoading;
+    private bool _isDarkMode = true;
 
     public string Id { get; init; } = Guid.NewGuid().ToString("N");
     public Tenant? Tenant { get; init; }
@@ -79,6 +80,27 @@ public sealed class PortalTabItem : INotifyPropertyChanged
             }
         }
     }
+
+    /// <summary>Per-tab dark-mode state (#4274) — seeded on tab open from the persisted
+    /// preference (<see cref="Services.IDarkModePreferenceService"/>), then flips independently
+    /// per tab as the operator toggles it. Default on.</summary>
+    public bool IsDarkMode
+    {
+        get => _isDarkMode;
+        set
+        {
+            if (_isDarkMode != value)
+            {
+                _isDarkMode = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    /// <summary>The id returned by <c>AddScriptToExecuteOnDocumentCreatedAsync</c> for this tab's
+    /// currently-registered dark-mode injection script, so it can be removed when toggled off.
+    /// Null when dark mode is off (no script registered).</summary>
+    public string? DarkModeScriptId { get; set; }
 
     public Visibility TabVisibility => _isActive ? Visibility.Visible : Visibility.Collapsed;
 
