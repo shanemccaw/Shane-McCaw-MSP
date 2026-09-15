@@ -137,6 +137,11 @@ export const MSP_PAGES: LeafPage[] = [
   // again per tenant (CHILD_GROUPS' "audit" leaf above) with customerId set
   // — same component, one prop, per the README's tree-placement table.
   { id: "audit", label: "Audit log", icon: "history" },
+  // Requests and Support Chat (Git #2650, Feature #2570) — the operator's
+  // org-scoped ticket queue. Agent-built (no Design export exists yet, see
+  // the module's own header); MSP-wide, not per-tenant, same reasoning as
+  // Audit Log's own Operations placement above.
+  { id: "requests", label: "Requests & Support", icon: "life-buoy" },
 ];
 
 const msp = (id: string): LeafPage => {

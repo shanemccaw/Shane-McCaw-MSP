@@ -483,6 +483,15 @@ export function pageMeta(sel: Selection, customers: DirectoryCustomer[]): PageMe
         note: "MSPAdmin or above. Search matches the action, entity type, label and actor role — never names, addresses, ids or metadata.",
       };
     }
+    // #2650 — Requests and Support Chat, agent-built (no Design export
+    // exists for this screen yet — see the module's own header).
+    if (sel.page === "requests") {
+      return {
+        eyebrow: "REQUESTS & SUPPORT",
+        title: "Your MSP's request queue",
+        note: "Customer-opened requests and chat escalations, together — an escalation has no structured field of its own, only a subject-text convention.",
+      };
+    }
     return { eyebrow: "OPERATIONS · MSP-WIDE", title: mp?.label ?? "", note: "" };
   }
   const c = find(sel.tenant);
