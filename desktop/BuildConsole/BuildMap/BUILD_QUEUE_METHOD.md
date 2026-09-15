@@ -244,6 +244,8 @@ Posted: <UTC ISO8601>
 
 \- Per-issue bookend at build-journal/<N>.md — IN FLIGHT first (own commit), DONE with real hash last (own commit)
 
+\- Plan doc (build-journal/<N>-plan.md) before code changes, Changes Made / Verification Results headers in the DONE bookend — see §4.4
+
 \- Timestamp on this dispatch and on bookend status lines ("Posted: <UTC ISO8601>")
 
 \- No fixture/hardcoded data
@@ -293,7 +295,94 @@ Never default to the top tier without a reason.
 
 &#x20;
 
-\### 4.4 Bug lifecycle dispatch (`--bug <entry_uuid>`)
+\### 4.4 Plan \& Walkthrough documents (standing requirement, every build)
+
+&#x20;
+
+Modeled after a workflow Shane uses with Gemini elsewhere: every real build produces a
+pre-work \*\*Plan\*\* and a post-work \*\*Walkthrough\*\*, so any chat can verify a landed build by
+reading two structured, git-committed documents instead of Shane needing the repo open
+locally, or a chat re-deriving the diff from prose bookend text every time. This doesn't
+change what's already required — real investigation, real verification, real commit hashes —
+it only asks for it in a consistent, skimmable shape.
+
+&#x20;
+
+\*\*Before any code change\*\* (own commit, before the IN FLIGHT bookend commit), write
+`build-journal/{N}-plan.md`:
+
+&#x20;
+
+```
+
+\# Plan — <issue title>
+
+&#x20;
+
+\## Problem Description
+
+<real, from the issue>
+
+&#x20;
+
+\## Root Cause Analysis
+
+<real, from actual investigation of the live code — never assumed or guessed>
+
+&#x20;
+
+\## User Review Required
+
+<any real open decision needing Shane's confirmation before proceeding — omit this section entirely if there is none>
+
+&#x20;
+
+\## Proposed Changes
+
+<file-by-file, each with a real GitHub blob permalink at the CURRENT commit — never a local file:// path, since builds run in isolated worktrees with a different absolute path than Shane's own checkout>
+
+&#x20;
+
+\## Verification Plan
+
+<what will actually be run/checked to confirm the fix — real commands, real criteria>
+
+```
+
+&#x20;
+
+\*\*After the fix lands\*\* — the existing `build-journal/{N}.md` DONE entry (unchanged mechanism,
+no new file) must include these two real headers within it:
+
+&#x20;
+
+```
+
+\## Changes Made
+
+<file-by-file, each with a real GitHub blob permalink at the LANDED commit hash>
+
+&#x20;
+
+\## Verification Results
+
+<real build/test output, real commit hash — the same evidence bookends already carry, just consistently headered>
+
+```
+
+&#x20;
+
+`build-journal/{N}-plan.md` and the DONE half of `build-journal/{N}.md` are the two real
+documents any future chat should read first when asked to verify a build, before resorting to
+reading the actual diffed files.
+
+&#x20;
+
+\---
+
+&#x20;
+
+\### 4.5 Bug lifecycle dispatch (`--bug <entry_uuid>`)
 
 &#x20;
 
