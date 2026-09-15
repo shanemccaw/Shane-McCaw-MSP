@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Brush = System.Windows.Media.Brush;
+using SymbolRegular = Wpf.Ui.Controls.SymbolRegular;
 
 namespace MyArchitect.Shell;
 
@@ -54,6 +55,14 @@ public sealed class RibbonCommandSpec
     public required RibbonIntent Intent { get; init; }
     public required Action OnSelect { get; init; }
     public string? ToolTip { get; init; }
+
+    /// <summary>Git #3531 item 1 — the real Icon field the command/group model previously had no
+    /// place for at all. A Segoe Fluent Icons glyph, rendered by <see cref="FixedRibbonRenderer"/>
+    /// via WPF-UI's <c>SymbolIcon</c> — the same icon mechanism the shell already uses for the
+    /// title-bar buttons (MainWindow.xaml) and portal metadata (MainWindow.xaml.cs's
+    /// <c>GetPortalMetadata</c>). Every fixed-tab command sets this; there is no placeholder-box
+    /// fallback left to fall back to.</summary>
+    public SymbolRegular? Icon { get; init; }
 
     /// <summary>Optional live count badge — the one place a badge is allowed (UI_RULES.md §8).
     /// Synchronous source for a count that costs nothing to compute in place. Exactly one of

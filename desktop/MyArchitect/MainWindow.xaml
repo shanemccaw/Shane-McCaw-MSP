@@ -250,9 +250,13 @@
                             </Button>
                         </StackPanel>
 
-                        <Border Grid.Column="1" Background="#004578" CornerRadius="4" Padding="8,3" Margin="0,0,8,0" VerticalAlignment="Center">
+                        <!-- Git #3531 item 5: Background/icon fill toggle quiet-vs-armed in code-behind
+                             (UpdateIsolatedProfileBadge) — a real isolated profile is a loud, deliberate
+                             blue pill; "No Active Tab" is a neutral resting state, not an alarm. -->
+                        <Border x:Name="IsolatedProfileBadgeBorder" Grid.Column="1" Background="#004578" CornerRadius="4" Padding="8,3" Margin="0,0,8,0" VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal">
-                                <Path Data="M 18,8 L 17,8 L 17,6 C 17,3.24 14.76,1 12,1 C 9.24,1 7,3.24 7,6 L 7,8 L 6,8 C 4.9,8 4,8.9 4,10 L 4,20 C 4,21.1 4.9,22 6,22 L 18,22 C 19.1,22 20,21.1 20,20 L 20,10 C 20,8.9 19.1,8 18,8 Z M 12,17 C 10.9,17 10,16.1 10,15 C 10,13.9 10.9,13 12,13 C 13.1,13 14,13.9 14,15 C 14,16.1 13.1,17 12,17 Z M 15.1,8 L 8.9,8 L 8.9,6 C 8.9,4.29 10.29,2.9 12,2.9 C 13.71,2.9 15.1,4.29 15.1,6 L 15.1,8 Z"
+                                <Path x:Name="IsolatedProfileBadgeIcon"
+                                      Data="M 18,8 L 17,8 L 17,6 C 17,3.24 14.76,1 12,1 C 9.24,1 7,3.24 7,6 L 7,8 L 6,8 C 4.9,8 4,8.9 4,10 L 4,20 C 4,21.1 4.9,22 6,22 L 18,22 C 19.1,22 20,21.1 20,20 L 20,10 C 20,8.9 19.1,8 18,8 Z M 12,17 C 10.9,17 10,16.1 10,15 C 10,13.9 10.9,13 12,13 C 13.1,13 14,13.9 14,15 C 14,16.1 13.1,17 12,17 Z M 15.1,8 L 8.9,8 L 8.9,6 C 8.9,4.29 10.29,2.9 12,2.9 C 13.71,2.9 15.1,4.29 15.1,6 L 15.1,8 Z"
                                       Fill="#FFFFFF" Width="11" Height="11" Margin="0,0,5,0" VerticalAlignment="Center" Stretch="Uniform" />
                                 <TextBlock x:Name="IsolatedProfileBadgeTextBlock" Text="Profile: Contoso" Foreground="#FFFFFF" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
                             </StackPanel>
@@ -340,16 +344,22 @@
                     <!-- Contract-hours utilization (#3474) — real GET /api/admin/retainer/:customerId,
                          corrected anniversary-based period from #3473. The bar is a plain, inert
                          visual (never a fake clickable stop — UI_RULES.md §1); hidden until a real
-                         bucket has actually loaded. -->
+                         bucket has actually loaded. Git #3531: Shane reported not noticing this once
+                         it was real/visible — widened, given a dark track that actually contrasts
+                         against the status bar's own blue (the old #005A9E track on #007ACC read as
+                         a near-invisible sliver), and given a real icon so it reads as a meter, not
+                         a stray blue smear next to the sign-in button. -->
                     <Border Width="1" Background="#3D8BD4" Margin="12,3,12,3" />
                     <StackPanel x:Name="ContractHoursPanel" Orientation="Horizontal" Visibility="Collapsed" VerticalAlignment="Center">
+                        <ui:SymbolIcon Symbol="ClockAlarm24" FontSize="12" Foreground="#D8E8FF" Margin="0,0,4,0" VerticalAlignment="Center" />
                         <TextBlock x:Name="ContractHoursTextBlock" Text="" Foreground="#D8E8FF" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0" />
                         <ProgressBar x:Name="ContractHoursProgressBar"
-                                     Width="80" Height="8"
+                                     Width="110" Height="10"
                                      Minimum="0" Maximum="100"
-                                     Background="#005A9E"
-                                     Foreground="#7FD1FF"
-                                     BorderThickness="0"
+                                     Background="#00284A"
+                                     BorderBrush="#00182E"
+                                     BorderThickness="1"
+                                     Foreground="#3FE0A0"
                                      VerticalAlignment="Center" />
                     </StackPanel>
                 </StackPanel>

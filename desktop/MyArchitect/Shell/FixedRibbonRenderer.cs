@@ -10,6 +10,7 @@ using RibbonTabItem = Fluent.RibbonTabItem;
 using DropDownButton = Fluent.DropDownButton;
 using RibbonControlSize = Fluent.RibbonControlSize;
 using TextBox = System.Windows.Controls.TextBox;
+using SymbolIcon = Wpf.Ui.Controls.SymbolIcon;
 
 namespace MyArchitect.Shell;
 
@@ -96,6 +97,17 @@ public sealed class FixedRibbonRenderer
         return box;
     }
 
+    /// <summary>Git #3531 item 1 — sets both the small (QAT/collapsed) and large icon so the real
+    /// glyph shows regardless of which <see cref="RibbonControlSize"/> the button renders at. Two
+    /// separate <see cref="SymbolIcon"/> instances, since a single WPF element can't live in two
+    /// places in the visual tree at once.</summary>
+    private static void ApplyIcon<T>(T control, Wpf.Ui.Controls.SymbolRegular symbol)
+        where T : Fluent.IRibbonControl, Fluent.ILargeIconProvider
+    {
+        control.Icon = new SymbolIcon { Symbol = symbol, FontSize = 16 };
+        control.LargeIcon = new SymbolIcon { Symbol = symbol, FontSize = 26 };
+    }
+
     private static FrameworkElement BuildCommand(RibbonCommandSpec cmd, RibbonControlSize size)
     {
         if (cmd.Gallery is { } gallery)
@@ -110,6 +122,10 @@ public sealed class FixedRibbonRenderer
             Size = size,
             ToolTip = cmd.ToolTip ?? cmd.Label,
         };
+        if (cmd.Icon is { } symbol)
+        {
+            ApplyIcon(btn, symbol);
+        }
         if (cmd.LiveCountAsync is { } liveCountAsync)
         {
             PopulateLiveCountAsync(btn, cmd, liveCountAsync);
@@ -146,6 +162,10 @@ public sealed class FixedRibbonRenderer
             Size = size,
             ToolTip = gallery.Title,
         };
+        if (cmd.Icon is { } gallerySymbol)
+        {
+            ApplyIcon(dropDown, gallerySymbol);
+        }
 
         // #3539 — Searchable galleries get a real filter TextBox pinned above the rows, kept as
         // its own item so re-filtering (RenderFilteredRows) never rebuilds it and drops focus/

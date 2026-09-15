@@ -81,6 +81,10 @@ public partial class MainWindow : FluentWindow
     {
         InitializeComponent();
 
+        // Git #3531 item 5 — starts quiet/neutral (no tab is open yet at launch), not the XAML
+        // design-time "Profile: Contoso" armed-blue placeholder.
+        SetIsolatedProfileBadge("No Active Tab", armed: false);
+
         _tenantService = new TenantService();
         _profileService = new WebViewProfileService();
 
@@ -224,7 +228,8 @@ public partial class MainWindow : FluentWindow
             {
                 new RibbonCommandSpec
                 {
-                    Label = "Open All Portals",
+                    Label = "Open All",
+                    Icon = SymbolRegular.Open24,
                     Intent = RibbonIntent.Open,
                     ToolTip = "Open every bookmarked Microsoft portal for the active tenant",
                     OnSelect = () => _ = OpenAllPortalsAsync(),
@@ -241,24 +246,28 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "SOW & Assessment",
+                    Icon = SymbolRegular.ClipboardTask24,
                     Intent = RibbonIntent.Open,
                     OnSelect = () => ShowAssessmentView(),
                 },
                 new RibbonCommandSpec
                 {
                     Label = "Live Telemetry",
+                    Icon = SymbolRegular.PulseSquare24,
                     Intent = RibbonIntent.Open,
                     OnSelect = () => ShowTelemetryView(),
                 },
                 new RibbonCommandSpec
                 {
                     Label = "Screenshot Evidence",
+                    Icon = SymbolRegular.Screenshot24,
                     Intent = RibbonIntent.Open,
                     OnSelect = () => ShowDocument(ScreenshotEvidenceDocument),
                 },
                 new RibbonCommandSpec
                 {
                     Label = "Activity Timeline",
+                    Icon = SymbolRegular.Timeline24,
                     Intent = RibbonIntent.Open,
                     ToolTip = "Local daily timeline (#3463) — tenant switches, console commands, records opened, external apps",
                     OnSelect = () => OpenActivityTimelineRecord(),
@@ -275,6 +284,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "Browse",
+                    Icon = SymbolRegular.Wrench24,
                     Intent = RibbonIntent.Open,
                     ToolTip = "Unified item browser (#3471) — real remediation tracker steps + change-control queue, one view",
                     Gallery = new GallerySpec
@@ -297,6 +307,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "Browse",
+                    Icon = SymbolRegular.TaskListSquareLtr24,
                     Intent = RibbonIntent.Open,
                     ToolTip = "Real GET /api/msp/poams, filtered to the active tenant",
                     Gallery = new GallerySpec
@@ -310,6 +321,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "New POA&M",
+                    Icon = SymbolRegular.DocumentAdd24,
                     Intent = RibbonIntent.Create,
                     ToolTip = "POST /api/msp/poams — author a new plan for the active tenant",
                     OnSelect = () => OpenCreatePoamRecord(),
@@ -326,6 +338,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "Browse",
+                    Icon = SymbolRegular.PeopleTeam24,
                     Intent = RibbonIntent.Open,
                     ToolTip = "Real GET /api/msp/change-control/cab/meetings (#3482 / Git #1501)",
                     Gallery = new GallerySpec
@@ -339,6 +352,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "Schedule Meeting",
+                    Icon = SymbolRegular.CalendarLtr24,
                     Intent = RibbonIntent.Create,
                     ToolTip = "POST /api/msp/change-control/cab/meetings",
                     OnSelect = () => OpenScheduleCabMeetingRecord(),
@@ -354,7 +368,8 @@ public partial class MainWindow : FluentWindow
             {
                 new RibbonCommandSpec
                 {
-                    Label = "Log Ad-Hoc Hours",
+                    Label = "Log Hours",
+                    Icon = SymbolRegular.ClockAlarm24,
                     Intent = RibbonIntent.Create,
                     ToolTip = "POST /api/admin/retainer/:customerId/unscoped — work not tied to a tracker step or change request (#3464)",
                     OnSelect = () => OpenLogAdHocHoursRecord(),
@@ -371,6 +386,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "Browse",
+                    Icon = SymbolRegular.Bot24,
                     Intent = RibbonIntent.Open,
                     ToolTip = "Real GET /api/admin/automation-registry/:customerId (Git #3771)",
                     Gallery = new GallerySpec
@@ -384,6 +400,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "Add Automation",
+                    Icon = SymbolRegular.BotAdd24,
                     Intent = RibbonIntent.Create,
                     ToolTip = "POST /api/admin/automation-registry/:customerId — Power Automate flow or Power Platform/Azure AI Studio agent (Git #3771)",
                     OnSelect = () => OpenAddAutomationRecord(),
@@ -403,6 +420,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "Open Console",
+                    Icon = SymbolRegular.CodeBlock24,
                     Intent = RibbonIntent.Open,
                     ToolTip = "Hosted PowerShell runspace (#3459) — real stdout/stderr, no shelled-out process",
                     OnSelect = () => ShowDocument(ConsolePanel),
@@ -410,6 +428,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "History",
+                    Icon = SymbolRegular.History24,
                     Intent = RibbonIntent.Open,
                     ToolTip = "Local console run history (#3459) — command, tenant, duration, mark-for-report state",
                     OnSelect = () => OpenConsoleHistoryRecord(),
@@ -426,6 +445,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "Browse",
+                    Icon = SymbolRegular.Script24,
                     Intent = RibbonIntent.Open,
                     ToolTip = "Entitlement-resolved write_action_catalog (#3460)",
                     Gallery = new GallerySpec
@@ -448,6 +468,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "Browse",
+                    Icon = SymbolRegular.BookOpen24,
                     Intent = RibbonIntent.Open,
                     ToolTip = "Real GET /api/msp/runbooks (#3479) — a customer's active runbooks + run history",
                     Gallery = new GallerySpec
@@ -461,6 +482,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "Hold Windows",
+                    Icon = SymbolRegular.CalendarClock24,
                     Intent = RibbonIntent.Open,
                     ToolTip = "Real GET /api/msp/runbooks (#3479) — the same payload's top-level hold windows",
                     Gallery = new GallerySpec
@@ -491,6 +513,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "Browse",
+                    Icon = SymbolRegular.DocumentFolder24,
                     Intent = RibbonIntent.Open,
                     ToolTip = "Real GET /api/msp/documents-hub (#3486) — customer-generated reports, SOWs and consulting docs across the whole book",
                     Gallery = new GallerySpec
@@ -519,6 +542,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "Credential Vault",
+                    Icon = SymbolRegular.Vault24,
                     Intent = RibbonIntent.Open,
                     ToolTip = "Per-tenant username/password store — local-only, DPAPI-encrypted, master-unlocked (#3461)",
                     OnSelect = () => ShowDocument(VaultPanel),
@@ -539,6 +563,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "Pending Requests",
+                    Icon = SymbolRegular.Guardian24,
                     Intent = RibbonIntent.Open,
                     ToolTip = "Cross-tenant pending break-glass credential deliveries (GET /api/msp/break-glass, #3480)",
                     OnSelect = () => { _ = OpenBreakGlassPendingListAsync(); },
@@ -558,6 +583,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "Audit Log",
+                    Icon = SymbolRegular.ClipboardTaskListLtr24,
                     Intent = RibbonIntent.Open,
                     ToolTip = "Filterable platform audit trail — tenant / action type (GET /api/msp/audit, #3489)",
                     OnSelect = () => { _ = OpenAuditLogAsync(new Models.AuditLogFilter()); },
@@ -578,6 +604,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "Tenant Consent",
+                    Icon = SymbolRegular.ShieldTask24,
                     Intent = RibbonIntent.Open,
                     ToolTip = "Admin/write/SharePoint consent status across your MSP book (GET /api/msp/consent, #3485)",
                     OnSelect = () => { _ = OpenConsentStatusListAsync(); },
@@ -611,6 +638,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "Open Requests",
+                    Icon = SymbolRegular.Chat24,
                     Intent = RibbonIntent.Open,
                     ToolTip = "Every ticket under your MSP's Zoho Desk org — customer requests + chat escalations (GET /api/msp/support/requests, #3488)",
                     OnSelect = () => { _ = OpenSupportTicketsListAsync(); },
@@ -627,6 +655,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "Breaches",
+                    Icon = SymbolRegular.Gauge24,
                     Intent = RibbonIntent.Open,
                     ToolTip = "Unresolved SLA breaches across the book (GET /api/msp/sla/breaches)",
                     LiveCountAsync = () => CountOpenSlaBreachesAsync(),
@@ -641,6 +670,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "Escalations",
+                    Icon = SymbolRegular.AlertUrgent24,
                     Intent = RibbonIntent.Open,
                     ToolTip = "Open SLA escalations (GET /api/msp/sla/escalations)",
                     LiveCountAsync = () => CountOpenSlaEscalationsAsync(),
@@ -655,6 +685,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "Compliance",
+                    Icon = SymbolRegular.DocumentBulletList24,
                     Intent = RibbonIntent.Open,
                     ToolTip = "Monthly SLA compliance history (GET /api/msp/sla/compliance)",
                     Gallery = new GallerySpec
@@ -668,6 +699,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "Policies",
+                    Icon = SymbolRegular.Book24,
                     Intent = RibbonIntent.Open,
                     ToolTip = "Active SLA policies for this MSP (GET /api/msp/sla/policies)",
                     Gallery = new GallerySpec
@@ -681,6 +713,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "M365 Uptime",
+                    Icon = SymbolRegular.DesktopPulse24,
                     Intent = RibbonIntent.Open,
                     ToolTip = "Microsoft's own 99.9% third-party uptime commitment, selected tenant (GET /api/msp/m365-sla)",
                     Gallery = new GallerySpec
@@ -703,6 +736,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "Open Tasks",
+                    Icon = SymbolRegular.TaskListSquareLtr24,
                     Intent = RibbonIntent.Open,
                     ToolTip = "Virtual queue — unresolved SLA breaches + scope-creep violations, deep-linked to the Admin Panel (GET /api/msp/operator-tasks, live via SSE #3490)",
                     LiveCountAsync = () => CountOpenOperatorTasksAsync(),
@@ -726,6 +760,7 @@ public partial class MainWindow : FluentWindow
                 new RibbonCommandSpec
                 {
                     Label = "Alerts",
+                    Icon = SymbolRegular.Alert24,
                     Intent = RibbonIntent.Open,
                     ToolTip = "Real GET /api/msp/alerts (#3483) — cross-tenant triage feed, merged from open policy incidents and each customer's latest diagnostic findings",
                     LiveCountAsync = () => GetOpenAlertsCountAsync(),
@@ -5376,7 +5411,6 @@ public partial class MainWindow : FluentWindow
 
         if (_tenantService.CurrentTenant != null)
         {
-            LeftReferencePanelControl.SetTenantName(_tenantService.CurrentTenant.Name);
             await OpenPortalTabAsync(_tenantService.CurrentTenant, PortalType.M365Admin);
         }
     }
@@ -5640,11 +5674,31 @@ public partial class MainWindow : FluentWindow
         WebViewsContainer.Visibility = Visibility.Visible;
 
         UrlTextBox.Text = tab.Url;
-        IsolatedProfileBadgeTextBlock.Text = tab.DisplayBadge;
+        SetIsolatedProfileBadge(tab.DisplayBadge, armed: true);
         StatusProfileTextBlock.Text = tab.IsGlobal ? "Session: Global Claude Profile [claude.ai]" : $"Session Isolation: {tab.Tenant?.Name} [{tab.Tenant?.TenantGuid}]";
 
         UpdateTabsState();
         UpdateNavigationButtonsState();
+    }
+
+    // Git #3531 item 5 — "No Active Tab" is a resting/idle state, not an alarm; it should read as
+    // quiet/neutral, not the same loud, deliberately-blue pill a real isolated profile uses. Swaps
+    // background/text/icon color rather than hiding the pill outright, so the status bar's layout
+    // doesn't jump when a tab opens or closes.
+    private static readonly System.Windows.Media.Brush ArmedBadgeBackground =
+        (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#004578")!;
+    private static readonly System.Windows.Media.Brush QuietBadgeBackground =
+        (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#2A2A2A")!;
+    private static readonly System.Windows.Media.Brush QuietBadgeForeground =
+        (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString("#858585")!;
+
+    private void SetIsolatedProfileBadge(string text, bool armed)
+    {
+        IsolatedProfileBadgeTextBlock.Text = text;
+        IsolatedProfileBadgeBorder.Background = armed ? ArmedBadgeBackground : QuietBadgeBackground;
+        var foreground = armed ? System.Windows.Media.Brushes.White : QuietBadgeForeground;
+        IsolatedProfileBadgeTextBlock.Foreground = foreground;
+        IsolatedProfileBadgeIcon.Fill = foreground;
     }
 
     public void CloseTab(PortalTabItem tab)
@@ -5665,7 +5719,7 @@ public partial class MainWindow : FluentWindow
             {
                 _activeTab = null;
                 UrlTextBox.Text = string.Empty;
-                IsolatedProfileBadgeTextBlock.Text = "No Active Tab";
+                SetIsolatedProfileBadge("No Active Tab", armed: false);
                 StatusProfileTextBlock.Text = "Session Isolation: Standby";
             }
         }
@@ -5704,7 +5758,6 @@ public partial class MainWindow : FluentWindow
         {
             if (tenant == null) return;
 
-            LeftReferencePanelControl.SetTenantName(tenant.Name);
             _trayIconManager.UpdateTenant(tenant);
 
             var existingTab = _tabs.FirstOrDefault(t => t.Tenant != null && t.Tenant.Id.Equals(tenant.Id, StringComparison.OrdinalIgnoreCase));
@@ -5779,9 +5832,11 @@ public partial class MainWindow : FluentWindow
             : 0.0;
 
         ContractHoursProgressBar.Value = percent;
+        // Git #3531 item — bright green/red against the bar's own #00284A dark track, not the old
+        // near-invisible light-blue-on-blue, so the meter actually reads at a glance.
         ContractHoursProgressBar.Foreground = bucket.IsOverMonth
             ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xFF, 0x6B, 0x6B))
-            : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x7F, 0xD1, 0xFF));
+            : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x3F, 0xE0, 0xA0));
 
         ContractHoursTextBlock.Text = bucket.IsOverMonth
             ? $"{bucket.UsedHours:0.#}h / {retainedTotal:0.#}h retained · {bucket.OverHours:0.#}h over"

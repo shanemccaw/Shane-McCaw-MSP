@@ -10,6 +10,7 @@ using Brush = System.Windows.Media.Brush;
 using Brushes = System.Windows.Media.Brushes;
 using Cursors = System.Windows.Input.Cursors;
 using HorizontalAlignment = System.Windows.HorizontalAlignment;
+using SymbolRegular = Wpf.Ui.Controls.SymbolRegular;
 
 namespace MyArchitect.Shell;
 
@@ -31,27 +32,26 @@ public partial class LeftReferencePanel : UserControl
 
     private readonly List<Button> _bookmarkButtons = new();
 
-    private static readonly (PortalType Type, string Name, string SubUrl, string Color)[] Bookmarks =
+    // Git #3531 item 4 — each bookmark now carries its own real glyph (SymbolRegular, the same
+    // WPF-UI icon mechanism the shell already uses for the title bar and ribbon), not just a
+    // color swatch. M365 Admin and Entra ID render as distinguishable icons now, not identical
+    // blue squares.
+    private static readonly (PortalType Type, string Name, string SubUrl, string Color, SymbolRegular Icon)[] Bookmarks =
     {
-        (PortalType.M365Admin, "M365 Admin Center", "admin.microsoft.com", "#0078D4"),
-        (PortalType.EntraAdmin, "Entra ID Admin Center", "entra.microsoft.com", "#005A9E"),
-        (PortalType.AzurePortal, "Azure Portal", "portal.azure.com", "#0089D6"),
-        (PortalType.IntuneAdmin, "Intune Endpoint Manager", "intune.microsoft.com", "#008272"),
-        (PortalType.ExchangeAdmin, "Exchange Admin Center", "admin.exchange.microsoft.com", "#0078D4"),
-        (PortalType.SecurityAdmin, "Defender Security Center", "security.microsoft.com", "#D83B01"),
-        (PortalType.ComplianceAdmin, "Purview Compliance", "compliance.microsoft.com", "#5C2D91"),
-        (PortalType.TeamsAdmin, "Teams Admin Center", "admin.teams.microsoft.com", "#464EB8"),
+        (PortalType.M365Admin, "M365 Admin Center", "admin.microsoft.com", "#0078D4", SymbolRegular.Grid24),
+        (PortalType.EntraAdmin, "Entra ID Admin Center", "entra.microsoft.com", "#005A9E", SymbolRegular.PersonKey24),
+        (PortalType.AzurePortal, "Azure Portal", "portal.azure.com", "#0089D6", SymbolRegular.Cloud24),
+        (PortalType.IntuneAdmin, "Intune Endpoint Manager", "intune.microsoft.com", "#008272", SymbolRegular.PhoneLaptop24),
+        (PortalType.ExchangeAdmin, "Exchange Admin Center", "admin.exchange.microsoft.com", "#0078D4", SymbolRegular.Mail24),
+        (PortalType.SecurityAdmin, "Defender Security Center", "security.microsoft.com", "#D83B01", SymbolRegular.ShieldTask24),
+        (PortalType.ComplianceAdmin, "Purview Compliance", "compliance.microsoft.com", "#5C2D91", SymbolRegular.DocumentBulletList24),
+        (PortalType.TeamsAdmin, "Teams Admin Center", "admin.teams.microsoft.com", "#464EB8", SymbolRegular.PeopleTeam24),
     };
 
     public LeftReferencePanel()
     {
         InitializeComponent();
         BuildBookmarks();
-    }
-
-    public void SetTenantName(string? name)
-    {
-        TenantSubtext.Text = string.IsNullOrEmpty(name) ? "No tenant selected" : $"Active: {name}";
     }
 
     /// <summary>Renders the real, live consent status (#3485) for whichever tenant
@@ -135,6 +135,14 @@ public partial class LeftReferencePanel : UserControl
                 Background = (SolidColorBrush)new BrushConverter().ConvertFromString(b.Color)!,
                 Margin = new Thickness(0, 0, 8, 0),
                 VerticalAlignment = VerticalAlignment.Center,
+                Child = new Wpf.Ui.Controls.SymbolIcon
+                {
+                    Symbol = b.Icon,
+                    FontSize = 15,
+                    Foreground = Brushes.White,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                },
             };
 
             var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
