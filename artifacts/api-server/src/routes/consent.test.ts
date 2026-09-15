@@ -150,8 +150,8 @@ vi.mock("../lib/audit.ts", () => ({
 // direct-tenant-provisioning's own callers/tests. resolveProspectRole (#3972)
 // is kept real — it's a pure function with no DB access, and consent.ts calls
 // it directly to pick provisionProspectAccount's role argument.
-const mockResolveOrCreateDirectTenant = vi.fn().mockResolvedValue({ id: 5, mspId: 1 });
-const mockResolveOrCreateTenantForMsp = vi.fn().mockResolvedValue({ id: 7, mspId: 1626 });
+const mockResolveOrCreateDirectTenant = vi.fn().mockResolvedValue({ id: 5, mspId: 1, created: true });
+const mockResolveOrCreateTenantForMsp = vi.fn().mockResolvedValue({ id: 7, mspId: 1626, created: true });
 vi.mock("../lib/direct-tenant-provisioning.ts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/direct-tenant-provisioning.ts")>();
   return {
@@ -726,10 +726,12 @@ describe("consent route handlers", () => {
       expect(mockResolveOrCreateDirectTenant).not.toHaveBeenCalled();
     });
 
-    it("proceeds when the checkout tenant's existing customer is under the SAME (direct) MSP", async () => {
+    // #4226: `tenant` is unsigned and a tenant GUID is public, so a checkout
+    // buyer naming a GUID that already has a customer under the direct MSP
+    // itself must not be attached to it either — refused, not re-granted.
+    it("REFUSES a checkout tenant that already has a customer under the SAME (direct) MSP, before any write", async () => {
       dbSelectQueue.push([{ id: 89 }]);               // isDirectBusiness MSP id
-      dbSelectQueue.push([{ id: 5, mspId: 89 }]);     // existing customer under the SAME mspId — no conflict
-      mockResolveOrCreateDirectTenant.mockResolvedValueOnce({ id: 5, mspId: 89 });
+      dbSelectQueue.push([{ id: 5, mspId: 89 }]);     // existing customer under the SAME mspId
       const { res, store } = mockRes();
       const req = mockReq({
         query: { tenant: "tenant-ok", admin_consent: "True", state: CHECKOUT_STATE },
@@ -738,15 +740,38 @@ describe("consent route handlers", () => {
       await handler!(req, res, (() => {}) as NextFunction);
 
       expect(store.redirectUrl).toBeNull();
-      expect(store.sentText).not.toContain("already connected");
-      expect(store.sentText).toContain("Access granted");
-      expect(store.sentText).toContain("window.close");
+      expect(store.sentText).toContain("already registered");
+      expect(store.sentText).toContain("contact support");
+      expect(store.sentText).not.toContain("window.close");
+      expect(store.sentText).not.toContain("Access granted");
+      // No session flip, no grant, no account, and Microsoft is not even asked.
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(mockInsert).not.toHaveBeenCalled();
+      expect(mockResolveOrCreateDirectTenant).not.toHaveBeenCalled();
+      expect(mockVerifyConsent).not.toHaveBeenCalled();
+    });
+
+    it("REFUSES when an existing customer is raced in after the guard, without flipping the session", async () => {
+      dbSelectQueue.push([{ id: 89 }]);               // isDirectBusiness MSP id
+      dbSelectQueue.push([]);                          // guard saw no customer
+      mockResolveOrCreateDirectTenant.mockResolvedValueOnce({ id: 5, mspId: 89, created: false });
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-raced-same-msp", admin_consent: "True", state: CHECKOUT_STATE },
+      });
+      const handler = getHandler(consentRouter, "get", "/consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.sentText).toContain("already registered");
+      expect(store.sentText).not.toContain("Access granted");
+      // The checkout session is flipped only after the row is known to be new.
+      expect(mockUpdate).not.toHaveBeenCalled();
     });
 
     it("proceeds when no customer exists for the checkout tenant yet", async () => {
       dbSelectQueue.push([{ id: 89 }]);               // isDirectBusiness MSP id
       dbSelectQueue.push([]);                          // no existing customer for this tenant
-      mockResolveOrCreateDirectTenant.mockResolvedValueOnce({ id: 5, mspId: 89 });
+      mockResolveOrCreateDirectTenant.mockResolvedValueOnce({ id: 5, mspId: 89, created: true });
       const { res, store } = mockRes();
       const req = mockReq({
         query: { tenant: "tenant-new", admin_consent: "True", state: CHECKOUT_STATE },
@@ -842,7 +867,7 @@ describe("consent route handlers", () => {
       expect(mockUpdate).toHaveBeenCalled();
     });
 
-    it("proceeds when the tenant is already a customer of the SAME MSP", async () => {
+    it("REFUSES a tenant that is already a customer of the SAME MSP (#4226), before any write", async () => {
       dbSelectQueue.push([MSP_INVITE]);
       dbSelectQueue.push([{ id: 7, mspId: 1626 }]);
       const { res, store } = mockRes();
@@ -852,7 +877,30 @@ describe("consent route handlers", () => {
       const handler = getHandler(consentRouter, "get", "/consent/callback");
       await handler!(req, res, (() => {}) as NextFunction);
 
-      expect(store.redirectUrl).toContain("/portal/consent/success");
+      expect(store.statusCode).toBe(409);
+      expect(store.sentText).toContain("already registered");
+      expect(store.redirectUrl).toBeNull();
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(mockInsert).not.toHaveBeenCalled();
+      expect(mockResolveOrCreateTenantForMsp).not.toHaveBeenCalled();
+    });
+
+    it("REFUSES when the resolved tenant is an existing customer of the SAME MSP (raced in after the guard)", async () => {
+      dbSelectQueue.push([MSP_INVITE]);
+      dbSelectQueue.push([]);                          // guard saw no customer
+      mockResolveOrCreateTenantForMsp.mockResolvedValueOnce({ id: 7, mspId: 1626, created: false });
+      const setCallsBefore = mockUpdateSet.mock.calls.length;
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-raced-same", admin_consent: "True", state: "msp-invite-tok" },
+      });
+      const handler = getHandler(consentRouter, "get", "/consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.statusCode).toBe(409);
+      expect(store.redirectUrl).toBeNull();
+      const setCalls = mockUpdateSet.mock.calls.slice(setCallsBefore);
+      expect(setCalls.some(([arg]) => (arg as { consent?: unknown })?.consent)).toBe(false);
     });
 
     it("fails closed when the resolved tenant belongs to another MSP (raced in after the guard)", async () => {
@@ -897,6 +945,29 @@ describe("consent route handlers", () => {
       expect(mockUpdate).not.toHaveBeenCalled();
       expect(mockInsert).not.toHaveBeenCalled();
       expect(mockResolveOrCreateDirectTenant).not.toHaveBeenCalled();
+    });
+
+    // #4226: the residual #4043 did not close — a no-id invite naming a GUID
+    // that already has a customer under the direct MSP itself.
+    it("REFUSES a tenant that already has a customer under the direct MSP, before any write", async () => {
+      dbSelectQueue.push([NO_ID_INVITE]);              // invite token row
+      dbSelectQueue.push([{ id: 1 }]);                 // isDirectBusiness MSP id
+      dbSelectQueue.push([{ id: 3, mspId: 1 }]);       // tenant already a customer of the direct MSP
+      const { res, store } = mockRes();
+      const req = mockReq({
+        query: { tenant: "tenant-direct-existing", admin_consent: "True", state: "no-id-invite-tok" },
+      });
+      const handler = getHandler(consentRouter, "get", "/consent/callback");
+      await handler!(req, res, (() => {}) as NextFunction);
+
+      expect(store.statusCode).toBe(409);
+      expect(store.sentText).toContain("contact support");
+      expect(store.redirectUrl).toBeNull();
+      // Token not burned, no grant stamped, no customer object or account created.
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(mockInsert).not.toHaveBeenCalled();
+      expect(mockResolveOrCreateDirectTenant).not.toHaveBeenCalled();
+      expect(mockVerifyConsent).not.toHaveBeenCalled();
     });
 
     it("proceeds on the direct-business create path when the tenant has no customer yet", async () => {
@@ -1520,6 +1591,9 @@ describe("GET /consent/callback — read-consent skip is cleared by a real grant
     mockUpdateSet.mockClear();
     dbSelectQueue.push([{ id: 89 }]); // isDirectBusiness MSP id (cross-MSP guard)
     dbSelectQueue.push([]);           // no conflicting customer for this tenant
+    // The session is flipped only once the tenants row is this consent's own
+    // new customer under the direct MSP (#4226).
+    mockResolveOrCreateDirectTenant.mockResolvedValueOnce({ id: 5, mspId: 89, created: true });
     const { res } = mockRes();
     const req = mockReq({
       query: { tenant: "tenant-skip-clear", admin_consent: "True", state: CHECKOUT_STATE },
