@@ -61,12 +61,14 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
+                    <!-- Git #4183: Segoe MDL2 Assets glyph — a separate, already-tracked icon-font
+                         finding per #4162's audit comment; left alone here. -->
                     <TextBlock Grid.Column="0" Text="&#xE8BD;"
                                FontFamily="Segoe MDL2 Assets" FontSize="13"
                                Margin="0,0,6,0" VerticalAlignment="Center"
                                Foreground="{StaticResource BlueBrush}"/>
                     <TextBlock x:Name="HeaderTitle" Grid.Column="1" Text="Chat"
-                               FontSize="12" FontWeight="SemiBold"
+                               FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                TextTrimming="CharacterEllipsis"
                                VerticalAlignment="Center"
                                Foreground="{StaticResource TextBrush}"/>
@@ -127,7 +129,7 @@
                     <TextBlock x:Name="EmptyHint"
                                Margin="10"
                                TextWrapping="Wrap"
-                               FontSize="12"
+                               FontSize="{StaticResource CaptionFontSize}"
                                Foreground="{StaticResource Subtext1Brush}"
                                Text="Waiting for the chat to load… send a message below and the reply will appear here."/>
                     <ContentControl x:Name="ResponseHost" Margin="8,6,8,6"/>
@@ -150,7 +152,7 @@
                          Foreground="{StaticResource TextBrush}"
                          BorderBrush="{StaticResource Surface0Brush}"
                          BorderThickness="1"
-                         FontSize="13"
+                         FontSize="{StaticResource BodyFontSize}"
                          Padding="6"
                          PreviewKeyDown="InputBox_PreviewKeyDown"/>
                 <Button x:Name="BtnSend" Grid.Column="1"
@@ -166,7 +168,7 @@
             <!-- Inline status/error for the active tab (empty by default) -->
             <TextBlock x:Name="InlineMessage" Grid.Row="4"
                        Margin="8,0,8,4"
-                       FontSize="11"
+                       FontSize="{StaticResource CaptionFontSize}"
                        TextWrapping="Wrap"
                        Visibility="Collapsed"
                        Foreground="{StaticResource Subtext1Brush}"/>
@@ -206,7 +208,7 @@
                 <Button x:Name="BtnRefreshDock" Grid.Row="1"
                         Content="⟳ Refresh"
                         Style="{StaticResource IconButton}"
-                        FontSize="10.5"
+                        FontSize="{StaticResource CaptionFontSize}"
                         Padding="6,4,6,4"
                         Margin="6,0,6,6"
                         ToolTip="Re-check mentioned issues and pinned questions for this chat"
