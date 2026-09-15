@@ -34,7 +34,7 @@
                     <Ellipse Width="9" Height="9" Fill="{StaticResource BlueBrush}"
                              Margin="0,0,8,0" VerticalAlignment="Center"/>
                     <TextBlock Text="BUILD QUEUE MAP"
-                               FontSize="12" FontWeight="SemiBold"
+                               FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                Foreground="{StaticResource Subtext1Brush}"
                                VerticalAlignment="Center"/>
                 </StackPanel>
@@ -42,7 +42,7 @@
                             HorizontalAlignment="Right" VerticalAlignment="Center">
                     <TextBlock x:Name="GeneratedText"
                                Text=""
-                               FontSize="10.5"
+                               FontSize="{StaticResource CaptionFontSize}"
                                Foreground="{StaticResource Subtext0Brush}"
                                VerticalAlignment="Center"
                                Margin="0,0,10,0"/>
@@ -50,7 +50,7 @@
                                   Content="Live"
                                   IsChecked="True"
                                   Padding="8,3"
-                                  FontSize="10.5"
+                                  FontSize="{StaticResource CaptionFontSize}"
                                   Margin="0,0,6,0"
                                   Foreground="{StaticResource TextBrush}"
                                   ToolTip="Auto-refresh the map every few seconds"
@@ -59,7 +59,7 @@
                     <Button x:Name="BtnRefresh"
                             Content="Refresh"
                             Padding="8,3"
-                            FontSize="10.5"
+                            FontSize="{StaticResource CaptionFontSize}"
                             ToolTip="Refresh the map now"
                             Click="BtnRefresh_Click"/>
                 </StackPanel>
@@ -75,7 +75,7 @@
             <StackPanel>
                 <TextBlock x:Name="SummaryText"
                            Text="Loading…"
-                           FontSize="11"
+                           FontSize="{StaticResource CaptionFontSize}"
                            Foreground="{StaticResource TextBrush}"
                            TextWrapping="Wrap"/>
                 <!-- Deadlock banner — the loud, unmissable call-out for genuine cycles. -->
@@ -89,7 +89,7 @@
                         Visibility="Collapsed">
                     <TextBlock x:Name="DeadlockText"
                                Text=""
-                               FontSize="11"
+                               FontSize="{StaticResource CaptionFontSize}"
                                FontWeight="SemiBold"
                                Foreground="{StaticResource StatusErrorBrush}"
                                TextWrapping="Wrap"/>
@@ -105,7 +105,7 @@
                         Visibility="Collapsed">
                     <TextBlock x:Name="UnverifiedText"
                                Text=""
-                               FontSize="11"
+                               FontSize="{StaticResource CaptionFontSize}"
                                FontWeight="SemiBold"
                                Foreground="{StaticResource StatusWarningBrush}"
                                TextWrapping="Wrap"/>
@@ -135,7 +135,7 @@
             </ScrollViewer>
             <TextBlock x:Name="EmptyOverlay"
                        Text=""
-                       FontSize="13"
+                       FontSize="{StaticResource BodyFontSize}"
                        Foreground="{StaticResource Subtext1Brush}"
                        HorizontalAlignment="Center"
                        VerticalAlignment="Center"

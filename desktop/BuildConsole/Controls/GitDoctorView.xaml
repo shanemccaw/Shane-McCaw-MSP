@@ -23,10 +23,10 @@
                     BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,0,0,1">
                 <StackPanel>
                     <TextBlock x:Name="GitDoctorHeadline"
-                               FontSize="13" FontWeight="Bold" TextWrapping="Wrap"
+                               FontSize="{StaticResource BodyFontSize}" FontWeight="Bold" TextWrapping="Wrap"
                                Foreground="{StaticResource TextBrush}"/>
                     <TextBlock x:Name="GitDoctorSubline" Margin="0,3,0,0"
-                               FontFamily="Consolas" FontSize="10" TextWrapping="Wrap"
+                               FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource MonospaceFontSize}" TextWrapping="Wrap"
                                Foreground="{StaticResource OverlayBrush}"/>
 
                     <Button x:Name="BtnGitDoctorNightmare" Margin="0,9,0,0" Height="36" Padding="12,0"
@@ -34,10 +34,10 @@
                             Background="{StaticResource MaroonBrushTint}" BorderBrush="{StaticResource MaroonBrush}"
                             Click="BtnGitDoctorNightmare_Click">
                         <TextBlock x:Name="GitDoctorNightmareLabel" Text="End this git nightmare"
-                                   FontSize="12.5" FontWeight="Bold" Foreground="{StaticResource MaroonBrush}"/>
+                                   FontSize="{StaticResource BodyFontSize}" FontWeight="Bold" Foreground="{StaticResource MaroonBrush}"/>
                     </Button>
                     <TextBlock x:Name="GitDoctorNightmareSub" Margin="0,3,0,0"
-                               FontSize="9" TextWrapping="Wrap"
+                               FontSize="{StaticResource CaptionFontSize}" TextWrapping="Wrap"
                                Foreground="{StaticResource OverlayBrush}"/>
 
                     <Grid Margin="0,9,0,0">
@@ -50,14 +50,14 @@
                                  Background="{StaticResource CrustBrush}"
                                  BorderBrush="{StaticResource Surface0Brush}"
                                  Foreground="{StaticResource TextBrush}"
-                                 FontFamily="Consolas" FontSize="11"
+                                 FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource MonospaceFontSize}"
                                  ToolTip="Paste a commit hash to look it up"
                                  TextChanged="GitDoctorQueryBox_TextChanged"/>
                         <Button x:Name="BtnGitDoctorRecheck" Grid.Column="1" Content="Re-run checks"
                                 Margin="6,0,0,0" Height="30" Padding="10,0" Cursor="Hand"
                                 Background="{StaticResource Surface0Brush}"
                                 Foreground="{StaticResource TextBrush}" BorderThickness="0"
-                                FontSize="11" Click="BtnGitDoctorRecheck_Click"/>
+                                FontSize="{StaticResource CaptionFontSize}" Click="BtnGitDoctorRecheck_Click"/>
                     </Grid>
                 </StackPanel>
             </Border>
@@ -69,16 +69,16 @@
                 <StackPanel>
                     <DockPanel Margin="0,0,0,6">
                         <TextBlock DockPanel.Dock="Left" Text="CLAUDE BRIDGE" VerticalAlignment="Center"
-                                   FontSize="9" FontWeight="Bold"
+                                   FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                    Foreground="{StaticResource OverlayBrush}"/>
                         <TextBlock x:Name="GitDoctorRunningLabel" DockPanel.Dock="Right" Text="RUNNING…"
                                    Visibility="Collapsed" Margin="0,0,8,0"
-                                   FontFamily="Consolas" FontSize="9" FontWeight="Bold"
+                                   FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource MonospaceFontSize}" FontWeight="Bold"
                                    Foreground="{StaticResource BlueBrush}"/>
                         <TextBlock x:Name="GitDoctorSendAll" Text="send all findings"
                                    HorizontalAlignment="Right" Cursor="Hand"
                                    MouseLeftButtonDown="GitDoctorSendAll_Click"
-                                   FontSize="9.5" FontWeight="Bold"
+                                   FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                    Foreground="{StaticResource PeachBrush}"/>
                     </DockPanel>
                     <TextBox x:Name="GitDoctorInboundBox" Height="54" TextWrapping="Wrap" AcceptsReturn="True"
@@ -86,22 +86,22 @@
                              Background="{StaticResource MantleBrush}"
                              BorderBrush="{StaticResource Surface0Brush}"
                              Foreground="{StaticResource TextBrush}"
-                             FontFamily="Consolas" FontSize="10.5"
+                             FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource MonospaceFontSize}"
                              ToolTip="Paste Claude's reply here, then Extract commands"/>
                     <Button x:Name="BtnGitDoctorExtract" Content="Extract commands" Margin="0,6,0,0" Height="26"
                             Cursor="Hand" Click="BtnGitDoctorExtract_Click"
                             Background="{StaticResource Surface0Brush}"
-                            Foreground="{StaticResource TextBrush}" BorderThickness="0" FontSize="10.5"/>
+                            Foreground="{StaticResource TextBrush}" BorderThickness="0" FontSize="{StaticResource CaptionFontSize}"/>
                     <StackPanel x:Name="GitDoctorPlanPanel" Margin="0,6,0,0"/>
                     <Button x:Name="BtnGitDoctorRunPlan" Margin="0,6,0,0" Height="28"
                             Visibility="Collapsed" Cursor="Hand" BorderThickness="1"
                             Background="{StaticResource PeachBrushTint}" BorderBrush="{StaticResource PeachBrush}"
                             Click="BtnGitDoctorRunPlan_Click">
-                        <TextBlock x:Name="GitDoctorRunPlanLabel" Foreground="{StaticResource PeachBrush}" FontSize="11" FontWeight="Bold"/>
+                        <TextBlock x:Name="GitDoctorRunPlanLabel" Foreground="{StaticResource PeachBrush}" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"/>
                     </Button>
 
                     <TextBlock Text="RUN LOG" Margin="0,10,0,4"
-                               FontSize="9" FontWeight="Bold"
+                               FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                Foreground="{StaticResource OverlayBrush}"/>
                     <ScrollViewer MaxHeight="140" VerticalScrollBarVisibility="Auto">
                         <StackPanel x:Name="GitDoctorLogPanel"/>
@@ -124,10 +124,10 @@
                                 BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,0,0,1">
                             <DockPanel>
                                 <TextBlock x:Name="GitDoctorOpenCount" DockPanel.Dock="Right"
-                                           FontFamily="Consolas" FontSize="9"
+                                           FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource MonospaceFontSize}"
                                            Foreground="{StaticResource OverlayBrush}"/>
                                 <TextBlock Text="WHAT GIT IS COMPLAINING ABOUT"
-                                           FontSize="9" FontWeight="Bold"
+                                           FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                            Foreground="{StaticResource OverlayBrush}"/>
                             </DockPanel>
                         </Border>

@@ -36,10 +36,10 @@
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
                     <TextBlock Text="⚖️" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
                     <TextBlock Text="Visual Diff &amp; Screenshot Comparison"
-                               FontSize="12" FontWeight="SemiBold"
+                               FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
                     <Border Background="{StaticResource Surface0Brush}" CornerRadius="3" Padding="6,2" Margin="10,0,0,0" VerticalAlignment="Center">
-                        <TextBlock x:Name="TxtPageUrl" Text="about:blank" FontSize="11" FontFamily="Consolas" Foreground="{StaticResource AccentBrush}"/>
+                        <TextBlock x:Name="TxtPageUrl" Text="about:blank" FontSize="{StaticResource CaptionFontSize}" FontFamily="{StaticResource MonospaceFontFamily}" Foreground="{StaticResource AccentBrush}"/>
                     </Border>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
@@ -69,34 +69,34 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="Zoom:" FontSize="11" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <TextBlock Text="Zoom:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
                     <Slider x:Name="SliderZoom" Width="120" Minimum="0.2" Maximum="3.0" Value="1.0"
                             SmallChange="0.1" LargeChange="0.25" VerticalAlignment="Center" Margin="0,0,6,0"
                             ValueChanged="SliderZoom_ValueChanged"/>
-                    <TextBlock x:Name="TxtZoomPercent" Text="100%" FontSize="11" FontFamily="Consolas" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                    <TextBlock x:Name="TxtZoomPercent" Text="100%" FontSize="{StaticResource CaptionFontSize}" FontFamily="{StaticResource MonospaceFontFamily}" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Margin="0,0,16,0"/>
 
-                    <CheckBox x:Name="ChkSyncScroll" Content="Sync Scroll" IsChecked="True" FontSize="11"
+                    <CheckBox x:Name="ChkSyncScroll" Content="Sync Scroll" IsChecked="True" FontSize="{StaticResource CaptionFontSize}"
                               Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center" Margin="0,0,16,0"/>
 
-                    <TextBlock Text="Tolerance:" FontSize="11" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <TextBlock Text="Tolerance:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
                     <Slider x:Name="SliderTolerance" Width="90" Minimum="0.01" Maximum="0.20" Value="0.05"
                             SmallChange="0.01" LargeChange="0.02" VerticalAlignment="Center" Margin="0,0,6,0"
                             ValueChanged="SliderTolerance_ValueChanged"/>
-                    <TextBlock x:Name="TxtTolerancePercent" Text="5%" FontSize="11" FontFamily="Consolas" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="TxtTolerancePercent" Text="5%" FontSize="{StaticResource CaptionFontSize}" FontFamily="{StaticResource MonospaceFontFamily}" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button x:Name="BtnAttachToBug" Content="📎 Attach Diff to Bug" Style="{StaticResource PrimaryButton}"
-                            Padding="10,4" Margin="0,0,8,0" FontSize="11" Click="BtnAttachToBug_Click"
+                            Padding="10,4" Margin="0,0,8,0" FontSize="{StaticResource CaptionFontSize}" Click="BtnAttachToBug_Click"
                             ToolTip="Attach the difference map and diff summary to the active bug report"/>
                     <Button x:Name="BtnCopySummary" Content="📋 Copy Summary" Style="{StaticResource SecondaryButton}"
-                            Padding="10,4" Margin="0,0,8,0" FontSize="11" Click="BtnCopySummary_Click"
+                            Padding="10,4" Margin="0,0,8,0" FontSize="{StaticResource CaptionFontSize}" Click="BtnCopySummary_Click"
                             ToolTip="Copy visual diff stats to clipboard"/>
                     <Button x:Name="BtnSaveDiffImage" Content="💾 Save Diff Map" Style="{StaticResource SecondaryButton}"
-                            Padding="10,4" Margin="0,0,8,0" FontSize="11" Click="BtnSaveDiffImage_Click"
+                            Padding="10,4" Margin="0,0,8,0" FontSize="{StaticResource CaptionFontSize}" Click="BtnSaveDiffImage_Click"
                             ToolTip="Save difference heatmap image to disk"/>
                     <Button x:Name="BtnClose" Content="Close" Style="{StaticResource SecondaryButton}"
-                            Padding="10,4" FontSize="11" Click="BtnClose_Click"/>
+                            Padding="10,4" FontSize="{StaticResource CaptionFontSize}" Click="BtnClose_Click"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -131,11 +131,11 @@
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="BASELINE (Source of Truth)" FontSize="10" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
-                            <Button x:Name="BtnBrowseBaseline" Grid.Column="2" Content="Browse..." Style="{StaticResource IconButton}" FontSize="9" Padding="6,1" Margin="0,0,4,0" Click="BtnBrowseBaseline_Click"/>
-                            <Button x:Name="BtnSetCurrentAsBaseline" Grid.Column="3" Content="⭐ Set Current as Baseline" Style="{StaticResource IconButton}" FontSize="9" Padding="6,1" Foreground="{StaticResource LightGreenBrush}" Click="BtnSetCurrentAsBaseline_Click" ToolTip="Make the current screenshot the baseline for this page"/>
+                            <TextBlock Grid.Column="0" Text="BASELINE (Source of Truth)" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
+                            <Button x:Name="BtnBrowseBaseline" Grid.Column="2" Content="Browse..." Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Padding="6,1" Margin="0,0,4,0" Click="BtnBrowseBaseline_Click"/>
+                            <Button x:Name="BtnSetCurrentAsBaseline" Grid.Column="3" Content="⭐ Set Current as Baseline" Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Padding="6,1" Foreground="{StaticResource LightGreenBrush}" Click="BtnSetCurrentAsBaseline_Click" ToolTip="Make the current screenshot the baseline for this page"/>
                         </Grid>
-                        <ComboBox x:Name="CboBaseline" Height="26" FontSize="10" SelectionChanged="CboBaseline_SelectionChanged"/>
+                        <ComboBox x:Name="CboBaseline" Height="26" FontSize="{StaticResource CaptionFontSize}" SelectionChanged="CboBaseline_SelectionChanged"/>
                     </StackPanel>
 
                     <!-- Current Screenshot Selector -->
@@ -146,10 +146,10 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="CURRENT (Under Test)" FontSize="10" FontWeight="Bold" Foreground="{StaticResource LightGreenBrush}" VerticalAlignment="Center"/>
-                            <Button x:Name="BtnBrowseCurrent" Grid.Column="2" Content="Browse..." Style="{StaticResource IconButton}" FontSize="9" Padding="6,1" Click="BtnBrowseCurrent_Click"/>
+                            <TextBlock Grid.Column="0" Text="CURRENT (Under Test)" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource LightGreenBrush}" VerticalAlignment="Center"/>
+                            <Button x:Name="BtnBrowseCurrent" Grid.Column="2" Content="Browse..." Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Padding="6,1" Click="BtnBrowseCurrent_Click"/>
                         </Grid>
-                        <ComboBox x:Name="CboCurrent" Height="26" FontSize="10" SelectionChanged="CboCurrent_SelectionChanged"/>
+                        <ComboBox x:Name="CboCurrent" Height="26" FontSize="{StaticResource CaptionFontSize}" SelectionChanged="CboCurrent_SelectionChanged"/>
                     </StackPanel>
                 </Grid>
 
@@ -165,13 +165,13 @@
                     <Border Grid.Column="0" Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="3">
                         <StackPanel Orientation="Horizontal">
                             <RadioButton x:Name="RbSideBySide" Content="Side-by-Side" IsChecked="True"
-                                         Style="{StaticResource ToggleRadioButton}" FontSize="11" Padding="10,3"
+                                         Style="{StaticResource ToggleRadioButton}" FontSize="{StaticResource CaptionFontSize}" Padding="10,3"
                                          Checked="DiffMode_Changed"/>
                             <RadioButton x:Name="RbSwipeSlider" Content="Swipe / Split Slider"
-                                         Style="{StaticResource ToggleRadioButton}" FontSize="11" Padding="10,3"
+                                         Style="{StaticResource ToggleRadioButton}" FontSize="{StaticResource CaptionFontSize}" Padding="10,3"
                                          Checked="DiffMode_Changed"/>
                             <RadioButton x:Name="RbHeatmap" Content="Difference Heatmap"
-                                         Style="{StaticResource ToggleRadioButton}" FontSize="11" Padding="10,3"
+                                         Style="{StaticResource ToggleRadioButton}" FontSize="{StaticResource CaptionFontSize}" Padding="10,3"
                                          Checked="DiffMode_Changed"/>
                         </StackPanel>
                     </Border>
@@ -180,7 +180,7 @@
                     <Border x:Name="BadgeDiffStats" Grid.Column="2" CornerRadius="4" Padding="10,4" Background="{StaticResource Surface0Brush}">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock x:Name="TxtDiffStatusIcon" Text="⚖️" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                            <TextBlock x:Name="TxtDiffStats" Text="Calculating diff..." FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="TxtDiffStats" Text="Calculating diff..." FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Border>
                 </Grid>
@@ -209,7 +209,7 @@
                             </Image>
                         </ScrollViewer>
                         <Border Background="Black" Opacity="0.7" CornerRadius="3" Padding="6,2" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8">
-                            <TextBlock Text="BASELINE" FontSize="9" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"/>
+                            <TextBlock Text="BASELINE" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"/>
                         </Border>
                     </Grid>
                 </Border>
@@ -229,7 +229,7 @@
                             </Image>
                         </ScrollViewer>
                         <Border Background="Black" Opacity="0.7" CornerRadius="3" Padding="6,2" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8">
-                            <TextBlock Text="CURRENT" FontSize="9" FontWeight="Bold" Foreground="{StaticResource LightGreenBrush}"/>
+                            <TextBlock Text="CURRENT" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource LightGreenBrush}"/>
                         </Border>
                     </Grid>
                 </Border>
@@ -271,11 +271,11 @@
                         Background="{StaticResource MantleBrush}" BorderBrush="{StaticResource Surface0Brush}"
                         BorderThickness="1" CornerRadius="6" Padding="14,6">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Baseline" FontSize="10" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <TextBlock Text="Baseline" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
                         <Slider x:Name="SliderSwipePosition" Width="280" Minimum="0" Maximum="1.0" Value="0.5"
                                 SmallChange="0.01" LargeChange="0.05" VerticalAlignment="Center"
                                 ValueChanged="SliderSwipePosition_ValueChanged"/>
-                        <TextBlock Text="Current" FontSize="10" Foreground="{StaticResource LightGreenBrush}" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                        <TextBlock Text="Current" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource LightGreenBrush}" VerticalAlignment="Center" Margin="10,0,0,0"/>
                     </StackPanel>
                 </Border>
             </Grid>
@@ -297,14 +297,14 @@
                         Background="{StaticResource MantleBrush}" BorderBrush="{StaticResource Surface0Brush}"
                         BorderThickness="1" CornerRadius="6" Padding="10,8">
                     <StackPanel>
-                        <TextBlock Text="HEATMAP LEGEND" FontSize="9" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
+                        <TextBlock Text="HEATMAP LEGEND" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
                             <Border Width="12" Height="12" Background="#FF007F" CornerRadius="2" Margin="0,0,6,0"/>
-                            <TextBlock Text="Mismatch Pixel" FontSize="10" Foreground="{StaticResource TextBrush}"/>
+                            <TextBlock Text="Mismatch Pixel" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextBrush}"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal">
-                            <Border Width="12" Height="12" Background="#45475a" CornerRadius="2" Margin="0,0,6,0"/>
-                            <TextBlock Text="Unchanged Context" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                            <Border Width="12" Height="12" Background="{StaticResource Surface1Brush}" CornerRadius="2" Margin="0,0,6,0"/>
+                            <TextBlock Text="Unchanged Context" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                         </StackPanel>
                     </StackPanel>
                 </Border>

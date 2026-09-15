@@ -112,7 +112,7 @@
                         <StackPanel>
                             <DockPanel Margin="0,0,0,6">
                                 <TextBlock Text="BUILD SETS"
-                                           FontSize="11"
+                                           FontSize="{StaticResource CaptionFontSize}"
                                            FontWeight="SemiBold"
                                            Foreground="{StaticResource Subtext1Brush}"/>
                                 <!-- Git #1834 addendum, relocated by #3785 — the "clear it"
@@ -121,7 +121,7 @@
                                      see ApplyFilter); hidden while no drill-down is active. -->
                                 <TextBlock x:Name="BuildSetRollupClearText"
                                            DockPanel.Dock="Right"
-                                           FontSize="10.5"
+                                           FontSize="{StaticResource CaptionFontSize}"
                                            Foreground="{StaticResource BlueBrush}"
                                            Cursor="Hand"
                                            HorizontalAlignment="Right"
@@ -213,7 +213,7 @@
                                  Margin="0,0,8,0" VerticalAlignment="Center"
                                  Effect="{StaticResource BlueGlowFaint}"/>
                         <TextBlock Text="BUILD QUEUE"
-                                   FontSize="11"
+                                   FontSize="{StaticResource CaptionFontSize}"
                                    FontWeight="SemiBold"
                                    Foreground="{StaticResource Subtext1Brush}"/>
                     </StackPanel>
@@ -337,7 +337,7 @@
                     Padding="10,12,10,0">
                 <StackPanel>
                     <TextBlock Text="QUEUE"
-                               FontSize="11"
+                               FontSize="{StaticResource CaptionFontSize}"
                                FontWeight="SemiBold"
                                Foreground="{StaticResource Subtext1Brush}"
                                Margin="0,0,0,6"/>
@@ -377,7 +377,7 @@
                                        VerticalAlignment="Center"/>
                             <TextBlock x:Name="QueueStatusCountsText"
                                        Text="Queue: 0  ·  Up Next: 0  ·  Active: 0  ·  Blocked: 0  ·  Verifying: 0  ·  Total: 0"
-                                       FontSize="10.5" FontWeight="SemiBold"
+                                       FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                        Foreground="{StaticResource TextBrush}"
                                        TextWrapping="Wrap"
                                        VerticalAlignment="Center"/>
@@ -430,7 +430,7 @@
                                        VerticalAlignment="Center"/>
                             <TextBlock x:Name="MatrixChipCount"
                                        Text="Build Matrix: 0/8"
-                                       FontSize="10.5" FontWeight="SemiBold"
+                                       FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                        Foreground="{StaticResource TextBrush}"
                                        VerticalAlignment="Center"/>
                         </DockPanel>
@@ -450,13 +450,13 @@
                                         DockPanel.Dock="Right"
                                         Content="Tab"
                                         Style="{StaticResource IconButton}"
-                                        FontSize="10"
+                                        FontSize="{StaticResource CaptionFontSize}"
                                         Padding="8,2"
                                         ToolTip="Send a frozen, read-only snapshot of the current slots to its own document tab"
                                         Click="BtnMatrixSendToTab_Click"/>
                                 <TextBlock x:Name="MatrixSlotSummary"
                                            Text="0/8 slots"
-                                           FontSize="10.5" FontWeight="SemiBold"
+                                           FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                            Foreground="{StaticResource Subtext1Brush}"
                                            VerticalAlignment="Center"/>
                             </DockPanel>
@@ -478,7 +478,7 @@
                          those real states instead of a misleading countdown. -->
                     <TextBlock x:Name="IssueMirrorSyncText"
                                Text=""
-                               FontSize="9.5"
+                               FontSize="{StaticResource CaptionFontSize}"
                                Foreground="{StaticResource Subtext0Brush}"
                                Margin="2,-4,0,8"
                                TextWrapping="Wrap"
@@ -501,12 +501,12 @@
                             </Border.Effect>
                             <StackPanel>
                                 <TextBlock Text="NEXT TO RUN"
-                                           FontSize="10"
+                                           FontSize="{StaticResource CaptionFontSize}"
                                            FontWeight="SemiBold"
                                            Foreground="{StaticResource Subtext1Brush}"
                                            Margin="0,0,0,2"/>
                                 <TextBlock Text="Real claim order — a read-only peek, claims nothing."
-                                           FontSize="9.5"
+                                           FontSize="{StaticResource CaptionFontSize}"
                                            Foreground="{StaticResource Subtext0Brush}"
                                            Margin="0,0,0,8"/>
                                 <StackPanel x:Name="QueueNextHost"/>
@@ -543,7 +543,7 @@
                         <StackPanel>
                             <TextBlock x:Name="OrphanRecoveryText"
                                        Text="0 builds orphaned by a crash/restart"
-                                       FontSize="11"
+                                       FontSize="{StaticResource CaptionFontSize}"
                                        Foreground="{StaticResource StatusErrorBrush}"
                                        VerticalAlignment="Center"
                                        TextWrapping="Wrap"/>
@@ -552,7 +552,7 @@
                                     Padding="8,3"
                                     Margin="0,6,0,0"
                                     HorizontalAlignment="Stretch"
-                                    FontSize="11"
+                                    FontSize="{StaticResource CaptionFontSize}"
                                     FontWeight="SemiBold"
                                     Click="BtnRecoverOrphans_Click"/>
                         </StackPanel>
@@ -684,7 +684,7 @@
                                 <DropShadowEffect Color="Black" BlurRadius="10" ShadowDepth="2" Opacity="0.35"/>
                             </Border.Effect>
                             <TextBlock x:Name="BuildSetFilterWarningText"
-                                       FontSize="10.5"
+                                       FontSize="{StaticResource CaptionFontSize}"
                                        FontWeight="SemiBold"
                                        Foreground="{StaticResource StatusWarningBrush}"
                                        TextWrapping="Wrap"/>
@@ -759,7 +759,7 @@
                             </Grid>
                             <TextBlock x:Name="QueueEmptyText"
                                        Text="Not connected — see Settings"
-                                       FontSize="11"
+                                       FontSize="{StaticResource CaptionFontSize}"
                                        Foreground="{StaticResource Subtext1Brush}"
                                        Margin="12,10"
                                        TextWrapping="Wrap"
@@ -772,7 +772,7 @@
                                  keep rendering their own contents normally with empty search. -->
                             <TextBlock x:Name="QueueBroadFilterPlaceholderText"
                                        Text="Type a build number to search."
-                                       FontSize="11"
+                                       FontSize="{StaticResource CaptionFontSize}"
                                        Foreground="{StaticResource Subtext1Brush}"
                                        Margin="12,10"
                                        TextWrapping="Wrap"
@@ -788,14 +788,14 @@
                                        Visibility="Collapsed">
                                 <TextBlock x:Name="QueueDoneCapToggleLink"
                                            DockPanel.Dock="Right"
-                                           FontSize="10.5"
+                                           FontSize="{StaticResource CaptionFontSize}"
                                            Foreground="{StaticResource BlueBrush}"
                                            Cursor="Hand"
                                            TextDecorations="Underline"
                                            HorizontalAlignment="Right"
                                            MouseLeftButtonDown="QueueDoneCapToggleLink_Click"/>
                                 <TextBlock x:Name="QueueDoneCapText"
-                                           FontSize="10.5"
+                                           FontSize="{StaticResource CaptionFontSize}"
                                            Foreground="{StaticResource Subtext1Brush}"
                                            TextWrapping="Wrap"/>
                             </DockPanel>
@@ -838,7 +838,7 @@
                                 </Button>
                                 <TextBlock x:Name="ChatEpicIssuesHeader"
                                            Text="ISSUES IN THIS EPIC"
-                                           FontSize="11"
+                                           FontSize="{StaticResource CaptionFontSize}"
                                            FontWeight="SemiBold"
                                            Foreground="{StaticResource Subtext1Brush}"
                                            TextWrapping="Wrap"
@@ -875,8 +875,8 @@
                         <ToggleButton x:Name="TileInFlight" Style="{StaticResource QuietTile}" Click="TileInFlight_Click">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="⏳" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                <TextBlock Text="In-Flight" FontSize="11" VerticalAlignment="Center"/>
-                                <TextBlock x:Name="InFlightCountText" Text="(0)" FontSize="11" Margin="4,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
+                                <TextBlock Text="In-Flight" FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="InFlightCountText" Text="(0)" FontSize="{StaticResource CaptionFontSize}" Margin="4,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
                             </StackPanel>
                         </ToggleButton>
                         <Border x:Name="TileInFlightContent"
@@ -904,8 +904,8 @@
                         <ToggleButton x:Name="TileSessions" Style="{StaticResource QuietTile}" Click="TileSessions_Click">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="▶" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                <TextBlock Text="Sessions" FontSize="11" VerticalAlignment="Center"/>
-                                <TextBlock x:Name="SessionsCountText" Text="(0)" FontSize="11" Margin="4,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
+                                <TextBlock Text="Sessions" FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="SessionsCountText" Text="(0)" FontSize="{StaticResource CaptionFontSize}" Margin="4,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
                             </StackPanel>
                         </ToggleButton>
                         <Border x:Name="TileSessionsContent"
