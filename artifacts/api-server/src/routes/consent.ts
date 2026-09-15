@@ -157,6 +157,82 @@ async function resolveCallbackTenant(
 }
 
 /**
+ * Resolves the tenants row a DECLINED read-consent callback may record against
+ * (#4243). The decline branch has no Microsoft confirmation to lean on — an
+ * access_denied redirect is just query parameters — and a tenant GUID is public
+ * (OpenID metadata), so the GUID alone never selects a row. A decline is
+ * recorded only when `state` is live and itself names that tenant:
+ *
+ *   - an unused, unexpired invite token that names a customer
+ *     (consent_invite_tokens.customer_id), whose own tenant_id matches the GUID
+ *     — the same binding resolveCallbackTenant gives the grant path;
+ *   - an unexpired checkout session whose tenant_id already equals the GUID.
+ *     checkout_sessions.tenant_id is written only by a Microsoft-confirmed grant
+ *     on that session, so it genuinely ties the session to that customer.
+ *
+ * Everything else — no state, an unknown/used/expired state, a token naming no
+ * customer, a mismatched GUID — resolves to no target. Such a decline carries
+ * nothing worth persisting (there is no customer relationship it speaks for),
+ * so the caller logs it and writes nothing.
+ *
+ * `validInviteToken` is reported separately so the caller can still burn a
+ * live invite on decline whether or not it names a customer.
+ */
+async function resolveDeclineTarget(
+  state: string | undefined,
+  tenant: string | undefined,
+  isCheckoutSession: boolean,
+): Promise<{
+  target: { id: number } | null;
+  reason: string;
+  validInviteToken: boolean;
+}> {
+  const guid = tenant?.trim().toLowerCase();
+  if (!state) return { target: null, reason: "no_state", validInviteToken: false };
+
+  if (isCheckoutSession) {
+    const [session] = await db
+      .select({ tenantId: checkoutSessionsTable.tenantId })
+      .from(checkoutSessionsTable)
+      .where(and(eq(checkoutSessionsTable.id, state), gte(checkoutSessionsTable.expiresAt, new Date())))
+      .limit(1);
+    if (!session) return { target: null, reason: "checkout_session_invalid_or_expired", validInviteToken: false };
+    if (!guid) return { target: null, reason: "no_tenant", validInviteToken: false };
+    if (session.tenantId?.trim().toLowerCase() !== guid) {
+      return { target: null, reason: "checkout_session_not_bound_to_tenant", validInviteToken: false };
+    }
+    const [row] = await db
+      .select({ id: tenantsTable.id })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.tenantId, session.tenantId!))
+      .limit(1);
+    return row
+      ? { target: { id: row.id }, reason: "checkout_session", validInviteToken: false }
+      : { target: null, reason: "no_customer_object", validInviteToken: false };
+  }
+
+  const [invite] = await db
+    .select({ customerId: consentInviteTokensTable.customerId })
+    .from(consentInviteTokensTable)
+    .where(
+      and(
+        eq(consentInviteTokensTable.token, state),
+        isNull(consentInviteTokensTable.usedAt),
+        gte(consentInviteTokensTable.expiresAt, new Date()),
+      ),
+    )
+    .limit(1);
+  if (!invite) return { target: null, reason: "invite_token_invalid_expired_or_used", validInviteToken: false };
+  if (invite.customerId == null) return { target: null, reason: "invite_token_names_no_customer", validInviteToken: true };
+  if (!guid) return { target: null, reason: "no_tenant", validInviteToken: true };
+
+  const bound = await resolveCallbackTenant(invite.customerId, tenant);
+  return bound.ok
+    ? { target: { id: bound.id }, reason: "invite_token", validInviteToken: true }
+    : { target: null, reason: `invite_token_${bound.reason}`, validInviteToken: true };
+}
+
+/**
  * Projects one key of tenants.consent into the flat row shape the old
  * per-type consent tables exposed, so the admin-facing payloads below keep
  * their existing field names (customer-detail.tsx reads writeConsent
@@ -496,27 +572,31 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   if (error === "access_denied" || error_subcode === "cancel") {
     log.warn({ tenant, state, error, error_subcode }, "Consent callback: admin declined");
 
-    if (state && !UUID_RE.test(state)) {
-      // Burn the invite token on decline too
+    // #4243: this branch is reachable by anyone — no Microsoft confirmation, and
+    // the GUID is public — so the decline is recorded only against the customer
+    // a live `state` names (see resolveDeclineTarget). It used to stamp any row
+    // matching the bare GUID, letting one anonymous GET flip a consented
+    // customer to declined. Never creates a tenants row either: an admin who
+    // declined at the Microsoft screen has no relationship to record.
+    const decline = await resolveDeclineTarget(state, tenant, isCheckoutSession);
+
+    if (decline.validInviteToken && state) {
+      // Burn a live invite token on decline too. Only a live one: an unknown or
+      // already-used token has nothing to burn.
       await db
         .update(consentInviteTokensTable)
         .set({ usedAt: new Date() })
-        .where(eq(consentInviteTokensTable.token, state));
+        .where(and(eq(consentInviteTokensTable.token, state), isNull(consentInviteTokensTable.usedAt)));
     }
 
-    // Record the decline on the tenant's existing row only. Deliberately does
-    // NOT create one: a tenants row is a real customer object (NOT NULL msp_id
-    // + customer_name, appears in every customer list), and an admin who
-    // declined at the Microsoft screen has no relationship to record. The old
-    // schema could park an orphan consent row against a bare GUID; that is not
-    // a state worth resurrecting. An unmatched decline is logged, not silent.
-    if (tenant) {
-      const stamped = await stampConsent(eq(tenantsTable.tenantId, tenant), "graph", {
-        status: "declined",
-      });
-      if (!stamped) {
-        log.info({ tenant }, "Consent callback: decline from a tenant with no tenants row — nothing to record (no customer object exists for it)");
-      }
+    if (decline.target) {
+      await stampConsent(eq(tenantsTable.id, decline.target.id), "graph", { status: "declined" });
+      log.info({ tenant, customerId: decline.target.id, boundBy: decline.reason }, "Consent callback: decline recorded against the customer its state names");
+    } else {
+      log.warn(
+        { tenant, isCheckoutSession, reason: decline.reason },
+        "Consent callback: decline NOT recorded — no live state binds this tenant to a customer; nothing written",
+      );
     }
 
     endConsentCallback(
