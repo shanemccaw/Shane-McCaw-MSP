@@ -23,6 +23,7 @@ import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 import { resolveMspId } from "../lib/resolve-msp-id.ts";
 import { logger } from "../lib/logger.ts";
 import { auditPrivilegedRead } from "../lib/audit.ts";
+import { requireClientScope } from "../lib/msp-client-scope.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "admin.clients" });
@@ -226,10 +227,30 @@ router.get("/admin/clients/enriched", requireAdmin, async (_req: Request, res: R
 });
 
 // ─── GET /admin/clients/with-azure-credentials ───────────────────────────────
-// Returns ALL clients (role=client), each with their linked App Registration
-// (or null if none). The legacy `azureTenantCredentialsTable` fallback has been
+// Returns clients (role=client), each with their linked App Registration (or
+// null if none). The legacy `azureTenantCredentialsTable` fallback has been
 // removed — only App Registrations submitted by clients appear here.
-router.get("/admin/clients/with-azure-credentials", requireAdmin, async (_req: Request, res: Response) => {
+//
+// Re-gated ladder.msp-operator (Git #4255) so the Delivery Projects "Run Script"
+// action works for MSP operators, and MSP-scoped in the same change: MSP staff
+// only ever see their own MSP's clients; PlatformAdmin without ?mspId= keeps the
+// cross-platform view. `?clientUserId=` narrows the response to that one client
+// (the Run Script callers only need one); an out-of-scope id returns [].
+router.get("/admin/clients/with-azure-credentials", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
+  const scope = await requireClientScope(req, res);
+  if (!scope) return;
+
+  const rawClientUserId = req.query.clientUserId;
+  const clientUserId = rawClientUserId === undefined ? undefined : Number(rawClientUserId);
+  if (clientUserId !== undefined && (!Number.isInteger(clientUserId) || clientUserId <= 0)) {
+    res.status(400).json({ error: "Invalid clientUserId" });
+    return;
+  }
+
+  const conditions = [eq(usersTable.role, "client")];
+  if (scope.mspId !== null) conditions.push(eq(usersTable.mspId, scope.mspId));
+  if (clientUserId !== undefined) conditions.push(eq(usersTable.id, clientUserId));
+
   try {
     const rows = await db
       .select({
@@ -247,7 +268,7 @@ router.get("/admin/clients/with-azure-credentials", requireAdmin, async (_req: R
         clientAppRegistrationsTable,
         eq(clientAppRegistrationsTable.clientUserId, usersTable.id),
       )
-      .where(eq(usersTable.role, "client"))
+      .where(and(...conditions))
       .orderBy(asc(usersTable.name));
 
     const result = rows.map(r => ({

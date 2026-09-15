@@ -517,7 +517,7 @@ function DraggableCard({
                 // Resolve the client's App Registration ID
                 let appRegistrationId: number | undefined;
                 if (clientUserId != null) {
-                  const res = await fetchWithAuth("/api/admin/clients/with-azure-credentials");
+                  const res = await fetchWithAuth(`/api/admin/clients/with-azure-credentials?clientUserId=${clientUserId}`);
                   if (res.ok) {
                     const clients = await res.json() as Array<{ id: number; appRegistration: { id: number } | null }>;
                     const match = clients.find(c => c.id === clientUserId);

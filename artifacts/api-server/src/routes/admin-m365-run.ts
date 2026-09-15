@@ -27,7 +27,8 @@ import {
   projectsTable,
 } from "@workspace/db";
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { requireAdmin, requireCapability } from "../middlewares/requireAuth.ts";
+import { requireClientScope, clientInScope } from "../lib/msp-client-scope.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "engine.monitor" });
 import { advancePhaseIfComplete, syncProjectProgress } from "../lib/kanban-phase-advance.ts";
@@ -36,7 +37,7 @@ import { createScriptJob, getJobStatus, getJobOutput, isTerminalStatus } from ".
 import { runAiAnalyzer } from "../lib/ai-analyzer.ts";
 import { parseM365ScriptOutput } from "../lib/parse-m365-script-output.ts";
 import { getSecretValue } from "../lib/azure-keyvault.ts";
-import { createAuditLog, auditPrivilegedRead } from "../lib/audit.ts";
+import { createAuditLog, auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 import { applyProfileUpdates as applyProfileUpdatesShared, snapshotHealthFromProfile as snapshotHealthFromProfileShared } from "../lib/m365-profile-update.ts";
 import { resolveBillingMspId } from "../lib/ai-billing.ts";
 
@@ -516,11 +517,55 @@ async function processRunInBackground(
 
 // ── POST /api/admin/run-script ────────────────────────────────────────────────
 
-router.post("/admin/run-script", requireAdmin, async (req: Request, res: Response) => {
+// Re-gated ladder.msp-operator (Git #4255) so the Delivery Projects "Run Script"
+// action works for MSP operators. MSP-scoped in the same change — every target
+// is resolved to a client user and checked against the caller's MSP BEFORE any
+// Key Vault read or Azure Automation job, so an operator can only execute
+// against their own MSP's clients. Out-of-scope targets answer 404, never 403,
+// so their existence is not confirmed:
+//   - appRegistrationId / credentialId → owning client must be in scope (a
+//     legacy credential with no client is PlatformAdmin-only)
+//   - customerId → must be in scope, and must be the credential's own client
+//   - kanbanTaskId → the task's project client must be in scope (the run moves
+//     and stamps that task and its siblings)
+//   - raw tenantId/clientId/clientSecret → PlatformAdmin cross-platform only;
+//     an arbitrary tenant has no ownership chain to check.
+// The script catalog itself (powershell_scripts / script_modules) is the
+// platform-global library, runnable only as its pre-synced `script-<id>` /
+// `module-<id>` runbook — no caller-supplied script body reaches Azure.
+router.post("/admin/run-script", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const parsed = runScriptSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Validation failed", issues: parsed.error.issues });
     return;
+  }
+
+  const scope = await requireClientScope(req, res);
+  if (!scope) return;
+
+  if (scope.mspId !== null && "tenantId" in parsed.data) {
+    log.warn({ userId: req.user?.id, mspId: scope.mspId }, "admin-m365-run: raw tenant credentials refused for MSP-scoped caller");
+    res.status(403).json({ error: "Raw tenant credentials are not permitted — run against a client's App Registration" });
+    return;
+  }
+
+  if (parsed.data.customerId !== undefined && !(await clientInScope(scope, parsed.data.customerId))) {
+    res.status(404).json({ error: "Client not found" });
+    return;
+  }
+
+  const requestedTaskId = "kanbanTaskId" in parsed.data ? parsed.data.kanbanTaskId : undefined;
+  if (requestedTaskId !== undefined && scope.mspId !== null) {
+    const [taskRow] = await db
+      .select({ clientUserId: projectsTable.clientUserId })
+      .from(kanbanTasksTable)
+      .innerJoin(projectsTable, eq(kanbanTasksTable.projectId, projectsTable.id))
+      .where(eq(kanbanTasksTable.id, requestedTaskId))
+      .limit(1);
+    if (!taskRow || !(await clientInScope(scope, taskRow.clientUserId))) {
+      res.status(404).json({ error: "Task not found" });
+      return;
+    }
   }
 
   const packageContext = "packageContext" in parsed.data ? (parsed.data.packageContext ?? "") : "";
@@ -537,8 +582,12 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
       .from(azureTenantCredentialsTable)
       .where(eq(azureTenantCredentialsTable.id, parsed.data.credentialId))
       .limit(1);
-    if (!cred) {
+    if (!cred || !(await clientInScope(scope, cred.clientUserId))) {
       res.status(404).json({ error: "Credential not found" });
+      return;
+    }
+    if (customerId && cred.clientUserId && customerId !== cred.clientUserId) {
+      res.status(400).json({ error: "customerId does not match the credential's client" });
       return;
     }
     if (!customerId && cred.clientUserId) {
@@ -559,8 +608,12 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
       .from(clientAppRegistrationsTable)
       .where(eq(clientAppRegistrationsTable.id, parsed.data.appRegistrationId))
       .limit(1);
-    if (!appReg) {
+    if (!appReg || !(await clientInScope(scope, appReg.clientUserId))) {
       res.status(404).json({ error: "App Registration not found" });
+      return;
+    }
+    if (customerId && customerId !== appReg.clientUserId) {
+      res.status(400).json({ error: "customerId does not match the App Registration's client" });
       return;
     }
     if (!customerId) {
@@ -758,17 +811,26 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
 
 // ── GET /api/admin/run-script/:jobRef/status ──────────────────────────────────
 
-router.get("/admin/run-script/:jobRef/status", requireAdmin, async (req: Request, res: Response) => {
+// Re-gated ladder.msp-operator (Git #4255) — the Run Script poller
+// (msp-console lib/scriptPoller.ts) reads this after POST /admin/run-script, so
+// the action is unusable for operators without it. MSP-scoped: the run result's
+// customer must belong to the caller's MSP (a run with no customer is
+// PlatformAdmin-only); otherwise 404, same as an unknown jobRef.
+router.get("/admin/run-script/:jobRef/status", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const jobRef = String(req.params.jobRef ?? "");
   if (!jobRef) {
     res.status(400).json({ error: "Missing jobRef" });
     return;
   }
 
+  const scope = await requireClientScope(req, res);
+  if (!scope) return;
+
   try {
     const [row] = await db
       .select({
         id: scriptRunResultsTable.id,
+        customerId: scriptRunResultsTable.customerId,
         status: scriptRunResultsTable.status,
         parsedFindings: scriptRunResultsTable.parsedFindings,
         recommendations: scriptRunResultsTable.recommendations,
@@ -779,7 +841,7 @@ router.get("/admin/run-script/:jobRef/status", requireAdmin, async (req: Request
       .where(eq(scriptRunResultsTable.jobId, jobRef))
       .limit(1);
 
-    if (!row) {
+    if (!row || !(await clientInScope(scope, row.customerId))) {
       res.status(404).json({ error: "Job not found" });
       return;
     }
@@ -807,10 +869,11 @@ router.get("/admin/run-script/:jobRef/status", requireAdmin, async (req: Request
     await auditPrivilegedRead({
       actorUserId: req.user!.id,
       actorName: req.user!.email,
-      actorRole: "platform_admin",
+      actorRole: resolveAuditActorRole(req.user!),
       actionType: "script_run_status_viewed",
       entityType: "script_run",
       entityId: jobRef,
+      clientId: row.customerId ?? undefined,
     });
 
     res.json({

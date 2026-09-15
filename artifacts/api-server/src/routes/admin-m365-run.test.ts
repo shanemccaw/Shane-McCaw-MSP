@@ -86,6 +86,20 @@ mock.module("../middlewares/requireAuth.ts", {
       req.user = { id: 1, email: "admin@test.local", role: "admin" };
       next();
     },
+    requireCapability: () => (req: any, _res: unknown, next: () => void) => {
+      req.user = { id: 1, email: "admin@test.local", role: "admin" };
+      next();
+    },
+  },
+});
+
+// PlatformAdmin cross-platform scope (#4255) — MSP scoping itself is
+// live-verified against the real DB, not exercised in this mocked suite.
+mock.module("../lib/msp-client-scope.ts", {
+  namedExports: {
+    requireClientScope: async () => ({ mspId: null }),
+    resolveClientScope: async () => ({ mspId: null }),
+    clientInScope: async () => true,
   },
 });
 
@@ -131,7 +145,7 @@ mock.module("../lib/azure-keyvault.ts", {
 });
 
 mock.module("../lib/audit.ts", {
-  namedExports: { createAuditLog: async () => {}, auditPrivilegedRead: async () => {} },
+  namedExports: { createAuditLog: async () => {}, auditPrivilegedRead: async () => {}, resolveAuditActorRole: () => "platform_admin" },
 });
 
 mock.module("../lib/m365-profile-update.ts", {

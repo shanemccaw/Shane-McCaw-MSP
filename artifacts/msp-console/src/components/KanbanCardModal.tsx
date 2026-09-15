@@ -945,7 +945,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
     }
     if (fetchWithAuth) {
       try {
-        const r = await fetchWithAuth("/api/admin/clients/with-azure-credentials");
+        const r = await fetchWithAuth(`/api/admin/clients/with-azure-credentials?clientUserId=${clientId}`);
         if (r.ok) {
           const list = await r.json() as Array<{ id: number; appRegistration: { id: number } | null }>;
           const entry = list.find(c => c.id === clientId);
