@@ -177,18 +177,24 @@ namespace BuildConsole.Controls
                 var pathGeo = new PathGeometry();
                 pathGeo.Figures.Add(pathFigure);
 
+                var fromNode = data.Nodes.FirstOrDefault(n => n.IssueNumber == edge.FromIssue);
+                var toNode = data.Nodes.FirstOrDefault(n => n.IssueNumber == edge.ToIssue);
+                var edgeWhy = GitModeWhyEngine.AnalyzeEdge(edge, fromNode, toNode);
+
                 var path = new Path
                 {
                     Data = pathGeo,
                     Stroke = edgeBrush,
                     StrokeThickness = thickness,
-                    Opacity = opacity
+                    Opacity = opacity,
+                    ToolTip = $"💡 WHY CONNECTED: {edgeWhy.Summary}\n\n{edgeWhy.Explanation}"
                 };
 
                 GraphCanvas.Children.Add(path);
 
                 // Render Arrowhead at EndPoint
                 var arrow = CreateArrowhead(edge.ControlPoint2, edge.EndPoint, edgeBrush, opacity);
+                arrow.ToolTip = $"💡 WHY CONNECTED: {edgeWhy.Summary}\n\n{edgeWhy.Explanation}";
                 GraphCanvas.Children.Add(arrow);
             }
 
@@ -239,6 +245,8 @@ namespace BuildConsole.Controls
 
         private UIElement CreateNodeCard(GitModeGraphNode node)
         {
+            var whyRes = GitModeWhyEngine.AnalyzeNode(node, _activeGraphData, _activeIssueDetail?.IssueNumber == node.IssueNumber ? _activeIssueDetail : null);
+
             var cardBorder = new Border
             {
                 Width = node.Width,
@@ -247,7 +255,13 @@ namespace BuildConsole.Controls
                 BorderThickness = new Thickness(node.IsSelected ? 2 : 1),
                 Padding = new Thickness(0),
                 Cursor = Cursors.Hand,
-                Tag = node
+                Tag = node,
+                ToolTip = $"💡 WHY ANALYSIS — #{node.IssueNumber} '{node.Title}'\n\n" +
+                          $"• WHY BLOCKED: {whyRes.WhyBlocked}\n" +
+                          $"• WHAT IT BLOCKS: {whyRes.WhatItBlocks}\n" +
+                          $"• BUILD STATUS: {whyRes.BuildRequirements}\n" +
+                          $"• DISPATCHABILITY: {whyRes.Dispatchability}\n" +
+                          $"• NEXT STEP: {whyRes.NextSteps}"
             };
 
             // Background & Border colors
@@ -498,6 +512,24 @@ namespace BuildConsole.Controls
 
             // 8. Render Comments
             RenderComments(_activeIssueDetail.Comments);
+
+            // 9. Populate WHY Engine Analysis Card
+            var graphNode = _activeGraphData?.Nodes.FirstOrDefault(n => n.IssueNumber == _activeIssueDetail.IssueNumber);
+            if (graphNode != null)
+            {
+                var whyRes = GitModeWhyEngine.AnalyzeNode(graphNode, _activeGraphData, _activeIssueDetail);
+                TxtWhyBlocked.Text = whyRes.WhyBlocked;
+                TxtWhatItBlocks.Text = whyRes.WhatItBlocks;
+                TxtWhyBuildInfo.Text = whyRes.BuildRequirements;
+                TxtWhyNextSteps.Text = whyRes.NextSteps;
+            }
+            else
+            {
+                TxtWhyBlocked.Text = "No active blockers identified.";
+                TxtWhatItBlocks.Text = "Does not block downstream open issues.";
+                TxtWhyBuildInfo.Text = "Build requirements not queued.";
+                TxtWhyNextSteps.Text = "Review metadata and issue status.";
+            }
         }
 
         private void SelectBucketInCombo(string bucketName)

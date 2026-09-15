@@ -434,6 +434,35 @@
                                     </StackPanel>
                                 </Border>
 
+                                <!-- WHY Engine Analysis & Next Steps Card -->
+                                <Border x:Name="WhyAnalysisCard" Background="{StaticResource MantleBrush}" BorderBrush="{StaticResource BlueBrush}" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
+                                    <StackPanel>
+                                        <DockPanel LastChildFill="True" Margin="0,0,0,6">
+                                            <TextBlock Text="💡 WHY ANALYSIS &amp; NEXT STEPS" FontWeight="Bold" FontSize="11" Foreground="{StaticResource BlueBrush}" DockPanel.Dock="Left"/>
+                                        </DockPanel>
+
+                                        <!-- Why Blocked -->
+                                        <TextBlock Text="WHY BLOCKED:" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" Margin="0,2,0,2"/>
+                                        <TextBlock x:Name="TxtWhyBlocked" Text="Loading..." FontSize="11" Foreground="{StaticResource TextBrush}" TextWrapping="Wrap" Margin="0,0,0,6"/>
+
+                                        <!-- What It Blocks -->
+                                        <TextBlock Text="WHAT IT BLOCKS:" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" Margin="0,2,0,2"/>
+                                        <TextBlock x:Name="TxtWhatItBlocks" Text="Loading..." FontSize="11" Foreground="{StaticResource TextBrush}" TextWrapping="Wrap" Margin="0,0,0,6"/>
+
+                                        <!-- Build Requirements -->
+                                        <TextBlock Text="BUILD REQUIREMENTS:" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" Margin="0,2,0,2"/>
+                                        <TextBlock x:Name="TxtWhyBuildInfo" Text="Loading..." FontSize="11" Foreground="{StaticResource TextBrush}" TextWrapping="Wrap" Margin="0,0,0,6"/>
+
+                                        <!-- Recommended Next Steps Banner -->
+                                        <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="8,6" Margin="0,4,0,0">
+                                            <StackPanel>
+                                                <TextBlock Text="RECOMMENDED NEXT STEP:" FontSize="10" FontWeight="Bold" Foreground="{StaticResource PeachBrush}" Margin="0,0,0,2"/>
+                                                <TextBlock x:Name="TxtWhyNextSteps" Text="Actionable step..." FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                </Border>
+
                                 <!-- Comments Feed -->
                                 <Border Background="{StaticResource MantleBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="1" CornerRadius="6" Padding="10">
                                     <StackPanel>
