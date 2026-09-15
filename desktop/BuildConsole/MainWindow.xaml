@@ -18,6 +18,8 @@
         ResizeMode="CanResize"
         PreviewKeyDown="Window_PreviewKeyDown"
         PreviewKeyUp="Window_PreviewKeyUp"
+        PreviewMouseMove="Window_PreviewMouseMove"
+        PreviewMouseLeftButtonDown="Window_PreviewMouseLeftButtonDown_ElementPicker"
         StateChanged="Window_StateChanged"
         Closing="MainWindow_Closing">
 
@@ -135,6 +137,7 @@
                                 <MenuItem Header="Toggle Bottom Panel" Click="ToggleBottomPanel_Click" InputGestureText="Ctrl+`"/>
                                 <Separator/>
                                 <MenuItem Header="Toggle Test Mode"    Click="MenuToggleTestMode_Click" InputGestureText="Ctrl+Shift+T"/>
+                                <MenuItem Header="Element Picker"      Click="MenuToggleElementPicker_Click" InputGestureText="Ctrl+Shift+W"/>
                                 <Separator/>
                                 <MenuItem Header="Reset Layout"        Click="ResetLayout_Click"/>
                                 <Separator/>
@@ -1403,6 +1406,16 @@
              rests in the center when idle, and reacts to clicks and celebrations.
              ══════════════════════════════════════════════════════════════ -->
         <ctrl:SailorDuckMascotLayer x:Name="SailorDuckLayer" Panel.ZIndex="15000" IsHitTestVisible="False"/>
+
+        <!-- ══════════════════════════════════════════════════════════════
+             WPF ELEMENT PICKER OVERLAY (Git #4198)
+             Ctrl+Shift+W toggles picker mode (MainWindow.ElementPicker.cs);
+             this layer just draws the live hover-highlight box + identifier
+             label. IsHitTestVisible="False" so it never blocks real app
+             interaction while picker mode is inactive — same non-interactive
+             overlay pattern as SailorDuckMascotLayer above.
+             ══════════════════════════════════════════════════════════════ -->
+        <ctrl:ElementPickerLayer x:Name="ElementPickerLayer" Panel.ZIndex="15500" IsHitTestVisible="False"/>
 
         <!-- ══════════════════════════════════════════════════════════════
              ANIMATED STARTUP LOADING OVERLAY

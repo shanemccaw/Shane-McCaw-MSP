@@ -1765,6 +1765,17 @@ namespace BuildConsole
         {
             SailorDuckLayer?.NotifyUserActivity();
 
+            // Git #4198 — Esc exits Element Picker mode without selecting, matching the
+            // browser DevTools convention this feature is modeled on. Checked first, ahead
+            // of every other Escape handling below, so it always wins while picker mode
+            // is active.
+            if (_isElementPickerMode && e.Key == Key.Escape)
+            {
+                e.Handled = true;
+                ExitElementPickerMode(showToast: true);
+                return;
+            }
+
             // Ctrl+Shift+N: New Browser Window (Git #3913) — checked before the plain
             // Ctrl+N case below, since that case's own modifier check doesn't exclude
             // Shift also being held.
@@ -1797,6 +1808,15 @@ namespace BuildConsole
             {
                 e.Handled = true;
                 ToggleTestMode();
+                return;
+            }
+
+            // Git #4198 — Ctrl+Shift+W: toggle the native WPF Element Picker (same chord
+            // pattern as Ctrl+Shift+T above).
+            if (e.Key == Key.W && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+            {
+                e.Handled = true;
+                ToggleElementPickerMode();
                 return;
             }
 

@@ -1,0 +1,38 @@
+<UserControl x:Class="BuildConsole.Controls.ElementPickerLayer"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             IsHitTestVisible="False">
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         WPF ELEMENT PICKER OVERLAY LAYER (Git #4198)
+         Native-WPF equivalent of TestModeDiagnosticsPanel's WebView2 DOM
+         inspector hover-highlight-and-click picker, driven from
+         MainWindow.ElementPicker.cs via live VisualTreeHelper.HitTest against
+         the real cursor position. This layer only ever draws the highlight
+         box + label; it never intercepts mouse/keyboard input itself
+         (IsHitTestVisible="False" throughout, same pattern as
+         SailorDuckMascotLayer), so normal app interaction is completely
+         unaffected whenever picker mode is inactive.
+         ══════════════════════════════════════════════════════════════════ -->
+
+    <Canvas x:Name="RootCanvas" IsHitTestVisible="False" ClipToBounds="True">
+        <Border x:Name="HighlightBorder"
+                BorderBrush="#4285F4"
+                BorderThickness="2"
+                Background="#334285F4"
+                Visibility="Collapsed"
+                IsHitTestVisible="False"/>
+
+        <Border x:Name="LabelBackground"
+                Background="#4285F4"
+                CornerRadius="3"
+                Padding="6,2"
+                Visibility="Collapsed"
+                IsHitTestVisible="False">
+            <TextBlock x:Name="LabelText"
+                       Foreground="White"
+                       FontSize="11"
+                       FontFamily="Consolas"/>
+        </Border>
+    </Canvas>
+</UserControl>
