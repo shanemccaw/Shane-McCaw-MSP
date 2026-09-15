@@ -282,11 +282,18 @@ namespace BuildConsole.Controls
                           $"• NEXT STEP: {whyRes.NextSteps}"
             };
 
-            // Background & Border colors
-            if (node.IsSelected)
+            // Background & Border colors (Phase 8: GATE node prominence)
+            if (node.IsGate)
             {
                 cardBorder.Background = (Brush)FindResource("Surface0Brush");
                 cardBorder.BorderBrush = (Brush)FindResource("MauveBrush");
+                cardBorder.BorderThickness = new Thickness(node.IsSelected ? 3 : 2);
+            }
+            else if (node.IsSelected)
+            {
+                cardBorder.Background = (Brush)FindResource("Surface0Brush");
+                cardBorder.BorderBrush = (Brush)FindResource("MauveBrush");
+                cardBorder.BorderThickness = new Thickness(2);
             }
             else if (node.IsHighlighted)
             {
@@ -313,15 +320,15 @@ namespace BuildConsole.Controls
                 cardBorder.Opacity = 1.0;
             }
 
-            // Main Grid Layout: Left Bucket Accent Bar + Right Content
+            // Main Grid Layout: Left Bucket/GATE Accent Bar + Right Content
             var grid = new Grid();
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(5) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(node.IsGate ? 6 : 5) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-            // 1. Bucket Left Bar
+            // 1. Left Accent Bar (Mauve for GATE, Bucket brush for standard)
             var bucketBar = new Border
             {
-                Background = GetBucketBrush(node.Bucket),
+                Background = node.IsGate ? (Brush)FindResource("MauveBrush") : GetBucketBrush(node.Bucket),
                 CornerRadius = new CornerRadius(3, 0, 0, 3)
             };
             Grid.SetColumn(bucketBar, 0);
@@ -391,12 +398,13 @@ namespace BuildConsole.Controls
             topHeader.Children.Add(badgesPanel);
             contentStack.Children.Add(topHeader);
 
-            // Middle: Title
+            // Middle: Title (Bold Mauve text for GATE nodes)
             var titleText = new TextBlock
             {
                 Text = node.Title,
                 FontSize = 11,
-                Foreground = node.IsCompletedBlocker ? (Brush)FindResource("Overlay0Brush") : (Brush)FindResource("TextBrush"),
+                FontWeight = node.IsGate ? FontWeights.Bold : FontWeights.Normal,
+                Foreground = node.IsGate ? (Brush)FindResource("MauveBrush") : (node.IsCompletedBlocker ? (Brush)FindResource("Overlay0Brush") : (Brush)FindResource("TextBrush")),
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 Margin = new Thickness(0, 3, 0, 4)
             };
