@@ -33,6 +33,7 @@ import SharedLiveDocumentsPublicPage from "@/pages/shared-live-documents-public"
 import MspSowPublicPage from "@/pages/msp-sow-public";
 import NotificationPreferencesPage from "@/pages/notification-preferences";
 import WebhooksPage from "@/pages/webhooks";
+import AzureCredentialPage from "@/pages/azure-credential";
 import SettingsPage from "@/pages/settings";
 import SopsPage from "@/pages/sops";
 import RunbooksPage from "@/pages/runbooks";
@@ -137,6 +138,7 @@ function ProtectedRoutes() {
           <Route path="/email-auth-setup" component={EmailAuthSetupPage} />
           <Route path="/notification-preferences" component={NotificationPreferencesPage} />
           <Route path="/webhooks" component={WebhooksPage} />
+          <Route path="/azure-credential" component={AzureCredentialPage} />
           <Route path="/settings" component={SettingsPage} />
           <Route path="/sops" component={SopsPage} />
           <Route path="/runbooks" component={RunbooksPage} />
