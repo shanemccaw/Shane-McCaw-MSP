@@ -247,7 +247,9 @@ router.get("/admin/clients/with-azure-credentials", requireCapability("ladder.ms
     return;
   }
 
-  const conditions = [eq(usersTable.role, "client")];
+  // Customer-facing rungs only (CLIENT_LADDER_ROLES, #4256) — staff rows carry
+  // role='client' too and are never a script-run target.
+  const conditions = [eq(usersTable.role, "client"), inArray(usersTable.mspRole, CLIENT_LADDER_ROLES)];
   if (scope.mspId !== null) conditions.push(eq(usersTable.mspId, scope.mspId));
   if (clientUserId !== undefined) conditions.push(eq(usersTable.id, clientUserId));
 
@@ -563,8 +565,8 @@ router.get("/admin/clients/:id/health/summary", requireAdmin, async (req: Reques
 
 // Re-gated ladder.msp-operator (Git #4246) — the Delivery Projects "New/Edit
 // Project" client picker (relocated to msp-console) reads this same list;
-// every other route in this file stays requireAdmin (command-center, health
-// summary, Azure credentials — genuinely admin-only client management).
+// command-center and health summary stay requireAdmin. (Azure credentials was
+// later opened to operators, MSP-scoped, by #4255.)
 //
 // #4256 — that re-gate added no MSP scoping, so any MSP's operator received
 // every `role='client'` user on the platform, including other MSPs' own staff
