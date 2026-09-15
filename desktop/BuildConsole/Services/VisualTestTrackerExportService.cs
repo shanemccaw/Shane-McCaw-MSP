@@ -61,6 +61,18 @@ namespace BuildConsole.Services
         /// </summary>
         public static string DetectArea(string? url, string? pagePath)
         {
+            // 0. Git #4163 — delegate to DevServiceRouting.ServiceKeyForRoute for path-shaped input
+            // (pagePath, or the path component of url) before falling back to the keyword/port
+            // heuristics below. ServiceKeyForRoute is the real source of truth already used for
+            // uiStep navigation targeting; delegating first keeps the two mapping tables from
+            // drifting apart again (this is what previously missed /content, /view-as, /retainers,
+            // /monitoring, /buy, /records, /lp and /copilot-assessment). ServiceKeyForRoute itself
+            // returns null for anything not path-shaped (no leading "/") or not clearly owned, so
+            // this is a no-op for non-route input and falls through to the existing logic below.
+            string? routeArea = AreaForServiceKey(DevServiceRouting.ServiceKeyForRoute(pagePath))
+                ?? AreaForServiceKey(DevServiceRouting.ServiceKeyForRoute(ExtractPath(url)));
+            if (routeArea != null) return routeArea;
+
             // 1. Port auto-detection has highest precedence for local development
             int port = ExtractPort(url);
             if (port == 5175) return "Portal";
@@ -116,7 +128,39 @@ namespace BuildConsole.Services
                 return "MSP_Console";
             }
 
-            return "MSP_Console";
+            // Git #4163 — align the unmatched-route default with DevServiceRouting's own
+            // (DefaultServiceKey = Marketing), not the old "MSP_Console" default. Same
+            // "I don't recognize this route" case now resolves the same way in both places.
+            return "Marketing";
+        }
+
+        /// <summary>Git #4163 — maps a <see cref="DevServiceRouting"/> service key to the Area name
+        /// <see cref="DetectArea"/> returns, or null for a key with no route-based mapping (e.g. an
+        /// unowned/shared route, which returns null from ServiceKeyForRoute itself).</summary>
+        private static string? AreaForServiceKey(string? serviceKey) => serviceKey switch
+        {
+            DevServiceRouting.Portal => "Portal",
+            DevServiceRouting.Admin => "Admin-Panel",
+            DevServiceRouting.Marketing => "Marketing",
+            DevServiceRouting.Website => "MSP_Marketing",
+            DevServiceRouting.MspConsole => "MSP_Console",
+            _ => null,
+        };
+
+        /// <summary>Git #4163 — the path component of a URL string (handling scheme-less hostnames the
+        /// same way <see cref="ExtractPort"/> does), for passing to
+        /// <see cref="DevServiceRouting.ServiceKeyForRoute"/>. Null if url isn't a parseable URL.</summary>
+        private static string? ExtractPath(string? url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return null;
+            var trimmed = url.Trim();
+            if (!trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                !trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                trimmed = "http://" + trimmed;
+            }
+
+            return Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) ? uri.AbsolutePath : null;
         }
 
         /// <summary>Extracts TCP port number from a URL string, handling scheme-less hostnames.</summary>
