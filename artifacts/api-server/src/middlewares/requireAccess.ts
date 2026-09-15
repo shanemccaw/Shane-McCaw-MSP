@@ -2,10 +2,13 @@
  * `requireAccess(capability, tierModuleKey?)` — the ONE route gate composing RBAC and
  * tier entitlement (#4192, leaf 2 of #1704), built on #4191's `evaluateAccess()`.
  *
- * ── Additive, opt-in ────────────────────────────────────────────────────────
+ * ── Where it is mounted ──────────────────────────────────────────────────────
  *
- * Nothing mounts this yet. The 616 `requireCapability` and 31 `requireTierFeature`
- * call sites are untouched; migrating them is leaf 3. Mount it AFTER `requireAuth`,
+ * #4193 (leaf 3) migrated the first batch of dual-gated READ routes onto it — the
+ * seven Risk Register, POA&Ms and Ownership reads that carried BOTH
+ * `requireCapability("ladder.customer-user")` and `requireTierFeature(...)`. The
+ * remaining `requireTierFeature` routes are #1698's sweep. Mount it AFTER
+ * `requireAuth` (`requireCapability` ran `requireAuth` internally; this does not),
  * the same convention as `requireCustomerCapability`:
  *
  *   router.get("/portal/runbooks", requireAuth,

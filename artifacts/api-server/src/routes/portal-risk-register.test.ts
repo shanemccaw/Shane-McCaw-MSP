@@ -119,6 +119,14 @@ vi.mock("../middlewares/requireAuth.ts", () => ({
   requireAuth: (_req: any, _res: any, next: () => void) => next(),
 }));
 
+// #4193: the two READ routes gate through requireAccess (RBAC + tier in one call).
+// Its decisions are proven by requireAccess.test.ts and the live-db acceptance
+// tests; these tests assume an allowed, entitled caller, as the two mocks it
+// replaced did.
+vi.mock("../middlewares/requireAccess.ts", () => ({
+  requireAccess: () => (_req: any, _res: any, next: () => void) => next(),
+}));
+
 // #1168's tier-feature gate is exercised by its own lib test — these tests are
 // about the route's scoping/business logic and assume an entitled tier. Keys
 // mirror the real PORTAL_TIER_MODULE_KEYS string literals in

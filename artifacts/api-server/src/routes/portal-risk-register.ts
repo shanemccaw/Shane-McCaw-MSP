@@ -85,9 +85,10 @@ import { db, mspRiskDecisionsTable, complianceObligationsTable, complianceFramew
 import { and, eq, desc, isNull, inArray } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireCapability } from "../middlewares/requireAuth.ts";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
+import { requireAccess } from "../middlewares/requireAccess.ts";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope.ts";
-import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features.ts";
+import { PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { formatChangeRequestCode } from "../lib/portal-change-control.ts";
 import { logger } from "../lib/logger.ts";
@@ -427,10 +428,10 @@ async function scopeOrEmpty(req: Request, res: Response, emptyKey: "risks" | "de
 /** Every risk decision for the calling customer's own tenant. */
 router.get(
   "/portal/risk-register",
-  requireCapability("ladder.customer-user"),
+  requireAuth,
   // #1168: creation (accept/POST below) is unconditional; only this READ
   // checks the customer's purchased Monitoring tier bundles Risk Register.
-  requireTierFeature(PORTAL_TIER_MODULE_KEYS.riskRegister),
+  requireAccess("ladder.customer-user", PORTAL_TIER_MODULE_KEYS.riskRegister),
   async (req: Request, res: Response) => {
     try {
       const scope = await scopeOrEmpty(req, res, "risks");
@@ -474,10 +475,10 @@ router.get(
  */
 router.get(
   "/portal/policy-decisions",
-  requireCapability("ladder.customer-user"),
+  requireAuth,
   // #1168: this is the policy-decision VIEW of risk data, gated the same as
   // the dedicated policy-decisions.ts module.
-  requireTierFeature(PORTAL_TIER_MODULE_KEYS.policyDecisions),
+  requireAccess("ladder.customer-user", PORTAL_TIER_MODULE_KEYS.policyDecisions),
   async (req: Request, res: Response) => {
     try {
       const scope = await scopeOrEmpty(req, res, "decisions");

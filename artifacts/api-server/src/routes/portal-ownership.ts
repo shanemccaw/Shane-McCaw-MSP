@@ -125,8 +125,9 @@ import {
 } from "@workspace/db";
 import { and, asc, eq, gt, isNull, or, sql } from "drizzle-orm";
 
-import { requireCapability, type AuthUser } from "../middlewares/requireAuth.ts";
-import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features.ts";
+import { requireAuth, requireCapability, type AuthUser } from "../middlewares/requireAuth.ts";
+import { requireAccess } from "../middlewares/requireAccess.ts";
+import { PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features.ts";
 import {
   resolveCustomerId,
   resolveCustomerMspId,
@@ -537,10 +538,10 @@ export async function assembleOwnershipPayload(customerId: number, callerEmail: 
 
 router.get(
   "/portal/ownership",
-  requireCapability("ladder.customer-user"),
+  requireAuth,
   // #1168: writes below stay unconditional; only this READ checks the
   // customer's purchased Monitoring tier bundles RACI/Ownership.
-  requireTierFeature(PORTAL_TIER_MODULE_KEYS.ownership),
+  requireAccess("ladder.customer-user", PORTAL_TIER_MODULE_KEYS.ownership),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
     if (customerId === null) {
@@ -1160,8 +1161,8 @@ router.post(
  */
 router.get(
   "/portal/ownership/events",
-  requireCapability("ladder.customer-user"),
-  requireTierFeature(PORTAL_TIER_MODULE_KEYS.ownership),
+  requireAuth,
+  requireAccess("ladder.customer-user", PORTAL_TIER_MODULE_KEYS.ownership),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = scopedCustomerId(req, res);
     if (customerId === null) return;

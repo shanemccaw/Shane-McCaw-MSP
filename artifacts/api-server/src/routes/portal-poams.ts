@@ -64,9 +64,10 @@ import {
 import { and, eq, desc, asc, isNull, inArray } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireCapability } from "../middlewares/requireAuth.ts";
+import { requireAuth, requireCapability } from "../middlewares/requireAuth.ts";
+import { requireAccess } from "../middlewares/requireAccess.ts";
 import { resolveCustomerId, resolveTenantScope, type TenantScope } from "../lib/portal-customer-scope.ts";
-import { requireTierFeature, PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features.ts";
+import { PORTAL_TIER_MODULE_KEYS } from "../lib/portal-tier-features.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
 import { personIdForUser } from "../lib/portal-ownership.ts";
@@ -238,10 +239,10 @@ async function scopeOrEmpty(req: Request, res: Response) {
 /** Every POA&M for the calling customer's own tenant, milestones included. */
 router.get(
   "/portal/poams",
-  requireCapability("ladder.customer-user"),
+  requireAuth,
   // #1168/#3104: creation (POST below) is unconditional; only this READ
   // checks the customer's purchased Monitoring tier bundles POA&Ms.
-  requireTierFeature(PORTAL_TIER_MODULE_KEYS.poams),
+  requireAccess("ladder.customer-user", PORTAL_TIER_MODULE_KEYS.poams),
   async (req: Request, res: Response) => {
     try {
       const scope = await scopeOrEmpty(req, res);
@@ -314,10 +315,10 @@ const AVAILABLE_CHECK_SEVERITY_RANK: Record<string, number> = { critical: 0, war
  */
 router.get(
   "/portal/poams/available-checks",
-  requireCapability("ladder.customer-user"),
+  requireAuth,
   // Same tier gate as the other customer-facing POA&Ms READ route above —
   // this is part of the same read surface, not a lower-gated escape hatch.
-  requireTierFeature(PORTAL_TIER_MODULE_KEYS.poams),
+  requireAccess("ladder.customer-user", PORTAL_TIER_MODULE_KEYS.poams),
   async (req: Request, res: Response) => {
     const customerId = resolveCustomerId(req);
     try {
@@ -386,8 +387,8 @@ router.get(
 /** One POA&M, with its milestones. */
 router.get(
   "/portal/poams/:poamId",
-  requireCapability("ladder.customer-user"),
-  requireTierFeature(PORTAL_TIER_MODULE_KEYS.poams),
+  requireAuth,
+  requireAccess("ladder.customer-user", PORTAL_TIER_MODULE_KEYS.poams),
   async (req: Request, res: Response) => {
     const customerId = resolveCustomerId(req);
     try {
