@@ -57,31 +57,34 @@ export const CHILD_GROUPS: Group[] = [
     ],
   },
   {
+    // 2026-09-15 design refresh (#4150) — OU Assignment now sits right after
+    // Team, before Break-glass/Launch Control/Webhooks. Azure Credential
+    // (newer than this design pass) stays last, untouched.
     id: "g.access", label: "Access & identity", icon: "key-round", children: [
       { id: "team", label: "Team", icon: "users" },
+      { id: "ou", label: "OU Assignment", icon: "folder-tree" },
       { id: "bg", label: "Break-glass", icon: "key-round" },
       { id: "lc", label: "Launch Control", icon: "rocket" },
       { id: "wh", label: "Webhooks", icon: "webhook" },
-      { id: "ou", label: "OU Assignment", icon: "folder-tree" },
       // Azure Credential (Git #3968, Feature #3966) — the client's app
       // registration credential for the M365 tenant this customer maps to.
       { id: "azurecred", label: "Azure Credential", icon: "cloud" },
     ],
   },
   {
+    // 2026-09-15 design refresh (#4150) — full reorder: Contracts → Offers &
+    // SOWs → Status Reports → Marketplace → Documents → Billing.
     id: "g.comm", label: "Commercial", icon: "receipt", children: [
-      { id: "status-reports", label: "Status Reports", icon: "file-pen" },
-      // Offers & SOWs (Git #4014, README screen 66) — the richer 63–66
-      // contract-pack pass's own whole-book SOW lifecycle for this customer,
-      // between Contracts and Status reports per the README tree-placement
-      // table.
-      { id: "offers-sows", label: "Offers & SOWs", icon: "signature" },
       { id: "contracts", label: "Contracts", icon: "file-text" },
-      { id: "hub", label: "Documents", icon: "files" },
-      { id: "billing", label: "Billing", icon: "receipt" },
+      // Offers & SOWs (Git #4014, README screen 66) — the richer 63–66
+      // contract-pack pass's own whole-book SOW lifecycle for this customer.
+      { id: "offers-sows", label: "Offers & SOWs", icon: "signature" },
+      { id: "status-reports", label: "Status Reports", icon: "file-pen" },
       // Marketplace Purchase (Git #3819, README screen 47) — buying a
       // catalog item on this customer's behalf, charged to the MSP's card.
       { id: "marketplace", label: "Marketplace", icon: "shopping-cart" },
+      { id: "hub", label: "Documents", icon: "files" },
+      { id: "billing", label: "Billing", icon: "receipt" },
     ],
   },
   { id: "audit", label: "Audit log", icon: "history", leaf: true },
@@ -130,17 +133,48 @@ export const MSP_PAGES: LeafPage[] = [
   // "Operations, not per-tenant" shape as Retention Queue immediately above.
   { id: "retainer", label: "Retainer hours", icon: "hourglass" },
   { id: "revenue", label: "Partner Revenue", icon: "handshake" },
-  // Workflows and Agents (Git #4080, Feature #3768) — real nav slots, generic
-  // `PlaceholderModule` mount. Neither has a defined feature scope yet
-  // (dogfooding on Shane's own tenant drives phase 2); the point of #4080 is
-  // to make the slot itself real, not to guess at the backend.
-  { id: "workflows", label: "Workflows", icon: "workflow" },
-  { id: "agents", label: "Agents", icon: "sparkles" },
   // Audit Log (Git #4012, README screen 63), mounted here unfiltered and
   // again per tenant (CHILD_GROUPS' "audit" leaf above) with customerId set
   // — same component, one prop, per the README's tree-placement table.
   { id: "audit", label: "Audit log", icon: "history" },
 ];
+
+const msp = (id: string): LeafPage => {
+  const p = MSP_PAGES.find((x) => x.id === id);
+  if (!p) throw new Error(`MSP_GROUPS references unknown MSP_PAGES id: ${id}`);
+  return p;
+};
+
+/**
+ * Operations gains real grouping in the 2026-09-15 design refresh (#4150) —
+ * three named collapsible groups, reusing the same `Group` shape
+ * `CHILD_GROUPS` already uses for tenant pages. `settings` (the section
+ * header, rendered on the Consulting root) and `exec`/`projects`/`retainer`
+ * stay top-level, ungrouped — see `MSP_TOP_LEVEL_IDS`. Workflows/Agents are
+ * deliberately left out of every group (separate removal issue, #4152); they
+ * stay top-level and ungrouped too, in their existing position.
+ */
+export const MSP_GROUPS: Group[] = [
+  {
+    id: "delivery", label: "Client Delivery", icon: "briefcase",
+    children: ["timeline", "sales", "sla", "sops", "config", "policy", "reports"].map(msp),
+  },
+  {
+    id: "access", label: "Access & Accounts", icon: "shield",
+    children: ["consent", "staff", "acctsec", "docs", "connectors"].map(msp),
+  },
+  {
+    id: "billing", label: "Billing & Lifecycle", icon: "credit-card",
+    children: ["revenue", "plan", "audit", "retention", "dlq", "offboarding"].map(msp),
+  },
+];
+
+const MSP_GROUPED_IDS = new Set(MSP_GROUPS.flatMap((g) => (g.children ?? []).map((c) => c.id)));
+
+/** Operations pages rendered top-level, ungrouped (excludes `settings`, which lives on the Consulting root). */
+export const MSP_TOP_LEVEL_IDS: string[] = MSP_PAGES
+  .map((p) => p.id)
+  .filter((id) => id !== "settings" && !MSP_GROUPED_IDS.has(id));
 
 /** Flattened tenant pages (leaf groups + every group child). */
 export const CHILD_PAGES: LeafPage[] = CHILD_GROUPS.reduce<LeafPage[]>((acc, g) => {
@@ -169,6 +203,11 @@ export function groupForPage(pageId: string): Group | null {
     CHILD_GROUPS.find((g) => !g.leaf && (g.children ?? []).some((c) => c.id === pageId)) ??
     null
   );
+}
+
+/** The Operations group that owns an MSP-wide page id (null for top-level pages). */
+export function groupForMspPage(pageId: string): Group | null {
+  return MSP_GROUPS.find((g) => (g.children ?? []).some((c) => c.id === pageId)) ?? null;
 }
 
 // ── Selection ↔ route ────────────────────────────────────────────────────────

@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  CHILD_GROUPS, CHILD_PAGES, MSP_PAGES, groupForPage,
+  CHILD_GROUPS, CHILD_PAGES, MSP_PAGES, MSP_GROUPS, MSP_TOP_LEVEL_IDS,
+  groupForPage, groupForMspPage,
   parseLocation, selectionToPath, tenantPageMeta, type Selection,
 } from "./nav.ts";
 import {
@@ -12,7 +13,7 @@ import { statusDot } from "./tokens.ts";
 
 const noop = () => {};
 const handlers: TreeHandlers = {
-  navigate: noop, toggleTenant: noop, toggleGroup: noop, toggleMsp: noop,
+  navigate: noop, toggleTenant: noop, toggleGroup: noop, toggleMsp: noop, toggleMspGroup: noop,
 };
 
 // Real-shaped directory rows (not fixtures rendered as data — test inputs).
@@ -23,12 +24,15 @@ const customers = [
   { id: 11, name: "Delta LLC", domain: "delta.example", status: "active", tenantId: "t11", mspId: 1, createdAt: "2026-01-04T00:00:00Z", seats: 60, people: 5, lastScanAt: "2026-09-06T00:00:00Z", openSignals: 3, criticalSignals: 1 },
 ];
 
-test("IA has 7 tenant groups and 22 ops pages", () => {
+test("IA has 7 tenant groups and 24 ops pages", () => {
   assert.equal(CHILD_GROUPS.length, 7);
   // 13 original + dlq, plan, reports, retention, revenue (concurrent builds
   // #3814/#3815/#3906/#3796) + consent (Git #2627) + audit (Git #4012) +
-  // projects (Git #2621) + retainer (Git #2618, landed concurrently) = 22.
-  assert.equal(MSP_PAGES.length, 22);
+  // projects (Git #2621) + retainer (Git #2618, landed concurrently) + workflows,
+  // agents (Git #4080, real nav slots landed after this comment was last
+  // updated — the "22" this test asserted was already stale before #4150
+  // touched this file) = 24.
+  assert.equal(MSP_PAGES.length, 24);
   // 2 leaf groups (overview, audit) + 3 (monitor) + 7 (change control) + 5
   // (governance, #3897 added "poams") + 6 (access & identity: #3818 added
   // "ou", #3968 added "azurecred") + 6 (commercial: #3819 added
@@ -72,14 +76,19 @@ test("status dot uses real directory fields only", () => {
   assert.equal(statusDotColor(customers[3]), statusDot.critical); // at least one critical signal (Git #3746)
 });
 
-test("collapsed tree shows two roots + operations pages, tenants closed", () => {
-  const nodes = buildTreeNodes(customers, { kind: "root" }, new Set(), new Set(), true, "", handlers);
+test("collapsed tree shows two roots + top-level ops pages + ops group headers, tenants and ops groups closed", () => {
+  const nodes = buildTreeNodes(customers, { kind: "root" }, new Set(), new Set(), true, new Set(), "", handlers);
   const labels = nodes.map((n) => n.label);
   assert.ok(labels.includes("Shane McCaw Consulting"));
   assert.ok(labels.includes("Operations"));
   assert.ok(labels.includes("Managed Tenants"));
-  // 21 operations children (settings lives on the Consulting root)
-  assert.equal(MSP_PAGES.filter((p) => p.id !== "settings").every((p) => labels.includes(p.label)), true);
+  // top-level, ungrouped ops pages (settings lives on the Consulting root)
+  assert.equal(MSP_TOP_LEVEL_IDS.every((id) => labels.includes(MSP_PAGES.find((p) => p.id === id)!.label)), true);
+  // the three ops group headers show, but their children stay hidden until opened
+  for (const g of MSP_GROUPS) {
+    assert.ok(labels.includes(g.label));
+    for (const c of g.children ?? []) assert.ok(!labels.includes(c.label));
+  }
   // every tenant node present, no group/child nodes yet
   assert.ok(labels.includes("Alpha Ltd") && labels.includes("Beta Inc") && labels.includes("Gamma Co"));
   assert.ok(!labels.includes("Risk Register"));
@@ -91,7 +100,7 @@ test("opening a tenant + group reveals its children in order", () => {
     { kind: "page", tenant: 4, page: "risk" },
     new Set([4]),
     new Set(["4:g.gov"]),
-    true, "", handlers,
+    true, new Set(), "", handlers,
   );
   const labels = nodes.map((n) => n.label);
   assert.ok(labels.includes("Governance"));
@@ -102,8 +111,23 @@ test("opening a tenant + group reveals its children in order", () => {
   assert.equal(risk?.fg, "#ffffff");
 });
 
+test("opening an ops group reveals its children, and groupForMspPage resolves it", () => {
+  assert.equal(groupForMspPage("sales")?.id, "delivery");
+  assert.equal(groupForMspPage("staff")?.id, "access");
+  assert.equal(groupForMspPage("audit")?.id, "billing");
+  assert.equal(groupForMspPage("exec"), null);
+  const nodes = buildTreeNodes(
+    customers, { kind: "msp", page: "sales" }, new Set(), new Set(), true, new Set(["delivery"]), "", handlers,
+  );
+  const labels = nodes.map((n) => n.label);
+  assert.ok(labels.includes("Client Delivery"));
+  assert.ok(labels.includes("Sales"));
+  const sales = nodes.find((n) => n.label === "Sales");
+  assert.equal(sales?.fg, "#ffffff");
+});
+
 test("tree filter narrows to matching tenants", () => {
-  const nodes = buildTreeNodes(customers, { kind: "root" }, new Set(), new Set(), true, "beta", handlers);
+  const nodes = buildTreeNodes(customers, { kind: "root" }, new Set(), new Set(), true, new Set(), "beta", handlers);
   const tenantLabels = nodes.filter((n) => n.key.startsWith("tenant:")).map((n) => n.label);
   assert.deepEqual(tenantLabels, ["Beta Inc"]);
 });
@@ -117,9 +141,9 @@ test("breadcrumb for a grouped page has root, tenant, group and page", () => {
 
 test("command palette lists root, every ops page, and tenant × page", () => {
   const cmds = buildCommands(customers, handlers);
-  // 1 root + 22 ops + 4 tenants * 29 pages — see the IA counts test above for
+  // 1 root + 24 ops + 4 tenants * 29 pages — see the IA counts test above for
   // how these totals are made up.
-  assert.equal(cmds.length, 1 + 22 + customers.length * 29);
+  assert.equal(cmds.length, 1 + 24 + customers.length * 29);
   assert.ok(cmds.some((c) => c.label === "Alpha Ltd › Risk Register" && c.group === "NODE"));
   assert.ok(cmds.some((c) => c.label === "Operations › Sales" && c.group === "MSP"));
 });

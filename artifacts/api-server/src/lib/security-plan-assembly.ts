@@ -125,6 +125,7 @@ async function readPolicyDecisions(scope: TenantScope): Promise<RawModule> {
       id: policyDecisionsTable.id,
       title: policyDecisionsTable.title,
       pillar: policyDecisionsTable.pillar,
+      controlDomain: policyDecisionsTable.controlDomain,
       obligation: policyDecisionsTable.obligation,
       decisionState: policyDecisionsTable.decisionState,
       reviewState: policyDecisionsTable.reviewState,
@@ -144,6 +145,7 @@ async function readPolicyDecisions(scope: TenantScope): Promise<RawModule> {
       pillar: str(r.pillar),
       framework: null,
       businessUnit: str(scope.businessUnit),
+      controlDomain: str(r.controlDomain),
     })),
   };
 }
@@ -154,6 +156,7 @@ async function readRiskRegister(scope: TenantScope): Promise<RawModule> {
       id: mspRiskDecisionsTable.id,
       title: mspRiskDecisionsTable.title,
       pillar: mspRiskDecisionsTable.pillar,
+      controlDomain: mspRiskDecisionsTable.controlDomain,
       framework: mspRiskDecisionsTable.framework,
       rawRiskLevel: mspRiskDecisionsTable.rawRiskLevel,
       residualRiskLevel: mspRiskDecisionsTable.residualRiskLevel,
@@ -174,6 +177,7 @@ async function readRiskRegister(scope: TenantScope): Promise<RawModule> {
       pillar: str(r.pillar),
       framework: str(r.framework),
       businessUnit: str(scope.businessUnit),
+      controlDomain: str(r.controlDomain),
     })),
   };
 }
@@ -186,6 +190,7 @@ async function readOwnership(scope: TenantScope): Promise<RawModule> {
       objType: portalOwnershipRowsTable.objType,
       name: portalOwnershipRowsTable.name,
       sub: portalOwnershipRowsTable.sub,
+      controlDomain: portalOwnershipRowsTable.controlDomain,
     })
     .from(portalOwnershipRowsTable)
     .where(eq(portalOwnershipRowsTable.customerId, scope.customerId))
@@ -202,6 +207,7 @@ async function readOwnership(scope: TenantScope): Promise<RawModule> {
       pillar: null,
       framework: null,
       businessUnit: str(scope.businessUnit),
+      controlDomain: str(r.controlDomain),
     })),
   };
 }
@@ -214,6 +220,7 @@ async function readSops(scope: TenantScope): Promise<RawModule> {
       sopId: mspSopsTable.sopId,
       title: mspSopsTable.title,
       category: mspSopsTable.category,
+      controlDomain: mspSopsTable.controlDomain,
       automationType: mspSopsTable.automationType,
       versionStatus: mspSopsTable.versionStatus,
     })
@@ -235,6 +242,7 @@ async function readSops(scope: TenantScope): Promise<RawModule> {
       pillar: null,
       framework: null,
       businessUnit: str(scope.businessUnit),
+      controlDomain: str(r.controlDomain),
     })),
   };
 }
@@ -246,6 +254,7 @@ async function readRemediation(scope: TenantScope): Promise<RawModule> {
       stepId: remediationTrackerStepsTable.stepId,
       status: remediationTrackerStepsTable.status,
       verificationState: remediationTrackerStepsTable.verificationState,
+      controlDomain: remediationTrackerStepsTable.controlDomain,
     })
     .from(remediationTrackerStepsTable)
     .where(eq(remediationTrackerStepsTable.customerId, scope.customerId))
@@ -262,6 +271,7 @@ async function readRemediation(scope: TenantScope): Promise<RawModule> {
       pillar: null,
       framework: null,
       businessUnit: str(scope.businessUnit),
+      controlDomain: str(r.controlDomain),
     })),
   };
 }
@@ -275,6 +285,7 @@ async function readChangeControl(scope: TenantScope): Promise<RawModule> {
       riskLevel: mspChangeRequestsTable.riskLevel,
       status: mspChangeRequestsTable.status,
       category: mspChangeRequestsTable.category,
+      controlDomain: mspChangeRequestsTable.controlDomain,
     })
     .from(mspChangeRequestsTable)
     .where(and(eq(mspChangeRequestsTable.mspId, scope.mspId), eq(mspChangeRequestsTable.tenantId, scope.tenantId)))
@@ -291,6 +302,7 @@ async function readChangeControl(scope: TenantScope): Promise<RawModule> {
       pillar: null,
       framework: null,
       businessUnit: str(scope.businessUnit),
+      controlDomain: str(r.controlDomain),
     })),
   };
 }
@@ -303,6 +315,7 @@ async function readMicrosoftChanges(scope: TenantScope): Promise<RawModule> {
       changeClass: m365ChangeInterpretationsTable.changeClass,
       status: m365ChangeInterpretationsTable.status,
       controllable: m365ChangeInterpretationsTable.controllable,
+      controlDomain: m365ChangeInterpretationsTable.controlDomain,
     })
     .from(m365ChangeInterpretationsTable)
     .where(eq(m365ChangeInterpretationsTable.mspId, scope.mspId))
@@ -319,6 +332,7 @@ async function readMicrosoftChanges(scope: TenantScope): Promise<RawModule> {
       pillar: null,
       framework: null,
       businessUnit: str(scope.businessUnit),
+      controlDomain: str(r.controlDomain),
     })),
   };
 }

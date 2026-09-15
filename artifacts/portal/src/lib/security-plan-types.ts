@@ -12,7 +12,9 @@
 
 /** One assembled row in a uniform, honest shape — `security-plan-assembly.ts`'s
  * `SecurityPlanAssembledItem`. `state`/`detail` are each source module's own
- * vocabulary, never mapped onto a shared scale (contract pack §4). */
+ * vocabulary, never mapped onto a shared scale (contract pack §4). `controlDomain`
+ * (#4143) is a real, separate per-row classification (see `CONTROL_DOMAINS` below) —
+ * null on any row its source register has never classified. */
 export interface SecurityPlanAssembledItem {
   readonly id: string;
   readonly title: string;
@@ -21,7 +23,22 @@ export interface SecurityPlanAssembledItem {
   readonly pillar: string | null;
   readonly framework: string | null;
   readonly businessUnit: string | null;
+  readonly controlDomain: string | null;
 }
+
+/** The Security Plan's Part II "Control Domains" grouping (#4143) — mirrors
+ * `SECURITY_PLAN_CONTROL_DOMAINS`/`SECURITY_PLAN_CONTROL_DOMAIN_LABELS`
+ * (`lib/db/src/schema/msp.ts`). A DIFFERENT vocabulary from `pillar` and from
+ * any module's own category field — never derived from either. */
+export const CONTROL_DOMAINS = ["identity", "data", "collaboration", "change", "monitoring"] as const;
+export type SecurityPlanControlDomain = (typeof CONTROL_DOMAINS)[number];
+export const CONTROL_DOMAIN_LABELS: Record<SecurityPlanControlDomain, string> = {
+  identity: "Identity and access",
+  data: "Data and retention",
+  collaboration: "Collaboration and sharing",
+  change: "Change and operations",
+  monitoring: "Monitoring and response",
+};
 
 /** One source module's contribution — real rows read from that module's own table. */
 export interface SecurityPlanAssembledModule {

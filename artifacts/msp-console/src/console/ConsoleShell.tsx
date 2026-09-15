@@ -50,7 +50,7 @@ import {
   type PageMeta, type TreeHandlers,
 } from "./treeModel";
 import {
-  groupForPage, parseLocation, selectionToPath, type Selection,
+  groupForPage, groupForMspPage, parseLocation, selectionToPath, type Selection,
 } from "./nav";
 import { RiskRegister } from "@/modules/risk-register/RiskRegister";
 import { RetentionQueue } from "@/modules/retention/RetentionQueue";
@@ -60,7 +60,6 @@ import { Overview } from "./modules/Overview";
 import { LaunchControl } from "./modules/LaunchControl";
 import { AzureCredential } from "./modules/AzureCredential";
 import { Projects } from "./modules/Projects";
-import { PlaceholderModule } from "./modules/PlaceholderModule";
 
 function roleLabelFor(p: MspUserProfile): string {
   if (p.mspRole === "PlatformAdmin") return "PlatformAdmin — full access";
@@ -97,6 +96,7 @@ export function ConsoleShell({ profile }: { profile: MspUserProfile }) {
   const [openTenants, setOpenTenants] = useState<Set<number>>(new Set());
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   const [mspOpen, setMspOpen] = useState(true);
+  const [openMspGroups, setOpenMspGroups] = useState<Set<string>>(new Set());
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const [notifsOpen, setNotifsOpen] = useState(false);
@@ -130,6 +130,13 @@ export function ConsoleShell({ profile }: { profile: MspUserProfile }) {
       });
     },
     toggleMsp: () => setMspOpen((v) => !v),
+    toggleMspGroup: (key: string) => {
+      setOpenMspGroups((prev) => {
+        const nextSet = new Set(prev);
+        if (nextSet.has(key)) nextSet.delete(key); else nextSet.add(key);
+        return nextSet;
+      });
+    },
   }), [navigate]);
 
   // Auto-expand the tenant (and owning group) for the current selection, so a
@@ -143,6 +150,12 @@ export function ConsoleShell({ profile }: { profile: MspUserProfile }) {
       if (grp) {
         const key = `${sel.tenant}:${grp.id}`;
         setOpenGroups((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
+      }
+    }
+    if (sel.kind === "msp") {
+      const grp = groupForMspPage(sel.page);
+      if (grp) {
+        setOpenMspGroups((prev) => (prev.has(grp.id) ? prev : new Set(prev).add(grp.id)));
       }
     }
     closeOverlays();
@@ -168,8 +181,8 @@ export function ConsoleShell({ profile }: { profile: MspUserProfile }) {
 
   // ── Derived view models ───────────────────────────────────────────────────
   const nodes = useMemo(
-    () => buildTreeNodes(customers, effectiveSel, openTenants, openGroups, mspOpen, treeQuery, handlers),
-    [customers, effectiveSel, openTenants, openGroups, mspOpen, treeQuery, handlers],
+    () => buildTreeNodes(customers, effectiveSel, openTenants, openGroups, mspOpen, openMspGroups, treeQuery, handlers),
+    [customers, effectiveSel, openTenants, openGroups, mspOpen, openMspGroups, treeQuery, handlers],
   );
   const railNodes = useMemo(() => buildRailNodes(customers, effectiveSel, handlers), [customers, effectiveSel, handlers]);
   const commands = useMemo(() => buildCommands(customers, handlers), [customers, handlers]);
@@ -490,28 +503,6 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
     // lives inside the module itself, not the outer tree, since the backend
     // has no cross-customer aggregate route (pack §5).
     return <Projects customers={customers} embedded />;
-  }
-  if (sel.kind === "msp" && sel.page === "workflows") {
-    // Workflows (#4080, Feature #3768) — real nav slot, generic
-    // `PlaceholderModule` mount. Scope isn't defined yet; see the issue.
-    return (
-      <PlaceholderModule
-        icon="workflow"
-        title="Workflows isn't built yet"
-        description="This nav slot is real — what runs here hasn't been scoped yet. Shane will define it while dogfooding the console on his own tenant, and this placeholder is replaced with the real module once it lands."
-      />
-    );
-  }
-  if (sel.kind === "msp" && sel.page === "agents") {
-    // Agents (#4080, Feature #3768) — real nav slot, generic
-    // `PlaceholderModule` mount. Scope isn't defined yet; see the issue.
-    return (
-      <PlaceholderModule
-        icon="sparkles"
-        title="Agents isn't built yet"
-        description="This nav slot is real — what runs here hasn't been scoped yet. Shane will define it while dogfooding the console on his own tenant, and this placeholder is replaced with the real module once it lands."
-      />
-    );
   }
   if (sel.kind === "msp" && sel.page === "audit") {
     // Audit Log (#4012, README screen 63), Operations mount — no customer
