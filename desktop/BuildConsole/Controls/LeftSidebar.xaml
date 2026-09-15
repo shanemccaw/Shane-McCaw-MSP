@@ -167,21 +167,21 @@
                                     Click="BtnNewChatPicker_Click">
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
-                                        <Border Background="#25497A" CornerRadius="7">
+                                        <Border Background="{StaticResource NewChatPickerBackgroundBrush}" CornerRadius="7">
                                             <ContentPresenter Margin="10,0" VerticalAlignment="Center"/>
                                         </Border>
                                     </ControlTemplate>
                                 </Button.Template>
                                 <Grid>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="+" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="#CFE4FB" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                        <TextBlock Text="New Chat" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="#CFE4FB" VerticalAlignment="Center"/>
+                                        <TextBlock Text="+" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource NewChatPickerTextBrush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                        <TextBlock Text="New Chat" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource NewChatPickerTextBrush}" VerticalAlignment="Center"/>
                                     </StackPanel>
                                     <TextBlock x:Name="NewChatChevronGlyph"
                                                Text="&#xE70D;"
                                                FontFamily="{StaticResource IconFontFamily}"
                                                FontSize="{StaticResource CaptionFontSize}"
-                                               Foreground="#CFE4FB"
+                                               Foreground="{StaticResource NewChatPickerTextBrush}"
                                                HorizontalAlignment="Right"
                                                VerticalAlignment="Center"
                                                RenderTransformOrigin="0.5,0.5">
@@ -194,8 +194,8 @@
 
                             <Border x:Name="NewChatPickerPanel"
                                     Visibility="Collapsed"
-                                    Background="#0E1420"
-                                    BorderBrush="#262C36"
+                                    Background="{StaticResource NewChatPickerPanelBackgroundBrush}"
+                                    BorderBrush="{StaticResource NewChatPickerPanelBorderBrush}"
                                     BorderThickness="1"
                                     CornerRadius="8"
                                     Margin="0,6,0,0">
@@ -576,7 +576,7 @@
 
                         <!-- Active Working Epic Jump Bar -->
                         <Border x:Name="ActiveWorkingEpicBar"
-                                Background="#1A2D23"
+                                Background="{StaticResource ActiveWorkingEpicBarBackgroundBrush}"
                                 BorderBrush="{StaticResource StatusRunningBrush}"
                                 BorderThickness="1"
                                 CornerRadius="5"

@@ -61,6 +61,20 @@
          derives from GreenBrush above, which is this file's own Catppuccin key, not
          a Colors.xaml hue. -->
     <SolidColorBrush x:Key="GreenWashMediumBrush" Color="#33A6E3A1"/>
+
+    <!-- Git #4224 — bespoke one-off accents from LeftSidebar.xaml's "New Chat"
+         picker flow and "Active Working Epic" banner (#4170/#4162 audit).
+         None of these are Catppuccin hues or close enough to an existing
+         brush to reuse without recoloring the call site (see #4224's own
+         evidence) — real matching brushes so the Theme Editor's sliders
+         actually reach them, named for the control they belong to rather
+         than folded into the shared Catppuccin/status palette above. -->
+    <SolidColorBrush x:Key="NewChatPickerBackgroundBrush" Color="#25497A"/> <!-- BtnNewChatPicker ControlTemplate fill -->
+    <SolidColorBrush x:Key="NewChatPickerTextBrush"       Color="#CFE4FB"/> <!-- "+"/label/chevron on BtnNewChatPicker -->
+    <SolidColorBrush x:Key="NewChatPickerPanelBackgroundBrush" Color="#0E1420"/> <!-- NewChatPickerPanel fill -->
+    <SolidColorBrush x:Key="NewChatPickerPanelBorderBrush"     Color="#262C36"/> <!-- NewChatPickerPanel border -->
+    <SolidColorBrush x:Key="ActiveWorkingEpicBarBackgroundBrush" Color="#1A2D23"/> <!-- ActiveWorkingEpicBar fill -->
+
     <SolidColorBrush x:Key="RedBrush"      Color="#F38BA8"/>
     <SolidColorBrush x:Key="PeachBrush"    Color="#FAB387"/>
     <SolidColorBrush x:Key="YellowBrush"   Color="#F9E2AF"/>
