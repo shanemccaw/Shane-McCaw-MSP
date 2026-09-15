@@ -187,6 +187,40 @@
     </LinearGradientBrush>
 
     <!-- ══════════════════════════════════════════════════════════════════
+         CRITTER LOUNGE — THEATRICAL CURTAIN PALETTE (Git #4221)
+
+         Promoted from CritterLoungeControl.xaml's own local UserControl.Resources
+         to real named brushes here, closing out the 11 raw hex literals #4186 (the
+         FontSize/FontFamily audit of that file) deliberately left unmapped rather
+         than force onto an inexact substitute — see #4186 and #4221's own evidence.
+
+         Values are verbatim from the control's original local resources: a
+         deliberate theatrical easter-egg palette (Critter Lounge's theater-curtain
+         scene) with no semantic overlap to the app's real Colors.xaml/DarkTheme.xaml
+         hues, so these are real named brushes with their own identity — not
+         retargeted onto AccentColor/RedBrush/PeachBrush/etc, which would visibly
+         break the intended crimson-velvet/gold-tassel look for an inexact match. -->
+    <LinearGradientBrush x:Key="CurtainVelvetBrush" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Color="#5A0E1A" Offset="0.0"/>
+        <GradientStop Color="#8B1E2D" Offset="0.2"/>
+        <GradientStop Color="#B91C1C" Offset="0.5"/>
+        <GradientStop Color="#7F1D1D" Offset="0.8"/>
+        <GradientStop Color="#450A0A" Offset="1.0"/>
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="GoldFringeBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#FDE047" Offset="0.0"/>
+        <GradientStop Color="#CA8A04" Offset="1.0"/>
+    </LinearGradientBrush>
+    <!-- Solid form of the same gold (GoldFringeBrush's own darker stop) for the
+         curtain panel's BorderBrush, which needs a flat color, not a gradient. -->
+    <SolidColorBrush x:Key="GoldTrimBrush" Color="#CA8A04"/>
+    <!-- Pure black at 12% alpha — the curtain pleat's shadow overlay fill. Distinct
+         from SoftRowShadow/SoftCardShadow above: those are DropShadowEffect
+         resources (an Effect, not a Background), so they don't fit this
+         Background="..." usage. -->
+    <SolidColorBrush x:Key="CurtainPleatShadowBrush" Color="#20000000"/>
+
+    <!-- ══════════════════════════════════════════════════════════════════
          WINDOW
          ══════════════════════════════════════════════════════════════════ -->
     <Style TargetType="{x:Type Window}">

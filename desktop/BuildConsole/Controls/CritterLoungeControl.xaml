@@ -5,22 +5,9 @@
              Cursor="Hand"
              MouseLeftButtonDown="Lounge_MouseLeftButtonDown"
              ToolTip="Critter Lounge Theater — click to interact with the critters or change scenes! 🎭">
-    <UserControl.Resources>
-        <!-- Theatrical Crimson Velvet Gradient for Curtains -->
-        <LinearGradientBrush x:Key="CurtainVelvetBrush" StartPoint="0,0" EndPoint="1,0">
-            <GradientStop Color="#5A0E1A" Offset="0.0"/>
-            <GradientStop Color="#8B1E2D" Offset="0.2"/>
-            <GradientStop Color="#B91C1C" Offset="0.5"/>
-            <GradientStop Color="#7F1D1D" Offset="0.8"/>
-            <GradientStop Color="#450A0A" Offset="1.0"/>
-        </LinearGradientBrush>
-
-        <!-- Gold Tassel Brush -->
-        <LinearGradientBrush x:Key="GoldFringeBrush" StartPoint="0,0" EndPoint="0,1">
-            <GradientStop Color="#FDE047" Offset="0.0"/>
-            <GradientStop Color="#CA8A04" Offset="1.0"/>
-        </LinearGradientBrush>
-    </UserControl.Resources>
+    <!-- CurtainVelvetBrush/GoldFringeBrush/GoldTrimBrush/CurtainPleatShadowBrush are
+         real named brushes in Themes/DarkTheme.xaml (Git #4221) — promoted from what
+         used to be this control's own local UserControl.Resources. -->
 
     <Border BorderBrush="{StaticResource Surface0Brush}"
             BorderThickness="0,1,0,0"
@@ -60,10 +47,10 @@
                         HorizontalAlignment="Left"
                         Width="0"
                         Background="{StaticResource CurtainVelvetBrush}"
-                        BorderBrush="#CA8A04"
+                        BorderBrush="{StaticResource GoldTrimBrush}"
                         BorderThickness="0,0,2,0">
                     <!-- Pleat shadow effect -->
-                    <Border Background="#20000000" HorizontalAlignment="Right" Width="8"/>
+                    <Border Background="{StaticResource CurtainPleatShadowBrush}" HorizontalAlignment="Right" Width="8"/>
                 </Border>
 
                 <!-- Right Curtain Panel -->
@@ -71,10 +58,10 @@
                         HorizontalAlignment="Right"
                         Width="0"
                         Background="{StaticResource CurtainVelvetBrush}"
-                        BorderBrush="#CA8A04"
+                        BorderBrush="{StaticResource GoldTrimBrush}"
                         BorderThickness="2,0,0,0">
                     <!-- Pleat shadow effect -->
-                    <Border Background="#20000000" HorizontalAlignment="Left" Width="8"/>
+                    <Border Background="{StaticResource CurtainPleatShadowBrush}" HorizontalAlignment="Left" Width="8"/>
                 </Border>
             </Grid>
 
