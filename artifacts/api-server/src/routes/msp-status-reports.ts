@@ -55,10 +55,50 @@ import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { createNotification } from "../lib/notification-center.ts";
 import { logger } from "../lib/logger.ts";
 import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
+import { ladderEvaluationInput } from "../middlewares/rbac-ladder.ts";
+import { evaluateAccess } from "@workspace/db/rbac/access";
+import { effectiveLegacyRole } from "@workspace/db/rbac/legacy-ladder";
 
 const log = logger.child({ channel: "tenant.portal" });
 
 const router: IRouter = Router();
+
+/**
+ * Which of these candidate recipients actually hold `ladder.customer-user` — the
+ * exact floor `portal-status-reports.ts` requires to view a status report at all
+ * (#3043). Subscription is not sufficient on its own: a Free-tier tenant user can
+ * be opted in to the "message" notification category yet still fail this floor,
+ * and would otherwise be notified about a report they get a 404 on. Uses #1704's
+ * real `evaluateAccess()` / ladder RBAC input — not a bespoke role comparison,
+ * per #1923's and #3043's own sequencing decision. Fails closed: a recipient the
+ * RBAC model can't be consulted for is skipped, not notified.
+ */
+async function filterByStatusReportViewAccess(
+  recipients: readonly { id: number; role: "admin" | "client"; mspRole: string }[],
+): Promise<number[]> {
+  const allowed: number[] = [];
+  for (const recipient of recipients) {
+    const rung = effectiveLegacyRole({ role: recipient.role, mspRole: recipient.mspRole }) ?? null;
+    const prepared = await ladderEvaluationInput(rung, "ladder.customer-user");
+    if (prepared.kind === "unavailable") {
+      log.error(
+        { userId: recipient.id, reason: prepared.reason },
+        "status-report notification fan-out: RBAC model unavailable for a recipient — skipping (failing closed)",
+      );
+      continue;
+    }
+    const decision = evaluateAccess({ rbac: prepared.input, tier: null });
+    if (decision.allowed) {
+      allowed.push(recipient.id);
+    } else {
+      log.info(
+        { userId: recipient.id, reason: decision.reason },
+        "status-report notification fan-out: recipient does not hold ladder.customer-user — skipped",
+      );
+    }
+  }
+  return allowed;
+}
 
 function reportToWire(row: typeof mspStatusReportsTable.$inferSelect, authoredByName: string | null) {
   return {
@@ -399,25 +439,27 @@ router.post(
         })
         .returning();
 
-      // Notify every customer-side user on this report's customer — same
-      // tenant-wide fan-out `notifyRetentionRestore` already uses — so
-      // engagement is visible without the customer having to poll.
+      // Notify every customer-side user on this report's customer who can
+      // actually view status reports (#3043) — same tenant-wide fan-out shape
+      // `notifyRetentionRestore` uses, filtered through the real ladder.customer-user
+      // RBAC check before notifying, since subscription alone isn't sufficient.
       // Best-effort: createNotification never throws, so a delivery failure
       // here can't fail the comment write that already committed.
       void (async () => {
-        const recipients = await db
-          .select({ id: usersTable.id })
+        const candidates = await db
+          .select({ id: usersTable.id, role: usersTable.role, mspRole: usersTable.mspRole })
           .from(usersTable)
           .where(and(eq(usersTable.tenantId, report.customerId), eq(usersTable.role, "client")));
 
-        for (const recipient of recipients) {
+        const recipientIds = await filterByStatusReportViewAccess(candidates);
+        for (const recipientId of recipientIds) {
           void createNotification({
             title: `New comment on your status report "${report.periodLabel}"`,
             body: parsed.data.body,
             category: "message",
             notifType: "message",
             linkPath: `/status-reports/${report.id}`,
-            recipient: { type: "customer_user", userId: recipient.id },
+            recipient: { type: "customer_user", userId: recipientId },
           });
         }
       })();
