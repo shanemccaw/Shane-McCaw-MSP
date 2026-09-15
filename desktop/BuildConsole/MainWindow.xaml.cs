@@ -1217,6 +1217,14 @@ namespace BuildConsole
             // clicks, eliminating the out-of-sync / duplicate fetch problem.
             LeftSidebar.IssueSelected += (s, issue) =>
             {
+                // Git #4247 — in Git Mode the tree click drives the right-hand issue-detail panel
+                // instead of opening a center document tab (the center is never touched in Git Mode).
+                if (_isGitMode)
+                {
+                    LoadGitModeIssueDetail(issue.IssueNumber);
+                    return;
+                }
+
                 var cached = LeftSidebar.BuildDetailIssue(issue.IssueNumber);
                 if (cached != null)
                     OpenGitIssueDetailTab(cached);
@@ -1226,7 +1234,16 @@ namespace BuildConsole
 
             // Git #921 (Epic #803) — milestone and epic clicks open document tabs.
             LeftSidebar.MilestoneTabRequested += (s, m) => OpenMilestoneDetailTab(m);
-            LeftSidebar.GitDetailTabRequested += (s, issue) => OpenGitIssueDetailTab(issue);
+            LeftSidebar.GitDetailTabRequested += (s, issue) =>
+            {
+                // Git #4247 — same Git Mode routing as IssueSelected above.
+                if (_isGitMode)
+                {
+                    LoadGitModeIssueDetail(issue.IssueNumber);
+                    return;
+                }
+                OpenGitIssueDetailTab(issue);
+            };
 
             // Git #954 (Epic #803) — the sidebar's Settings view is a category nav
             // list now; a click opens (or focuses) the native Settings tab scrolled

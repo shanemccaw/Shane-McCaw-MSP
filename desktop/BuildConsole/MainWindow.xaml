@@ -911,10 +911,12 @@
                                   ShelfOpenRequested="ActivityBar_ShelfOpenRequested"
                                   ActiveViewChanged="ActivityBar_ActiveViewChanged"/>
 
-                <!-- ── Git Mode Container (3-Panel Layout & Header Bar) ── -->
-                <ctrl:GitModeContainer x:Name="GitModeContainer"
-                                       Grid.Column="0" Grid.ColumnSpan="6"
-                                       Panel.ZIndex="1000"
+                <!-- ── Git Mode: rail (48px / expanded 300px), column-scoped like the Test Mode
+                     Diagnostics rail — NOT a full-span overlay (Git #4247). The real epic/issue
+                     tree stays in LeftSidebar (switched to the Git Board view); the graph opens in
+                     its own document tab. -->
+                <ctrl:GitModeRailPanel x:Name="GitModeRailPanel"
+                                       Grid.Column="0"
                                        Visibility="Collapsed"/>
 
                 <!-- ── Test Mode: Diagnostics Panel (rail 48px / expanded 300px) ── -->
@@ -1216,6 +1218,12 @@
                     <!-- Test Mode: Composer Panel -->
                     <ctrl:TestModeComposerPanel x:Name="TestModeComposerPanel"
                                                 Visibility="Collapsed"/>
+
+                    <!-- Git Mode: Issue Detail panel (real IssueDetailView), replaces the Build
+                         Queue in this column while Git Mode is active — same swap Test Mode's
+                         Composer does (Git #4247). -->
+                    <ctrl:GitModeIssueDetailPanel x:Name="GitModeIssueDetailPanel"
+                                                  Visibility="Collapsed"/>
                 </Grid>
 
             </Grid>
