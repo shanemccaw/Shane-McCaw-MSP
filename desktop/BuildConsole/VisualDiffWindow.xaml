@@ -299,7 +299,7 @@
                     <StackPanel>
                         <TextBlock Text="HEATMAP LEGEND" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
-                            <Border Width="12" Height="12" Background="#FF007F" CornerRadius="2" Margin="0,0,6,0"/>
+                            <Border Width="12" Height="12" Background="{StaticResource DiffHighlightBrush}" CornerRadius="2" Margin="0,0,6,0"/>
                             <TextBlock Text="Mismatch Pixel" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextBrush}"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal">
