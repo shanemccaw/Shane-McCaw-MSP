@@ -1,0 +1,140 @@
+{
+  "schemaVersion": "1.0",
+  "productName": "Website",
+  "sessionId": "2026-09-14-2031",
+  "timing": {
+    "startedAt": "2026-09-14T20:31:14.5040428-04:00",
+    "endedAt": "2026-09-14T20:31:40.074351-04:00",
+    "durationSeconds": 25.6,
+    "formattedDuration": "00m 25s"
+  },
+  "environment": {
+    "baseUrl": "localhost:5173/",
+    "activePage": "scan",
+    "urlsTested": [
+      "http://localhost:5173/scan"
+    ]
+  },
+  "summary": {
+    "assessment": "Issues Found",
+    "totalBugs": 3,
+    "blockers": 0,
+    "critical": 0,
+    "bugs": 3,
+    "minor": 0,
+    "consoleErrors": 0,
+    "networkFailures": 0,
+    "screenshotsCaptured": 2,
+    "apiCalls": 0
+  },
+  "bugs": [
+    {
+      "index": 1,
+      "id": 12,
+      "uuid": "12db57e8",
+      "severity": "Bug",
+      "status": "Open",
+      "gitIssueNumber": null,
+      "resolution": null,
+      "resolutionReason": null,
+      "isDesign": false,
+      "title": "",
+      "notes": "I do not think this is accurate",
+      "stepsToReproduce": "1. Locate and inspect \u0060[data-testid=\u0022freescan-consent-screen\u0022] \u003E div:nth-of-type(3)\u0060",
+      "expectedBehavior": "",
+      "actualBehavior": "Selector: [data-testid=\u0022freescan-consent-screen\u0022] \u003E div:nth-of-type(3)\r\nTag: \u003Cdiv\u003E\r\nDimensions: 656\u00D7170 px\r\nText: \u0022NOT REQUESTED, AND NOT GRANTABLE HERE\n\u00D7\nMail.Read \u2014 no mailbox, message or attachment is ever read\n\u00D7\nFiles.Read \u2014 fil...\u0022",
+      "tags": [
+        "dom-inspector",
+        "div"
+      ],
+      "url": "http://localhost:5173/scan",
+      "pageTitle": "",
+      "browserVersion": "",
+      "osVersion": "",
+      "windowSize": "",
+      "viewportSize": "",
+      "userAgent": "",
+      "createdAt": "2026-09-14T20:31:33.4538137-04:00",
+      "performance": null,
+      "screenshots": [
+        "2026-09-14_20-31-33-578.png"
+      ]
+    },
+    {
+      "index": 2,
+      "id": 13,
+      "uuid": "a15d4250",
+      "severity": "Bug",
+      "status": "Open",
+      "gitIssueNumber": null,
+      "resolution": null,
+      "resolutionReason": null,
+      "isDesign": false,
+      "title": "",
+      "notes": "I do not think this is accurate",
+      "stepsToReproduce": "1. Locate and inspect \u0060[data-testid=\u0022freescan-consent-screen\u0022] \u003E div:nth-of-type(2)\u0060",
+      "expectedBehavior": "",
+      "actualBehavior": "Selector: [data-testid=\u0022freescan-consent-screen\u0022] \u003E div:nth-of-type(2)\r\nTag: \u003Cdiv\u003E\r\nDimensions: 656\u00D7377 px\r\nText: \u0022THE READ APP REGISTRATION ASKS FOR\nOrganization.Read.All\nTenant profile, verified domains and the licence counts your...\u0022",
+      "tags": [
+        "dom-inspector",
+        "div"
+      ],
+      "url": "http://localhost:5173/scan",
+      "pageTitle": "",
+      "browserVersion": "",
+      "osVersion": "",
+      "windowSize": "",
+      "viewportSize": "",
+      "userAgent": "",
+      "createdAt": "2026-09-14T20:31:25.3108464-04:00",
+      "performance": null,
+      "screenshots": [
+        "2026-09-14_20-31-25-451.png"
+      ]
+    },
+    {
+      "index": 3,
+      "id": 14,
+      "uuid": "ced983fcd771454e85a753ae326c9dfd",
+      "severity": "Bug",
+      "status": "Open",
+      "gitIssueNumber": null,
+      "resolution": null,
+      "resolutionReason": null,
+      "isDesign": false,
+      "title": "",
+      "notes": "![screenshot](C:\\Users\\Ronnie\\AppData\\Roaming\\BuildConsole\\visual-test-screenshots\\localhost_5173\\scan\\2026-09-14_20-31-25-451.png)\n\n![screenshot](C:\\Users\\Ronnie\\AppData\\Roaming\\BuildConsole\\visual-test-screenshots\\localhost_5173\\scan\\2026-09-14_20-31-33-578.png)",
+      "stepsToReproduce": "",
+      "expectedBehavior": "",
+      "actualBehavior": "",
+      "tags": [],
+      "url": "http://localhost:5173/scan",
+      "pageTitle": "",
+      "browserVersion": "",
+      "osVersion": "",
+      "windowSize": "",
+      "viewportSize": "",
+      "userAgent": "",
+      "createdAt": "2026-09-14T20:31:40.0646837-04:00",
+      "performance": null,
+      "screenshots": [
+        "2026-09-14_20-31-25-451.png",
+        "2026-09-14_20-31-33-578.png"
+      ]
+    }
+  ],
+  "consoleErrors": [],
+  "commandsExecuted": [],
+  "screenshots": [
+    "screenshots/screenshot-01.png",
+    "screenshots/screenshot-02.png"
+  ],
+  "artifacts": {
+    "summaryMarkdown": "summary.md",
+    "consoleJson": "console/console.json",
+    "notesMarkdown": "notes/notes.md",
+    "apiDirectory": "api/",
+    "screenshotsDirectory": "screenshots/",
+    "attachmentsDirectory": "attachments/"
+  }
+}
