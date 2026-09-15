@@ -79,6 +79,12 @@ import {
   customerAlertPreferencesTable,
   portalDepartmentMappingsTable,
   CUSTOMER_ALERT_CATEGORIES,
+  // #4127 Batch C — Tenant & Ops cluster.
+  projectsTable,
+  kanbanTasksTable,
+  tenantEngineSnapshotsTable,
+  mspMessageCenterItemsTable,
+  mspStatusReportsTable,
   type BotAction,
   type BotAuthMode,
   type BotCostOwner,
@@ -104,6 +110,11 @@ import { groupByDepartment } from "./portal-settings-departments.ts";
 import { CUSTOMER_ALERT_BALANCED_DEFAULTS } from "./customer-alert-delivery.ts";
 import { usersHoldingGrantRole } from "../middlewares/rbac-capability.ts";
 import { CUSTOMER_PLATFORM_ROLE_KEYS } from "@workspace/db/rbac/legacy-ladder";
+// #4127 Batch C — Tenant & Ops cluster.
+import { resolveCustomerUserIds } from "./tenant-signals.ts";
+import { buildEnginesResponse, type EnginesResponse } from "../routes/portal-mission-control.ts";
+import { effectiveDate } from "./portal-message-center.ts";
+import { latestSealedPair, snapshotCompleteness, readSnapshotDocument } from "./config-state-views.ts";
 
 const log = logger.child({ channel: "engine.shanebot" });
 
@@ -145,7 +156,14 @@ export type BotCardType =
   | "password"
   | "breakglass"
   | "documents"
-  | "settings";
+  | "settings"
+  // #4127 Batch C — Tenant & Ops cluster.
+  | "tenant-status"
+  | "project"
+  | "ms-changes"
+  | "diagnostics"
+  | "status-reports"
+  | "config-state";
 
 export interface BotInstanceConfig {
   slug: BotSlug;
@@ -203,6 +221,13 @@ export const BOT_INSTANCES: Record<BotSlug, BotInstanceConfig> = {
       "breakglass",
       "documents",
       "settings",
+      // #4127 Batch C — Tenant & Ops cluster.
+      "tenant-status",
+      "project",
+      "ms-changes",
+      "diagnostics",
+      "status-reports",
+      "config-state",
     ],
     costOwner: "msp",
     personaSurface: "portal",
@@ -324,6 +349,13 @@ export interface BotGrounding {
     breakglass?: GenericCardData;
     documents?: GenericCardData;
     settings?: GenericCardData;
+    // #4127 Batch C — Tenant & Ops cluster generic cards.
+    tenantStatus?: GenericCardData;
+    project?: GenericCardData;
+    msChanges?: GenericCardData;
+    diagnostics?: GenericCardData;
+    statusReports?: GenericCardData;
+    configState?: GenericCardData;
   };
 }
 
@@ -1295,6 +1327,279 @@ export function settingsTopic(
   };
 }
 
+// ── #4127 Batch C — Tenant & Ops cluster topic builders ──────────────────────
+// Same pure-function-over-already-fetched-rows split #4125/#4126 established.
+// tenantStatus/project/msChanges/configState are portal-owned, customerId-keyed
+// reads (no mspId+tenantId `scope` needed); diagnostics reuses the SAME
+// findingRows Batch A's second wave already fetches for the `findings` topic
+// (filtered here to severity==="critical" only — msp-diagnostics.ts's own
+// `/latest` route does this filtering in application code too, not SQL, per
+// its own header comment). Eyebrow/navLabel/note copy matches the Card
+// Gallery design's own `GEN.tenantStatus` / `GEN.project` / etc. entries
+// verbatim (`Design/portal/design_handoff_full_site/screens/
+// ShaneBot Card Gallery.dc.html`) — only the VALUES are real, queried data.
+
+/** Mirrors portal-mission-control.ts's EngineStatusEntry.severity → card tone. */
+function engineToneFor(severity: "good" | "watch" | "high" | "info"): GenericCardTone {
+  switch (severity) {
+    case "high":
+      return "red";
+    case "watch":
+      return "gold";
+    case "good":
+      return "green";
+    default:
+      return "slate";
+  }
+}
+
+/** Hour-level freshness for tenantStatus's "last scan Nh ago" — relativeDate() above is day-granularity only. */
+function hoursAgoLabel(d: Date): string {
+  const hours = Math.floor((Date.now() - d.getTime()) / 3_600_000);
+  if (hours < 1) return "less than an hour ago";
+  if (hours < 48) return `${hours}h ago`;
+  return relativeDate(d);
+}
+
+export function tenantStatusTopic(
+  engines: readonly { key: string; label: string; severity: "good" | "watch" | "high" | "info"; statusLabel: string; detail: string }[],
+  lastScanAt: Date | null,
+): GenericTopic {
+  if (engines.length === 0) {
+    return { summaryLabel: "Tenant status", summary: "No tenant status is available yet.", card: null };
+  }
+  const needsAttention = engines.filter((e) => e.severity === "high" || e.severity === "watch");
+  const scanSuffix = lastScanAt ? `, last scan ${hoursAgoLabel(lastScanAt)}` : "";
+  const headValue = needsAttention.length > 0 ? "Attention" : "Healthy";
+  const headLabel =
+    needsAttention.length > 0
+      ? `${needsAttention.length} area${needsAttention.length === 1 ? "" : "s"} need${needsAttention.length === 1 ? "s" : ""} a look${scanSuffix}`
+      : `no areas need a look${scanSuffix}`;
+  return {
+    summaryLabel: "Tenant status",
+    summary: `${headValue} — ${headLabel}.\n${engines.map((e) => `• ${e.label}: ${e.statusLabel} — ${e.detail}`).join("\n")}`,
+    card: {
+      eyebrow: "TENANT STATUS",
+      navLabel: "Open Overview",
+      head: { value: headValue, label: headLabel },
+      rows: engines.slice(0, 5).map((e) => ({
+        left: e.label,
+        sub: e.detail,
+        right: e.statusLabel,
+        tone: engineToneFor(e.severity),
+      })),
+      note: "Same status strip that sits at the top of your sidebar.",
+    },
+  };
+}
+
+/** One kanban_tasks column value → the friendly label + tone the project topic shows. */
+function projectTaskDisplay(column: string): { label: string; tone: GenericCardTone } {
+  switch (column) {
+    case "in_progress":
+      return { label: "In progress", tone: "blue" };
+    case "waiting_on_customer":
+      return { label: "Waiting on you", tone: "gold" };
+    case "review":
+      return { label: "In review", tone: "blue" };
+    case "completed":
+      return { label: "Completed", tone: "green" };
+    default:
+      return { label: "Not started", tone: "slate" };
+  }
+}
+
+export interface ActiveProjectRow {
+  readonly title: string;
+  readonly percentComplete: number;
+  readonly currentTaskTitle: string | null;
+  readonly taskRows: ReadonlyArray<{ readonly title: string; readonly column: string; readonly dueDate: Date | null }>;
+}
+
+/**
+ * #4127 judgment call (no list route exists for "the" customer's project):
+ * reuses the SAME real query portal-customer-engines.ts's dashboard handler
+ * already runs (active projects for the login's own customerUserIds, ordered
+ * by updatedAt desc, capped at 5) — so 0/1/many all fall out of the query
+ * itself rather than an assumption. 0 degrades honestly; exactly 1 shows real
+ * task-level detail; more than 1 states that honestly and lists every one
+ * rather than arbitrarily picking one.
+ */
+export function projectTopic(projects: readonly ActiveProjectRow[]): GenericTopic {
+  if (projects.length === 0) {
+    return { summaryLabel: "Projects", summary: "No active project on your account right now.", card: null };
+  }
+  if (projects.length > 1) {
+    return {
+      summaryLabel: "Projects",
+      summary: `You have ${projects.length} active projects — I won't guess which one you mean.\n${projects
+        .map((p) => `• ${p.title}: ${p.percentComplete}% complete${p.currentTaskTitle ? `, current task: ${p.currentTaskTitle}` : ""}`)
+        .join("\n")}`,
+      card: {
+        eyebrow: "PROJECTS",
+        navLabel: "Open Projects",
+        head: { value: String(projects.length), label: "active projects — ask about one by name for its task detail" },
+        rows: projects.slice(0, 5).map((p) => ({
+          left: p.title,
+          sub: `${p.percentComplete}% complete`,
+          right: p.currentTaskTitle ?? "No active task",
+          tone: "blue" as GenericCardTone,
+        })),
+        note: "Shane moves the cards; this only reads back where they landed.",
+      },
+    };
+  }
+  const project = projects[0];
+  return {
+    summaryLabel: "Projects",
+    summary: `${project.title}: ${project.percentComplete}% of tasks completed.\n${project.taskRows
+      .map((t) => `• ${t.title} (${projectTaskDisplay(t.column).label})`)
+      .join("\n")}`,
+    card: {
+      eyebrow: "PROJECTS",
+      navLabel: "Open Projects",
+      head: { value: `${project.percentComplete}%`, label: `tasks completed on ${project.title}` },
+      rows: project.taskRows.slice(0, 3).map((t) => {
+        const { label, tone } = projectTaskDisplay(t.column);
+        return {
+          left: t.title,
+          sub: t.dueDate ? `Due ${t.dueDate.toISOString().slice(0, 10)}` : "No due date",
+          right: label,
+          tone,
+        };
+      }),
+      note: "Shane moves the cards; this only reads back where they landed.",
+    },
+  };
+}
+
+export interface UpcomingMsChangeRow {
+  readonly title: string;
+  readonly effectiveAt: Date;
+  readonly workload: string;
+}
+
+export function msChangesTopic(rows: readonly UpcomingMsChangeRow[]): GenericTopic {
+  if (rows.length === 0) {
+    return { summaryLabel: "Microsoft Changes", summary: "No Microsoft-side changes are landing in the next 90 days.", card: null };
+  }
+  const sorted = [...rows].sort((a, b) => a.effectiveAt.getTime() - b.effectiveAt.getTime());
+  return {
+    summaryLabel: "Microsoft Changes",
+    summary: `${rows.length} Microsoft-side change(s) land in the next 90 days.\n${sorted
+      .slice(0, 5)
+      .map((r) => `• ${r.title} (${r.effectiveAt.toISOString().slice(0, 10)})`)
+      .join("\n")}`,
+    card: {
+      eyebrow: "MICROSOFT CHANGES",
+      navLabel: "Open Microsoft Changes",
+      head: { value: String(rows.length), label: "Microsoft-side changes land in the next 90 days" },
+      rows: sorted.slice(0, 5).map((r) => ({
+        left: r.title,
+        sub: `${r.workload} · lands ${r.effectiveAt.toISOString().slice(0, 10)}`,
+        right: "Reference",
+        tone: "slate" as GenericCardTone,
+      })),
+      note: "Microsoft's own change roadmap — separate from Change Control.",
+    },
+  };
+}
+
+export function diagnosticsTopic(criticalFindings: readonly { title: string }[]): GenericTopic {
+  if (criticalFindings.length === 0) {
+    return { summaryLabel: "Diagnostics & Scripts", summary: "No critical findings on the latest diagnostic run.", card: null };
+  }
+  return {
+    summaryLabel: "Diagnostics & Scripts",
+    summary: `${criticalFindings.length} critical finding(s) on the latest diagnostic run.\n${criticalFindings.map((f) => `• ${f.title}`).join("\n")}`,
+    card: {
+      eyebrow: "DIAGNOSTICS & SCRIPTS",
+      navLabel: "Open Diagnostics and Scripts",
+      head: { value: String(criticalFindings.length), label: "critical findings on the latest diagnostic run" },
+      rows: criticalFindings.slice(0, 5).map((f) => ({ left: f.title, sub: "", right: "Critical", tone: "red" as GenericCardTone })),
+      note: "A point-in-time run, separate from Remediation Tracking's ongoing checklist.",
+    },
+  };
+}
+
+export interface PublishedStatusReportRow {
+  readonly periodLabel: string;
+  readonly asOfDate: Date;
+  readonly authoredByName: string | null;
+}
+
+/** Rows must already be ordered desc by asOfDate — the caller's query does this, same as portal-status-reports.ts. */
+export function statusReportsTopic(rows: readonly PublishedStatusReportRow[]): GenericTopic {
+  if (rows.length === 0) {
+    return { summaryLabel: "Status Reports", summary: "No published status reports yet.", card: null };
+  }
+  const newest = rows[0];
+  return {
+    summaryLabel: "Status Reports",
+    summary: `${rows.length} published report(s), newest is ${newest.periodLabel}.`,
+    card: {
+      eyebrow: "STATUS REPORTS",
+      navLabel: "Open Status Reports",
+      head: { value: String(rows.length), label: `published report${rows.length === 1 ? "" : "s"}, newest is ${newest.periodLabel}` },
+      rows: [
+        {
+          left: newest.periodLabel,
+          sub: `Published ${newest.asOfDate.toISOString().slice(0, 10)}${newest.authoredByName ? ` · written by ${newest.authoredByName}` : ""}`,
+          right: "Published",
+          tone: "green" as GenericCardTone,
+        },
+      ],
+      note: "Shane's monthly reports — a different register from My Architect's retainer reports.",
+    },
+  };
+}
+
+export interface ConfigStateCompleteness {
+  readonly resourceTypesTargeted: number;
+  readonly resourceTypesCollected: number;
+  readonly readableFraction: number | null;
+}
+
+export interface ConfigStateWorkloadRow {
+  readonly workload: string;
+  readonly resourceTypes: number;
+  readonly objectCount: number;
+  readonly collectedCount: number;
+}
+
+/**
+ * #4127 judgment call (real Configuration State route shape confirmed against
+ * config-state-views.ts, not assumed): `readableFraction` is (collected+empty)/
+ * targeted over the WHOLE snapshot, null when nothing was targeted — the
+ * closest real field to a "coverage percentage" the route actually has.
+ */
+export function configStateTopic(
+  completeness: ConfigStateCompleteness | null,
+  workloads: readonly ConfigStateWorkloadRow[],
+): GenericTopic {
+  if (!completeness) {
+    return { summaryLabel: "Configuration State", summary: "No sealed configuration snapshot exists for this tenant yet.", card: null };
+  }
+  const pct = completeness.readableFraction != null ? Math.round(completeness.readableFraction * 1000) / 10 : null;
+  const pctLabel = pct != null ? `${pct}%` : "unavailable";
+  return {
+    summaryLabel: "Configuration State",
+    summary: `${pctLabel} of the tenant is machine-readable on the latest snapshot (${completeness.resourceTypesCollected} of ${completeness.resourceTypesTargeted} resource types collected).`,
+    card: {
+      eyebrow: "CONFIGURATION STATE",
+      navLabel: "Open Configuration State",
+      head: { value: pctLabel, label: "of the tenant is machine-readable on the latest snapshot" },
+      rows: workloads.slice(0, 5).map((w) => ({
+        left: w.workload,
+        sub: `${w.resourceTypes} types · ${w.objectCount.toLocaleString("en-US")} objects`,
+        right: `${w.collectedCount} collected`,
+        tone: "slate" as GenericCardTone,
+      })),
+      note: "Reads coverage, not compliance.",
+    },
+  };
+}
+
 async function buildCustomerContext(
   customerId: number,
   mspId: number | null,
@@ -1760,6 +2065,172 @@ async function buildCustomerContext(
       .limit(100),
   ]);
 
+  // #4127 Batch C — Tenant & Ops cluster: a fourth wave. tenantStatus,
+  // statusReports and configState are portal-owned, customerId-scoped reads
+  // (no mspId+tenantId `scope` needed, same as Batch B's third wave above);
+  // msChanges DOES need `scope` — it reads the real per-M365-tenant Message
+  // Center table, the same (customerId, mspId) predicate
+  // portal-message-center.ts's own route uses. `project` and configState's
+  // per-workload rollup are deliberately NOT here — each needs a sequential
+  // dependent read (customerUserIds -> projects -> tasks; snapshot -> its own
+  // workload rollup), same "read then dependent read" shape
+  // lastCompletedRows -> findingRows already uses above. diagnostics needs no
+  // query at all: it reuses findingRows, already fetched by Batch A's second
+  // wave for the `findings` topic, filtered here to severity==="critical".
+  const [engineStatusResult, lastEngineScanRows, msChangeRows, publishedReportRows, currentSnapshotRows] = await Promise.all([
+    // Tenant status — the SAME real engine-status-strip computation
+    // GET /portal/mission-control/engines serves, exported for exactly this reuse.
+    buildEnginesResponse(customerId).catch((err: unknown) => {
+      log.error({ err, customerId }, "shanebot-engine: failed to build engine status strip for tenantStatus topic");
+      return null;
+    }),
+
+    // Freshness for tenantStatus's "last scan Nh ago" — buildEnginesResponse's
+    // own generatedAt is always "now" (a live computation), not a persisted
+    // scan time, so this reads the real most-recent snapshot capture instead.
+    db.select({ capturedAt: tenantEngineSnapshotsTable.capturedAt })
+      .from(tenantEngineSnapshotsTable)
+      .where(eq(tenantEngineSnapshotsTable.customerId, customerId))
+      .orderBy(desc(tenantEngineSnapshotsTable.capturedAt))
+      .limit(1),
+
+    // Microsoft Changes — the exact (customerId, mspId) predicate
+    // portal-message-center.ts's own GET /portal/message-center route uses.
+    scope
+      ? db.select({
+          title: mspMessageCenterItemsTable.title,
+          services: mspMessageCenterItemsTable.services,
+          startDateTime: mspMessageCenterItemsTable.startDateTime,
+          endDateTime: mspMessageCenterItemsTable.endDateTime,
+          actionRequiredByDateTime: mspMessageCenterItemsTable.actionRequiredByDateTime,
+          lastModifiedDateTime: mspMessageCenterItemsTable.lastModifiedDateTime,
+        })
+          .from(mspMessageCenterItemsTable)
+          .where(and(eq(mspMessageCenterItemsTable.customerId, scope.customerId), eq(mspMessageCenterItemsTable.mspId, scope.mspId)))
+          .orderBy(desc(mspMessageCenterItemsTable.lastModifiedDateTime))
+          .limit(500)
+      : Promise.resolve([]),
+
+    // Status Reports — same customerId + state:"published" predicate
+    // portal-status-reports.ts's list query uses, joined to usersTable here
+    // (rather than a second query) for the real authoredByName.
+    db.select({
+        periodLabel: mspStatusReportsTable.periodLabel,
+        asOfDate: mspStatusReportsTable.asOfDate,
+        authoredByName: usersTable.name,
+      })
+      .from(mspStatusReportsTable)
+      .leftJoin(usersTable, eq(usersTable.id, mspStatusReportsTable.authoredByUserId))
+      .where(and(eq(mspStatusReportsTable.customerId, customerId), eq(mspStatusReportsTable.state, "published")))
+      .orderBy(desc(mspStatusReportsTable.asOfDate))
+      .limit(10),
+
+    // Configuration State — the exact latestSealedPair() read
+    // GET /portal/config-state/snapshots/current calls.
+    latestSealedPair(customerId).catch((err: unknown) => {
+      log.error({ err, customerId }, "shanebot-engine: failed to load latest sealed config snapshot for configState topic");
+      return [];
+    }),
+  ]);
+
+  // Projects — reuses the SAME query portal-customer-engines.ts's dashboard
+  // handler already runs (active projects for the login's own
+  // customerUserIds, ordered by updatedAt desc, capped at 5) plus its
+  // kanban-task enrichment, extended here with a real completed/total tally
+  // (#4127 judgment call: no dedicated list route exists — this reuse is what
+  // lets 0/1/many all fall out of the query itself instead of an assumption).
+  // Sequential because it needs resolveCustomerUserIds() resolved first.
+  const projectCustomerUserIds = await resolveCustomerUserIds(customerId).catch((err: unknown) => {
+    log.error({ err, customerId }, "shanebot-engine: failed to resolve customerUserIds for project topic");
+    return [];
+  });
+  const rawProjects = projectCustomerUserIds.length > 0
+    ? await db.select({ id: projectsTable.id, title: projectsTable.title })
+        .from(projectsTable)
+        .where(and(inArray(projectsTable.clientUserId, projectCustomerUserIds), eq(projectsTable.status, "active")))
+        .orderBy(desc(projectsTable.updatedAt))
+        .limit(5)
+    : [];
+
+  const activeProjects: ActiveProjectRow[] = [];
+  if (rawProjects.length > 0) {
+    const projectIds = rawProjects.map((p) => p.id);
+    const allProjectTasks = await db.select({
+        title: kanbanTasksTable.title,
+        order: kanbanTasksTable.order,
+        column: kanbanTasksTable.column,
+        dueDate: kanbanTasksTable.dueDate,
+        projectId: kanbanTasksTable.projectId,
+      })
+      .from(kanbanTasksTable)
+      .where(inArray(kanbanTasksTable.projectId, projectIds))
+      .orderBy(asc(kanbanTasksTable.order));
+
+    const tasksByProject = new Map<number, typeof allProjectTasks>();
+    for (const task of allProjectTasks) {
+      if (!task.projectId) continue;
+      const arr = tasksByProject.get(task.projectId) ?? [];
+      arr.push(task);
+      tasksByProject.set(task.projectId, arr);
+    }
+
+    for (const p of rawProjects) {
+      const tasks = tasksByProject.get(p.id) ?? [];
+      const completedCount = tasks.filter((t) => t.column === "completed").length;
+      const percentComplete = tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : 0;
+      const inProgressTask = tasks.find((t) => t.column === "in_progress");
+      activeProjects.push({
+        title: p.title,
+        percentComplete,
+        currentTaskTitle: inProgressTask?.title ?? null,
+        taskRows: tasks.map((t) => ({ title: t.title, column: t.column, dueDate: t.dueDate })),
+      });
+    }
+  }
+
+  // Configuration State's per-workload rollup — sequential because it needs
+  // the current sealed snapshot's own id first, same shape as `project` above.
+  const [currentSnapshot] = currentSnapshotRows;
+  let configCompleteness: ConfigStateCompleteness | null = null;
+  let configWorkloads: ConfigStateWorkloadRow[] = [];
+  if (currentSnapshot) {
+    const completeness = snapshotCompleteness(currentSnapshot);
+    configCompleteness = {
+      resourceTypesTargeted: completeness.resourceTypesTargeted,
+      resourceTypesCollected: completeness.resourceTypesCollected,
+      readableFraction: completeness.readableFraction,
+    };
+    try {
+      const doc = await readSnapshotDocument({ snapshotRowId: currentSnapshot.id, limit: 1, offset: 0 });
+      configWorkloads = [...doc.workloads]
+        .sort((a, b) => b.objectCount - a.objectCount)
+        .map((w) => ({
+          workload: w.workload,
+          resourceTypes: w.resourceTypes,
+          objectCount: w.objectCount,
+          collectedCount: w.totals.collected ?? 0,
+        }));
+    } catch (err) {
+      log.error({ err, customerId }, "shanebot-engine: failed to load workload rollup for configState topic");
+    }
+  }
+
+  // Microsoft Changes — the real "next 90 days" window, using the same
+  // effectiveDate() derivation portal-message-center.ts's own stat cards use
+  // (just a 90-day cutoff here rather than that route's 60-day "Landing in 60
+  // days" stat — the design's own copy for this topic asks for 90).
+  const msChangesNow = Date.now();
+  const upcomingMsChanges: UpcomingMsChangeRow[] = msChangeRows
+    .map((r) => ({
+      title: r.title,
+      effectiveAt: effectiveDate(r),
+      workload: r.services.length > 0 ? r.services[0] : "Microsoft 365",
+    }))
+    .filter((r) => {
+      const t = r.effectiveAt.getTime();
+      return t >= msChangesNow && t <= msChangesNow + 90 * 86_400_000;
+    });
+
   // Sequential (needs activeTeamRows' ids first) — same "read the rows, then
   // do a dependent read" shape lastCompletedRows -> findingRows already uses
   // above.
@@ -1851,6 +2322,14 @@ async function buildCustomerContext(
   })));
   const settings = settingsTopic([...enabledCategorySet], CUSTOMER_ALERT_CATEGORIES.length, departmentNames.size, departmentUnmapped);
 
+  // #4127 Batch C.
+  const tenantStatus = tenantStatusTopic(engineStatusResult?.engines ?? [], lastEngineScanRows[0]?.capturedAt ?? null);
+  const project = projectTopic(activeProjects);
+  const msChanges = msChangesTopic(upcomingMsChanges);
+  const diagnostics = diagnosticsTopic(findingRows.filter((f) => f.severity === "critical"));
+  const statusReports = statusReportsTopic(publishedReportRows);
+  const configState = configStateTopic(configCompleteness, configWorkloads);
+
   // Active Cards (#366) — structured payloads built from the SAME rows the
   // prose summary above already fetched, so requesting a card never triggers
   // a second query. A card type is omitted entirely (undefined) when there is
@@ -1935,6 +2414,13 @@ async function buildCustomerContext(
     breakglass: breakglass.card ?? undefined,
     documents: documents.card ?? undefined,
     settings: settings.card ?? undefined,
+    // #4127 Batch C — same "omitted, not null" contract.
+    tenantStatus: tenantStatus.card ?? undefined,
+    project: project.card ?? undefined,
+    msChanges: msChanges.card ?? undefined,
+    diagnostics: diagnostics.card ?? undefined,
+    statusReports: statusReports.card ?? undefined,
+    configState: configState.card ?? undefined,
   };
 
   return {
@@ -2012,7 +2498,25 @@ ${documents.summaryLabel}:
 ${documents.summary}
 
 ${settings.summaryLabel}:
-${settings.summary}`,
+${settings.summary}
+
+${tenantStatus.summaryLabel}:
+${tenantStatus.summary}
+
+${project.summaryLabel}:
+${project.summary}
+
+${msChanges.summaryLabel}:
+${msChanges.summary}
+
+${diagnostics.summaryLabel}:
+${diagnostics.summary}
+
+${statusReports.summaryLabel}:
+${statusReports.summary}
+
+${configState.summaryLabel}:
+${configState.summary}`,
     cardData,
   };
 }

@@ -32,6 +32,7 @@ vi.mock("@workspace/db", () => ({
     from: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
     innerJoin: vi.fn().mockReturnThis(),
+    leftJoin: vi.fn().mockReturnThis(),
     limit: vi.fn().mockResolvedValue([]),
     groupBy: vi.fn().mockReturnThis(),
     orderBy: vi.fn().mockReturnThis(),
@@ -100,6 +101,27 @@ vi.mock("@workspace/db", () => ({
   customerAlertPreferencesTable: { customerId: "customer_id", category: "category", enabled: "enabled" },
   portalDepartmentMappingsTable: { customerId: "customer_id", departmentName: "department_name" },
   CUSTOMER_ALERT_CATEGORIES: ["findings", "drift", "progress", "reviews", "remediation", "billing", "support"],
+  // #4127 Batch C — Tenant & Ops cluster: project (customerUserIds/kanban),
+  // tenantStatus's freshness read, Microsoft Changes, Status Reports.
+  projectsTable: { id: "id", title: "title", status: "status", clientUserId: "client_user_id", updatedAt: "updated_at" },
+  kanbanTasksTable: { id: "id", title: "title", order: "order", column: "column", dueDate: "due_date", projectId: "project_id" },
+  tenantEngineSnapshotsTable: { customerId: "customer_id", capturedAt: "captured_at" },
+  mspMessageCenterItemsTable: { customerId: "customer_id", mspId: "msp_id", title: "title", services: "services", startDateTime: "start_date_time", endDateTime: "end_date_time", actionRequiredByDateTime: "action_required_by_date_time", lastModifiedDateTime: "last_modified_date_time" },
+  mspStatusReportsTable: { customerId: "customer_id", state: "state", periodLabel: "period_label", asOfDate: "as_of_date", authoredByUserId: "authored_by_user_id" },
+  // configState topic calls the REAL (unmocked) config-state-views.ts module,
+  // whose own top-level @workspace/db import needs these table names to
+  // exist so eq()/inArray() calls against their columns don't throw on
+  // undefined when latestSealedPair()/readSnapshotDocument() actually run.
+  tenantConfigSnapshotsTable: { id: "id", tenantId: "tenant_id", status: "status", capturedAt: "captured_at" },
+  tenantConfigSnapshotResourceStatusTable: { snapshotRowId: "snapshot_row_id", resourceKey: "resource_key", status: "status", objectCount: "object_count" },
+  tenantConfigSnapshotObjectsTable: { id: "id" },
+  configSnapshotResourceTypesTable: { resourceKey: "resource_key", workload: "workload" },
+  configDiffsTable: { id: "id" },
+  configDiffResourceStatusTable: { id: "id" },
+  configDiffChangesTable: { id: "id" },
+  configChangeAttributionsTable: { id: "id" },
+  configChangeLifecycleTable: { id: "id" },
+  SNAPSHOT_RESOURCE_STATUSES: ["collected", "empty", "partial", "skipped", "failed"],
 }));
 
 vi.mock("../lib/sse-channels.ts", () => ({
@@ -118,8 +140,12 @@ vi.mock("../lib/logger.ts", () => ({
 // listRemediableOffers is the only thing support-chat imports from the
 // mission-control route; mock the module so its heavy transitive imports
 // (engine registry, config-pack orchestrator) never load in this unit test.
+// #4127 Batch C — shanebot-engine.ts (imported by support-chat.ts) now also
+// imports buildEnginesResponse from this SAME module for its tenantStatus
+// topic, so it needs a stub here too, same reasoning.
 vi.mock("./portal-mission-control.ts", () => ({
   listRemediableOffers: vi.fn().mockResolvedValue([]),
+  buildEnginesResponse: vi.fn().mockResolvedValue({ engines: [], health: { score: null, pillars: [] }, generatedAt: new Date().toISOString() }),
 }));
 
 // #363 — action layer. LIVE_RENDERED_DOC_TYPES is the only thing support-chat

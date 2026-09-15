@@ -76,7 +76,7 @@ const CUSTOMER_ENGINE_KEYS = CUSTOMER_ENGINES.map((e) => e.key);
 /** Aligned with the portal card severity vocabulary (finding-offer-card.tsx). */
 type EngineSeverity = "good" | "watch" | "high" | "info";
 
-interface EngineStatusEntry {
+export interface EngineStatusEntry {
   key: string;
   label: string;
   severity: EngineSeverity;
@@ -184,13 +184,22 @@ function toStatusEntry(key: string, label: string, result: unknown): EngineStatu
   }
 }
 
-interface EnginesResponse {
+export interface EnginesResponse {
   engines: EngineStatusEntry[];
   health: { score: number | null; pillars: Array<{ pillar: string; score: number }> };
   generatedAt: string;
 }
 
-async function buildEnginesResponse(customerId: number): Promise<EnginesResponse> {
+/**
+ * #4127 Batch C — exported so shanebot-engine.ts's tenantStatus topic can reuse
+ * the SAME real engine-status-strip computation this route serves at
+ * `GET /portal/mission-control/engines`, rather than re-deriving per-engine
+ * severity thresholds a second time. Deliberately NOT routed through this
+ * file's own `enginesCache` — every other live-engine topic in shanebot-engine.ts
+ * (e.g. the `sla` topic's `runSlaEngineForTenant` call) already computes fresh
+ * per-turn rather than sharing a route's response cache.
+ */
+export async function buildEnginesResponse(customerId: number): Promise<EnginesResponse> {
   const results = await runEngineManifestForTenant(customerId, undefined, CUSTOMER_ENGINE_KEYS);
 
   const engines = CUSTOMER_ENGINES.map(({ key, label }) => toStatusEntry(key, label, results[key] ?? null));

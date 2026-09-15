@@ -242,6 +242,19 @@ function resolveCardData(
       return cardData.documents ? (cardData.documents as unknown as Record<string, unknown>) : null;
     case "settings":
       return cardData.settings ? (cardData.settings as unknown as Record<string, unknown>) : null;
+    // #4127 Batch C — Tenant & Ops cluster generic cards.
+    case "tenant-status":
+      return cardData.tenantStatus ? (cardData.tenantStatus as unknown as Record<string, unknown>) : null;
+    case "project":
+      return cardData.project ? (cardData.project as unknown as Record<string, unknown>) : null;
+    case "ms-changes":
+      return cardData.msChanges ? (cardData.msChanges as unknown as Record<string, unknown>) : null;
+    case "diagnostics":
+      return cardData.diagnostics ? (cardData.diagnostics as unknown as Record<string, unknown>) : null;
+    case "status-reports":
+      return cardData.statusReports ? (cardData.statusReports as unknown as Record<string, unknown>) : null;
+    case "config-state":
+      return cardData.configState ? (cardData.configState as unknown as Record<string, unknown>) : null;
     default:
       return null;
   }
@@ -344,6 +357,12 @@ When your answer is about one of these, prefer the specific card for it over any
 - Break-glass access handoffs (live verification links) → [SHOW_CARD:breakglass]
 - Documents waiting on your review (a scoped SOW, etc.) → [SHOW_CARD:documents]
 - Settings (alert categories, departments) → [SHOW_CARD:settings]
+- Overall tenant status / which area needs attention (the sidebar status strip) → [SHOW_CARD:tenant-status]
+- Your project(s) and task progress → [SHOW_CARD:project]
+- Microsoft's own change roadmap (Message Center, not Change Control) → [SHOW_CARD:ms-changes]
+- Diagnostics & Scripts (critical findings on the latest diagnostic run) → [SHOW_CARD:diagnostics]
+- Status Reports (Shane's published monthly reports) → [SHOW_CARD:status-reports]
+- Configuration State (how much of your tenant's configuration has been collected) → [SHOW_CARD:config-state]
 Only if none of the above fit, and the question is still a structured platform-data question you can answer from the data above, you may fall back to [SHOW_CARD:data-answer]. Treat data-answer as the fallback of last resort, not a first choice.
 Append the marker on its own line, alone, after your written answer.
 === END DATA CARDS ===

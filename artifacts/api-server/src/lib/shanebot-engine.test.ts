@@ -9,6 +9,19 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// #4127 Batch C — shanebot-engine.ts now imports buildEnginesResponse from
+// portal-mission-control.ts for the tenantStatus topic. Mock the whole module,
+// same reasoning + wording as support-chat.test.ts's existing identical mock:
+// its transitive chain (config-pack-orchestrator -> workflow-executor ->
+// document-engine-sow -> the real Anthropic AI client) would otherwise throw
+// at MODULE LOAD time (no AI_INTEGRATIONS_ANTHROPIC_BASE_URL in this unit
+// test), and buildEnginesResponse itself runs REAL, expensive, side-effecting
+// engine computations (runEngineManifestForTenant writes tenant_engine_snapshots
+// rows) that a unit test must never actually execute.
+vi.mock("../routes/portal-mission-control.ts", () => ({
+  buildEnginesResponse: vi.fn().mockResolvedValue({ engines: [], health: { score: null, pillars: [] }, generatedAt: new Date().toISOString() }),
+}));
+
 // The engine needs @workspace/db at runtime for its grounding builders AND (#361)
 // the bot_conversations storage helpers. A single generic chainable mock, same
 // pattern as public-chat.test.ts/support-chat.test.ts — table identity doesn't
@@ -19,6 +32,7 @@ vi.mock("@workspace/db", () => ({
     from: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
     innerJoin: vi.fn().mockReturnThis(),
+    leftJoin: vi.fn().mockReturnThis(),
     orderBy: vi.fn().mockReturnThis(),
     limit: vi.fn().mockResolvedValue([]),
     insert: vi.fn().mockReturnThis(),
@@ -66,6 +80,27 @@ vi.mock("@workspace/db", () => ({
   customerAlertPreferencesTable: { customerId: "customer_id", category: "category", enabled: "enabled" },
   portalDepartmentMappingsTable: { customerId: "customer_id", departmentName: "department_name" },
   CUSTOMER_ALERT_CATEGORIES: ["findings", "drift", "progress", "reviews", "remediation", "billing", "support"],
+  // #4127 Batch C — Tenant & Ops cluster: project (customerUserIds/kanban),
+  // tenantStatus's freshness read, Microsoft Changes, Status Reports.
+  projectsTable: { id: "id", title: "title", status: "status", clientUserId: "client_user_id", updatedAt: "updated_at" },
+  kanbanTasksTable: { id: "id", title: "title", order: "order", column: "column", dueDate: "due_date", projectId: "project_id" },
+  tenantEngineSnapshotsTable: { customerId: "customer_id", capturedAt: "captured_at" },
+  mspMessageCenterItemsTable: { customerId: "customer_id", mspId: "msp_id", title: "title", services: "services", startDateTime: "start_date_time", endDateTime: "end_date_time", actionRequiredByDateTime: "action_required_by_date_time", lastModifiedDateTime: "last_modified_date_time" },
+  mspStatusReportsTable: { customerId: "customer_id", state: "state", periodLabel: "period_label", asOfDate: "as_of_date", authoredByUserId: "authored_by_user_id" },
+  // configState topic calls the REAL (unmocked) config-state-views.ts module,
+  // whose own top-level @workspace/db import needs these table names to
+  // exist so eq()/inArray() calls against their columns don't throw on
+  // undefined when latestSealedPair()/readSnapshotDocument() actually run.
+  tenantConfigSnapshotsTable: { id: "id", tenantId: "tenant_id", status: "status", capturedAt: "captured_at" },
+  tenantConfigSnapshotResourceStatusTable: { snapshotRowId: "snapshot_row_id", resourceKey: "resource_key", status: "status", objectCount: "object_count" },
+  tenantConfigSnapshotObjectsTable: { id: "id" },
+  configSnapshotResourceTypesTable: { resourceKey: "resource_key", workload: "workload" },
+  configDiffsTable: { id: "id" },
+  configDiffResourceStatusTable: { id: "id" },
+  configDiffChangesTable: { id: "id" },
+  configChangeAttributionsTable: { id: "id" },
+  configChangeLifecycleTable: { id: "id" },
+  SNAPSHOT_RESOURCE_STATUSES: ["collected", "empty", "partial", "skipped", "failed"],
 }));
 
 vi.mock("./logger.ts", () => ({
@@ -112,6 +147,12 @@ import {
   breakglassTopic,
   documentsTopic,
   settingsTopic,
+  tenantStatusTopic,
+  projectTopic,
+  msChangesTopic,
+  diagnosticsTopic,
+  statusReportsTopic,
+  configStateTopic,
 } from "./shanebot-engine.ts";
 import { db } from "@workspace/db";
 
@@ -126,7 +167,7 @@ describe("BOT_INSTANCES — the two permanent instances", () => {
     expect(pub.personaSurface).toBe("public");
   });
 
-  it("ShaneBot Paid: portal-authenticated, customer_entitlements, both actions, all 23 card types (#4125 Batch A + #4126 Batch B), msp cost", () => {
+  it("ShaneBot Paid: portal-authenticated, customer_entitlements, both actions, all 29 card types (#4125 Batch A + #4126 Batch B + #4127 Batch C), msp cost", () => {
     const paid = resolveInstance("shanebot_paid");
     expect(paid.authMode).toBe("portal_authenticated");
     expect(paid.groundingSource).toBe("customer_entitlements");
@@ -135,6 +176,7 @@ describe("BOT_INSTANCES — the two permanent instances", () => {
       "invoice", "subscription", "score", "data-answer",
       "risk", "changes", "findings", "poams", "secplan", "raci", "raci-workload", "policy", "conditional-access", "signal",
       "team", "tickets", "sla", "retainer", "mfa", "password", "breakglass", "documents", "settings",
+      "tenant-status", "project", "ms-changes", "diagnostics", "status-reports", "config-state",
     ]);
     expect(paid.costOwner).toBe("msp");
     expect(paid.personaSurface).toBe("portal");
@@ -379,7 +421,12 @@ describe("customer_entitlements grounding (#362): buildCustomerContext", () => {
     // settings, retainer work log, break-glass handoffs, documents, alert
     // preferences, and department users/mappings. userId-gated Batch B queries
     // (userAccountRows, mfaEnrollRows, passkeyRows) correctly did NOT fire.
-    expect(mockDb["limit"].mock.calls.length).toBe(14);
+    // #4127 Batch C adds 3 more unconditional (customerId-scoped) `.limit()`
+    // calls: tenantEngineSnapshots freshness, published status reports, and
+    // latestSealedPair's config snapshot read. msChanges is scope-gated (null
+    // here, so Promise.resolve([]), no mockDb call) and buildEnginesResponse
+    // is a mocked module call, not a mockDb call — neither counts here.
+    expect(mockDb["limit"].mock.calls.length).toBe(17);
   });
 
   it("with a userId, populates invoice/subscription/score cardData from real rows", async () => {
@@ -496,12 +543,28 @@ describe("customer_entitlements grounding (#362): buildCustomerContext", () => {
     expect(grounding.cardData?.password).toBeDefined();
     expect(grounding.cardData?.settings).toBeDefined();
 
+    // #4127 Batch C — msChanges is scope-gated like Batch A (undefined here);
+    // tenantStatus/project/diagnostics/statusReports/configState are
+    // customerId-scoped like Batch B, but every one of them ALSO returns
+    // card:null on genuinely empty input (unlike mfa/password/settings above),
+    // so all five stay undefined here too.
+    expect(grounding.cardData?.msChanges).toBeUndefined();
+    expect(grounding.cardData?.tenantStatus).toBeUndefined();
+    expect(grounding.cardData?.project).toBeUndefined();
+    expect(grounding.cardData?.diagnostics).toBeUndefined();
+    expect(grounding.cardData?.statusReports).toBeUndefined();
+    expect(grounding.cardData?.configState).toBeUndefined();
+
     // No resolvable scope means every Batch A scope-gated second-wave query
     // short-circuits to Promise.resolve — but #4126 Batch B's 8 topics are
     // customerId-scoped (not scope-gated) and fire regardless of scope, same
     // as the original 6. No userId here either, so Batch B's userId-gated
     // queries (userAccountRows, mfaEnrollRows, passkeyRows) also short-circuit.
-    expect(mockDb["limit"].mock.calls.length).toBe(callsBefore + 14);
+    // #4127 Batch C adds 3 more unconditional `.limit()` calls (tenantEngineSnapshots
+    // freshness, published status reports, latestSealedPair) — msChanges is
+    // scope-gated (no mockDb call) and buildEnginesResponse is a mocked module
+    // call, not a mockDb call.
+    expect(mockDb["limit"].mock.calls.length).toBe(callsBefore + 17);
   });
 });
 
@@ -701,6 +764,94 @@ describe("#4126 Batch B — Account & Service cluster topic builders (pure, DB-f
     expect(t.card?.rows[1]).toMatchObject({ left: "Departments", right: "Available", tone: "green" });
     const noDepts = settingsTopic([], 7, 0, 0);
     expect(noDepts.card?.rows[1]).toMatchObject({ right: "None yet", tone: "slate" });
+  });
+});
+
+describe("#4127 Batch C — Tenant & Ops cluster topic builders (pure, DB-free)", () => {
+  it("tenantStatusTopic: Attention when any engine is high/watch, Healthy otherwise, honest empty state", () => {
+    expect(tenantStatusTopic([], null).card).toBeNull();
+
+    const attention = tenantStatusTopic(
+      [
+        { key: "security", label: "Security", severity: "watch", statusLabel: "Needs attention", detail: "1 critical finding — legacy authentication still enabled" },
+        { key: "health", label: "Governance", severity: "good", statusLabel: "Healthy", detail: "No open findings on the latest scan" },
+      ],
+      new Date(Date.now() - 6 * 3_600_000),
+    );
+    expect(attention.card?.head).toEqual({ value: "Attention", label: "1 area needs a look, last scan 6h ago" });
+    expect(attention.card?.rows[0]).toMatchObject({ left: "Security", right: "Needs attention", tone: "gold" });
+    expect(attention.card?.rows[1]).toMatchObject({ left: "Governance", right: "Healthy", tone: "green" });
+
+    const healthy = tenantStatusTopic(
+      [{ key: "health", label: "Governance", severity: "good", statusLabel: "Healthy", detail: "No open findings on the latest scan" }],
+      null,
+    );
+    expect(healthy.card?.head).toEqual({ value: "Healthy", label: "no areas need a look" });
+  });
+
+  it("projectTopic: honest empty state, single-project task detail, honest multi-project state (no arbitrary pick)", () => {
+    expect(projectTopic([]).card).toBeNull();
+
+    const single = projectTopic([
+      {
+        title: "Legacy authentication retirement",
+        percentComplete: 63,
+        currentTaskTitle: "Migration of service mailboxes",
+        taskRows: [
+          { title: "Migration of service mailboxes", column: "in_progress", dueDate: new Date("2026-10-06T00:00:00Z") },
+          { title: "Protocol switch-off", column: "backlog", dueDate: null },
+        ],
+      },
+    ]);
+    expect(single.card?.head).toEqual({ value: "63%", label: "tasks completed on Legacy authentication retirement" });
+    expect(single.card?.rows[0]).toMatchObject({ left: "Migration of service mailboxes", right: "In progress", tone: "blue" });
+    expect(single.card?.rows[1]).toMatchObject({ left: "Protocol switch-off", right: "Not started", tone: "slate" });
+
+    const multi = projectTopic([
+      { title: "Project A", percentComplete: 20, currentTaskTitle: "Task A", taskRows: [] },
+      { title: "Project B", percentComplete: 80, currentTaskTitle: null, taskRows: [] },
+    ]);
+    expect(multi.card?.head?.value).toBe("2");
+    expect(multi.summary).toContain("won't guess which one you mean");
+    expect(multi.card?.rows.map((r) => r.left)).toEqual(["Project A", "Project B"]);
+  });
+
+  it("msChangesTopic: counts + sorts soonest-first, honest empty state", () => {
+    expect(msChangesTopic([]).card).toBeNull();
+    const t = msChangesTopic([
+      { title: "Later change", effectiveAt: new Date("2026-12-01T00:00:00Z"), workload: "Teams" },
+      { title: "Shared calendars move to the REST-based model", effectiveAt: new Date("2026-10-15T00:00:00Z"), workload: "Exchange" },
+    ]);
+    expect(t.card?.head).toEqual({ value: "2", label: "Microsoft-side changes land in the next 90 days" });
+    expect(t.card?.rows[0]).toMatchObject({ left: "Shared calendars move to the REST-based model", tone: "slate" });
+  });
+
+  it("diagnosticsTopic: critical-only, honest empty state", () => {
+    expect(diagnosticsTopic([]).card).toBeNull();
+    const t = diagnosticsTopic([{ title: "Legacy authentication is still allowed for 12 accounts" }]);
+    expect(t.card?.head).toEqual({ value: "1", label: "critical findings on the latest diagnostic run" });
+    expect(t.card?.rows[0]).toMatchObject({ right: "Critical", tone: "red" });
+  });
+
+  it("statusReportsTopic: newest-first period label, real author, honest empty state", () => {
+    expect(statusReportsTopic([]).card).toBeNull();
+    const t = statusReportsTopic([
+      { periodLabel: "August 2026", asOfDate: new Date("2026-09-03T00:00:00Z"), authoredByName: "Shane McCaw" },
+    ]);
+    expect(t.card?.head?.label).toContain("newest is August 2026");
+    expect(t.card?.rows[0].sub).toContain("written by Shane McCaw");
+  });
+
+  it("configStateTopic: coverage percentage from readableFraction, real workload rollup rows, honest empty states", () => {
+    expect(configStateTopic(null, []).card).toBeNull();
+    expect(configStateTopic({ resourceTypesTargeted: 0, resourceTypesCollected: 0, readableFraction: null }, []).card?.head?.value).toBe("unavailable");
+
+    const t = configStateTopic(
+      { resourceTypesTargeted: 1359, resourceTypesCollected: 73, readableFraction: 0.138 },
+      [{ workload: "MicrosoftGraph", resourceTypes: 852, objectCount: 49_627, collectedCount: 73 }],
+    );
+    expect(t.card?.head).toEqual({ value: "13.8%", label: "of the tenant is machine-readable on the latest snapshot" });
+    expect(t.card?.rows[0]).toMatchObject({ left: "MicrosoftGraph", sub: "852 types · 49,627 objects", right: "73 collected" });
   });
 });
 
