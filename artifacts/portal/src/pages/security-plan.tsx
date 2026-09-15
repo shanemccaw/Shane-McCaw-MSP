@@ -3,6 +3,7 @@ import { AlertTriangle, FileCheck2, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ControlDomainSchedule, type ControlDomainItem } from "@/components/security-plan/ControlDomainSchedule";
 import { DriftPanel } from "@/components/security-plan/DriftPanel";
 import { ModuleSchedule } from "@/components/security-plan/ModuleSchedule";
 import { SignVersionDialog } from "@/components/security-plan/SignVersionDialog";
@@ -11,7 +12,12 @@ import {
   useSecurityPlanDrift,
   useSecurityPlanVersions,
 } from "@/lib/security-plan-api";
-import type { SecurityPlanProseSection } from "@/lib/security-plan-types";
+import {
+  CONTROL_DOMAINS,
+  CONTROL_DOMAIN_LABELS,
+  type SecurityPlanControlDomain,
+  type SecurityPlanProseSection,
+} from "@/lib/security-plan-types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -22,14 +28,12 @@ import { cn } from "@/lib/utils";
  * `docs/portal/security-plan-contract-pack.md` against the real
  * `/api/portal/security-plan*` endpoints.
  *
- * Deliberate divergence from the design reference — see the "what this page
- * deliberately does not do" note at the bottom: the design's "Part II —
- * Control Domains" grouping (Identity / Data / Collaboration / Change /
- * Monitoring) has no backing field anywhere in `SecurityPlanAssembledItem` or
- * the seven source tables `security-plan-assembly.ts` reads — it does not
- * exist in the real data, so it is not built. Every other part of the
- * document (prose, the seven module schedules, drift, version history) is a
- * real, live read.
+ * Part II — Control Domains (#4143) pools every module's rows by the real
+ * `controlDomain` each source row's own `control_domain` column carries (see
+ * `lib/db/migrations/manual/4143-security-plan-control-domain.sql`). A row
+ * whose source register has never been classified carries `controlDomain:
+ * null` and is honestly absent from Part II, but still appears unaltered in
+ * Part III's per-register schedules — nothing is dropped, only ungrouped.
  */
 
 const PROSE_LABELS: Record<SecurityPlanProseSection, string> = {
@@ -42,12 +46,22 @@ const PROSE_ORDER: SecurityPlanProseSection[] = ["scope", "methodology", "exclus
 
 type SectionKey =
   | { kind: "prose"; section: SecurityPlanProseSection }
+  | { kind: "domain"; domain: SecurityPlanControlDomain }
   | { kind: "module"; moduleKey: string }
   | { kind: "drift" }
   | { kind: "history" };
 
 function sectionId(s: SectionKey): string {
-  return s.kind === "prose" ? `prose-${s.section}` : s.kind === "module" ? `module-${s.moduleKey}` : s.kind;
+  switch (s.kind) {
+    case "prose":
+      return `prose-${s.section}`;
+    case "domain":
+      return `domain-${s.domain}`;
+    case "module":
+      return `module-${s.moduleKey}`;
+    default:
+      return s.kind;
+  }
 }
 
 export default function SecurityPlanPage() {
@@ -61,9 +75,32 @@ export default function SecurityPlanPage() {
   const [signOpen, setSignOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
 
+  // Every module's items pooled by real `controlDomain`, across the whole document —
+  // Part II (#4143). A row with no recorded domain is absent here but still appears,
+  // unaltered, in its own module's Part III schedule below.
+  const itemsByDomain: Record<SecurityPlanControlDomain, ControlDomainItem[]> = useMemo(() => {
+    const grouped: Record<SecurityPlanControlDomain, ControlDomainItem[]> = {
+      identity: [],
+      data: [],
+      collaboration: [],
+      change: [],
+      monitoring: [],
+    };
+    if (!version) return grouped;
+    for (const m of version.content.modules) {
+      for (const item of m.items) {
+        if (item.controlDomain && (CONTROL_DOMAINS as readonly string[]).includes(item.controlDomain)) {
+          grouped[item.controlDomain as SecurityPlanControlDomain].push({ item, moduleLabel: m.label });
+        }
+      }
+    }
+    return grouped;
+  }, [version]);
+
   const sections: SectionKey[] = useMemo(() => {
     if (!version) return [];
     const list: SectionKey[] = PROSE_ORDER.map((section) => ({ kind: "prose", section }));
+    for (const domain of CONTROL_DOMAINS) list.push({ kind: "domain", domain });
     for (const m of version.content.modules) list.push({ kind: "module", moduleKey: m.key });
     list.push({ kind: "drift" });
     list.push({ kind: "history" });
@@ -211,7 +248,18 @@ export default function SecurityPlanPage() {
                   />
                 ))}
               </NavGroup>
-              <NavGroup label="Part II — schedules">
+              <NavGroup label="Part II — control domains">
+                {CONTROL_DOMAINS.map((domain) => (
+                  <NavItem
+                    key={domain}
+                    active={activeSection?.kind === "domain" && activeSection.domain === domain}
+                    label={CONTROL_DOMAIN_LABELS[domain]}
+                    sub={String(itemsByDomain[domain].length)}
+                    onClick={() => setActiveId(sectionId({ kind: "domain", domain }))}
+                  />
+                ))}
+              </NavGroup>
+              <NavGroup label="Part III — schedules">
                 {version.content.modules.map((m) => (
                   <NavItem
                     key={m.key}
@@ -222,7 +270,7 @@ export default function SecurityPlanPage() {
                   />
                 ))}
               </NavGroup>
-              <NavGroup label="Part III — appendices">
+              <NavGroup label="Part IV — appendices">
                 <NavItem
                   active={activeSection?.kind === "drift"}
                   label="Changes since signing"
@@ -243,6 +291,12 @@ export default function SecurityPlanPage() {
                   <ProsePane
                     label={PROSE_LABELS[activeSection.section]}
                     content={version.content.prose?.[activeSection.section] ?? null}
+                  />
+                )}
+                {activeSection?.kind === "domain" && (
+                  <ControlDomainSchedule
+                    label={CONTROL_DOMAIN_LABELS[activeSection.domain]}
+                    items={itemsByDomain[activeSection.domain]}
                   />
                 )}
                 {activeSection?.kind === "module" &&
@@ -331,11 +385,10 @@ export default function SecurityPlanPage() {
           <div className="flex flex-col">
             <div className="flex items-start gap-3 border-t border-border/50 py-2 first:border-t-0">
               <span className="min-w-0 flex-1 text-[11.5px] leading-relaxed text-foreground">
-                No "Control Domains" grouping (Identity / Data / Collaboration / Change /
-                Monitoring). The design reference groups rows by a control domain, but no such
-                field exists on any assembled row or its seven source tables — inventing that
-                grouping would be a display vocabulary mapping onto nothing. Rows are shown per
-                the module that actually owns them instead.
+                Part II only groups a row under a control domain when its own source register
+                has actually recorded one for it (#4143). A row nobody has classified yet does
+                not appear in any Part II domain, but it still appears, unaltered, in Part III's
+                per-register schedule — nothing is dropped, only left ungrouped.
               </span>
             </div>
             <div className="flex items-start gap-3 border-t border-border/50 py-2">

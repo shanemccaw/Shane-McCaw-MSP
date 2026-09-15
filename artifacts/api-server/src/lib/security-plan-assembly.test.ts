@@ -23,7 +23,7 @@ import {
 import type { SecurityPlanAssembledItem, SecurityPlanScope } from "@workspace/db";
 
 function item(id: string, over: Partial<SecurityPlanAssembledItem> = {}): SecurityPlanAssembledItem {
-  return { id, title: id, state: null, detail: null, pillar: null, framework: null, businessUnit: null, ...over };
+  return { id, title: id, state: null, detail: null, pillar: null, framework: null, businessUnit: null, controlDomain: null, ...over };
 }
 
 const modules: RawSecurityPlanModule[] = [

@@ -3306,6 +3306,11 @@ export const m365ChangeInterpretationsTable = pgTable("m365_change_interpretatio
   whoActs: text("who_acts").$type<M365Actor>().notNull().default("microsoft"),
   controllable: text("controllable").$type<M365Controllability>().notNull().default("unknown"),
   controlMethod: text("control_method"), // HOW to turn it off — only meaningful when controllable = 'yes'
+  /** SECURITY_PLAN_CONTROL_DOMAINS (#4143). NULL for a row nobody has
+   * classified — `touches.services`/`changeClass` above are real Microsoft-
+   * facing vocabularies, not a control domain, so neither is silently
+   * remapped onto this field. */
+  controlDomain: text("control_domain"),
   probe: jsonb("probe").$type<M365Probe>().notNull().default({ description: "" }),
   // The confirmation gate. 'proposed' = AI's unverified reading, never tenant-facing;
   // 'confirmed' = Shane verified it and it may drive resolution; 'rejected' = read and
@@ -4820,6 +4825,11 @@ export const mspChangeRequestsTable = pgTable("msp_change_requests", {
   // here is a TypeScript-level type only. Adding a DDL file for this would
   // record a database change that does not exist.
   category: text("category", { enum: ["ConditionalAccess", "Exchange", "Identity", "Intune", "Defender", "SharePoint", "Purview", "Teams"] }).notNull().default("Identity"),
+  /** SECURITY_PLAN_CONTROL_DOMAINS (#4143). NULL for a row nobody has
+   * classified — `category` above is this register's own workload taxonomy,
+   * a real but different vocabulary, so it is never silently remapped onto
+   * this field. */
+  controlDomain: text("control_domain"),
   targetResource: text("target_resource").notNull(),
   psaTicketId: text("psa_ticket_id").notNull(),
   requestedBy: text("requested_by").notNull(),
@@ -6177,6 +6187,12 @@ export const mspSopsTable = pgTable("msp_sops", {
   title: text("title").notNull(),
   description: text("description").notNull(),
   category: text("category").notNull(),
+  /** SECURITY_PLAN_CONTROL_DOMAINS (#4143) — which Security Plan Part II control
+   * domain this procedure was recorded against. NULL for a row nobody has
+   * classified; `category` above is this library's own taxonomy (e.g.
+   * "Incident Response", "Identity & Access") and is a real but DIFFERENT
+   * vocabulary, so it is never silently remapped onto this field. */
+  controlDomain: text("control_domain"),
   version: text("version").notNull(),
   automationType: text("automation_type").notNull(),
   estimatedMinutes: integer("estimated_minutes").notNull().default(0),
@@ -6547,6 +6563,12 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
   // out of `status` on #1507 and lives just below `reviewDate`; do not fold it
   // back in. `status` no longer carries `expired` (see RISK_ACCEPTANCE_STATUSES).
   pillar: text("pillar"),
+  /** SECURITY_PLAN_CONTROL_DOMAINS (#4143) — which Security Plan Part II control
+   * domain this risk was recorded against. NULL for a row nobody has classified;
+   * never guessed from `pillar`/`framework`, which are a different, free-text
+   * vocabulary (real values seen: "Security", "Compliance", "Governance" — none
+   * of which are a control domain). */
+  controlDomain: text("control_domain"),
   owner: text("owner"),
   /** RACI person key behind `owner`, for the ownership matrix's chips. */
   ownerId: text("owner_id"),
@@ -6977,6 +6999,25 @@ export type InsertMspRbdNarrativeAudit = typeof mspRbdNarrativeAuditTable.$infer
 export const SECURITY_PLAN_SCOPE_DIMENSIONS = ["pillar", "framework", "businessUnit"] as const;
 export type SecurityPlanScopeDimension = (typeof SECURITY_PLAN_SCOPE_DIMENSIONS)[number];
 
+/** The Security Plan's Part II "Control Domains" grouping (#4143), real per-row
+ * `control_domain` columns added on all seven source tables above. This is a
+ * DIFFERENT vocabulary from `pillar` (free text, e.g. "Security"/"Compliance")
+ * and from each module's own category column — neither is remapped onto it.
+ * NULL is the honest default until a register's own row is actually
+ * classified against one of these; an unclassified row is never dropped, it
+ * simply does not appear in the Part II grouping (it still appears in Part
+ * III's per-register schedule, unaltered). Matches the design reference
+ * (`Design/portal/design_handoff_full_site/screens/Security Plan.dc.html`). */
+export const SECURITY_PLAN_CONTROL_DOMAINS = ["identity", "data", "collaboration", "change", "monitoring"] as const;
+export type SecurityPlanControlDomain = (typeof SECURITY_PLAN_CONTROL_DOMAINS)[number];
+export const SECURITY_PLAN_CONTROL_DOMAIN_LABELS: Record<SecurityPlanControlDomain, string> = {
+  identity: "Identity and access",
+  data: "Data and retention",
+  collaboration: "Collaboration and sharing",
+  change: "Change and operations",
+  monitoring: "Monitoring and response",
+};
+
 /** The scope selection applied to an assembled/sealed plan (#1563). A dimension maps
  * to the set of allowed values for it; a row is excluded by a dimension ONLY when it
  * carries a value for that dimension not in the allowed set — a row that cannot be
@@ -7031,7 +7072,9 @@ export interface SecurityPlanAssembledModule {
 
 /** A single assembled row in a uniform, honest shape. `pillar`/`framework`/
  * `businessUnit` carry the dimension values used for scope classification (null when
- * the source row/tenant has none). */
+ * the source row/tenant has none). `controlDomain` (#4143) is the real, separate
+ * `SECURITY_PLAN_CONTROL_DOMAIN` classification each source row's own `control_domain`
+ * column carries — null when that row has never been classified. */
 export interface SecurityPlanAssembledItem {
   readonly id: string;
   readonly title: string;
@@ -7040,6 +7083,7 @@ export interface SecurityPlanAssembledItem {
   readonly pillar: string | null;
   readonly framework: string | null;
   readonly businessUnit: string | null;
+  readonly controlDomain: string | null;
 }
 
 // ── Authored prose (#1566, formalizing the #1561 stub) ──────────────────────────────
@@ -7915,6 +7959,11 @@ export const remediationTrackerStepsTable = pgTable("remediation_tracker_steps",
    * pack will cite as "verified by this scan".
    */
   verifiedByRunId: uuid("verified_by_run_id"),
+  /** SECURITY_PLAN_CONTROL_DOMAINS (#4143). NULL for a row nobody has
+   * classified — this table carries no category/pillar column at all
+   * (`stepId`'s "s1".."s30" catalogue ids are not one), so there is nothing
+   * to derive a control domain from without this real column. */
+  controlDomain: text("control_domain"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -8420,6 +8469,11 @@ export const portalOwnershipRowsTable = pgTable("portal_ownership_rows", {
   /** NULL for a coverage row, whose name/sub come from its fixture entry. */
   name: text("name"),
   sub: text("sub"),
+  /** SECURITY_PLAN_CONTROL_DOMAINS (#4143). NULL for a row nobody has
+   * classified — `objType` above is genuinely blank for the common "coverage"
+   * row (its type comes from a client-side fixture, never stored server-side,
+   * per the comment above), so it is not a reliable field to derive this from. */
+  controlDomain: text("control_domain"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("portal_ownership_rows_customer_id_idx").on(t.customerId),
@@ -9678,6 +9732,9 @@ export const policyDecisionsTable = pgTable("policy_decisions", {
    * above. Null when the decision cites an authority with no catalog match. */
   obligationId: integer("obligation_id").references(() => complianceObligationsTable.id, { onDelete: "set null" }),
   pillar: text("pillar"),
+  /** SECURITY_PLAN_CONTROL_DOMAINS (#4143) — see the identical field on
+   * `mspRiskDecisionsTable` for why this is not derived from `pillar`. */
+  controlDomain: text("control_domain"),
 
   owner: text("owner").notNull(),
   /** RACI person key behind `owner`, matching the Risk Register's ownership chips. */

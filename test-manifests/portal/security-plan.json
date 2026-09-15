@@ -13,7 +13,9 @@
 
     "NO UI LOGIN FLOW EXISTS YET FOR artifacts/portal -- same known, already-documented cross-cutting gap test-manifests/portal/risk-register.json's own notes describe. UI1/UI2 below only assert what is honestly reachable today: the route mounts and RequireAuth's honest 'Sign in required' panel renders for an unauthenticated visitor.",
 
-    "ENV VARS (BuildConsole -> Settings -> Test Environment Variables): DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD."
+    "ENV VARS (BuildConsole -> Settings -> Test Environment Variables): DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD.",
+
+    "#4143 (Part II Control Domains grouping) -- no new endpoint was added; every apiTests case above already covers this build's real change, since `controlDomain` only extends the existing SecurityPlanAssembledItem shape each of A1-A4 already reads through. No new UI assertion was added for the same structural reason A2 already documents: msp_security_plan_versions has 0 rows on this database (no version has ever been sealed), so there is no live Part II content to assert against, and sealing one is an out-of-scope MSP-side action. Once a version is sealed and signed on the testbed tenant, extend the manifest with an authenticated UI step asserting the 'Part II — control domains' nav group renders and a domain pane's row count matches the API's own controlDomain tally."
   ],
 
   "apiTests": [
@@ -61,7 +63,7 @@
       "path": "/api/portal/security-plan/versions/11111111-1111-1111-1111-111111111111/sign",
       "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
       "body": { "fullName": "J" },
-      "expect": { "status": 400, "jsonPath": "$.error.code", "equals": "VALIDATION" }
+      "expect": { "status": 400, "jsonPath": "$.error.code", "equals": "VALIDATION_ERROR" }
     },
     {
       "name": "A6 -- a nonexistent versionUid 404s exactly like one belonging to another tenant would (no ID-probing signal, contract pack §5.3).",
