@@ -41,18 +41,18 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="TitleBarText" Grid.Column="0" Text="Browser" Margin="12,0,0,0"
-                           VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
+                           VerticalAlignment="Center" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                            TextTrimming="CharacterEllipsis"
                            Foreground="{StaticResource Subtext1Brush}"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
                     <Button x:Name="BtnMinimize" Style="{StaticResource CaptionButton}" ToolTip="Minimize" Click="BtnMinimize_Click">
-                        <TextBlock Text="&#xE921;" FontFamily="{StaticResource IconFontFamily}" FontSize="10"/>
+                        <TextBlock Text="&#xE921;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}"/>
                     </Button>
                     <Button x:Name="BtnMaximizeRestore" Style="{StaticResource CaptionButton}" ToolTip="Maximize" Click="BtnMaximizeRestore_Click">
-                        <TextBlock x:Name="BtnMaximizeRestoreIcon" Text="&#xE922;" FontFamily="{StaticResource IconFontFamily}" FontSize="10"/>
+                        <TextBlock x:Name="BtnMaximizeRestoreIcon" Text="&#xE922;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}"/>
                     </Button>
                     <Button x:Name="BtnCloseWindow" Style="{StaticResource CaptionButtonClose}" ToolTip="Close" Click="BtnCloseWindow_Click">
-                        <TextBlock Text="&#xE8BB;" FontFamily="{StaticResource IconFontFamily}" FontSize="10"/>
+                        <TextBlock Text="&#xE8BB;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}"/>
                     </Button>
                 </StackPanel>
             </Grid>
@@ -75,17 +75,17 @@
                 </Grid.ColumnDefinitions>
                 <Button x:Name="BtnBack" Grid.Column="0"
                         Content="&#xE72B;" FontFamily="{StaticResource IconFontFamily}"
-                        Style="{StaticResource IconButton}" FontSize="12"
+                        Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}"
                         Padding="6,4,6,4" Margin="0,0,4,0"
                         ToolTip="Back" Click="BtnBack_Click" IsEnabled="False"/>
                 <Button x:Name="BtnForward" Grid.Column="1"
                         Content="&#xE72A;" FontFamily="{StaticResource IconFontFamily}"
-                        Style="{StaticResource IconButton}" FontSize="12"
+                        Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}"
                         Padding="6,4,6,4" Margin="0,0,4,0"
                         ToolTip="Forward" Click="BtnForward_Click" IsEnabled="False"/>
                 <Button x:Name="BtnRefresh" Grid.Column="2"
                         Content="&#xE72C;" FontFamily="{StaticResource IconFontFamily}"
-                        Style="{StaticResource IconButton}" FontSize="12"
+                        Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}"
                         Padding="6,4,6,4" Margin="0,0,8,0"
                         ToolTip="Refresh" Click="BtnRefresh_Click"/>
                 <TextBox x:Name="AddressBar" Grid.Column="3"
@@ -93,7 +93,7 @@
                          Foreground="{StaticResource TextBrush}"
                          BorderBrush="{StaticResource Surface0Brush}"
                          BorderThickness="1"
-                         FontSize="13"
+                         FontSize="{StaticResource BodyFontSize}"
                          Padding="8,5"
                          VerticalContentAlignment="Center"
                          KeyDown="AddressBar_KeyDown"/>

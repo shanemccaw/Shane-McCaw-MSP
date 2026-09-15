@@ -35,17 +35,17 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="Manifest Viewer" Margin="12,0,0,0"
-                           VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
+                           VerticalAlignment="Center" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                            Foreground="{StaticResource Subtext1Brush}"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
                     <Button x:Name="BtnMinimize" Style="{StaticResource CaptionButton}" ToolTip="Minimize" Click="BtnMinimize_Click">
-                        <TextBlock Text="&#xE921;" FontFamily="{StaticResource IconFontFamily}" FontSize="10"/>
+                        <TextBlock Text="&#xE921;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}"/>
                     </Button>
                     <Button x:Name="BtnMaximizeRestore" Style="{StaticResource CaptionButton}" ToolTip="Maximize" Click="BtnMaximizeRestore_Click">
-                        <TextBlock x:Name="BtnMaximizeRestoreIcon" Text="&#xE922;" FontFamily="{StaticResource IconFontFamily}" FontSize="10"/>
+                        <TextBlock x:Name="BtnMaximizeRestoreIcon" Text="&#xE922;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}"/>
                     </Button>
                     <Button x:Name="BtnCloseWindow" Style="{StaticResource CaptionButtonClose}" ToolTip="Close" Click="BtnCloseWindow_Click">
-                        <TextBlock Text="&#xE8BB;" FontFamily="{StaticResource IconFontFamily}" FontSize="10"/>
+                        <TextBlock Text="&#xE8BB;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}"/>
                     </Button>
                 </StackPanel>
             </Grid>
@@ -63,9 +63,9 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                    <TextBlock x:Name="TxtFileName" Text="manifest.json" FontSize="13" FontWeight="Bold"
+                    <TextBlock x:Name="TxtFileName" Text="manifest.json" FontSize="{StaticResource SubHeaderFontSize}" FontWeight="Bold"
                                Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis"/>
-                    <TextBlock x:Name="TxtSubtitle" Text="" FontSize="11"
+                    <TextBlock x:Name="TxtSubtitle" Text="" FontSize="{StaticResource CaptionFontSize}"
                                Foreground="{StaticResource Subtext0Brush}" TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -90,8 +90,8 @@
                 <avalonedit:TextEditor x:Name="JsonEditor"
                                        Background="{StaticResource CrustBrush}"
                                        Foreground="{StaticResource TextBrush}"
-                                       FontFamily="Cascadia Code, Consolas, Courier New"
-                                       FontSize="13"
+                                       FontFamily="{StaticResource MonospaceFontFamily}"
+                                       FontSize="{StaticResource MonospaceFontSize}"
                                        Padding="8"
                                        ShowLineNumbers="True"
                                        LineNumbersForeground="{StaticResource Surface2Brush}"

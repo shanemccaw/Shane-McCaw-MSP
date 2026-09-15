@@ -36,24 +36,24 @@
                 <DockPanel VerticalAlignment="Center">
                     <TextBlock DockPanel.Dock="Left" Text="&#xE721;" Margin="0,0,10,0"
                                VerticalAlignment="Center"
-                               FontFamily="{StaticResource IconFontFamily}" FontSize="14"
+                               FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource BodyFontSize}"
                                Foreground="{StaticResource TextDisabledBrush}"/>
                     <Border DockPanel.Dock="Right" Background="{StaticResource CardBackgroundBrush}"
                             BorderBrush="{StaticResource BorderDividerBrush}" BorderThickness="1"
                             CornerRadius="5" Padding="8,3" Cursor="Hand" Margin="8,0,0,0"
                             MouseLeftButtonDown="EscChip_Click">
-                        <TextBlock Text="ESC" FontSize="9" FontWeight="Bold"
+                        <TextBlock Text="ESC" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                    Foreground="{StaticResource TextSecondaryBrush}"/>
                     </Border>
                     <Grid>
                         <TextBox x:Name="PaletteInput" Background="Transparent" BorderThickness="0"
                                  Foreground="{StaticResource TextPrimaryBrush}"
                                  CaretBrush="{StaticResource TextPrimaryBrush}"
-                                 FontFamily="Cascadia Code, Consolas, Courier New" FontSize="14"
+                                 FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource BodyFontSize}"
                                  TextChanged="PaletteInput_TextChanged"/>
                         <TextBlock x:Name="PalettePlaceholder" IsHitTestVisible="False"
                                    Text="Search epics, builds, and chats — # for issue number, or type/paste a SQL query"
-                                   FontSize="13" VerticalAlignment="Center"
+                                   FontSize="{StaticResource BodyFontSize}" VerticalAlignment="Center"
                                    Foreground="{StaticResource TextDisabledBrush}"/>
                     </Grid>
                 </DockPanel>
@@ -72,9 +72,9 @@
             <Border DockPanel.Dock="Bottom" Padding="14,7" BorderThickness="0,1,0,0"
                     BorderBrush="{StaticResource BorderDividerBrush}">
                 <DockPanel>
-                    <TextBlock DockPanel.Dock="Right" Text="Esc Close" FontSize="9.5"
+                    <TextBlock DockPanel.Dock="Right" Text="Esc Close" FontSize="{StaticResource CaptionFontSize}"
                                Foreground="{StaticResource TextDisabledBrush}"/>
-                    <TextBlock Text="↑↓ Navigate    ↵ Select    Tab Switch Category" FontSize="9.5"
+                    <TextBlock Text="↑↓ Navigate    ↵ Select    Tab Switch Category" FontSize="{StaticResource CaptionFontSize}"
                                Foreground="{StaticResource TextDisabledBrush}"/>
                 </DockPanel>
             </Border>
@@ -110,8 +110,8 @@
                                     MouseLeftButtonDown="DetailAction_Click">
                                 <TextBlock x:Name="PaletteDetailActionLabel"
                                            HorizontalAlignment="Center"
-                                           FontSize="12.5" FontWeight="SemiBold"
-                                           Foreground="#0D1117"/>
+                                           FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
+                                           Foreground="{StaticResource AppBackgroundBrush}"/>
                             </Border>
                         </Border>
                         <ScrollViewer VerticalScrollBarVisibility="Auto">

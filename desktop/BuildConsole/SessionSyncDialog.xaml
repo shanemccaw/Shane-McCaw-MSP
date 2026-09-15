@@ -36,16 +36,16 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Column="0" Text="🚀" FontSize="13"
+                    <TextBlock Grid.Column="0" Text="🚀" FontSize="{StaticResource CaptionFontSize}"
                                Margin="0,0,6,0" VerticalAlignment="Center"/>
                     <TextBlock Grid.Column="1" Text="QA Session Finalization &amp; Repo Sync"
-                               FontSize="11" FontWeight="SemiBold"
+                               FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                VerticalAlignment="Center"
                                Foreground="{StaticResource TextBrush}"/>
                     <Button x:Name="BtnClose" Grid.Column="2"
                             Content="✕"
                             Style="{StaticResource IconButton}"
-                            FontSize="10"
+                            FontSize="{StaticResource CaptionFontSize}"
                             Padding="5,2,5,2"
                             ToolTip="Close"
                             Click="BtnClose_Click"/>
@@ -65,10 +65,10 @@
 
                         <!-- Product Name / Area Picker -->
                         <StackPanel Grid.Column="0">
-                            <TextBlock Text="Product Name / Area:" FontSize="10" FontWeight="SemiBold"
+                            <TextBlock Text="Product Name / Area:" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                        Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,3"/>
                             <ComboBox x:Name="CmbProductName" Height="25"
-                                      IsEditable="True" FontSize="10"
+                                      IsEditable="True" FontSize="{StaticResource BodyFontSize}"
                                       Background="{StaticResource Surface0Brush}"
                                       Foreground="{StaticResource TextBrush}"
                                       BorderBrush="{StaticResource Surface1Brush}"
@@ -88,10 +88,10 @@
 
                         <!-- Session ID -->
                         <StackPanel Grid.Column="2">
-                            <TextBlock Text="Session ID (Folder):" FontSize="10" FontWeight="SemiBold"
+                            <TextBlock Text="Session ID (Folder):" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                        Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,3"/>
                             <TextBox x:Name="TxtSessionId" Height="25"
-                                     FontSize="10" FontFamily="Consolas"
+                                     FontSize="{StaticResource MonospaceFontSize}" FontFamily="{StaticResource MonospaceFontFamily}"
                                      Background="{StaticResource Surface0Brush}"
                                      Foreground="{StaticResource TextBrush}"
                                      BorderBrush="{StaticResource Surface1Brush}"
@@ -116,37 +116,37 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0" HorizontalAlignment="Center">
-                                <TextBlock Text="🐛 Bugs" FontSize="8" Foreground="{StaticResource Subtext1Brush}" HorizontalAlignment="Center"/>
-                                <TextBlock x:Name="TxtBugCountBadge" Text="0" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center"/>
+                                <TextBlock Text="🐛 Bugs" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" HorizontalAlignment="Center"/>
+                                <TextBlock x:Name="TxtBugCountBadge" Text="0" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center"/>
                             </StackPanel>
 
                             <StackPanel Grid.Column="1" HorizontalAlignment="Center">
-                                <TextBlock Text="📷 Shots" FontSize="8" Foreground="{StaticResource Subtext1Brush}" HorizontalAlignment="Center"/>
-                                <TextBlock x:Name="TxtShotsBadge" Text="0" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center"/>
+                                <TextBlock Text="📷 Shots" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" HorizontalAlignment="Center"/>
+                                <TextBlock x:Name="TxtShotsBadge" Text="0" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center"/>
                             </StackPanel>
 
                             <StackPanel Grid.Column="2" HorizontalAlignment="Center">
-                                <TextBlock Text="💻 Errors" FontSize="8" Foreground="{StaticResource Subtext1Brush}" HorizontalAlignment="Center"/>
-                                <TextBlock x:Name="TxtErrorsBadge" Text="0" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center"/>
+                                <TextBlock Text="💻 Errors" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" HorizontalAlignment="Center"/>
+                                <TextBlock x:Name="TxtErrorsBadge" Text="0" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center"/>
                             </StackPanel>
 
                             <StackPanel Grid.Column="3" HorizontalAlignment="Center">
-                                <TextBlock Text="🌐 API Calls" FontSize="8" Foreground="{StaticResource Subtext1Brush}" HorizontalAlignment="Center"/>
-                                <TextBlock x:Name="TxtApiBadge" Text="0" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center"/>
+                                <TextBlock Text="🌐 API Calls" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" HorizontalAlignment="Center"/>
+                                <TextBlock x:Name="TxtApiBadge" Text="0" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center"/>
                             </StackPanel>
 
                             <StackPanel Grid.Column="4" HorizontalAlignment="Center">
-                                <TextBlock Text="⏱ Duration" FontSize="8" Foreground="{StaticResource Subtext1Brush}" HorizontalAlignment="Center"/>
-                                <TextBlock x:Name="TxtDurationBadge" Text="00:00" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center"/>
+                                <TextBlock Text="⏱ Duration" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" HorizontalAlignment="Center"/>
+                                <TextBlock x:Name="TxtDurationBadge" Text="00:00" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center"/>
                             </StackPanel>
                         </Grid>
                     </Border>
 
                     <!-- Commit Message Input / Preview -->
-                    <TextBlock Text="Git Commit Message:" FontSize="10" FontWeight="SemiBold"
+                    <TextBlock Text="Git Commit Message:" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,3"/>
                     <TextBox x:Name="TxtCommitMessage" Height="48"
-                             FontSize="9" FontFamily="Consolas"
+                             FontSize="{StaticResource MonospaceFontSize}" FontFamily="{StaticResource MonospaceFontFamily}"
                              AcceptsReturn="True" TextWrapping="Wrap"
                              Background="{StaticResource Surface0Brush}"
                              Foreground="{StaticResource TextBrush}"
@@ -156,7 +156,7 @@
                              ToolTip="Standard commit format: QA Session &lt;SessionId&gt; – &lt;ProductName&gt; \n &lt;Short Summary Line&gt;"/>
 
                     <!-- Destination Path Preview -->
-                    <TextBlock Text="Repo Target Directory:" FontSize="9" FontWeight="SemiBold"
+                    <TextBlock Text="Repo Target Directory:" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
                     <Border Background="{StaticResource Surface0Brush}"
                             BorderBrush="{StaticResource Surface1Brush}"
@@ -164,7 +164,7 @@
                             Padding="6,4,6,4" Margin="0,0,0,8">
                         <TextBlock x:Name="TxtDestinationPath"
                                    Text="/Bugs/MSP_Console/2026-09-13-1327/"
-                                   FontFamily="Consolas" FontSize="9"
+                                   FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource MonospaceFontSize}"
                                    Foreground="{StaticResource TextBrush}"
                                    TextWrapping="Wrap"/>
                     </Border>
@@ -172,21 +172,21 @@
                     <!-- Push to Git Checkbox -->
                     <CheckBox x:Name="ChkPushToGit"
                               Content="Push to remote repository (current branch) after commit"
-                              FontSize="10" Foreground="{StaticResource TextBrush}"
+                              FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextBrush}"
                               IsChecked="True" Margin="0,0,0,8"
                               ToolTip="Executes git push to sync artifacts to GitHub/origin for Claude integration"/>
 
                     <!-- Summary Markdown Preview Expander -->
                     <Expander x:Name="ExpanderSummary"
                               Header="Preview summary.md (Human-readable for Claude)"
-                              FontSize="9" Foreground="{StaticResource AccentBrush}"
+                              FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource AccentBrush}"
                               IsExpanded="False">
                         <Border Background="{StaticResource CrustBrush}"
                                 BorderBrush="{StaticResource Surface1Brush}"
                                 BorderThickness="1" CornerRadius="3"
                                 Padding="4" Margin="0,4,0,0">
                             <TextBox x:Name="TxtSummaryPreview"
-                                     Height="120" FontSize="8" FontFamily="Consolas"
+                                     Height="120" FontSize="{StaticResource MonospaceFontSize}" FontFamily="{StaticResource MonospaceFontFamily}"
                                      IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
                                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
                                      Background="{StaticResource BaseBrush}" Foreground="{StaticResource TextBrush}"
@@ -211,7 +211,7 @@
                                      Foreground="{StaticResource AccentBrush}"
                                      Visibility="Collapsed" Margin="0,0,0,4"/>
                         <TextBlock x:Name="StatusMessageText"
-                                   FontSize="10" FontWeight="SemiBold"
+                                   FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                    Foreground="{StaticResource StatusSuccessBrush}"
                                    Visibility="Collapsed"
                                    TextWrapping="Wrap"/>
@@ -228,7 +228,7 @@
                         <Button x:Name="BtnSyncAndPush" Grid.Column="0"
                                 Content="🚀 End Session &amp; Sync to Git"
                                 Style="{StaticResource PrimaryButton}"
-                                FontWeight="SemiBold" FontSize="11"
+                                FontWeight="SemiBold" FontSize="{StaticResource CaptionFontSize}"
                                 Padding="10,5,10,5"
                                 IsDefault="True"
                                 Click="BtnSyncAndPush_Click"/>
@@ -236,7 +236,7 @@
                         <Button x:Name="BtnOpenFolder" Grid.Column="1"
                                 Content="📂 Open Folder"
                                 Style="{StaticResource IconButton}"
-                                FontSize="10" Padding="8,5,8,5"
+                                FontSize="{StaticResource CaptionFontSize}" Padding="8,5,8,5"
                                 Margin="6,0,0,0" IsEnabled="False"
                                 ToolTip="Open the session folder in Windows Explorer"
                                 Click="BtnOpenFolder_Click"/>
@@ -244,7 +244,7 @@
                         <Button x:Name="BtnCopySummary" Grid.Column="2"
                                 Content="📋 Copy Summary"
                                 Style="{StaticResource IconButton}"
-                                FontSize="10" Padding="8,5,8,5"
+                                FontSize="{StaticResource CaptionFontSize}" Padding="8,5,8,5"
                                 Margin="6,0,0,0" IsEnabled="False"
                                 ToolTip="Copy the summary.md content to clipboard"
                                 Click="BtnCopySummary_Click"/>
@@ -252,7 +252,7 @@
                         <Button x:Name="BtnCancel" Grid.Column="3"
                                 Content="Cancel"
                                 Style="{StaticResource IconButton}"
-                                FontSize="10" Padding="8,5,8,5"
+                                FontSize="{StaticResource CaptionFontSize}" Padding="8,5,8,5"
                                 Margin="6,0,0,0"
                                 Click="BtnClose_Click"/>
                     </Grid>

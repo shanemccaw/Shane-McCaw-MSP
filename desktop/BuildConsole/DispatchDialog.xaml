@@ -50,11 +50,11 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Dispatch" Margin="12,0,0,0"
-                               VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
+                               VerticalAlignment="Center" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                Foreground="{StaticResource Subtext1Brush}"/>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
                         <Button x:Name="BtnCloseWindow" Style="{StaticResource CaptionButtonClose}" ToolTip="Close" Click="BtnCloseWindow_Click">
-                            <TextBlock Text="&#xE8BB;" FontFamily="{StaticResource IconFontFamily}" FontSize="10"/>
+                            <TextBlock Text="&#xE8BB;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}"/>
                         </Button>
                     </StackPanel>
                 </Grid>
