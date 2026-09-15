@@ -1361,16 +1361,6 @@ namespace BuildConsole
             await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
             InitFocusMode();
 
-            // Restore persistent Git Mode state if active on last session
-            try
-            {
-                if (BuildConsole.Services.BuildConsoleSettings.Load().IsGitMode)
-                {
-                    EnterGitMode();
-                }
-            }
-            catch { /* best-effort */ }
-
             // Git #1934 safety net: if a PRIOR (pre-#1934) blocking build persisted Queue
             // clicks to the spillover file while a version Update was pending, drain and
             // re-queue them now that the Build Tracker client + panels are initialized (see

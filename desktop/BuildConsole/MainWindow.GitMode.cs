@@ -133,9 +133,9 @@ namespace BuildConsole
             if (SidebarSplitter != null) SidebarSplitter.Visibility = _savedGitSidebarSplitterVisibility;
             if (BuildQueuePanel != null) BuildQueuePanel.Visibility = _savedGitBuildQueueVisibility;
 
-            ColActivityBar.Width = _savedGitColActivityBarWidth.Value > 0 ? _savedGitColActivityBarWidth : new GridLength(48);
-            ColSidebar.Width = _savedGitColSidebarWidth.Value > 0 ? _savedGitColSidebarWidth : new GridLength(260);
-            ColQueue.Width = _savedGitColQueueWidth.Value > 0 ? _savedGitColQueueWidth : new GridLength(300);
+            ColActivityBar.Width = (_savedGitColActivityBarWidth.IsAbsolute && _savedGitColActivityBarWidth.Value > 0) ? _savedGitColActivityBarWidth : new GridLength(48);
+            ColSidebar.Width = (_savedGitColSidebarWidth.IsAbsolute && _savedGitColSidebarWidth.Value > 0) ? _savedGitColSidebarWidth : new GridLength(260);
+            ColQueue.Width = (_savedGitColQueueWidth.IsAbsolute && _savedGitColQueueWidth.Value > 0) ? _savedGitColQueueWidth : new GridLength(300);
 
             // Update persistent settings state
             try

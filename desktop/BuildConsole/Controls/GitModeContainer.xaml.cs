@@ -50,7 +50,10 @@ namespace BuildConsole.Controls
 
         private async void GitModeContainer_Loaded(object sender, RoutedEventArgs e)
         {
+            try { GitHubIssueMirror.SyncCompleted -= OnMirrorSyncCompleted; } catch { }
             GitHubIssueMirror.SyncCompleted += OnMirrorSyncCompleted;
+
+            if (!IsVisible || Visibility != Visibility.Visible) return;
             if (_loadedOnce) return;
             _loadedOnce = true;
             await RefreshAllAsync();
@@ -65,7 +68,7 @@ namespace BuildConsole.Controls
         {
             Dispatcher.InvokeAsync(async () =>
             {
-                if (IsVisible)
+                if (IsVisible && Visibility == Visibility.Visible)
                 {
                     await RefreshAllAsync();
                 }
@@ -74,50 +77,76 @@ namespace BuildConsole.Controls
 
         public async Task RefreshAllAsync()
         {
-            await RefreshTreeAsync();
-            await RefreshGraphAsync();
+            if (!IsVisible && Visibility != Visibility.Visible) return;
+            try
+            {
+                await RefreshTreeAsync();
+                await RefreshGraphAsync();
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("git-mode", $"RefreshAllAsync failed: {ex.Message}");
+            }
         }
 
         public async Task RefreshTreeAsync()
         {
-            TxtTreeStatus.Text = "Loading from Postgres...";
-            TxtTreeCount.Text = "...";
-
-            var nodes = await GitModeTreeService.LoadTreeFromPostgresAsync();
-
-            EpicTree.Items.Clear();
-
-            int totalOpenCount = 0;
-
-            foreach (var msNode in nodes)
+            if (!IsVisible && Visibility != Visibility.Visible) return;
+            try
             {
-                totalOpenCount += msNode.OpenCount;
-                var msItem = CreateTreeNodeView(msNode);
-                EpicTree.Items.Add(msItem);
-            }
+                TxtTreeStatus.Text = "Loading from Postgres...";
+                TxtTreeCount.Text = "...";
 
-            TxtTreeCount.Text = $"{totalOpenCount} open";
-            TxtTreeStatus.Text = $"Postgres • {nodes.Count} Milestones • {totalOpenCount} Open Issues";
+                var nodes = await GitModeTreeService.LoadTreeFromPostgresAsync();
+
+                EpicTree.Items.Clear();
+
+                int totalOpenCount = 0;
+
+                foreach (var msNode in nodes)
+                {
+                    totalOpenCount += msNode.OpenCount;
+                    var msItem = CreateTreeNodeView(msNode);
+                    EpicTree.Items.Add(msItem);
+                }
+
+                TxtTreeCount.Text = $"{totalOpenCount} open";
+                TxtTreeStatus.Text = $"Postgres • {nodes.Count} Milestones • {totalOpenCount} Open Issues";
+            }
+            catch (Exception ex)
+            {
+                TxtTreeStatus.Text = $"Postgres load error";
+                ActivityLog.Log("git-mode", $"RefreshTreeAsync failed: {ex.Message}");
+            }
         }
 
         public async Task RefreshGraphAsync()
         {
-            TxtGraphFilterInfo.Text = "Loading...";
-
-            _activeGraphData = await GitModeGraphService.LoadGraphFromPostgresAsync(
-                _milestoneFilter,
-                _epicFilter,
-                _bucketFilter,
-                _buildFilter,
-                false);
-
-            if (_selectedGraphIssue > 0)
+            if (!IsVisible && Visibility != Visibility.Visible) return;
+            try
             {
-                GitModeGraphService.ApplyChainHighlighting(_activeGraphData, _selectedGraphIssue, _activeChainMode);
-            }
+                TxtGraphFilterInfo.Text = "Loading...";
 
-            RenderGraph(_activeGraphData);
-            UpdateGraphHeaderSummary();
+                _activeGraphData = await GitModeGraphService.LoadGraphFromPostgresAsync(
+                    _milestoneFilter,
+                    _epicFilter,
+                    _bucketFilter,
+                    _buildFilter,
+                    false);
+
+                if (_selectedGraphIssue > 0)
+                {
+                    GitModeGraphService.ApplyChainHighlighting(_activeGraphData, _selectedGraphIssue, _activeChainMode);
+                }
+
+                RenderGraph(_activeGraphData);
+                UpdateGraphHeaderSummary();
+            }
+            catch (Exception ex)
+            {
+                TxtGraphFilterInfo.Text = "Graph load error";
+                ActivityLog.Log("git-mode", $"RefreshGraphAsync failed: {ex.Message}");
+            }
         }
 
         private void UpdateGraphHeaderSummary()
@@ -478,109 +507,116 @@ namespace BuildConsole.Controls
 
         public async Task LoadIssueDetailAsync(int issueNumber)
         {
-            if (issueNumber <= 0)
+            try
             {
-                BorderEmptyDetails.Visibility = Visibility.Visible;
-                StackActiveDetails.Visibility = Visibility.Collapsed;
-                TxtDetailHeaderNum.Text = "#...";
-                return;
-            }
-
-            TxtDetailHeaderNum.Text = $"#{issueNumber}";
-            _activeIssueDetail = await GitModeDetailsService.LoadIssueDetailFromPostgresAsync(issueNumber);
-
-            if (_activeIssueDetail == null)
-            {
-                BorderEmptyDetails.Visibility = Visibility.Visible;
-                StackActiveDetails.Visibility = Visibility.Collapsed;
-                return;
-            }
-
-            BorderEmptyDetails.Visibility = Visibility.Collapsed;
-            StackActiveDetails.Visibility = Visibility.Visible;
-
-            // 1. Title & Hierarchy
-            TxtDetailTitle.Text = _activeIssueDetail.Title;
-            string milestoneStr = string.IsNullOrEmpty(_activeIssueDetail.MilestoneTitle) ? "No Milestone" : _activeIssueDetail.MilestoneTitle;
-            string epicStr = _activeIssueDetail.ParentNumber > 0 ? $"Epic #{_activeIssueDetail.ParentNumber}" : "Top Issue";
-            TxtDetailHierarchy.Text = $"{milestoneStr}  •  {epicStr}";
-
-            // 2. GATE Enforcement Banner
-            if (_activeIssueDetail.IsGate || _activeIssueDetail.GateProgress.IsGate)
-            {
-                GateBanner.Visibility = Visibility.Visible;
-                double pct = _activeIssueDetail.GateProgress.PercentComplete;
-                GateProgressBar.Value = pct;
-                TxtGatePercent.Text = $"{pct}% ({_activeIssueDetail.GateProgress.CompletedSubIssues}/{_activeIssueDetail.GateProgress.TotalSubIssues})";
-
-                if (_activeIssueDetail.GateProgress.IsReleaseEnabled)
+                if (issueNumber <= 0)
                 {
-                    TxtGateStatusInfo.Text = "✓ GATE 100% Complete — Release Enabled";
-                    TxtGateStatusInfo.Foreground = (Brush)FindResource("GreenBrush");
-                    BtnReleaseGate.IsEnabled = true;
+                    BorderEmptyDetails.Visibility = Visibility.Visible;
+                    StackActiveDetails.Visibility = Visibility.Collapsed;
+                    TxtDetailHeaderNum.Text = "#...";
+                    return;
+                }
+
+                TxtDetailHeaderNum.Text = $"#{issueNumber}";
+                _activeIssueDetail = await GitModeDetailsService.LoadIssueDetailFromPostgresAsync(issueNumber);
+
+                if (_activeIssueDetail == null)
+                {
+                    BorderEmptyDetails.Visibility = Visibility.Visible;
+                    StackActiveDetails.Visibility = Visibility.Collapsed;
+                    return;
+                }
+
+                BorderEmptyDetails.Visibility = Visibility.Collapsed;
+                StackActiveDetails.Visibility = Visibility.Visible;
+
+                // 1. Title & Hierarchy
+                TxtDetailTitle.Text = _activeIssueDetail.Title;
+                string milestoneStr = string.IsNullOrEmpty(_activeIssueDetail.MilestoneTitle) ? "No Milestone" : _activeIssueDetail.MilestoneTitle;
+                string epicStr = _activeIssueDetail.ParentNumber > 0 ? $"Epic #{_activeIssueDetail.ParentNumber}" : "Top Issue";
+                TxtDetailHierarchy.Text = $"{milestoneStr}  •  {epicStr}";
+
+                // 2. GATE Enforcement Banner
+                if (_activeIssueDetail.IsGate || _activeIssueDetail.GateProgress.IsGate)
+                {
+                    GateBanner.Visibility = Visibility.Visible;
+                    double pct = _activeIssueDetail.GateProgress.PercentComplete;
+                    GateProgressBar.Value = pct;
+                    TxtGatePercent.Text = $"{pct}% ({_activeIssueDetail.GateProgress.CompletedSubIssues}/{_activeIssueDetail.GateProgress.TotalSubIssues})";
+
+                    if (_activeIssueDetail.GateProgress.IsReleaseEnabled)
+                    {
+                        TxtGateStatusInfo.Text = "✓ GATE 100% Complete — Release Enabled";
+                        TxtGateStatusInfo.Foreground = (Brush)FindResource("GreenBrush");
+                        BtnReleaseGate.IsEnabled = true;
+                    }
+                    else
+                    {
+                        TxtGateStatusInfo.Text = $"🛑 Release Actions Disabled — GATE is at {pct}% (Requires 100%)";
+                        TxtGateStatusInfo.Foreground = (Brush)FindResource("RedBrush");
+                        BtnReleaseGate.IsEnabled = false;
+                    }
                 }
                 else
                 {
-                    TxtGateStatusInfo.Text = $"🛑 Release Actions Disabled — GATE is at {pct}% (Requires 100%)";
-                    TxtGateStatusInfo.Foreground = (Brush)FindResource("RedBrush");
-                    BtnReleaseGate.IsEnabled = false;
+                    GateBanner.Visibility = Visibility.Collapsed;
+                }
+
+                // 3. Bucket ComboBox (Prevent triggering selection handler during load)
+                SelectBucketInCombo(_activeIssueDetail.Bucket);
+
+                // 4. Badges
+                TxtDetailBuildStatus.Text = $"BUILD: {_activeIssueDetail.BuildStatus.ToUpperInvariant()}";
+                BadgeBuildStatus.Background = GetBuildStatusBrush(_activeIssueDetail.BuildStatus);
+
+                if (_activeIssueDetail.IsDispatchable && _activeIssueDetail.IsOpen)
+                {
+                    BadgeDispatchable.Visibility = Visibility.Visible;
+                    TxtDetailDispatchable.Text = "⚡ READY";
+                    BadgeDispatchable.Background = (Brush)FindResource("GreenBrush");
+                }
+                else
+                {
+                    BadgeDispatchable.Visibility = Visibility.Visible;
+                    TxtDetailDispatchable.Text = _activeIssueDetail.IsOpen ? "🛑 BLOCKED" : "✓ CLOSED";
+                    BadgeDispatchable.Background = _activeIssueDetail.IsOpen ? (Brush)FindResource("RedBrush") : (Brush)FindResource("Surface0Brush");
+                }
+
+                // 5. Render Labels
+                RenderLabelChips(_activeIssueDetail.Labels);
+
+                // 6. Render Blockers & Dependents Lists
+                RenderRelatedIssues(PanelBlockers, _activeIssueDetail.Blockers, "No upstream blockers");
+                RenderRelatedIssues(PanelDependents, _activeIssueDetail.Dependents, "No downstream dependents");
+
+                // 7. Render PRs & Commits
+                RenderPrs(_activeIssueDetail.PullRequests);
+                RenderCommits(_activeIssueDetail.Commits);
+
+                // 8. Render Comments
+                RenderComments(_activeIssueDetail.Comments);
+
+                // 9. Populate WHY Engine Analysis Card
+                var graphNode = _activeGraphData?.Nodes.FirstOrDefault(n => n.IssueNumber == _activeIssueDetail.IssueNumber);
+                if (graphNode != null)
+                {
+                    var whyRes = GitModeWhyEngine.AnalyzeNode(graphNode, _activeGraphData, _activeIssueDetail);
+                    TxtWhyBlocked.Text = whyRes.WhyBlocked;
+                    TxtWhatItBlocks.Text = whyRes.WhatItBlocks;
+                    TxtWhyBuildInfo.Text = whyRes.BuildRequirements;
+                    TxtWhyNextSteps.Text = whyRes.NextSteps;
+                }
+                else
+                {
+                    TxtWhyBlocked.Text = "No active blockers identified.";
+                    TxtWhatItBlocks.Text = "Does not block downstream open issues.";
+                    TxtWhyBuildInfo.Text = "Build requirements not queued.";
+                    TxtWhyNextSteps.Text = "Review metadata and issue status.";
                 }
             }
-            else
+            catch (Exception ex)
             {
-                GateBanner.Visibility = Visibility.Collapsed;
-            }
-
-            // 3. Bucket ComboBox (Prevent triggering selection handler during load)
-            SelectBucketInCombo(_activeIssueDetail.Bucket);
-
-            // 4. Badges
-            TxtDetailBuildStatus.Text = $"BUILD: {_activeIssueDetail.BuildStatus.ToUpperInvariant()}";
-            BadgeBuildStatus.Background = GetBuildStatusBrush(_activeIssueDetail.BuildStatus);
-
-            if (_activeIssueDetail.IsDispatchable && _activeIssueDetail.IsOpen)
-            {
-                BadgeDispatchable.Visibility = Visibility.Visible;
-                TxtDetailDispatchable.Text = "⚡ READY";
-                BadgeDispatchable.Background = (Brush)FindResource("GreenBrush");
-            }
-            else
-            {
-                BadgeDispatchable.Visibility = Visibility.Visible;
-                TxtDetailDispatchable.Text = _activeIssueDetail.IsOpen ? "🛑 BLOCKED" : "✓ CLOSED";
-                BadgeDispatchable.Background = _activeIssueDetail.IsOpen ? (Brush)FindResource("RedBrush") : (Brush)FindResource("Surface0Brush");
-            }
-
-            // 5. Render Labels
-            RenderLabelChips(_activeIssueDetail.Labels);
-
-            // 6. Render Blockers & Dependents Lists
-            RenderRelatedIssues(PanelBlockers, _activeIssueDetail.Blockers, "No upstream blockers");
-            RenderRelatedIssues(PanelDependents, _activeIssueDetail.Dependents, "No downstream dependents");
-
-            // 7. Render PRs & Commits
-            RenderPrs(_activeIssueDetail.PullRequests);
-            RenderCommits(_activeIssueDetail.Commits);
-
-            // 8. Render Comments
-            RenderComments(_activeIssueDetail.Comments);
-
-            // 9. Populate WHY Engine Analysis Card
-            var graphNode = _activeGraphData?.Nodes.FirstOrDefault(n => n.IssueNumber == _activeIssueDetail.IssueNumber);
-            if (graphNode != null)
-            {
-                var whyRes = GitModeWhyEngine.AnalyzeNode(graphNode, _activeGraphData, _activeIssueDetail);
-                TxtWhyBlocked.Text = whyRes.WhyBlocked;
-                TxtWhatItBlocks.Text = whyRes.WhatItBlocks;
-                TxtWhyBuildInfo.Text = whyRes.BuildRequirements;
-                TxtWhyNextSteps.Text = whyRes.NextSteps;
-            }
-            else
-            {
-                TxtWhyBlocked.Text = "No active blockers identified.";
-                TxtWhatItBlocks.Text = "Does not block downstream open issues.";
-                TxtWhyBuildInfo.Text = "Build requirements not queued.";
-                TxtWhyNextSteps.Text = "Review metadata and issue status.";
+                ActivityLog.Log("git-mode", $"LoadIssueDetailAsync failed: {ex.Message}");
             }
         }
 
