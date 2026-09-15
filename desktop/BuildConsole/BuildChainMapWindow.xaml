@@ -8,7 +8,7 @@
         MinWidth="960" MinHeight="600"
         WindowStartupLocation="CenterScreen"
         ShowInTaskbar="True"
-        FontFamily="Segoe UI"
+        FontFamily="{StaticResource DefaultFontFamily}"
         Background="#0a0d12">
 
     <!-- ── Git #2482 — Build Chain Map: top bar + status strip ──
@@ -102,7 +102,7 @@
                                    Foreground="#6a8fb5"/>
                         <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
                             <TextBlock x:Name="EpicNameText" Text="" FontSize="13.5" FontWeight="ExtraBold" Foreground="#e6edf3"/>
-                            <TextBlock x:Name="EpicNumText" Text="" FontFamily="Consolas" FontSize="10" Foreground="#576069"
+                            <TextBlock x:Name="EpicNumText" Text="" FontFamily="{StaticResource MonospaceFontFamily}" FontSize="10" Foreground="#576069"
                                        Margin="6,0,0,0" VerticalAlignment="Bottom"/>
                             <TextBlock Text="Epic → Feature → Issue → blocked_by" FontSize="10.5" Foreground="#8b949e"
                                        Margin="8,0,0,0" VerticalAlignment="Bottom"/>
@@ -143,7 +143,7 @@
                             <Path Data="{StaticResource Icon.Minus}" Width="10" Height="10" Stretch="Uniform"
                                   Stroke="#c9d1d9" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
                         </Button>
-                        <TextBlock x:Name="ZoomPercentText" Text="100%" FontFamily="Consolas" FontSize="10.5"
+                        <TextBlock x:Name="ZoomPercentText" Text="100%" FontFamily="{StaticResource MonospaceFontFamily}" FontSize="10.5"
                                    Foreground="#c9d1d9" Width="34" TextAlignment="Center" VerticalAlignment="Center"/>
                         <Button x:Name="ZoomInButton" Style="{StaticResource ChainMapTopBarButton}" Click="ZoomInButton_Click">
                             <Path Data="{StaticResource Icon.Plus}" Width="10" Height="10" Stretch="Uniform"
@@ -172,7 +172,7 @@
                            Text="Loading…" FontSize="10" Foreground="#8b949e"
                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                 <TextBlock x:Name="StatusCountsText" DockPanel.Dock="Right"
-                           Text="" FontFamily="Consolas" FontSize="10" Foreground="#576069"
+                           Text="" FontFamily="{StaticResource MonospaceFontFamily}" FontSize="10" Foreground="#576069"
                            VerticalAlignment="Center" HorizontalAlignment="Right"/>
             </DockPanel>
         </Border>
