@@ -22,12 +22,12 @@
                             Content="Refresh" Height="30" Padding="14,0" Cursor="Hand"
                             Background="{StaticResource Surface0Brush}"
                             Foreground="{StaticResource TextBrush}" BorderThickness="0"
-                            FontSize="11.5" Click="BtnGitManagerRefresh_Click"/>
+                            FontSize="{StaticResource CaptionFontSize}" Click="BtnGitManagerRefresh_Click"/>
                     <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="Git Manager" FontSize="16" FontWeight="Bold"
+                        <TextBlock Text="Git Manager" FontSize="{StaticResource SubHeaderFontSize}" FontWeight="Bold"
                                    Foreground="{StaticResource TextBrush}"/>
                         <TextBlock x:Name="GitManagerSubline" Margin="0,3,0,0"
-                                   FontFamily="Consolas" FontSize="10.5"
+                                   FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource CaptionFontSize}"
                                    Foreground="{StaticResource OverlayBrush}"/>
                     </StackPanel>
                 </DockPanel>
