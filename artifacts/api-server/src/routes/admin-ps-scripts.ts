@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { requireAdmin, requireCapability } from "../middlewares/requireAuth.ts";
 import { db, pool } from "@workspace/db";
 import {
   powershellScriptsTable,
@@ -492,28 +492,24 @@ router.get("/admin/ps-scripts/published", requireAdmin, async (_req: Request, re
 });
 
 // ─── GET /api/admin/ps-scripts ────────────────────────────────────────────────
+// Re-gated ladder.msp-operator (Git #4264) so msp-console's Kanban card
+// "customer download" script picker (KanbanCardModal.tsx) can load for real
+// MSP operators, not just platform admins. `powershell_scripts` has no
+// `msp_id` column — it's a genuine platform-global library, not per-MSP data —
+// so this is a projection narrowing, not a tenant-scoping change: operators
+// get only what the picker reads (id, title, category), not `script_body` or
+// the other admin-only fields.
 
-router.get("/admin/ps-scripts", requireAdmin, async (_req: Request, res: Response) => {
+router.get("/admin/ps-scripts", requireCapability("ladder.msp-operator"), async (_req: Request, res: Response) => {
   try {
-    const result = await pool.query<{
-      id: string; title: string; description: string | null; category: string;
-      tags: string[]; azure_synced_at: string | null;
-      created_at: string; updated_at: string; source_task_id: number | null;
-    }>(
-      `SELECT id, title, description, category, tags, azure_synced_at,
-              created_at, updated_at, source_task_id
+    const result = await pool.query<{ id: string; title: string; category: string }>(
+      `SELECT id, title, category
        FROM powershell_scripts ORDER BY created_at DESC`,
     );
     res.json(result.rows.map(r => ({
       id: r.id,
       title: r.title,
-      description: r.description,
       category: r.category,
-      tags: r.tags,
-      azureSyncedAt: r.azure_synced_at,
-      createdAt: r.created_at,
-      updatedAt: r.updated_at,
-      sourceTaskId: r.source_task_id,
     })));
   } catch (err) {
     log.error({ err }, "Failed to list PS scripts");
