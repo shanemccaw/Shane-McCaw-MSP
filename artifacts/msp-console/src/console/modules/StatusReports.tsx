@@ -29,6 +29,12 @@
  *
  * No fixture module, no fabricated row — every value here comes from a real
  * server response.
+ *
+ * `mspId` (from the directory row, same reason Billing's Invoices tab needs it)
+ * feeds the "Autofill from a delivery project" sub-panel (Git #4248,
+ * `ReportAutofillPanel.tsx`), which wires the previously-dead-code
+ * `GET /admin/projects/:id/report-autofill` into a real "generate draft
+ * content" flow for this page's own create/edit form.
  */
 import { useMemo, useState } from "react";
 import { Icon } from "@/console/icons";
@@ -41,6 +47,7 @@ import {
   useUpdateStatusReport,
   type StatusReport,
 } from "@/api/status-reports-api";
+import { ReportAutofillPanel, type DraftFromAutofill } from "./ReportAutofillPanel";
 
 const LIMIT = 50;
 
@@ -69,7 +76,7 @@ function stateBadge(state: StatusReport["state"]) {
   return state === "published" ? signal.ok : signal.neutral;
 }
 
-export function StatusReports({ customerId }: { customerId: number }) {
+export function StatusReports({ customerId, mspId }: { customerId: number; mspId: number }) {
   const [offset, setOffset] = useState(0);
   const [mode, setMode] = useState<Mode>({ kind: "none" });
   const [periodLabel, setPeriodLabel] = useState("");
@@ -87,13 +94,13 @@ export function StatusReports({ customerId }: { customerId: number }) {
   const open = mode.kind === "viewing" || mode.kind === "editing" ? reports.find((r) => r.id === mode.id) ?? null : null;
   const canEdit = !!open && open.state === "draft";
 
-  const startCreate = () => {
+  const startCreate = (draft?: DraftFromAutofill) => {
     setMode({ kind: "creating" });
-    setPeriodLabel("");
-    setAsOfDate("");
-    setContent("");
+    setPeriodLabel(draft?.periodLabel ?? "");
+    setAsOfDate(draft?.asOfDate ?? "");
+    setContent(draft?.content ?? "");
     setConfirming(false);
-    setResult(null);
+    setResult(draft ? { text: "Autofilled from a delivery project — review and edit before saving.", tone: "ok" } : null);
   };
 
   const selectReport = (r: StatusReport) => {
@@ -216,7 +223,7 @@ export function StatusReports({ customerId }: { customerId: number }) {
             <span style={{ fontSize: 12.5, fontWeight: 700, color: text.strong }}>Reports for this tenant</span>
             <span style={{ fontSize: 11, color: text.label, textWrap: "pretty" }}>{listCaption}</span>
           </span>
-          <button onClick={startCreate} style={primaryBtnStyle}>New draft</button>
+          <button onClick={() => startCreate()} style={primaryBtnStyle}>New draft</button>
         </div>
 
         {listQuery.isError ? (
@@ -231,7 +238,7 @@ export function StatusReports({ customerId }: { customerId: number }) {
             <span style={{ fontSize: 11.5, color: text.label, textWrap: "pretty", maxWidth: 340 }}>
               This is the live state: the table holds zero rows for every tenant, because nothing has ever called these routes. The first report on this tenant will be one you write here.
             </span>
-            <button onClick={startCreate} style={{ ...primaryBtnStyle, marginTop: 4 }}>Write the first one</button>
+            <button onClick={() => startCreate()} style={{ ...primaryBtnStyle, marginTop: 4 }}>Write the first one</button>
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
@@ -277,6 +284,8 @@ export function StatusReports({ customerId }: { customerId: number }) {
 
       {/* Detail / editor */}
       <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+        <ReportAutofillPanel mspId={mspId} onUseAsDraft={(draft) => startCreate(draft)} />
+
         {(mode.kind === "creating" || mode.kind === "editing") && (
           <div style={{ border: "1px solid rgba(96,165,250,.3)", borderRadius: 14, background: surface.card, padding: 16, display: "flex", flexDirection: "column", gap: 13, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>

@@ -53,19 +53,32 @@ caller; now that MSP operators can reach these routes too, the hardcode would ha
 misattributed their actions in the audit trail, so it was fixed in the same commit as
 the gate change).
 
+**MSP-scoping gap (Git #4251, found by #4248):** widening the gate to
+`ladder.msp-operator` made these routes reachable by *any* MSP's own operator staff,
+not just platform admins — but no route in this file gained an MSP-ownership check to
+go with it. `projectsTable.clientUserId` has no FK to `tenantsTable`; the only real
+ownership axis is `clientUserId → usersTable.mspId`. #4248 added that check
+(`projectVisibleToMsp`, `admin-projects.ts`) to exactly two routes —
+`GET /admin/projects` (now `mspId`-scoped, `mspId === 0` PlatformAdmin retains the
+unscoped cross-platform view) and `GET /admin/projects/:id/report-autofill`
+(404s a project outside the caller's MSP, same shape as `msp-invoices.ts`'s
+`findMspInvoice`) — because those are the two routes #4248 made reachable from a real
+UI for the first time. **The other 19 routes below are unchanged and still carry no
+MSP-ownership check** — tracked in #4251 for a dedicated fix.
+
 ## 2. Routes
 
 ### Projects
 
 | Method | Path | Line | Notes |
 |---|---|---|---|
-| GET | `/admin/projects` | 113 | List all projects, `orderBy(desc(createdAt))`. No pagination, no filter. |
+| GET | `/admin/projects` | 113 | List projects, `orderBy(desc(createdAt))`. No pagination. Optional `?clientUserId=` filter (added by #4248, for the MSP Console project picker). `mspId`-scoped (Git #4251/#4248): PlatformAdmin (`mspId === 0`) sees every project unscoped, exactly as before; any other caller only sees projects whose `clientUserId` belongs to their own MSP. |
 | GET | `/admin/projects/:id` | 118 | 404 if not found. Writes `auditPrivilegedRead` (`admin_project_detail_viewed`). |
 | POST | `/admin/projects` | 138 | Creates a project; `title`/`clientUserId` required (400 otherwise). If `workflowTemplateId` given, provisions `workflow_steps` + seeds Kanban tasks for the first step from the template (non-fatal on failure, logged). Auto-creates a SharePoint folder if the client has a `sharepointSiteId` (non-fatal). Notifies the client user. Writes `createAuditLog` (`project_created`). Returns 201. |
 | PATCH | `/admin/projects/:id` | 293 | Partial update (only defined fields applied). Marking `status: "completed"` auto-revokes all active `client_callback_tokens` for the project (non-fatal on failure). 404 if not found. |
 | DELETE | `/admin/projects/:id` | 335 | Cascades: deletes `kanban_tasks`, `workflow_steps`, `documents`, `project_updates` for the project; nulls `project_id` on `client_services`, `contracts`, `invoices`, `reports`; then deletes the project row. 204 on success, 404 if not found, 500 on any failure (whole handler wrapped in try/catch). |
 | POST | `/admin/projects/:id/sharepoint-folder` | 259 | Manual folder creation for a project that has none yet. 409 if a folder already exists, 400 if no client assigned or client has no SharePoint site, 502 if Graph creation fails. |
-| GET | `/admin/projects/:id/report-autofill` | 918 | **No live frontend caller found anywhere in the repo (grepped `artifacts/**` for `report-autofill` and `autofill`)** — filed as a finding, see §4. Returns project/client summary + completed/pending steps + completed tasks (optionally since a `?since=` date) for status-report drafting. Writes `auditPrivilegedRead` (`admin_project_report_autofill_viewed`). |
+| GET | `/admin/projects/:id/report-autofill` | 918 | Wired by #4248 into MSP Console's Status Reports page (`artifacts/msp-console/src/console/modules/StatusReports.tsx`) — see §4 for the finding this route originally shipped as dead code. Returns project/client summary + completed/pending steps + completed tasks (optionally since a `?since=` date) for status-report drafting. `mspId`-scoped (404s if the project's client isn't in the caller's own MSP, unless PlatformAdmin — Git #4251). Writes `auditPrivilegedRead` (`admin_project_report_autofill_viewed`). |
 | POST | `/admin/projects/:id/closure-request` | 1018 | Only valid when `project.status === "completed"` (422 otherwise). 409 if a closure already exists for the project. Creates a `project_closures` row and emails the client the `closure-request` template. |
 | GET | `/admin/projects/:id/closure` | 1054 | 404 if no closure row exists yet. Writes `auditPrivilegedRead` (`admin_project_closure_viewed`). |
 
@@ -103,12 +116,19 @@ the gate change).
   first,"** not "every field that changed" — see the table row above.
 - **`DELETE /admin/workflow-steps/:id`** has no existence check either.
 
-## 4. Finding filed
+## 4. Findings filed
 
-`GET /admin/projects/:id/report-autofill` (`admin-projects.ts:918`) has no caller
+`GET /admin/projects/:id/report-autofill` (`admin-projects.ts:918`) had no caller
 anywhere in the repo — verified by grepping `artifacts/**/*.{ts,tsx}` for both
 `report-autofill` and the looser `autofill` (only hits: this route's own file, and two
-unrelated marketing/purchase-flow files using "autofill" in an unrelated sense). It is a
+unrelated marketing/purchase-flow files using "autofill" in an unrelated sense). It was a
 live, working endpoint (project/client summary + completed/pending steps + tasks for
 status-report drafting) with zero UI wired to it. Filed as #4248, sibling sub-issue of
-#3433, labeled `bug`.
+#3433, labeled `bug` — **built** (not just fixed) by #4248, see the updated route row
+above.
+
+#4251 (sibling sub-issue of #3433, labeled `bug` + `security`): none of this file's 21
+routes carry an MSP-ownership check, so widening the gate to `ladder.msp-operator`
+(#4245) let any MSP's own operator staff read/write every other MSP's client project
+data. #4248 scoped the two routes it made UI-reachable (`GET /admin/projects`,
+`GET /admin/projects/:id/report-autofill`); the other 19 are still open — see §1.

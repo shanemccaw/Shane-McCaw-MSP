@@ -336,7 +336,14 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
     return <DataRights customerId={sel.tenant} />;
   }
   if (sel.kind === "page" && sel.page === "status-reports") {
-    return <StatusReports customerId={sel.tenant} />;
+    // Status Reports (#3765) gained a real "Autofill from a delivery project"
+    // panel (#4248) that needs mspId for its own client/project picker — the
+    // Delivery Projects axis has no FK to this tenant, same reason Billing's
+    // Invoices tab (#4109) needs it, so it's resolved the same way: off the
+    // directory row, not the session claim, so a PlatformAdmin session works too.
+    const customer = customers.find((c) => c.id === sel.tenant);
+    if (!customer) return undefined;
+    return <StatusReports customerId={sel.tenant} mspId={customer.mspId} />;
   }
   if (sel.kind === "page" && sel.page === "contracts") {
     // Contracts (#3775), README screen 21 — real aggregation read view over

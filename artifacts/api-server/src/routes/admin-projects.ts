@@ -25,6 +25,7 @@ import { eq, and, asc, desc, count, sql, inArray, isNotNull, isNull, gte } from 
 import { requireCapability, type AuthUser } from "../middlewares/requireAuth.ts";
 import { userClearsLadderCapability } from "../middlewares/rbac-ladder.ts";
 import { LADDER } from "@workspace/db/rbac/legacy-ladder";
+import { resolveMspIdOrZero } from "../lib/resolve-msp-id.ts";
 import { createNotification } from "../lib/notification-center.ts";
 import { createAuditLog, auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 import { createProjectFolder } from "../lib/graph.ts";
@@ -64,6 +65,27 @@ async function syncProjectProgress(projectId: number): Promise<void> {
   const completed = Number(result?.completed ?? 0);
   const progress = total === 0 ? 0 : Math.round((completed / total) * 100);
   await db.update(projectsTable).set({ progress }).where(eq(projectsTable.id, projectId));
+}
+
+/**
+ * Confirm a project's client belongs to `mspId` (0 = PlatformAdmin cross-platform
+ * view, no scoping). Same ownership-gate shape as `msp-invoices.ts`'s
+ * `clientBelongsToMsp` — `projectsTable.clientUserId` has no FK to `tenantsTable`,
+ * only to `usersTable.mspId`, which is the axis every MSP-Console-scoped route in
+ * this file needs to check (Git #4251 — `admin-projects.ts` was re-gated from
+ * `requireAdmin` to `requireCapability("ladder.msp-operator")` by #4245 with no
+ * MSP-scoping added, so a project with no `clientUserId` or a `clientUserId`
+ * outside the caller's own MSP must not be visible to a non-admin caller).
+ */
+async function projectVisibleToMsp(clientUserId: number | null, mspId: number): Promise<boolean> {
+  if (mspId === 0) return true; // PlatformAdmin cross-platform view — unchanged
+  if (!clientUserId) return false;
+  const [row] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(and(eq(usersTable.id, clientUserId), eq(usersTable.mspId, mspId)))
+    .limit(1);
+  return Boolean(row);
 }
 
 function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
@@ -110,8 +132,29 @@ router.get("/admin/projects/:id/kanban-events", async (req: Request, res: Respon
   setupSSE(req, res, projectId);
 });
 
-router.get("/admin/projects", requireCapability("ladder.msp-operator"), async (_req: Request, res: Response) => {
-  const projects = await db.select().from(projectsTable).orderBy(desc(projectsTable.createdAt));
+router.get("/admin/projects", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
+  const mspId = await resolveMspIdOrZero(req);
+  const clientUserIdParam = typeof req.query.clientUserId === "string" ? parseInt(req.query.clientUserId, 10) : NaN;
+
+  // mspId === 0 is the PlatformAdmin cross-platform view (unchanged behavior).
+  // Any other caller (an MSP Console operator) only ever sees projects whose
+  // client belongs to their own MSP (Git #4251 — see `projectVisibleToMsp`).
+  const conditions = mspId === 0
+    ? []
+    : [eq(usersTable.mspId, mspId)];
+  if (!isNaN(clientUserIdParam)) conditions.push(eq(projectsTable.clientUserId, clientUserIdParam));
+
+  const projects = mspId === 0
+    ? await db.select().from(projectsTable)
+        .where(conditions.length ? and(...conditions) : undefined)
+        .orderBy(desc(projectsTable.createdAt))
+    : await db.select({ project: projectsTable })
+        .from(projectsTable)
+        .innerJoin(usersTable, eq(projectsTable.clientUserId, usersTable.id))
+        .where(and(...conditions))
+        .orderBy(desc(projectsTable.createdAt))
+        .then((rows) => rows.map((r) => r.project));
+
   res.json(projects);
 });
 
@@ -924,6 +967,15 @@ router.get("/admin/projects/:id/report-autofill", requireCapability("ladder.msp-
 
   const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, id));
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+  // Git #4251 — 404 (not 403) on cross-MSP access, same as `msp-invoices.ts`'s
+  // `findMspInvoice`, so an unauthorized caller can't distinguish "not mine"
+  // from "doesn't exist."
+  const mspId = await resolveMspIdOrZero(req);
+  if (!(await projectVisibleToMsp(project.clientUserId, mspId))) {
+    res.status(404).json({ error: "Project not found" });
+    return;
+  }
 
   const [client] = project.clientUserId
     ? await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, company: usersTable.company })
