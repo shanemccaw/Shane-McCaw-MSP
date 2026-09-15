@@ -149,7 +149,7 @@ claim. Every closure in this repo follows:
 2. `git show origin/main:build-journal/{N}.md` — confirm both `IN FLIGHT` and `DONE`
    are present, and note the cited commit hash.
 3. `git cat-file -t <sha>` — confirm the cited commit hash is a real object. (Real
-   incident: agents have cited phantom hashes that don't exist — see §9.)
+   incident: agents have cited phantom hashes that don't exist — see §10.)
 4. `git merge-base --is-ancestor <sha> origin/main` — confirm it's genuinely merged,
    not just committed to a branch that never landed.
 5. `git status --porcelain` clean.
@@ -164,7 +164,64 @@ on a local queue row's `done` status alone.
 
 ---
 
-## 8. Common mistakes, stated directly
+## 8. What a chat checks first when asked about a build's state
+
+This section covers two real gaps: what order to check evidence in, and what to do
+when a build never reaches a real DONE. It doesn't change §1/§7's rule that nothing
+counts as complete without a real, verified DONE bookend — it only says what to check,
+and in what order, *before* reaching that point.
+
+### 8a. Verification order — read the documents before the diff
+
+A chat asked to verify or check on a build reads evidence in this order:
+
+1. **`build-journal/{N}-plan.md`**, if it exists (§4.4 of `BUILD_QUEUE_METHOD.md`) —
+   what was actually planned, and what the Root Cause Analysis found, before any code
+   changed.
+2. **`build-journal/{N}.md`'s DONE entry** — specifically its `## Changes Made` and
+   `## Verification Results` headers (§4.4) — as the primary evidence of what landed
+   and how it was confirmed.
+3. **Only then, read the actual changed files/diff directly**, and only when one of
+   these is true: the documents above are missing; the DONE entry lacks the required
+   §4.4 headers; the claim concerns something genuinely high-stakes (a shared or
+   critical file); or something in the claim looks internally inconsistent and needs
+   direct confirmation.
+
+The two documents exist so a chat doesn't re-derive the whole diff from prose every
+time once they're present — but they narrow the read, they never replace §7's real
+verification steps (`git cat-file -t`, `git merge-base --is-ancestor`, etc.) once a
+closure is actually being decided.
+
+### 8b. No DONE bookend exists — what to actually do
+
+Finding no DONE entry in `build-journal/{N}.md` (or no file at all) is not itself
+evidence of anything — it could mean the build is still genuinely running, that it
+died mid-flight with real work stranded on an unmerged branch, or that it never
+meaningfully started. Work through this in order:
+
+1. **Check the real board status** (`get_board_status` or equivalent). Sitting in
+   "Verifying," or stuck in Batter Up past a reasonable window, is the live signal
+   that something is actually in flight or stalled — not proof either way on its own.
+2. **If an IN FLIGHT entry exists but no DONE**, check whether a real `agent/{N}-*`
+   (or similarly-named) branch exists with real commits beyond the IN FLIGHT bookend's
+   own commit — the same worktree/branch-naming convention this document and
+   `BUILD_QUEUE_METHOD.md` already use for isolated worktrees. **If real unmerged work
+   is found, flag it to Shane rather than silently discarding it or re-dispatching
+   over it** — re-dispatching blind risks either losing real stranded work or
+   producing duplicate/conflicting work against it.
+3. **If no real additional work is found** beyond an IN FLIGHT entry (or no journal
+   exists at all), it's safe to treat the build as abandoned/never-completed and issue
+   a fresh `BUILD:` dispatch (§3). The existing "once DONE, never re-dispatch the same
+   issue number" convention only applies once a **real** DONE bookend exists — an
+   issue with no DONE bookend at all is fair game for a fresh dispatch on the same
+   number.
+4. **Never mark an issue closed/DONE without the real verified bookend §1/§7 already
+   require.** Nothing in this subsection relaxes that — it only covers what to check
+   and do before a closure decision is even on the table.
+
+---
+
+## 9. Common mistakes, stated directly
 
 - **Writing "blocked by #N" in prose instead of a real dependency edge.** Invisible to
   everything in this document. Use the real API call (§2a).
@@ -185,7 +242,7 @@ on a local queue row's `done` status alone.
 
 ---
 
-## 9. Real incidents this document exists because of
+## 10. Real incidents this document exists because of
 
 - **#1600** — the original claim-logic failure. A build (#1483) started while its
   declared blocker was still genuinely open; a separate incident (#943) lost live
