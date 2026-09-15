@@ -527,7 +527,7 @@
                          right-click for "Mark All Recovered (Dismiss)" when Shane just
                          wants the warning gone without re-queuing anything. -->
                     <Border x:Name="OrphanRecoveryBanner"
-                            Background="#3A1E26"
+                            Background="{StaticResource StatusErrorBannerBackgroundBrush}"
                             BorderBrush="{StaticResource StatusErrorBrush}"
                             BorderThickness="1"
                             CornerRadius="4"
@@ -673,7 +673,7 @@
                            StaysOpen="True"
                            AllowsTransparency="True"
                            IsOpen="False">
-                        <Border Background="#3A3200"
+                        <Border Background="{StaticResource StatusWarningBannerBackgroundBrush}"
                                 BorderBrush="{StaticResource StatusWarningBrush}"
                                 BorderThickness="1"
                                 CornerRadius="4"
