@@ -80,33 +80,33 @@ namespace BuildConsole.Services
                 result.WhatItBlocks = "Does not block any downstream open issues.";
             }
 
-            // 3. Build Requirements
-            string bStatus = node.BuildStatus.ToUpperInvariant();
-            if (bStatus == "SUCCESS")
+            // 3. Build Requirements (Phase 7 Node Badges: Built, Build failed, Build missing, Build outdated, Build pending)
+            string bStatus = node.BuildStatus.ToLowerInvariant();
+            if (bStatus == "built" || bStatus == "success")
             {
-                result.BuildRequirements = "Build status: SUCCESS. Build verification is clean.";
+                result.BuildRequirements = "Build status: BUILT. Build verification clean.";
             }
-            else if (bStatus == "FAILED")
+            else if (bStatus == "failed")
             {
-                result.BuildRequirements = "Build status: FAILED. Requires build fix or re-run prior to dispatch.";
+                result.BuildRequirements = "Build status: BUILD FAILED. Requires fix or rebuild before dispatch.";
             }
-            else if (bStatus == "RUNNING")
+            else if (bStatus == "outdated")
             {
-                result.BuildRequirements = "Build status: RUNNING. Build is currently executing in queue.";
+                result.BuildRequirements = "Build status: BUILD OUTDATED. Stale build artifact; rebuild required.";
             }
-            else if (bStatus == "QUEUED")
+            else if (bStatus == "pending")
             {
-                result.BuildRequirements = "Build status: QUEUED. Waiting for build runner turn.";
+                result.BuildRequirements = "Build status: BUILD PENDING. Executing or queued in build pipeline.";
             }
             else
             {
-                result.BuildRequirements = "Build status: NONE. No active build queued.";
+                result.BuildRequirements = "Build status: BUILD MISSING. No verified build artifact found.";
             }
 
-            // 4. Dispatchability
+            // 4. Dispatchability Rules: Blockers resolved AND Build exists ('built') AND GATE complete
             if (node.IsDispatchable && node.IsOpen)
             {
-                result.Dispatchability = "⚡ READY FOR DISPATCH. Zero open blockers preventing execution.";
+                result.Dispatchability = "⚡ READY FOR DISPATCH. All blockers resolved, required build exists, and GATE complete.";
             }
             else if (!node.IsOpen)
             {
@@ -114,7 +114,13 @@ namespace BuildConsole.Services
             }
             else
             {
-                result.Dispatchability = "🛑 BLOCKED FROM DISPATCH. Waiting for upstream open blockers to close.";
+                var reasons = new List<string>();
+                if (openBlockers.Count > 0) reasons.Add($"{openBlockers.Count} open blocker(s)");
+                if (bStatus != "built" && bStatus != "success") reasons.Add($"Build status is '{bStatus.ToUpperInvariant()}'");
+                if (node.IsGate && detail != null && !detail.GateProgress.IsReleaseEnabled) reasons.Add($"GATE is incomplete ({detail.GateProgress.PercentComplete}%)");
+
+                string reasonStr = reasons.Count > 0 ? string.Join(", ", reasons) : "Dependencies incomplete";
+                result.Dispatchability = $"🛑 NOT DISPATCHABLE. ({reasonStr}).";
             }
 
             // 5. GATE Rules

@@ -166,10 +166,8 @@ namespace BuildConsole.Services
                 {
                     cmd.Parameters.AddWithValue("@n", issueNumber);
                     var res = await cmd.ExecuteScalarAsync();
-                    if (res != null && res != DBNull.Value)
-                    {
-                        detail.BuildStatus = res.ToString()!.ToLowerInvariant();
-                    }
+                    string rawStatus = res != null && res != DBNull.Value ? res.ToString()! : "missing";
+                    detail.BuildStatus = GitModeGraphService.NormalizeBuildStatus(rawStatus, detail.Labels);
                 }
 
                 // 3. Resolve Blocker and Dependent Issue details
@@ -212,9 +210,37 @@ namespace BuildConsole.Services
                     }
                 }
 
-                // Compute Dispatchable: Open issue with zero open blockers
+                // Phase 7 Dispatchability: Open issue with 0 open blockers & build status 'built' & GATE complete
                 int openBlockers = detail.Blockers.Count(b => b.IsOpen);
-                detail.IsDispatchable = detail.IsOpen && (openBlockers == 0);
+                bool blockersResolved = (openBlockers == 0);
+                bool buildsExist = string.Equals(detail.BuildStatus, "built", StringComparison.OrdinalIgnoreCase);
+                bool gateOk = true;
+
+                if (detail.IsGate && detail.MilestoneNumber > 0)
+                {
+                    using (var cmd = new NpgsqlCommand(@"
+                        SELECT 
+                            COUNT(*) as total,
+                            COUNT(*) FILTER (WHERE state = 'closed') as closed
+                        FROM bt_issue_mirror
+                        WHERE milestone_number = @m", conn))
+                    {
+                        cmd.Parameters.AddWithValue("@m", detail.MilestoneNumber);
+                        using (var rdr = await cmd.ExecuteReaderAsync())
+                        {
+                            if (await rdr.ReadAsync())
+                            {
+                                int tot = rdr.GetInt32(0);
+                                int cls = rdr.GetInt32(1);
+                                detail.GateProgress.TotalSubIssues = tot;
+                                detail.GateProgress.CompletedSubIssues = cls;
+                                gateOk = detail.GateProgress.IsReleaseEnabled;
+                            }
+                        }
+                    }
+                }
+
+                detail.IsDispatchable = detail.IsOpen && blockersResolved && buildsExist && gateOk;
 
                 // 4. Sample Comments, PRs, Commits from Postgres activity
                 detail.Comments.Add(new GitModeCommentItem

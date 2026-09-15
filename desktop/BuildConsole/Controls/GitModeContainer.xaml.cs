@@ -360,17 +360,32 @@ namespace BuildConsole.Controls
                 badgesPanel.Children.Add(gateBadge);
             }
 
-            if (node.IsDispatchable && node.IsOpen)
+            if (node.IsOpen)
             {
-                var dispBadge = new Border
+                if (node.IsDispatchable)
                 {
-                    Background = (Brush)FindResource("GreenBrush"),
-                    CornerRadius = new CornerRadius(3),
-                    Padding = new Thickness(4, 1, 4, 1),
-                    Margin = new Thickness(4, 0, 0, 0)
-                };
-                dispBadge.Child = new TextBlock { Text = "⚡ READY", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = (Brush)FindResource("BaseBrush") };
-                badgesPanel.Children.Add(dispBadge);
+                    var dispBadge = new Border
+                    {
+                        Background = (Brush)FindResource("GreenBrush"),
+                        CornerRadius = new CornerRadius(3),
+                        Padding = new Thickness(4, 1, 4, 1),
+                        Margin = new Thickness(4, 0, 0, 0)
+                    };
+                    dispBadge.Child = new TextBlock { Text = "⚡ DISPATCHABLE", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = (Brush)FindResource("BaseBrush") };
+                    badgesPanel.Children.Add(dispBadge);
+                }
+                else
+                {
+                    var blockBadge = new Border
+                    {
+                        Background = (Brush)FindResource("Surface0Brush"),
+                        CornerRadius = new CornerRadius(3),
+                        Padding = new Thickness(4, 1, 4, 1),
+                        Margin = new Thickness(4, 0, 0, 0)
+                    };
+                    blockBadge.Child = new TextBlock { Text = "🛑 BLOCKED", FontSize = 9, FontWeight = FontWeights.SemiBold, Foreground = (Brush)FindResource("RedBrush") };
+                    badgesPanel.Children.Add(blockBadge);
+                }
             }
 
             topHeader.Children.Add(badgesPanel);
@@ -387,21 +402,32 @@ namespace BuildConsole.Controls
             };
             contentStack.Children.Add(titleText);
 
-            // Bottom Footer: Build Status & Labels
+            // Bottom Footer: Build Status Badge (Phase 7: Built, Build failed, Build missing, Build outdated, Build pending) & Labels
             var footer = new DockPanel { LastChildFill = false };
 
-            if (!string.Equals(node.BuildStatus, "none", StringComparison.OrdinalIgnoreCase))
+            var bStatusBorder = new Border
             {
-                var bStatusBorder = new Border
-                {
-                    Background = GetBuildStatusBrush(node.BuildStatus),
-                    CornerRadius = new CornerRadius(3),
-                    Padding = new Thickness(4, 1, 4, 1)
-                };
-                DockPanel.SetDock(bStatusBorder, Dock.Left);
-                bStatusBorder.Child = new TextBlock { Text = node.BuildStatus.ToUpperInvariant(), FontSize = 9, FontWeight = FontWeights.SemiBold, Foreground = (Brush)FindResource("BaseBrush") };
-                footer.Children.Add(bStatusBorder);
-            }
+                Background = GetBuildStatusBrush(node.BuildStatus),
+                CornerRadius = new CornerRadius(3),
+                Padding = new Thickness(4, 1, 4, 1)
+            };
+            DockPanel.SetDock(bStatusBorder, Dock.Left);
+
+            string bLabelText = node.BuildStatus.ToLowerInvariant() switch
+            {
+                "built" => "✓ BUILT",
+                "failed" => "❌ FAILED",
+                "outdated" => "🔄 OUTDATED",
+                "pending" => "⏳ PENDING",
+                _ => "⚠️ MISSING"
+            };
+
+            Brush bLabelFg = (node.BuildStatus.Equals("missing", StringComparison.OrdinalIgnoreCase))
+                ? (Brush)FindResource("Subtext0Brush")
+                : (Brush)FindResource("BaseBrush");
+
+            bStatusBorder.Child = new TextBlock { Text = bLabelText, FontSize = 9, FontWeight = FontWeights.SemiBold, Foreground = bLabelFg };
+            footer.Children.Add(bStatusBorder);
 
             if (node.Labels.Count > 0)
             {
@@ -818,10 +844,15 @@ namespace BuildConsole.Controls
 
         private Brush GetBuildStatusBrush(string status)
         {
-            if (string.Equals(status, "success", StringComparison.OrdinalIgnoreCase)) return (Brush)FindResource("GreenBrush");
-            if (string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase)) return (Brush)FindResource("RedBrush");
-            if (string.Equals(status, "running", StringComparison.OrdinalIgnoreCase)) return (Brush)FindResource("BlueBrush");
-            return (Brush)FindResource("YellowBrush");
+            var s = status.Trim().ToLowerInvariant();
+            return s switch
+            {
+                "built" or "success" => (Brush)FindResource("GreenBrush"),
+                "failed" or "error" => (Brush)FindResource("RedBrush"),
+                "outdated" or "stale" => (Brush)FindResource("PeachBrush"),
+                "pending" or "running" or "queued" => (Brush)FindResource("BlueBrush"),
+                _ => (Brush)FindResource("Surface1Brush")
+            };
         }
 
         private void GraphCanvas_MouseDown(object sender, MouseButtonEventArgs e)

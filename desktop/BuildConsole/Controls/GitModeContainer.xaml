@@ -210,13 +210,14 @@
                                 <ComboBoxItem Content="Done"/>
                             </ComboBox>
 
-                            <!-- Build Status Filter -->
-                            <ComboBox x:Name="CmbBuildFilter" Width="100" Margin="0,0,6,0" SelectionChanged="GraphFilter_Changed">
+                            <!-- Build Status Filter (Phase 7) -->
+                            <ComboBox x:Name="CmbBuildFilter" Width="110" Margin="0,0,6,0" SelectionChanged="GraphFilter_Changed">
                                 <ComboBoxItem Content="All Builds" IsSelected="True"/>
-                                <ComboBoxItem Content="success"/>
+                                <ComboBoxItem Content="built"/>
                                 <ComboBoxItem Content="failed"/>
-                                <ComboBoxItem Content="running"/>
-                                <ComboBoxItem Content="queued"/>
+                                <ComboBoxItem Content="missing"/>
+                                <ComboBoxItem Content="outdated"/>
+                                <ComboBoxItem Content="pending"/>
                             </ComboBox>
 
                             <!-- Reset Filters -->

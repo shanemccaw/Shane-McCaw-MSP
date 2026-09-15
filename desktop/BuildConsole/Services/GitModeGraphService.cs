@@ -96,6 +96,28 @@ namespace BuildConsole.Services
     /// </summary>
     public static class GitModeGraphService
     {
+        public static string NormalizeBuildStatus(string? rawStatus, List<string>? labels = null)
+        {
+            if (labels != null && (labels.Contains("outdated", StringComparer.OrdinalIgnoreCase) || labels.Contains("build-outdated", StringComparer.OrdinalIgnoreCase)))
+            {
+                return "outdated";
+            }
+            if (string.IsNullOrWhiteSpace(rawStatus) || rawStatus.Equals("none", StringComparison.OrdinalIgnoreCase))
+            {
+                return "missing";
+            }
+            var s = rawStatus.Trim().ToLowerInvariant();
+            return s switch
+            {
+                "built" or "success" or "done" or "passed" or "completed" => "built",
+                "failed" or "failure" or "error" or "canceled" => "failed",
+                "outdated" or "stale" => "outdated",
+                "pending" or "queued" or "running" or "in_progress" or "verifying" => "pending",
+                "missing" or "none" => "missing",
+                _ => "missing"
+            };
+        }
+
         public static async Task<GitModeGraphData> LoadGraphFromPostgresAsync(
             int? milestoneFilter = null,
             int? epicFilter = null,
@@ -191,7 +213,11 @@ namespace BuildConsole.Services
 
                         if (buildStatuses.TryGetValue(n.IssueNumber, out var bStatus))
                         {
-                            n.BuildStatus = bStatus;
+                            n.BuildStatus = NormalizeBuildStatus(bStatus, n.Labels);
+                        }
+                        else
+                        {
+                            n.BuildStatus = NormalizeBuildStatus("missing", n.Labels);
                         }
 
                         rawNodes[n.IssueNumber] = n;
@@ -204,6 +230,16 @@ namespace BuildConsole.Services
             }
 
             if (rawNodes.Count == 0) return data;
+
+            // Precompute GATE completion status by Milestone
+            var milestoneGateMap = new Dictionary<int, bool>();
+            foreach (var msGroup in rawNodes.Values.GroupBy(n => n.MilestoneNumber))
+            {
+                if (msGroup.Key <= 0) continue;
+                int totalInMs = msGroup.Count();
+                int closedInMs = msGroup.Count(n => !n.IsOpen);
+                milestoneGateMap[msGroup.Key] = (totalInMs > 0 && closedInMs == totalInMs);
+            }
 
             // 3. Determine open issues vs completed blockers rule
             // "Graph shows ONLY open issues. Completed issues appear ONLY if they are direct blockers (dimmed)."
@@ -235,13 +271,38 @@ namespace BuildConsole.Services
                 }
             }
 
-            // Compute dispatchability: Open issue with zero open blockers
+            // PHASE 7 DISPATCHABILITY RULES:
+            // Issue dispatchable ONLY IF:
+            // 1. All blockers resolved
+            // 2. All required builds exist (status is 'built')
+            // 3. GATE complete (if applicable)
             foreach (var node in activeNodesMap.Values)
             {
                 if (node.IsOpen)
                 {
                     int openBlockerCount = node.BlockedByNumbers.Count(bNum => rawNodes.TryGetValue(bNum, out var bn) && bn.IsOpen);
-                    node.IsDispatchable = (openBlockerCount == 0);
+                    bool allBlockersResolved = (openBlockerCount == 0);
+
+                    bool requiredBuildsExist = string.Equals(node.BuildStatus, "built", StringComparison.OrdinalIgnoreCase);
+
+                    bool gateComplete = true;
+                    if (node.IsGate)
+                    {
+                        var msNodes = rawNodes.Values.Where(n => n.MilestoneNumber == node.MilestoneNumber).ToList();
+                        int total = msNodes.Count;
+                        int closed = msNodes.Count(n => !n.IsOpen);
+                        gateComplete = (total > 0 && closed == total);
+                    }
+                    else if (node.MilestoneNumber > 0 && milestoneGateMap.TryGetValue(node.MilestoneNumber, out var isMsGateComplete))
+                    {
+                        gateComplete = isMsGateComplete;
+                    }
+
+                    node.IsDispatchable = allBlockersResolved && requiredBuildsExist && gateComplete;
+                }
+                else
+                {
+                    node.IsDispatchable = false;
                 }
             }
 
