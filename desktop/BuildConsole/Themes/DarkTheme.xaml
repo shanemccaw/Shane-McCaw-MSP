@@ -768,6 +768,35 @@
                                           ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
                                           ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"/>
 
+                        <!-- Git #4159 — IsEditable="True" needs a real PART_EditableTextBox part. Without
+                             one, WPF falls back to its own default (unstyled, effectively black-on-dark)
+                             editable text box, which is invisible against this template's dark chrome even
+                             though the ComboBox's own Foreground is set correctly — the ContentPresenter
+                             above only ever renders the non-editable selection box. -->
+                        <TextBox x:Name="PART_EditableTextBox"
+                                 Grid.Column="0"
+                                 Margin="{TemplateBinding Padding}"
+                                 VerticalAlignment="Center"
+                                 HorizontalAlignment="Stretch"
+                                 Background="Transparent"
+                                 Foreground="{TemplateBinding Foreground}"
+                                 CaretBrush="{TemplateBinding Foreground}"
+                                 BorderThickness="0"
+                                 Focusable="True"
+                                 IsReadOnly="{TemplateBinding IsReadOnly}"
+                                 Visibility="Collapsed">
+                            <TextBox.Template>
+                                <ControlTemplate TargetType="{x:Type TextBox}">
+                                    <Border Background="{TemplateBinding Background}">
+                                        <ScrollViewer x:Name="PART_ContentHost"
+                                                      Focusable="False"
+                                                      HorizontalScrollBarVisibility="Hidden"
+                                                      VerticalScrollBarVisibility="Hidden"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </TextBox.Template>
+                        </TextBox>
+
                         <Path Grid.Column="1"
                               Data="M0,0 L4,4 8,0"
                               Stroke="{StaticResource Subtext1Brush}"
@@ -822,6 +851,10 @@
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="Bd" Property="Background" Value="{StaticResource MantleBrush}"/>
                             <Setter Property="Foreground" Value="{StaticResource Subtext1Brush}"/>
+                        </Trigger>
+                        <Trigger Property="IsEditable" Value="True">
+                            <Setter TargetName="ContentSite" Property="Visibility" Value="Collapsed"/>
+                            <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
