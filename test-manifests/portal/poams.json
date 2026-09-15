@@ -7,6 +7,7 @@
 
   "notes": [
     "TIER GATE IS THE REAL CURRENT STATE FOR EVERY TENANT (#3104): confirmed this session via a direct SELECT against the local DATABASE_URL -- no monitoring_tier row's type_attributes.includedFeatures array anywhere in the local DB contains 'poams'. So GET /api/portal/poams and GET /api/portal/poams/:poamId 402 for the designated test account exactly like they would for any real customer today; A1/A2 below assert that live 402, not a hypothetical.",
+    "#4050: GET /api/portal/poams/available-checks (added this session) serves this tenant's own current findings -- checkKey + checkLabel, sourced from msp_diagnostic_findings for the customer's own latest completed/partial scan -- so PoamCreatePanel.tsx's 'Check this plan answers' field can offer a real picker instead of free text alone. It carries the identical requireTierFeature(poams) gate as the other two customer-facing READ routes (A2b below), so it also 402s for every real tenant today.",
     "CREATION AND SIGNING ARE UNCONDITIONAL (#1168): the two POST routes and the sign/delete/request-acceleration routes carry no tier check, so LIFECYCLE1-6 below drive a real end-to-end create -> sign -> re-sign-refused(409) -> soft-delete -> request-acceleration sequence against a plan this run creates for itself. Unlike the Risk Register's accept (permanent, one row, poisons re-runs), POA&M creation makes a fresh row every run, so this whole lifecycle is safely re-runnable: each run creates and then soft-deletes its own row, never touching another run's.",
     "WHY NO FULL UI-DRIVEN CREATE SUBMIT: the create form has seven real inputs (title, date, optional checkKey, optional sowId, weakness, interim control, resources) and this project's own manifests document WebView2 form-driven flows as a recurring flakiness source (see e.g. portal-v2-manifest-login-block-persisted-session-flaky). The full real create/sign/delete lifecycle is already proven end-to-end and deterministically via LIFECYCLE1-6 below; the UI steps here instead prove the DOM actually renders the live 402 gated state and that the create panel opens with its real fields, which is what the honest-empty-state design calls out as the state every real tenant sees today.",
     "ENV VARS (BuildConsole -> Settings -> Test Environment Variables): DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD."
@@ -34,6 +35,14 @@
       "name": "A2 -- the by-id read carries the identical tier gate ahead of any lookup, so even a nonexistent id 402s rather than 404ing first.",
       "method": "GET",
       "path": "/api/portal/poams/POAM-DOES-NOT-EXIST",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 402, "jsonPath": "$.code", "equals": "TIER_UPGRADE_REQUIRED" }
+    },
+    {
+      "name": "A2b -- #4050: the new available-checks picker source carries the same real tier gate as the other two customer-facing READ routes above.",
+      "sessionTag": "available-checks-4050",
+      "method": "GET",
+      "path": "/api/portal/poams/available-checks",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 402, "jsonPath": "$.code", "equals": "TIER_UPGRADE_REQUIRED" }
     },

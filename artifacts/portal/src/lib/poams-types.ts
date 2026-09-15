@@ -66,6 +66,14 @@ export interface WirePoam {
   readonly milestones: readonly WirePoamMilestone[];
 }
 
+/** One candidate check a customer's own plan can point at (#4050). */
+export interface WireAvailableCheck {
+  readonly checkKey: string;
+  readonly checkLabel: string;
+  readonly severity: string;
+  readonly title: string;
+}
+
 export interface CreatePoamRequest {
   readonly title: string;
   readonly weaknessDescription: string;
