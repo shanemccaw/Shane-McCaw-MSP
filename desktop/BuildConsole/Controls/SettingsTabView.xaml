@@ -20,12 +20,12 @@
 
                 <StackPanel Grid.Column="0">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="⚙" FontSize="18" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="Settings &amp; Environment" FontSize="18" FontWeight="Bold"
+                        <TextBlock Text="⚙" FontSize="{StaticResource HeaderFontSize}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="Settings &amp; Environment" FontSize="{StaticResource HeaderFontSize}" FontWeight="Bold"
                                    Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                     </StackPanel>
                     <TextBlock Text="Configure test variables, API credentials, automated watchers, and tool integrations."
-                               FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,2,0,8"/>
+                               FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,2,0,8"/>
 
                     <!-- Health / Status Badges Row -->
                     <WrapPanel Orientation="Horizontal">
@@ -34,8 +34,8 @@
                                 CornerRadius="12" Padding="10,3" Margin="0,0,8,4" Cursor="Hand"
                                 MouseLeftButtonDown="TestEnvHealthBadge_Click">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="🧪 Test Variables: " FontSize="11" Foreground="{StaticResource Subtext1Brush}"/>
-                                <TextBlock x:Name="TestEnvHealthText" Text="Loading..." FontSize="11" FontWeight="Bold"
+                                <TextBlock Text="🧪 Test Variables: " FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"/>
+                                <TextBlock x:Name="TestEnvHealthText" Text="Loading..." FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                            Foreground="{StaticResource StatusSuccessBrush}"/>
                             </StackPanel>
                         </Border>
@@ -44,8 +44,8 @@
                         <Border Background="{StaticResource Surface0Brush}" CornerRadius="12" Padding="10,3" Margin="0,0,8,4"
                                 Cursor="Hand" MouseLeftButtonDown="GitHubPatBadge_Click">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="🔑 GitHub PAT: " FontSize="11" Foreground="{StaticResource Subtext1Brush}"/>
-                                <TextBlock x:Name="GitHubPatHealthText" Text="Configured" FontSize="11" FontWeight="Bold"
+                                <TextBlock Text="🔑 GitHub PAT: " FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"/>
+                                <TextBlock x:Name="GitHubPatHealthText" Text="Configured" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                            Foreground="{StaticResource StatusSuccessBrush}"/>
                             </StackPanel>
                         </Border>
@@ -54,8 +54,8 @@
                         <Border Background="{StaticResource Surface0Brush}" CornerRadius="12" Padding="10,3" Margin="0,0,8,4"
                                 Cursor="Hand" MouseLeftButtonDown="ZohoTokenBadge_Click">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="☁️ Zoho API: " FontSize="11" Foreground="{StaticResource Subtext1Brush}"/>
-                                <TextBlock x:Name="ZohoTokenHealthText" Text="Configured" FontSize="11" FontWeight="Bold"
+                                <TextBlock Text="☁️ Zoho API: " FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"/>
+                                <TextBlock x:Name="ZohoTokenHealthText" Text="Configured" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                            Foreground="{StaticResource StatusSuccessBrush}"/>
                             </StackPanel>
                         </Border>
@@ -64,8 +64,8 @@
                         <Border Background="{StaticResource Surface0Brush}" CornerRadius="12" Padding="10,3" Margin="0,0,8,4"
                                 Cursor="Hand" MouseLeftButtonDown="ReplitWatcherBadge_Click">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="🔁 Replit Watcher: " FontSize="11" Foreground="{StaticResource Subtext1Brush}"/>
-                                <TextBlock x:Name="ReplitWatcherHealthText" Text="Inactive" FontSize="11" FontWeight="Bold"
+                                <TextBlock Text="🔁 Replit Watcher: " FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"/>
+                                <TextBlock x:Name="ReplitWatcherHealthText" Text="Inactive" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                            Foreground="{StaticResource Subtext0Brush}"/>
                             </StackPanel>
                         </Border>
@@ -74,19 +74,19 @@
 
                 <!-- Universal Settings Filter Search -->
                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Width="260" Margin="16,0,0,0">
-                    <TextBlock Text="Search Settings &amp; Variables" FontSize="10" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,3"/>
+                    <TextBlock Text="Search Settings &amp; Variables" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,3"/>
                     <Border Background="{StaticResource Surface0Brush}" CornerRadius="6" Padding="6,4">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="🔍" FontSize="11" Foreground="{StaticResource Subtext0Brush}"
+                            <TextBlock Grid.Column="0" Text="🔍" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"
                                        VerticalAlignment="Center" Margin="2,0,6,0"/>
                             <TextBox x:Name="SettingsSearchBox" Grid.Column="1"
                                      Style="{StaticResource SearchTextBox}"
                                      Background="Transparent" BorderThickness="0" Padding="0,0,20,0"
-                                     Foreground="{StaticResource TextBrush}" FontSize="12"
+                                     Foreground="{StaticResource TextBrush}" FontSize="{StaticResource CaptionFontSize}"
                                      TextChanged="SettingsSearchBox_TextChanged"/>
                         </Grid>
                     </Border>
@@ -106,7 +106,7 @@
                     BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,0,1,0" Padding="12,16">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel x:Name="NavButtonsPanel">
-                        <TextBlock Text="CATEGORIES" FontSize="10" FontWeight="Bold"
+                        <TextBlock Text="CATEGORIES" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                    Foreground="{StaticResource Subtext0Brush}" Margin="10,0,0,10"/>
 
                         <!-- 1. Test Environment -->
@@ -115,13 +115,13 @@
                                     HorizontalContentAlignment="Stretch" Padding="10,9"
                                     Tag="TestEnvironment" Click="NavButton_Click">
                                 <DockPanel LastChildFill="True">
-                                    <TextBlock Text="🧪" FontSize="13" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
+                                    <TextBlock Text="🧪" FontSize="{StaticResource CaptionFontSize}" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
                                     <Border x:Name="TestEnvAlertPill" DockPanel.Dock="Right" Background="{StaticResource StatusWarningBrush}"
                                             CornerRadius="8" Padding="6,1" Visibility="Collapsed" VerticalAlignment="Center">
-                                        <TextBlock x:Name="TestEnvAlertCount" Text="!" FontSize="9" FontWeight="Bold"
+                                        <TextBlock x:Name="TestEnvAlertCount" Text="!" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                                    Foreground="{StaticResource CrustBrush}"/>
                                     </Border>
-                                    <TextBlock x:Name="NavTextTestEnvironment" Text="Test Environment" FontSize="12" FontWeight="SemiBold"
+                                    <TextBlock x:Name="NavTextTestEnvironment" Text="Test Environment" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 </DockPanel>
                             </Button>
@@ -133,8 +133,8 @@
                                     HorizontalContentAlignment="Stretch" Padding="10,9"
                                     Tag="Credentials" Click="NavButton_Click">
                                 <DockPanel LastChildFill="True">
-                                    <TextBlock Text="🔑" FontSize="13" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="NavTextCredentials" Text="API Credentials" FontSize="12" FontWeight="SemiBold"
+                                    <TextBlock Text="🔑" FontSize="{StaticResource CaptionFontSize}" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="NavTextCredentials" Text="API Credentials" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 </DockPanel>
                             </Button>
@@ -146,8 +146,8 @@
                                     HorizontalContentAlignment="Stretch" Padding="10,9"
                                     Tag="General" Click="NavButton_Click">
                                 <DockPanel LastChildFill="True">
-                                    <TextBlock Text="⚙" FontSize="13" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="NavTextGeneral" Text="General &amp; API" FontSize="12" FontWeight="SemiBold"
+                                    <TextBlock Text="⚙" FontSize="{StaticResource CaptionFontSize}" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="NavTextGeneral" Text="General &amp; API" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 </DockPanel>
                             </Button>
@@ -159,8 +159,8 @@
                                     HorizontalContentAlignment="Stretch" Padding="10,9"
                                     Tag="ReplitWatcher" Click="NavButton_Click">
                                 <DockPanel LastChildFill="True">
-                                    <TextBlock Text="🔁" FontSize="13" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="NavTextReplitWatcher" Text="Replit Watcher" FontSize="12" FontWeight="SemiBold"
+                                    <TextBlock Text="🔁" FontSize="{StaticResource CaptionFontSize}" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="NavTextReplitWatcher" Text="Replit Watcher" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 </DockPanel>
                             </Button>
@@ -172,8 +172,8 @@
                                     HorizontalContentAlignment="Stretch" Padding="10,9"
                                     Tag="ScheduledRun" Click="NavButton_Click">
                                 <DockPanel LastChildFill="True">
-                                    <TextBlock Text="⏰" FontSize="13" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="NavTextScheduledRun" Text="Scheduled Runs" FontSize="12" FontWeight="SemiBold"
+                                    <TextBlock Text="⏰" FontSize="{StaticResource CaptionFontSize}" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="NavTextScheduledRun" Text="Scheduled Runs" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 </DockPanel>
                             </Button>
@@ -185,8 +185,8 @@
                                     HorizontalContentAlignment="Stretch" Padding="10,9"
                                     Tag="SshRemote" Click="NavButton_Click">
                                 <DockPanel LastChildFill="True">
-                                    <TextBlock Text="🖥️" FontSize="13" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="NavTextSshRemote" Text="SSH &amp; Remote (Replit)" FontSize="12" FontWeight="SemiBold"
+                                    <TextBlock Text="🖥️" FontSize="{StaticResource CaptionFontSize}" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="NavTextSshRemote" Text="SSH &amp; Remote (Replit)" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 </DockPanel>
                             </Button>
@@ -198,8 +198,8 @@
                                     HorizontalContentAlignment="Stretch" Padding="10,9"
                                     Tag="WebTools" Click="NavButton_Click">
                                 <DockPanel LastChildFill="True">
-                                    <TextBlock Text="🌐" FontSize="13" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="NavTextWebTools" Text="Web Tools" FontSize="12" FontWeight="SemiBold"
+                                    <TextBlock Text="🌐" FontSize="{StaticResource CaptionFontSize}" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="NavTextWebTools" Text="Web Tools" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 </DockPanel>
                             </Button>
@@ -211,8 +211,8 @@
                                     HorizontalContentAlignment="Stretch" Padding="10,9"
                                     Tag="Repos" Click="NavButton_Click">
                                 <DockPanel LastChildFill="True">
-                                    <TextBlock Text="📦" FontSize="13" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="NavTextRepos" Text="Repos" FontSize="12" FontWeight="SemiBold"
+                                    <TextBlock Text="📦" FontSize="{StaticResource CaptionFontSize}" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="NavTextRepos" Text="Repos" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 </DockPanel>
                             </Button>
@@ -224,8 +224,8 @@
                                     HorizontalContentAlignment="Stretch" Padding="10,9"
                                     Tag="ChatIntegration" Click="NavButton_Click">
                                 <DockPanel LastChildFill="True">
-                                    <TextBlock Text="💬" FontSize="13" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="NavTextChatIntegration" Text="Claude Projects" FontSize="12" FontWeight="SemiBold"
+                                    <TextBlock Text="💬" FontSize="{StaticResource CaptionFontSize}" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="NavTextChatIntegration" Text="Claude Projects" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 </DockPanel>
                             </Button>
@@ -237,8 +237,8 @@
                                     HorizontalContentAlignment="Stretch" Padding="10,9"
                                     Tag="BuildSound" Click="NavButton_Click">
                                 <DockPanel LastChildFill="True">
-                                    <TextBlock Text="🔊" FontSize="13" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="NavTextBuildSound" Text="Sound &amp; Audio" FontSize="12" FontWeight="SemiBold"
+                                    <TextBlock Text="🔊" FontSize="{StaticResource CaptionFontSize}" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="NavTextBuildSound" Text="Sound &amp; Audio" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 </DockPanel>
                             </Button>
@@ -250,8 +250,8 @@
                                     HorizontalContentAlignment="Stretch" Padding="10,9"
                                     Tag="LinkedIn" Click="NavButton_Click">
                                 <DockPanel LastChildFill="True">
-                                    <TextBlock Text="💼" FontSize="13" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="NavTextLinkedIn" Text="LinkedIn Pre-fill" FontSize="12" FontWeight="SemiBold"
+                                    <TextBlock Text="💼" FontSize="{StaticResource CaptionFontSize}" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="NavTextLinkedIn" Text="LinkedIn Pre-fill" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 </DockPanel>
                             </Button>
@@ -263,8 +263,8 @@
                                     HorizontalContentAlignment="Stretch" Padding="10,9"
                                     Tag="UserAccounts" Click="NavButton_Click">
                                 <DockPanel LastChildFill="True">
-                                    <TextBlock Text="👥" FontSize="13" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="NavTextUserAccounts" Text="User Accounts &amp; Tiers" FontSize="12" FontWeight="SemiBold"
+                                    <TextBlock Text="👥" FontSize="{StaticResource CaptionFontSize}" Width="24" TextAlignment="Left" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="NavTextUserAccounts" Text="User Accounts &amp; Tiers" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                 </DockPanel>
                             </Button>
@@ -285,35 +285,35 @@
                             <StackPanel>
                                 <DockPanel Margin="0,0,0,8">
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="🧪" FontSize="18" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                        <TextBlock Text="Test Environment Variables" FontSize="16" FontWeight="Bold"
+                                        <TextBlock Text="🧪" FontSize="{StaticResource SubHeaderFontSize}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Test Environment Variables" FontSize="{StaticResource SubHeaderFontSize}" FontWeight="Bold"
                                                    Foreground="{StaticResource PeachBrush}" VerticalAlignment="Center"/>
                                     </StackPanel>
                                     
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                         <Button x:Name="BtnRescanManifests" Content="🔄 Rescan Manifests"
-                                                Style="{StaticResource IconButton}" Padding="10,5" FontSize="12"
+                                                Style="{StaticResource IconButton}" Padding="10,5" FontSize="{StaticResource BodyFontSize}"
                                                 Click="BtnRescanManifests_Click" Margin="0,0,8,0"/>
                                         <Button x:Name="BtnToggleAddVarCard" Content="➕ Add Variable"
-                                                Style="{StaticResource PrimaryButton}" Padding="12,5" FontSize="12"
+                                                Style="{StaticResource PrimaryButton}" Padding="12,5" FontSize="{StaticResource BodyFontSize}"
                                                 Click="BtnToggleAddVarCard_Click"/>
                                     </StackPanel>
                                 </DockPanel>
 
                                 <TextBlock Text="Values injected into test manifests resolving {{NAME}} placeholders (e.g. GRAPH_TEST_TENANT_ID, TEST_PORTAL_PASSWORD). Organized by domain with live manifest references so you know exactly where each variable belongs."
-                                           FontSize="11.5" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap" Margin="0,0,0,12"/>
 
-                                <TextBlock x:Name="TestEnvScanStatusText" Text="" FontSize="11"
+                                <TextBlock x:Name="TestEnvScanStatusText" Text="" FontSize="{StaticResource CaptionFontSize}"
                                            Foreground="{StaticResource BlueBrush}" Margin="0,0,0,12" TextWrapping="Wrap"/>
 
                                 <!-- Automation Options -->
                                 <Border Background="{StaticResource Surface0Brush}" CornerRadius="8" Padding="12,10" Margin="0,0,0,14">
                                     <StackPanel>
                                         <CheckBox x:Name="AutoRunPostBuildTestsCheck" Content="⚡ Auto-run matching test manifest when a build finishes deploying"
-                                                  FontSize="11.5" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,6"
+                                                  FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,6"
                                                   Checked="PostBuildTestOption_Changed" Unchecked="PostBuildTestOption_Changed"/>
                                         <CheckBox x:Name="AutoRunFullSuiteFallbackCheck" Content="⚠️ Run full regression suite if build has no matching issue test (Off by default)"
-                                                  FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="20,0,0,0"
+                                                  FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="20,0,0,0"
                                                   Checked="PostBuildTestOption_Changed" Unchecked="PostBuildTestOption_Changed"/>
                                     </StackPanel>
                                 </Border>
@@ -326,15 +326,15 @@
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="🔍" FontSize="13" Foreground="{StaticResource Subtext0Brush}"
+                                        <TextBlock Grid.Column="0" Text="🔍" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"
                                                    VerticalAlignment="Center" Margin="2,0,8,0"/>
                                         <TextBox x:Name="TestEnvSearchBox" Grid.Column="1"
                                                  Style="{StaticResource SearchTextBox}"
                                                  Background="Transparent" BorderThickness="0" Padding="0,0,20,0"
-                                                 Foreground="{StaticResource TextBrush}" FontSize="12.5"
+                                                 Foreground="{StaticResource TextBrush}" FontSize="{StaticResource CaptionFontSize}"
                                                  VerticalAlignment="Center" TextChanged="TestEnvSearchBox_TextChanged"/>
                                         <TextBlock Grid.Column="1" x:Name="TestEnvSearchPlaceholder" Text="Search variables by name, value, manifest file, or area..."
-                                                   FontSize="12" Foreground="{StaticResource Subtext0Brush}" IsHitTestVisible="False"
+                                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" IsHitTestVisible="False"
                                                    VerticalAlignment="Center" Margin="2,0,0,0" Visibility="Visible"/>
                                     </Grid>
                                 </Border>
@@ -344,7 +344,7 @@
                                         BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1"
                                         CornerRadius="8" Padding="14" Margin="0,0,0,16" Visibility="Collapsed">
                                     <StackPanel>
-                                        <TextBlock Text="Create New Environment Variable" FontSize="12" FontWeight="Bold"
+                                        <TextBlock Text="Create New Environment Variable" FontSize="{StaticResource BodyFontSize}" FontWeight="Bold"
                                                    Foreground="{StaticResource TextBrush}" Margin="0,0,0,8"/>
                                         <Grid Margin="0,0,0,8">
                                             <Grid.ColumnDefinitions>
@@ -354,15 +354,15 @@
                                             </Grid.ColumnDefinitions>
                                             
                                             <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                                                <TextBlock Text="Variable Name (e.g. GRAPH_TEST_TENANT_ID)" FontSize="10"
+                                                <TextBlock Text="Variable Name (e.g. GRAPH_TEST_TENANT_ID)" FontSize="{StaticResource CaptionFontSize}"
                                                            Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,3"/>
-                                                <TextBox x:Name="TestEnvVarNameBox" Height="28" FontSize="12"/>
+                                                <TextBox x:Name="TestEnvVarNameBox" Height="30" FontSize="{StaticResource BodyFontSize}"/>
                                             </StackPanel>
 
                                             <StackPanel Grid.Column="1" Margin="0,0,8,0">
-                                                <TextBlock Text="Value" FontSize="10"
+                                                <TextBlock Text="Value" FontSize="{StaticResource CaptionFontSize}"
                                                            Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,3"/>
-                                                <TextBox x:Name="TestEnvVarValueBox" Height="28" FontSize="12"/>
+                                                <TextBox x:Name="TestEnvVarValueBox" Height="30" FontSize="{StaticResource BodyFontSize}"/>
                                             </StackPanel>
 
                                             <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Bottom">
@@ -392,20 +392,20 @@
                                 BorderThickness="1" CornerRadius="10" Padding="20">
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                    <TextBlock Text="🔑" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="API Tokens &amp; Credentials" FontSize="15" FontWeight="Bold"
+                                    <TextBlock Text="🔑" FontSize="{StaticResource SubHeaderFontSize}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="API Tokens &amp; Credentials" FontSize="{StaticResource SubHeaderFontSize}" FontWeight="Bold"
                                                Foreground="{StaticResource PeachBrush}" VerticalAlignment="Center"/>
                                 </StackPanel>
                                 <TextBlock Text="Authentication tokens used for real GitHub issue synchronization and Zoho API test runs. Stored securely on your local machine."
-                                           FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
+                                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
 
                                 <!-- GitHub PAT Card -->
                                 <Border Background="{StaticResource Surface0Brush}" CornerRadius="8" Padding="14" Margin="0,0,0,12">
                                     <StackPanel>
-                                        <TextBlock Text="GitHub Personal Access Token (PAT)" FontSize="12" FontWeight="SemiBold"
+                                        <TextBlock Text="GitHub Personal Access Token (PAT)" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                    Foreground="{StaticResource TextBrush}" Margin="0,0,0,3"/>
                                         <TextBlock Text="Used for Git Board sync, milestone management, sub-issue links, and closing issues."
-                                                   FontSize="10.5" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,8"/>
+                                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,8"/>
                                         <Grid Margin="0,0,0,8">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
@@ -413,9 +413,9 @@
                                                 <ColumnDefinition Width="Auto"/>
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
-                                            <PasswordBox x:Name="GitHubPatBox" Grid.Column="0" Height="28" FontSize="12" Margin="0,0,8,0"
+                                            <PasswordBox x:Name="GitHubPatBox" Grid.Column="0" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,8,0"
                                                          PasswordChanged="GitHubPatBox_PasswordChanged"/>
-                                            <TextBox x:Name="GitHubPatPlainBox" Grid.Column="0" Height="28" FontSize="12" Margin="0,0,8,0"
+                                            <TextBox x:Name="GitHubPatPlainBox" Grid.Column="0" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,8,0"
                                                      Visibility="Collapsed" TextChanged="GitHubPatPlainBox_TextChanged"/>
                                             <Button x:Name="BtnToggleRevealGitHubPat" Grid.Column="1" Content="👁 Reveal"
                                                     Style="{StaticResource IconButton}" Padding="10,5" Margin="0,0,8,0"
@@ -426,17 +426,17 @@
                                             <Button x:Name="BtnSaveGitHubPat" Grid.Column="3" Content="Save Token"
                                                     Style="{StaticResource PrimaryButton}" Padding="16,5" Click="BtnSaveGitHubPat_Click"/>
                                         </Grid>
-                                        <TextBlock x:Name="GitHubPatSavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}"/>
+                                        <TextBlock x:Name="GitHubPatSavedText" Text="" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusSuccessBrush}"/>
                                     </StackPanel>
                                 </Border>
 
                                 <!-- Zoho Token Card -->
                                 <Border Background="{StaticResource Surface0Brush}" CornerRadius="8" Padding="14">
                                     <StackPanel>
-                                        <TextBlock Text="Zoho API Token" FontSize="12" FontWeight="SemiBold"
+                                        <TextBlock Text="Zoho API Token" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                    Foreground="{StaticResource TextBrush}" Margin="0,0,0,3"/>
                                         <TextBlock Text="Used for real Zoho CRM test manifests and automation authentication."
-                                                   FontSize="10.5" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,8"/>
+                                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,8"/>
                                         <Grid Margin="0,0,0,8">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
@@ -444,9 +444,9 @@
                                                 <ColumnDefinition Width="Auto"/>
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
-                                            <PasswordBox x:Name="ZohoApiTokenBox" Grid.Column="0" Height="28" FontSize="12" Margin="0,0,8,0"
+                                            <PasswordBox x:Name="ZohoApiTokenBox" Grid.Column="0" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,8,0"
                                                          PasswordChanged="ZohoApiTokenBox_PasswordChanged"/>
-                                            <TextBox x:Name="ZohoApiTokenPlainBox" Grid.Column="0" Height="28" FontSize="12" Margin="0,0,8,0"
+                                            <TextBox x:Name="ZohoApiTokenPlainBox" Grid.Column="0" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,8,0"
                                                      Visibility="Collapsed" TextChanged="ZohoApiTokenPlainBox_TextChanged"/>
                                             <Button x:Name="BtnToggleRevealZohoToken" Grid.Column="1" Content="👁 Reveal"
                                                     Style="{StaticResource IconButton}" Padding="10,5" Margin="0,0,8,0"
@@ -457,7 +457,7 @@
                                             <Button x:Name="BtnSaveZohoApiToken" Grid.Column="3" Content="Save Token"
                                                     Style="{StaticResource PrimaryButton}" Padding="16,5" Click="BtnSaveZohoApiToken_Click"/>
                                         </Grid>
-                                        <TextBlock x:Name="ZohoApiTokenSavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}"/>
+                                        <TextBlock x:Name="ZohoApiTokenSavedText" Text="" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusSuccessBrush}"/>
                                     </StackPanel>
                                 </Border>
                             </StackPanel>
@@ -470,55 +470,55 @@
                                 BorderThickness="1" CornerRadius="10" Padding="20">
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                    <TextBlock Text="⚙" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="General &amp; Appearance" FontSize="15" FontWeight="Bold"
+                                    <TextBlock Text="⚙" FontSize="{StaticResource SubHeaderFontSize}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="General &amp; Appearance" FontSize="{StaticResource SubHeaderFontSize}" FontWeight="Bold"
                                                Foreground="{StaticResource PeachBrush}" VerticalAlignment="Center"/>
                                 </StackPanel>
                                 <TextBlock Text="Core endpoint configurations and application appearance."
-                                           FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
+                                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
 
-                                <TextBlock Text="Claude Web Endpoint" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                                <TextBox Text="https://claude.ai" Height="28" FontSize="12" Margin="0,0,0,14" IsReadOnly="True"/>
+                                <TextBlock Text="Claude Web Endpoint" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                <TextBox Text="https://claude.ai" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,0,14" IsReadOnly="True"/>
 
                                 <TextBlock Text="Target Environment Base URLs (scripts\build-queue-watcher.config.json)"
-                                           FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource PeachBrush}" Margin="0,0,0,6"/>
-                                <TextBlock Text="🟢 Dev (Local) — hard-locked target for agent (shaneapp://) runs" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
-                                <TextBox x:Name="DevBaseUrlDisplay" Text="http://localhost:5000" Height="28" FontSize="12" Margin="0,0,0,8" IsReadOnly="True"/>
+                                           FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold" Foreground="{StaticResource PeachBrush}" Margin="0,0,0,6"/>
+                                <TextBlock Text="🟢 Dev (Local) — hard-locked target for agent (shaneapp://) runs" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
+                                <TextBox x:Name="DevBaseUrlDisplay" Text="http://localhost:5000" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,0,8" IsReadOnly="True"/>
 
-                                <TextBlock Text="⚠️ Staging (Replit Dev Deployment)" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
-                                <TextBox x:Name="StagingBaseUrlDisplay" Text="https://ba888680-2595-412d-84fe-4e9aefc2688b-00-22rhgh0krunr4.picard.replit.dev/" Height="28" FontSize="12" Margin="0,0,0,8" IsReadOnly="True"/>
+                                <TextBlock Text="⚠️ Staging (Replit Dev Deployment)" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
+                                <TextBox x:Name="StagingBaseUrlDisplay" Text="https://ba888680-2595-412d-84fe-4e9aefc2688b-00-22rhgh0krunr4.picard.replit.dev/" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,0,8" IsReadOnly="True"/>
 
-                                <TextBlock Text="🚨 Production (Live Domain)" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
-                                <TextBox x:Name="ProductionBaseUrlDisplay" Text="https://shanemccaw.com" Height="28" FontSize="12" Margin="0,0,0,8" IsReadOnly="True"/>
+                                <TextBlock Text="🚨 Production (Live Domain)" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
+                                <TextBox x:Name="ProductionBaseUrlDisplay" Text="https://shanemccaw.com" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,0,8" IsReadOnly="True"/>
 
                                 <TextBlock Text="Build Tracker API Server (Active Ingest)"
-                                           FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                                <TextBox x:Name="ApiBaseUrlDisplay" Text="(not connected)" Height="28" FontSize="12" Margin="0,0,0,4" IsReadOnly="True"/>
-                                <TextBlock x:Name="ConfigPathText" Text="" FontSize="10" Foreground="{StaticResource Subtext0Brush}"
+                                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                <TextBox x:Name="ApiBaseUrlDisplay" Text="(not connected)" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,0,4" IsReadOnly="True"/>
+                                <TextBlock x:Name="ConfigPathText" Text="" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"
                                            Margin="0,0,0,14" TextWrapping="Wrap"/>
 
                                 <!-- Git #2122 — real Settings control for max concurrent build slots -->
                                 <Border BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Margin="0,0,0,16" Padding="0,14,0,0">
                                     <StackPanel>
-                                        <TextBlock Text="Max Concurrent Build Slots" FontSize="11" FontWeight="SemiBold"
+                                        <TextBlock Text="Max Concurrent Build Slots" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                    Foreground="{StaticResource PeachBrush}" Margin="0,0,0,6"/>
                                         <TextBlock Text="How many queued builds can run at once. Persists to scripts\build-queue-watcher.config.json (the same file build-queue-watcher.ps1's own -MaxConcurrent default reads) and applies LIVE to a running queue watcher on its next ~30s poll — no restart needed."
-                                                   FontSize="10.5" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,10" TextWrapping="Wrap"/>
+                                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,10" TextWrapping="Wrap"/>
                                         <Grid HorizontalAlignment="Left">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto"/>
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
-                                            <TextBox x:Name="MaxConcurrentBox" Grid.Column="0" Width="80" Height="28" FontSize="12" Margin="0,0,8,0"/>
+                                            <TextBox x:Name="MaxConcurrentBox" Grid.Column="0" Width="80" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,8,0"/>
                                             <Button x:Name="BtnSaveMaxConcurrent" Grid.Column="1" Content="Save" Style="{StaticResource PrimaryButton}"
                                                     Padding="16,5" Click="BtnSaveMaxConcurrent_Click"/>
                                         </Grid>
-                                        <TextBlock x:Name="MaxConcurrentSavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                                        <TextBlock x:Name="MaxConcurrentSavedText" Text="" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Border>
 
-                                <TextBlock Text="Color Theme" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                                <ComboBox Height="28" FontSize="12">
+                                <TextBlock Text="Color Theme" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                <ComboBox Height="30" FontSize="{StaticResource BodyFontSize}">
                                     <ComboBoxItem Content="Catppuccin Mocha (Default Dark)" IsSelected="True"/>
                                     <ComboBoxItem Content="Catppuccin Latte (Light)"/>
                                     <ComboBoxItem Content="One Dark Pro"/>
@@ -527,96 +527,96 @@
                                 <!-- Git #1416 — multi-account routing (overflow to a secondary Claude account) -->
                                 <Border BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Margin="0,16,0,0" Padding="0,14,0,0">
                                     <StackPanel>
-                                        <TextBlock Text="Multi-Account Routing (Claude Code)" FontSize="11" FontWeight="SemiBold"
+                                        <TextBlock Text="Multi-Account Routing (Claude Code)" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                    Foreground="{StaticResource PeachBrush}" Margin="0,0,0,6"/>
                                         <TextBlock Text="A build queued against the &quot;secondary&quot; account launches Claude Code with CLAUDE_CONFIG_DIR pointed here — your overflow Pro account — instead of the default (~/.claude). Choose primary/secondary per build in the queue's Account selector (or the --account secondary header flag). Sequential overflow only, never concurrent."
-                                                   FontSize="10.5" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,10" TextWrapping="Wrap"/>
-                                        <TextBlock Text="Secondary CLAUDE_CONFIG_DIR" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                                        <TextBox x:Name="SecondaryClaudeConfigDirBox" Height="28" FontSize="12" Margin="0,0,0,10"/>
+                                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,10" TextWrapping="Wrap"/>
+                                        <TextBlock Text="Secondary CLAUDE_CONFIG_DIR" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                        <TextBox x:Name="SecondaryClaudeConfigDirBox" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,0,10"/>
                                         <Button x:Name="BtnSaveSecondaryClaudeConfigDir" Content="Save Secondary Account Path" Style="{StaticResource PrimaryButton}"
                                                 HorizontalAlignment="Left" Padding="16,5" Click="BtnSaveSecondaryClaudeConfigDir_Click"/>
-                                        <TextBlock x:Name="SecondaryClaudeConfigDirSavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0"/>
+                                        <TextBlock x:Name="SecondaryClaudeConfigDirSavedText" Text="" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0"/>
                                     </StackPanel>
                                 </Border>
 
                                 <!-- Git #1986 — Home/Rental location switch (gate metered network ops) -->
                                 <Border BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Margin="0,16,0,0" Padding="0,14,0,0">
                                     <StackPanel>
-                                        <TextBlock Text="Location / Metered Connection Gate" FontSize="11" FontWeight="SemiBold"
+                                        <TextBlock Text="Location / Metered Connection Gate" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                    Foreground="{StaticResource PeachBrush}" Margin="0,0,0,6"/>
                                         <TextBlock Text="Which connection this machine is on. Home = fibre (unmetered); Rental = capped Verizon (metered). This is manual and never auto-detected — a wrong guess that silently downloaded on the capped line is exactly what this prevents. When Rental, network-heavy work is gated: every launched build carries BUILD_NETWORK=metered, a `pnpm install` at the repo root is refused (.pnpmfile.cjs), and the version-update deploy needs a one-shot right-click override. Defaults to Home in every ambiguous case (missing or corrupt settings). Also switchable from the title-bar Location toggle."
-                                                   FontSize="10.5" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,10" TextWrapping="Wrap"/>
-                                        <TextBlock Text="Location" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                                        <ComboBox x:Name="LocationModeCombo" Width="200" HorizontalAlignment="Left" FontSize="12" Margin="0,0,0,10"
+                                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,10" TextWrapping="Wrap"/>
+                                        <TextBlock Text="Location" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                        <ComboBox x:Name="LocationModeCombo" Width="200" HorizontalAlignment="Left" FontSize="{StaticResource BodyFontSize}" Margin="0,0,0,10"
                                                   SelectionChanged="LocationModeCombo_Changed">
                                             <ComboBoxItem Content="Home (fibre — unmetered)"/>
                                             <ComboBoxItem Content="Rental (capped Verizon — metered)"/>
                                         </ComboBox>
-                                        <TextBlock x:Name="LocationModeSavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,0,0,0"/>
+                                        <TextBlock x:Name="LocationModeSavedText" Text="" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,0,0,0"/>
                                     </StackPanel>
                                 </Border>
 
                                 <!-- Git #1639 — automatic Encouragement critter, off by default -->
                                 <Border BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Margin="0,16,0,0" Padding="0,14,0,0">
                                     <StackPanel>
-                                        <TextBlock Text="Encouragement Critter" FontSize="11" FontWeight="SemiBold"
+                                        <TextBlock Text="Encouragement Critter" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                    Foreground="{StaticResource PeachBrush}" Margin="0,0,0,6"/>
                                         <CheckBox x:Name="EncouragementCrittersEnabledCheck" Content="🎯 Automatically cheer on milestone progress every 12-24 minutes (&quot;Way to go! Get some ice cream!&quot;)"
-                                                  FontSize="11.5" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,4"
+                                                  FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,4"
                                                   Checked="EncouragementCrittersEnabledCheck_Changed" Unchecked="EncouragementCrittersEnabledCheck_Changed"/>
                                         <TextBlock Text="Off by default."
-                                                   FontSize="10.5" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap"/>
+                                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Border>
 
                                 <!-- Git #3792 — real, non-dead-end way back after right-click Hide on the Test Pad pill -->
                                 <Border BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Margin="0,16,0,0" Padding="0,14,0,0">
                                     <StackPanel>
-                                        <TextBlock Text="Test Pad" FontSize="11" FontWeight="SemiBold"
+                                        <TextBlock Text="Test Pad" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                    Foreground="{StaticResource PeachBrush}" Margin="0,0,0,6"/>
                                         <CheckBox x:Name="TestPadPillVisibleCheck" Content="📝 Show Test Pad pill"
-                                                  FontSize="11.5" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,4"
+                                                  FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,4"
                                                   Checked="TestPadPillVisibleCheck_Changed" Unchecked="TestPadPillVisibleCheck_Changed"/>
                                         <TextBlock Text="On by default. Right-click the floating Test Pad pill and choose Hide to turn this off; check it here to bring the pill back."
-                                                   FontSize="10.5" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap"/>
+                                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Border>
 
                                 <!-- Git #2124 — Pinned Question active detection, off by default (sends real probe messages) -->
                                 <Border BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Margin="0,16,0,0" Padding="0,14,0,0">
                                     <StackPanel>
-                                        <TextBlock Text="Pinned Question Detection" FontSize="11" FontWeight="SemiBold"
+                                        <TextBlock Text="Pinned Question Detection" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                    Foreground="{StaticResource PeachBrush}" Margin="0,0,0,6"/>
                                         <CheckBox x:Name="PinnedQuestionDetectionEnabledCheck" Content="📌 Actively probe open floaty chats for outstanding questions"
-                                                  FontSize="11.5" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,4"
+                                                  FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,4"
                                                   Checked="PinnedQuestionDetectionEnabledCheck_Changed" Unchecked="PinnedQuestionDetectionEnabledCheck_Changed"/>
                                         <TextBlock Text="Off by default. When on, this sends a REAL probe message into each open floaty chat (on a 10-minute cooldown per chat) asking whether there are outstanding questions for Shane — it consumes real usage against Shane's session limits and appears in that chat's real transcript, same as any other message he'd type himself."
-                                                   FontSize="10.5" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap"/>
+                                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Border>
 
                                 <!-- Git #2001 — title-bar usage/cost readout, off by default (display choice only) -->
                                 <Border BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Margin="0,16,0,0" Padding="0,14,0,0">
                                     <StackPanel>
-                                        <TextBlock Text="Title Bar" FontSize="11" FontWeight="SemiBold"
+                                        <TextBlock Text="Title Bar" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                    Foreground="{StaticResource PeachBrush}" Margin="0,0,0,6"/>
                                         <CheckBox x:Name="ShowUsageReadoutCheck" Content="🪙 Show token/cost readout in the title bar"
-                                                  FontSize="11.5" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,4"
+                                                  FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,4"
                                                   Checked="ShowUsageReadoutCheck_Changed" Unchecked="ShowUsageReadoutCheck_Changed"/>
                                         <TextBlock Text="Off by default — just hides the display; usage is still tracked in the background either way."
-                                                   FontSize="10.5" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap"/>
+                                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Border>
 
                                 <!-- Git #3069 — multi-instance BuildConsole: real GitHub repo/board identity -->
                                 <Border BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Margin="0,16,0,0" Padding="0,14,0,0">
                                     <StackPanel>
-                                        <TextBlock Text="GitHub Repo Identity (Multi-Instance)" FontSize="11" FontWeight="SemiBold"
+                                        <TextBlock Text="GitHub Repo Identity (Multi-Instance)" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                    Foreground="{StaticResource PeachBrush}" Margin="0,0,0,6"/>
-                                        <TextBlock x:Name="InstanceNameText" Text="" FontSize="10.5" Foreground="{StaticResource Subtext0Brush}"
+                                        <TextBlock x:Name="InstanceNameText" Text="" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"
                                                    Margin="0,0,0,10" TextWrapping="Wrap"/>
                                         <TextBlock Text="The real repo/board this instance's Git Board, Batter Up and Build Queue point at. Launch a second, separately-compiled BuildConsole.exe with --instance &lt;name&gt; (own %AppData%\BuildConsole-&lt;name&gt;\settings.json, own mutex — runs concurrently with this instance) and set a different repo/board here to work a genuinely different real GitHub repo side by side. Defaults to this repo (shanemccaw/Shane-McCaw-MSP) and its real 'AI Batter Up' board — leave unchanged unless this IS a second instance."
-                                                   FontSize="10.5" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,10" TextWrapping="Wrap"/>
+                                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,10" TextWrapping="Wrap"/>
 
                                         <Grid Margin="0,0,0,10">
                                             <Grid.ColumnDefinitions>
@@ -625,21 +625,21 @@
                                                 <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
                                             <StackPanel Grid.Column="0">
-                                                <TextBlock Text="Repo Owner/Org" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                                                <TextBox x:Name="GitHubOwnerBox" Height="28" FontSize="12"/>
+                                                <TextBlock Text="Repo Owner/Org" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                                <TextBox x:Name="GitHubOwnerBox" Height="30" FontSize="{StaticResource BodyFontSize}"/>
                                             </StackPanel>
                                             <StackPanel Grid.Column="2">
-                                                <TextBlock Text="Repo Name" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                                                <TextBox x:Name="GitHubRepoNameBox" Height="28" FontSize="12"/>
+                                                <TextBlock Text="Repo Name" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                                <TextBox x:Name="GitHubRepoNameBox" Height="30" FontSize="{StaticResource BodyFontSize}"/>
                                             </StackPanel>
                                         </Grid>
 
-                                        <TextBlock Text="Batter Up Project Board ID" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                                        <TextBox x:Name="BatterUpProjectIdBox" Height="28" FontSize="12" Margin="0,0,0,10"/>
+                                        <TextBlock Text="Batter Up Project Board ID" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                        <TextBox x:Name="BatterUpProjectIdBox" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,0,10"/>
 
                                         <Button x:Name="BtnSaveGitHubRepoIdentity" Content="Save Repo Identity" Style="{StaticResource PrimaryButton}"
                                                 HorizontalAlignment="Left" Padding="16,5" Click="BtnSaveGitHubRepoIdentity_Click"/>
-                                        <TextBlock x:Name="GitHubRepoIdentitySavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                                        <TextBlock x:Name="GitHubRepoIdentitySavedText" Text="" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Border>
                             </StackPanel>
@@ -652,33 +652,33 @@
                                 BorderThickness="1" CornerRadius="10" Padding="20">
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                    <TextBlock Text="🔁" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Replit Dev Server Watcher" FontSize="15" FontWeight="Bold"
+                                    <TextBlock Text="🔁" FontSize="{StaticResource SubHeaderFontSize}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Replit Dev Server Watcher" FontSize="{StaticResource SubHeaderFontSize}" FontWeight="Bold"
                                                Foreground="{StaticResource PeachBrush}" VerticalAlignment="Center"/>
                                 </StackPanel>
                                 <TextBlock Text="Automatically monitors your live deployed app and clicks Run on Replit when the server goes to sleep after inactivity."
-                                           FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
+                                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
 
                                 <CheckBox x:Name="ReplitWatcherEnabledCheck" Content="Enable automated background watcher &amp; auto-wake"
-                                          FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,12"/>
+                                          FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,12"/>
 
-                                <TextBlock Text="Check interval (minutes)" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                                <TextBox x:Name="ReplitWatcherIntervalBox" Height="28" FontSize="12" Margin="0,0,0,12"/>
+                                <TextBlock Text="Check interval (minutes)" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                <TextBox x:Name="ReplitWatcherIntervalBox" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,0,12"/>
 
-                                <TextBlock Text="Replit Run Button Selector (CSS)" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                                <TextBox x:Name="ReplitRunSelectorBox" Height="28" FontSize="12" Margin="0,0,0,2"/>
+                                <TextBlock Text="Replit Run Button Selector (CSS)" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                <TextBox x:Name="ReplitRunSelectorBox" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,0,2"/>
                                 <TextBlock Text="Selector for Replit's Run button in your live workspace. Falls back to button text matching &quot;Run&quot;."
-                                           FontSize="10" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap" Margin="0,0,0,12"/>
 
-                                <TextBlock Text="Deployed App URL (Polled for health)" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                                <TextBox x:Name="ReplitAppUrlBox" Height="28" FontSize="12" Margin="0,0,0,12"/>
+                                <TextBlock Text="Deployed App URL (Polled for health)" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                <TextBox x:Name="ReplitAppUrlBox" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,0,12"/>
 
-                                <TextBlock Text="Replit Workspace URL (Dashboard where Run is clicked)" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                                <TextBox x:Name="ReplitWorkspaceUrlBox" Height="28" FontSize="12" Margin="0,0,0,14"/>
+                                <TextBlock Text="Replit Workspace URL (Dashboard where Run is clicked)" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                <TextBox x:Name="ReplitWorkspaceUrlBox" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,0,14"/>
 
                                 <Button x:Name="BtnSaveReplitWatcher" Content="Save Watcher Settings" Style="{StaticResource PrimaryButton}"
                                         HorizontalAlignment="Left" Padding="16,5" Click="BtnSaveReplitWatcher_Click"/>
-                                <TextBlock x:Name="ReplitWatcherSavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0"/>
+                                <TextBlock x:Name="ReplitWatcherSavedText" Text="" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -689,25 +689,25 @@
                                 BorderThickness="1" CornerRadius="10" Padding="20">
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                    <TextBlock Text="⏰" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Scheduled Unattended Runs" FontSize="15" FontWeight="Bold"
+                                    <TextBlock Text="⏰" FontSize="{StaticResource SubHeaderFontSize}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Scheduled Unattended Runs" FontSize="{StaticResource SubHeaderFontSize}" FontWeight="Bold"
                                                Foreground="{StaticResource PeachBrush}" VerticalAlignment="Center"/>
                                 </StackPanel>
                                 <TextBlock Text="Run the FULL regression suite automatically on a recurring timer. Alerts you via web push notification only if a test fails."
-                                           FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
+                                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
 
                                 <CheckBox x:Name="ScheduledRunEnabledCheck" Content="Enable scheduled regression runs"
-                                          FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,12"/>
+                                          FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,12"/>
 
-                                <TextBlock Text="Run interval (hours)" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                                <TextBox x:Name="ScheduledRunIntervalBox" Height="28" FontSize="12" Margin="0,0,0,12"/>
+                                <TextBlock Text="Run interval (hours)" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                <TextBox x:Name="ScheduledRunIntervalBox" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,0,12"/>
 
                                 <CheckBox x:Name="ScheduledRunPushCheck" Content="Push-notify admins when any step fails"
-                                          FontSize="12" Foreground="{StaticResource TextBrush}" Margin="0,0,0,14"/>
+                                          FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextBrush}" Margin="0,0,0,14"/>
 
                                 <Button x:Name="BtnSaveScheduledRun" Content="Save Schedule" Style="{StaticResource PrimaryButton}"
                                         HorizontalAlignment="Left" Padding="16,5" Click="BtnSaveScheduledRun_Click"/>
-                                <TextBlock x:Name="ScheduledRunSavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0"/>
+                                <TextBlock x:Name="ScheduledRunSavedText" Text="" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -718,26 +718,26 @@
                                 BorderThickness="1" CornerRadius="10" Padding="20">
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                    <TextBlock Text="🖥️" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="SSH &amp; Remote Replit Execution" FontSize="15" FontWeight="Bold"
+                                    <TextBlock Text="🖥️" FontSize="{StaticResource SubHeaderFontSize}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="SSH &amp; Remote Replit Execution" FontSize="{StaticResource SubHeaderFontSize}" FontWeight="Bold"
                                                Foreground="{StaticResource PeachBrush}" VerticalAlignment="Center"/>
                                 </StackPanel>
                                 <TextBlock Text="Execute git deployments, builds, and commands directly on Replit over OpenSSH without relying on intermediate web API servers."
-                                           FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
+                                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
 
                                 <!-- SSH Private Key Card -->
                                 <Border Background="{StaticResource Surface0Brush}" CornerRadius="8" Padding="14" Margin="0,0,0,12">
                                     <StackPanel>
-                                        <TextBlock Text="SSH Private Key File Path" FontSize="12" FontWeight="SemiBold"
+                                        <TextBlock Text="SSH Private Key File Path" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                    Foreground="{StaticResource TextBrush}" Margin="0,0,0,3"/>
                                         <TextBlock Text="Path to your private key (e.g. ~/.ssh/replit or ~/.ssh/id_ed25519) whose public key is added in Replit."
-                                                   FontSize="10.5" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,8"/>
+                                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,8"/>
                                         <Grid Margin="0,0,0,4">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
-                                            <TextBox x:Name="SshKeyPathBox" Grid.Column="0" Height="28" FontSize="12" Margin="0,0,8,0"
+                                            <TextBox x:Name="SshKeyPathBox" Grid.Column="0" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,8,0"
                                                      VerticalContentAlignment="Center" TextChanged="SshField_TextChanged"/>
                                             <Button x:Name="BtnBrowseSshKey" Grid.Column="1" Content="📁 Browse…"
                                                     Style="{StaticResource SecondaryButton}" Padding="12,5"
@@ -749,7 +749,7 @@
                                 <!-- SSH Connection Details Card -->
                                 <Border Background="{StaticResource Surface0Brush}" CornerRadius="8" Padding="14" Margin="0,0,0,12">
                                     <StackPanel>
-                                        <TextBlock Text="Connection Details" FontSize="12" FontWeight="SemiBold"
+                                        <TextBlock Text="Connection Details" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                    Foreground="{StaticResource TextBrush}" Margin="0,0,0,8"/>
                                         
                                         <Grid Margin="0,0,0,8">
@@ -758,25 +758,25 @@
                                                 <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
                                             <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                                                <TextBlock Text="SSH Hostname / Server" FontSize="10.5" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,3"/>
-                                                <TextBox x:Name="SshHostBox" Height="28" FontSize="12" Text="ssh.replit.com"
+                                                <TextBlock Text="SSH Hostname / Server" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,3"/>
+                                                <TextBox x:Name="SshHostBox" Height="30" FontSize="{StaticResource BodyFontSize}" Text="ssh.replit.com"
                                                          VerticalContentAlignment="Center" TextChanged="SshField_TextChanged"/>
                                             </StackPanel>
                                             <StackPanel Grid.Column="1">
-                                                <TextBlock Text="SSH User / Repl Identifier" FontSize="10.5" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,3"/>
-                                                <TextBox x:Name="SshUserBox" Height="28" FontSize="12"
+                                                <TextBlock Text="SSH User / Repl Identifier" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,3"/>
+                                                <TextBox x:Name="SshUserBox" Height="30" FontSize="{StaticResource BodyFontSize}"
                                                          VerticalContentAlignment="Center" TextChanged="SshField_TextChanged"/>
                                             </StackPanel>
                                         </Grid>
 
-                                        <TextBlock Text="Remote Working Directory" FontSize="10.5" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,3"/>
-                                        <TextBox x:Name="SshRemoteDirBox" Height="28" FontSize="12" Text="~/Shane-McCaw-MSP"
+                                        <TextBlock Text="Remote Working Directory" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,3"/>
+                                        <TextBox x:Name="SshRemoteDirBox" Height="30" FontSize="{StaticResource BodyFontSize}" Text="~/Shane-McCaw-MSP"
                                                  VerticalContentAlignment="Center" Margin="0,0,0,12" TextChanged="SshField_TextChanged"/>
 
                                         <CheckBox x:Name="UseSshForDeployCheck" Content="Use SSH for build-completion and automatic deployments"
-                                                  FontSize="11.5" Foreground="{StaticResource TextBrush}" IsChecked="True" Margin="0,0,0,6"/>
+                                                  FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextBrush}" IsChecked="True" Margin="0,0,0,6"/>
                                         <CheckBox x:Name="UseSshForSqlCheck" Content="Use SSH for direct SQL execution / queries"
-                                                  FontSize="11.5" Foreground="{StaticResource TextBrush}" IsChecked="True"/>
+                                                  FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextBrush}" IsChecked="True"/>
                                     </StackPanel>
                                 </Border>
 
@@ -787,7 +787,7 @@
                                     <Button x:Name="BtnTestSshConnection" Content="⚡ Test Connection" Style="{StaticResource SecondaryButton}"
                                             Padding="14,6" Click="BtnTestSshConnection_Click"/>
                                 </StackPanel>
-                                <TextBlock x:Name="SshSettingsSavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,8,0,0"/>
+                                <TextBlock x:Name="SshSettingsSavedText" Text="" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,8,0,0"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -798,18 +798,18 @@
                                 BorderThickness="1" CornerRadius="10" Padding="20">
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                    <TextBlock Text="🌐" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Web Tools Popout Shortcuts" FontSize="15" FontWeight="Bold"
+                                    <TextBlock Text="🌐" FontSize="{StaticResource SubHeaderFontSize}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Web Tools Popout Shortcuts" FontSize="{StaticResource SubHeaderFontSize}" FontWeight="Bold"
                                                Foreground="{StaticResource PeachBrush}" VerticalAlignment="Center"/>
                                 </StackPanel>
                                 <TextBlock Text="Quick-launch URLs accessible from the ActivityBar Web Tools popout."
-                                           FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
+                                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
 
                                 <StackPanel x:Name="WebToolsSettingsList" Margin="0,0,0,12"/>
 
                                 <Border Background="{StaticResource Surface0Brush}" CornerRadius="8" Padding="12">
                                     <StackPanel>
-                                        <TextBlock Text="Add New Web Tool" FontSize="11" FontWeight="SemiBold"
+                                        <TextBlock Text="Add New Web Tool" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                    Foreground="{StaticResource TextBrush}" Margin="0,0,0,8"/>
                                         <Grid Margin="0,0,0,8">
                                             <Grid.ColumnDefinitions>
@@ -818,16 +818,16 @@
                                                 <ColumnDefinition Width="2*"/>
                                             </Grid.ColumnDefinitions>
                                             <StackPanel Grid.Column="0" Margin="0,0,8,0" Width="60">
-                                                <TextBlock Text="Emoji" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
-                                                <TextBox x:Name="WebToolIconBox" Height="26" FontSize="12"/>
+                                                <TextBlock Text="Emoji" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
+                                                <TextBox x:Name="WebToolIconBox" Height="28" FontSize="{StaticResource BodyFontSize}"/>
                                             </StackPanel>
                                             <StackPanel Grid.Column="1" Margin="0,0,8,0">
-                                                <TextBlock Text="Name" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
-                                                <TextBox x:Name="WebToolNameBox" Height="26" FontSize="12"/>
+                                                <TextBlock Text="Name" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
+                                                <TextBox x:Name="WebToolNameBox" Height="28" FontSize="{StaticResource BodyFontSize}"/>
                                             </StackPanel>
                                             <StackPanel Grid.Column="2">
-                                                <TextBlock Text="URL" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
-                                                <TextBox x:Name="WebToolUrlBox" Height="26" FontSize="12"/>
+                                                <TextBlock Text="URL" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
+                                                <TextBox x:Name="WebToolUrlBox" Height="28" FontSize="{StaticResource BodyFontSize}"/>
                                             </StackPanel>
                                         </Grid>
                                         <Button x:Name="BtnAddWebTool" Content="Add Web Tool" Style="{StaticResource PrimaryButton}"
@@ -844,18 +844,18 @@
                                 BorderThickness="1" CornerRadius="10" Padding="20">
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                    <TextBlock Text="📦" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Repo Registry" FontSize="15" FontWeight="Bold"
+                                    <TextBlock Text="📦" FontSize="{StaticResource SubHeaderFontSize}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Repo Registry" FontSize="{StaticResource SubHeaderFontSize}" FontWeight="Bold"
                                                Foreground="{StaticResource PeachBrush}" VerticalAlignment="Center"/>
                                 </StackPanel>
                                 <TextBlock Text="Real repos BuildConsole knows about, each tagged Main or Tinker. This list is the real source Batter Up/AI Batter Up merging, the per-repo pause control, and multi-repo dispatch read against. A new repo is validated against the configured GitHub PAT's real access before it's accepted."
-                                           FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
+                                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
 
                                 <StackPanel x:Name="ReposSettingsList" Margin="0,0,0,12"/>
 
                                 <Border Background="{StaticResource Surface0Brush}" CornerRadius="8" Padding="12">
                                     <StackPanel>
-                                        <TextBlock Text="Add Repo" FontSize="11" FontWeight="SemiBold"
+                                        <TextBlock Text="Add Repo" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                    Foreground="{StaticResource TextBrush}" Margin="0,0,0,8"/>
                                         <Grid Margin="0,0,0,8">
                                             <Grid.ColumnDefinitions>
@@ -864,16 +864,16 @@
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
                                             <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                                                <TextBlock Text="owner/repo" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
-                                                <TextBox x:Name="RepoOwnerRepoBox" Height="26" FontSize="12"/>
+                                                <TextBlock Text="owner/repo" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
+                                                <TextBox x:Name="RepoOwnerRepoBox" Height="28" FontSize="{StaticResource BodyFontSize}"/>
                                             </StackPanel>
                                             <StackPanel Grid.Column="1" Margin="0,0,8,0">
-                                                <TextBlock Text="Display Name (optional)" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
-                                                <TextBox x:Name="RepoDisplayNameBox" Height="26" FontSize="12"/>
+                                                <TextBlock Text="Display Name (optional)" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
+                                                <TextBox x:Name="RepoDisplayNameBox" Height="28" FontSize="{StaticResource BodyFontSize}"/>
                                             </StackPanel>
                                             <StackPanel Grid.Column="2" Width="110">
-                                                <TextBlock Text="Tier" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
-                                                <ComboBox x:Name="RepoTierCombo" Height="26" FontSize="12" SelectedIndex="0">
+                                                <TextBlock Text="Tier" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,2"/>
+                                                <ComboBox x:Name="RepoTierCombo" Height="28" FontSize="{StaticResource BodyFontSize}" SelectedIndex="0">
                                                     <ComboBoxItem Content="Main"/>
                                                     <ComboBoxItem Content="Tinker"/>
                                                 </ComboBox>
@@ -883,7 +883,7 @@
                                             <Button x:Name="BtnAddRepo" Content="Add Repo" Style="{StaticResource PrimaryButton}"
                                                     Padding="14,4" Click="BtnAddRepo_Click"/>
                                         </StackPanel>
-                                        <TextBlock x:Name="RepoAddStatusText" Text="" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                                        <TextBlock x:Name="RepoAddStatusText" Text="" FontSize="{StaticResource CaptionFontSize}" Margin="0,8,0,0" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Border>
                             </StackPanel>
@@ -896,18 +896,18 @@
                                 BorderThickness="1" CornerRadius="10" Padding="20">
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                    <TextBlock Text="💬" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Claude Chat &amp; Projects" FontSize="15" FontWeight="Bold"
+                                    <TextBlock Text="💬" FontSize="{StaticResource SubHeaderFontSize}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Claude Chat &amp; Projects" FontSize="{StaticResource SubHeaderFontSize}" FontWeight="Bold"
                                                Foreground="{StaticResource PeachBrush}" VerticalAlignment="Center"/>
                                 </StackPanel>
                                 <TextBlock Text="Destination project URL used when right-clicking an Epic on the Git Board to start a new chat."
-                                           FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
+                                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
 
-                                <TextBlock Text="New Chat Project URL" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                                <TextBox x:Name="EpicChatProjectUrlBox" Height="28" FontSize="12" Margin="0,0,0,10"/>
+                                <TextBlock Text="New Chat Project URL" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                <TextBox x:Name="EpicChatProjectUrlBox" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,0,10"/>
                                 <Button x:Name="BtnSaveEpicChatProjectUrl" Content="Save Project URL" Style="{StaticResource PrimaryButton}"
                                         HorizontalAlignment="Left" Padding="16,5" Click="BtnSaveEpicChatProjectUrl_Click"/>
-                                <TextBlock x:Name="EpicChatProjectUrlSavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0"/>
+                                <TextBlock x:Name="EpicChatProjectUrlSavedText" Text="" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -918,40 +918,40 @@
                                 BorderThickness="1" CornerRadius="10" Padding="20">
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                    <TextBlock Text="🔊" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Build Completion Audio" FontSize="15" FontWeight="Bold"
+                                    <TextBlock Text="🔊" FontSize="{StaticResource SubHeaderFontSize}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Build Completion Audio" FontSize="{StaticResource SubHeaderFontSize}" FontWeight="Bold"
                                                Foreground="{StaticResource PeachBrush}" VerticalAlignment="Center"/>
                                 </StackPanel>
                                 <TextBlock Text="Audio notification chime played when a queue-managed build finishes. (Leave blank to use the bundled default)."
-                                           FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
+                                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
 
                                 <!-- Git #3594 — moved out of the removed top-level "_Sound" menu.
                                      The completion event/log still fires normally when muted — only
                                      BuildCompletionSoundService's playback is suppressed. -->
                                 <CheckBox x:Name="MuteCompletionSoundCheck" Content="Mute build-completion sound"
-                                          FontSize="11.5" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,14"
+                                          FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,14"
                                           Checked="MuteCompletionSoundCheck_Changed" Unchecked="MuteCompletionSoundCheck_Changed"/>
 
-                                <TextBlock Text="Custom Sound File (.mp3 / .wav)" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                <TextBlock Text="Custom Sound File (.mp3 / .wav)" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
                                 <Grid Margin="0,0,0,12">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBox x:Name="BuildSoundPathBox" Grid.Column="0" Height="28" FontSize="12" Margin="0,0,8,0"/>
+                                    <TextBox x:Name="BuildSoundPathBox" Grid.Column="0" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,8,0"/>
                                     <Button x:Name="BtnBrowseBuildSound" Grid.Column="1" Content="Browse…" Style="{StaticResource IconButton}"
-                                            Padding="12,5" FontSize="12" Click="BtnBrowseBuildSound_Click"/>
+                                            Padding="12,5" FontSize="{StaticResource BodyFontSize}" Click="BtnBrowseBuildSound_Click"/>
                                 </Grid>
 
                                 <StackPanel Orientation="Horizontal">
                                     <Button x:Name="BtnSaveBuildSound" Content="Save Audio" Style="{StaticResource PrimaryButton}"
                                             Padding="16,5" Click="BtnSaveBuildSound_Click"/>
                                     <Button x:Name="BtnResetBuildSound" Content="Reset Default" Style="{StaticResource IconButton}"
-                                            Padding="12,5" FontSize="12" Margin="8,0,0,0" Click="BtnResetBuildSound_Click"/>
+                                            Padding="12,5" FontSize="{StaticResource BodyFontSize}" Margin="8,0,0,0" Click="BtnResetBuildSound_Click"/>
                                     <Button x:Name="BtnTestBuildSound" Content="▶ Play Test" Style="{StaticResource IconButton}"
-                                            Padding="12,5" FontSize="12" Margin="8,0,0,0" Click="BtnTestBuildSound_Click"/>
+                                            Padding="12,5" FontSize="{StaticResource BodyFontSize}" Margin="8,0,0,0" Click="BtnTestBuildSound_Click"/>
                                 </StackPanel>
-                                <TextBlock x:Name="BuildSoundSavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0"/>
+                                <TextBlock x:Name="BuildSoundSavedText" Text="" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -962,24 +962,24 @@
                                 BorderThickness="1" CornerRadius="10" Padding="20">
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                    <TextBlock Text="💼" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="LinkedIn Composer Pre-fill" FontSize="15" FontWeight="Bold"
+                                    <TextBlock Text="💼" FontSize="{StaticResource SubHeaderFontSize}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="LinkedIn Composer Pre-fill" FontSize="{StaticResource SubHeaderFontSize}" FontWeight="Bold"
                                                Foreground="{StaticResource BlueBrush}" VerticalAlignment="Center"/>
                                 </StackPanel>
                                 <TextBlock Text="Calibrate DOM selectors for pre-filling your scheduled post drafts into LinkedIn."
-                                           FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
+                                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
 
-                                <TextBlock Text="LinkedIn Composer Selector (CSS)" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                                <TextBox x:Name="LinkedInComposerSelectorBox" Height="28" FontSize="12" Margin="0,0,0,2"/>
+                                <TextBlock Text="LinkedIn Composer Selector (CSS)" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                <TextBox x:Name="LinkedInComposerSelectorBox" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,0,2"/>
                                 <TextBlock Text="CSS selector for LinkedIn's contenteditable compose box. Falls back to default Quill container."
-                                           FontSize="10" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap" Margin="0,0,0,12"/>
 
-                                <TextBlock Text="LinkedIn Feed URL" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                                <TextBox x:Name="LinkedInComposeUrlBox" Height="28" FontSize="12" Margin="0,0,0,14"/>
+                                <TextBlock Text="LinkedIn Feed URL" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                <TextBox x:Name="LinkedInComposeUrlBox" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,0,14"/>
 
                                 <Button x:Name="BtnSaveLinkedIn" Content="Save LinkedIn Config" Style="{StaticResource PrimaryButton}"
                                         HorizontalAlignment="Left" Padding="16,5" Click="BtnSaveLinkedIn_Click"/>
-                                <TextBlock x:Name="LinkedInSavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0"/>
+                                <TextBlock x:Name="LinkedInSavedText" Text="" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -990,14 +990,14 @@
                                 BorderThickness="1" CornerRadius="10" Padding="20">
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                    <TextBlock Text="👥" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="User Accounts &amp; Gating Tiers" FontSize="15" FontWeight="Bold"
+                                    <TextBlock Text="👥" FontSize="{StaticResource SubHeaderFontSize}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="User Accounts &amp; Gating Tiers" FontSize="{StaticResource SubHeaderFontSize}" FontWeight="Bold"
                                                Foreground="{StaticResource BlueBrush}" VerticalAlignment="Center"/>
                                 </StackPanel>
                                 <TextBlock Text="Configure and manage named login profiles for Marketing, Portal, and MSP Console — label, target app, login URL, credentials, and a free-text role/tier tag. An anonymous profile runs with no login at all. Select the active profile to automate credentials in test runners and pre-fill screens."
-                                           FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
+                                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,14" TextWrapping="Wrap"/>
 
-                                <TextBlock Text="Active Testing Profiles" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,8"/>
+                                <TextBlock Text="Active Testing Profiles" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,8"/>
 
                                 <!-- Dynamically populated Accounts list container -->
                                 <StackPanel x:Name="UserAccountsSettingsList" Margin="0,0,0,16"/>
@@ -1005,7 +1005,7 @@
                                 <!-- Add / Edit Account Card -->
                                 <Border Background="{StaticResource Surface0Brush}" CornerRadius="8" Padding="14" Margin="0,0,0,12">
                                     <StackPanel>
-                                        <TextBlock x:Name="UserAccountFormTitle" Text="Create Login Profile" FontSize="12" FontWeight="SemiBold"
+                                        <TextBlock x:Name="UserAccountFormTitle" Text="Create Login Profile" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                    Foreground="{StaticResource TextBrush}" Margin="0,0,0,10"/>
 
                                         <Grid Margin="0,0,0,8">
@@ -1017,15 +1017,15 @@
 
                                             <!-- Label -->
                                             <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                                                <TextBlock Text="Label" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                                                <TextBox x:Name="UserAccountLabelBox" Height="28" FontSize="12"
+                                                <TextBlock Text="Label" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                                <TextBox x:Name="UserAccountLabelBox" Height="30" FontSize="{StaticResource BodyFontSize}"
                                                          ToolTip="e.g. &quot;MSP Admin — Jane&quot;, &quot;Anonymous — marketing&quot;"/>
                                             </StackPanel>
 
                                             <!-- Target App -->
                                             <StackPanel Grid.Column="1" Margin="0,0,8,0">
-                                                <TextBlock Text="Target App" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                                                <ComboBox x:Name="UserAccountTargetAppBox" Height="28" SelectedIndex="0" FontSize="11"
+                                                <TextBlock Text="Target App" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                                <ComboBox x:Name="UserAccountTargetAppBox" Height="30" SelectedIndex="0" FontSize="{StaticResource BodyFontSize}"
                                                           SelectionChanged="UserAccountTargetAppBox_SelectionChanged">
                                                     <ComboBoxItem Content="Marketing"/>
                                                     <ComboBoxItem Content="Portal"/>
@@ -1035,13 +1035,13 @@
 
                                             <!-- Login URL -->
                                             <StackPanel Grid.Column="2">
-                                                <TextBlock Text="Login URL" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                                                <TextBox x:Name="UserAccountLoginUrlBox" Height="28" FontSize="12"/>
+                                                <TextBlock Text="Login URL" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                                <TextBox x:Name="UserAccountLoginUrlBox" Height="30" FontSize="{StaticResource BodyFontSize}"/>
                                             </StackPanel>
                                         </Grid>
 
                                         <CheckBox x:Name="UserAccountAnonymousCheck" Content="Anonymous — run with no login at all (disables URL / email / password below)"
-                                                  FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,10"
+                                                  FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,10"
                                                   Checked="UserAccountAnonymousCheck_CheckedChanged" Unchecked="UserAccountAnonymousCheck_CheckedChanged"/>
 
                                         <Grid Margin="0,0,0,8">
@@ -1053,20 +1053,20 @@
 
                                             <!-- Username -->
                                             <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                                                <TextBlock Text="Username / Email" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                                                <TextBox x:Name="UserAccountUsernameBox" Height="28" FontSize="12"/>
+                                                <TextBlock Text="Username / Email" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                                <TextBox x:Name="UserAccountUsernameBox" Height="30" FontSize="{StaticResource BodyFontSize}"/>
                                             </StackPanel>
 
                                             <!-- Password -->
                                             <StackPanel Grid.Column="1" Margin="0,0,8,0">
-                                                <TextBlock Text="Password" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                                                <TextBox x:Name="UserAccountPasswordBox" Height="28" FontSize="12"/>
+                                                <TextBlock Text="Password" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                                <TextBox x:Name="UserAccountPasswordBox" Height="30" FontSize="{StaticResource BodyFontSize}"/>
                                             </StackPanel>
 
                                             <!-- Role / Tier tag -->
                                             <StackPanel Grid.Column="2">
-                                                <TextBlock Text="Role / Tier Tag" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
-                                                <ComboBox x:Name="UserAccountTierBox" Height="28" SelectedIndex="0" FontSize="11" IsEditable="True"
+                                                <TextBlock Text="Role / Tier Tag" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                                <ComboBox x:Name="UserAccountTierBox" Height="30" SelectedIndex="0" FontSize="{StaticResource BodyFontSize}" IsEditable="True"
                                                           ToolTip="Free text — e.g. MSPOperator, Customer:Growth">
                                                     <ComboBoxItem Content="Standard"/>
                                                     <ComboBoxItem Content="Premium"/>
@@ -1077,8 +1077,8 @@
                                         </Grid>
 
                                         <!-- Notes -->
-                                        <TextBlock Text="Notes / Description" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,4,0,4"/>
-                                        <TextBox x:Name="UserAccountNotesBox" Height="28" FontSize="12" Margin="0,0,0,12"/>
+                                        <TextBlock Text="Notes / Description" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,4,0,4"/>
+                                        <TextBox x:Name="UserAccountNotesBox" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,0,12"/>
 
                                         <StackPanel Orientation="Horizontal">
                                             <Button x:Name="BtnSaveUserAccount" Content="Add Login Profile" Style="{StaticResource PrimaryButton}"
@@ -1086,7 +1086,7 @@
                                             <Button x:Name="BtnCancelUserAccountEdit" Content="Cancel Edit" Style="{StaticResource IconButton}"
                                                     Padding="12,5" Margin="8,0,0,0" Visibility="Collapsed" Click="BtnCancelUserAccountEdit_Click"/>
                                         </StackPanel>
-                                        <TextBlock x:Name="UserAccountSavedText" Text="" FontSize="11" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0"/>
+                                        <TextBlock x:Name="UserAccountSavedText" Text="" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0"/>
                                     </StackPanel>
                                 </Border>
                             </StackPanel>
