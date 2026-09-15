@@ -100,4 +100,41 @@
     <SolidColorBrush x:Key="ScrimBrush"      Color="#95000000"/> <!-- ~58% full-dim -->
     <SolidColorBrush x:Key="ScrimLightBrush" Color="#40000000"/> <!-- ~25% light-dim -->
 
+    <!-- ══════════════════════════════════════════════════════════════════
+         Git #4225 — Build Map canvas palette (LocalMapWindow.xaml,
+         BuildChainMapWindow.xaml, Controls/BuildMap/LocalMapCanvasControl.xaml,
+         Controls/BuildMap/ChainCanvasControl.xaml). A distinct GitHub-dark
+         hue, deliberately its own design language rather than this app's
+         Catppuccin-derived chrome above (see BuildChainMapWindow.xaml's own
+         header comment) — named here so raw hex literals map to real,
+         Theme-Editor-visible brushes instead of being untracked strings.
+         Values are copied verbatim from #4225's evidence table; do not
+         re-derive or substitute an inexact existing brush.
+         ══════════════════════════════════════════════════════════════════ -->
+    <Color x:Key="BuildMapCanvasBackgroundColor">#0a0d12</Color>
+    <Color x:Key="BuildMapButtonBackgroundColor">#0f1319</Color>
+    <Color x:Key="BuildMapSurfaceBackgroundColor">#0d1117</Color>
+    <Color x:Key="BuildMapGridDotColor">#141a22</Color>
+    <Color x:Key="BuildMapBorderColor">#21262d</Color>
+    <Color x:Key="BuildMapButtonHoverBackgroundColor">#161c25</Color>
+    <Color x:Key="BuildMapTextPrimaryColor">#c9d1d9</Color>
+    <Color x:Key="BuildMapTextSecondaryColor">#8b949e</Color>
+    <Color x:Key="BuildMapTextTertiaryColor">#576069</Color>
+    <Color x:Key="BuildMapAccentColor">#6a8fb5</Color>
+    <Color x:Key="BuildMapAccentBackgroundColor">#1d3450</Color>
+    <Color x:Key="BuildMapTextHeadingColor">#e6edf3</Color>
+
+    <SolidColorBrush x:Key="BuildMapCanvasBackgroundBrush"      Color="{StaticResource BuildMapCanvasBackgroundColor}"/>
+    <SolidColorBrush x:Key="BuildMapButtonBackgroundBrush"      Color="{StaticResource BuildMapButtonBackgroundColor}"/>
+    <SolidColorBrush x:Key="BuildMapSurfaceBackgroundBrush"     Color="{StaticResource BuildMapSurfaceBackgroundColor}"/>
+    <SolidColorBrush x:Key="BuildMapGridDotBrush"                Color="{StaticResource BuildMapGridDotColor}"/>
+    <SolidColorBrush x:Key="BuildMapBorderBrush"                 Color="{StaticResource BuildMapBorderColor}"/>
+    <SolidColorBrush x:Key="BuildMapButtonHoverBackgroundBrush" Color="{StaticResource BuildMapButtonHoverBackgroundColor}"/>
+    <SolidColorBrush x:Key="BuildMapTextPrimaryBrush"            Color="{StaticResource BuildMapTextPrimaryColor}"/>
+    <SolidColorBrush x:Key="BuildMapTextSecondaryBrush"          Color="{StaticResource BuildMapTextSecondaryColor}"/>
+    <SolidColorBrush x:Key="BuildMapTextTertiaryBrush"           Color="{StaticResource BuildMapTextTertiaryColor}"/>
+    <SolidColorBrush x:Key="BuildMapAccentBrush"                 Color="{StaticResource BuildMapAccentColor}"/>
+    <SolidColorBrush x:Key="BuildMapAccentBackgroundBrush"       Color="{StaticResource BuildMapAccentBackgroundColor}"/>
+    <SolidColorBrush x:Key="BuildMapTextHeadingBrush"            Color="{StaticResource BuildMapTextHeadingColor}"/>
+
 </ResourceDictionary>

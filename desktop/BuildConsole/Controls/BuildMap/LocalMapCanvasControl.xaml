@@ -22,12 +22,12 @@
             <DrawingBrush TileMode="Tile" Viewport="0,0,22,22" ViewportUnits="Absolute" Stretch="None">
                 <DrawingBrush.Drawing>
                     <DrawingGroup>
-                        <GeometryDrawing Brush="#0a0d12">
+                        <GeometryDrawing Brush="{StaticResource BuildMapCanvasBackgroundBrush}">
                             <GeometryDrawing.Geometry>
                                 <RectangleGeometry Rect="0,0,22,22"/>
                             </GeometryDrawing.Geometry>
                         </GeometryDrawing>
-                        <GeometryDrawing Brush="#141a22">
+                        <GeometryDrawing Brush="{StaticResource BuildMapGridDotBrush}">
                             <GeometryDrawing.Geometry>
                                 <EllipseGeometry Center="1,1" RadiusX="1" RadiusY="1"/>
                             </GeometryDrawing.Geometry>

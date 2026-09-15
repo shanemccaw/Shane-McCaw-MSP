@@ -9,7 +9,7 @@
         WindowStartupLocation="CenterScreen"
         ShowInTaskbar="True"
         FontFamily="{StaticResource DefaultFontFamily}"
-        Background="#0a0d12">
+        Background="{StaticResource BuildMapCanvasBackgroundBrush}">
 
     <!-- ── Git #2482 — Build Chain Map: top bar + status strip ──
          Design source: desktop/BuildConsole/BuildMap/README.md ("Top bar contents" and
@@ -40,10 +40,10 @@
             <Setter Property="Height" Value="24"/>
             <Setter Property="Padding" Value="9,0"/>
             <Setter Property="Margin" Value="0,0,0,0"/>
-            <Setter Property="Background" Value="#0f1319"/>
-            <Setter Property="BorderBrush" Value="#21262d"/>
+            <Setter Property="Background" Value="{StaticResource BuildMapButtonBackgroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BuildMapBorderBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Foreground" Value="#c9d1d9"/>
+            <Setter Property="Foreground" Value="{StaticResource BuildMapTextPrimaryBrush}"/>
             <Setter Property="FontSize" Value="10.5"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -59,7 +59,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#161c25"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource BuildMapButtonHoverBackgroundBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -74,8 +74,8 @@
         <Border DockPanel.Dock="Top"
                 MinHeight="56"
                 Padding="14,10"
-                Background="#0d1117"
-                BorderBrush="#21262d"
+                Background="{StaticResource BuildMapSurfaceBackgroundBrush}"
+                BorderBrush="{StaticResource BuildMapBorderBrush}"
                 BorderThickness="0,0,0,1">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -91,20 +91,20 @@
 
                 <!-- Title block -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Border Width="28" Height="28" CornerRadius="7" Background="#1d3450" VerticalAlignment="Center">
+                    <Border Width="28" Height="28" CornerRadius="7" Background="{StaticResource BuildMapAccentBackgroundBrush}" VerticalAlignment="Center">
                         <Path Data="{StaticResource Icon.GitFork}" Stretch="Uniform"
-                              Width="14" Height="14" Stroke="#6a8fb5" StrokeThickness="2"
+                              Width="14" Height="14" Stroke="{StaticResource BuildMapAccentBrush}" StrokeThickness="2"
                               StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
                     </Border>
                     <StackPanel Margin="9,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="BUILD CHAIN · §5 FEATURE CHAINING"
                                    FontSize="8.5" FontWeight="ExtraBold"
-                                   Foreground="#6a8fb5"/>
+                                   Foreground="{StaticResource BuildMapAccentBrush}"/>
                         <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                            <TextBlock x:Name="EpicNameText" Text="" FontSize="13.5" FontWeight="ExtraBold" Foreground="#e6edf3"/>
-                            <TextBlock x:Name="EpicNumText" Text="" FontFamily="{StaticResource MonospaceFontFamily}" FontSize="10" Foreground="#576069"
+                            <TextBlock x:Name="EpicNameText" Text="" FontSize="13.5" FontWeight="ExtraBold" Foreground="{StaticResource BuildMapTextHeadingBrush}"/>
+                            <TextBlock x:Name="EpicNumText" Text="" FontFamily="{StaticResource MonospaceFontFamily}" FontSize="10" Foreground="{StaticResource BuildMapTextTertiaryBrush}"
                                        Margin="6,0,0,0" VerticalAlignment="Bottom"/>
-                            <TextBlock Text="Epic → Feature → Issue → blocked_by" FontSize="10.5" Foreground="#8b949e"
+                            <TextBlock Text="Epic → Feature → Issue → blocked_by" FontSize="10.5" Foreground="{StaticResource BuildMapTextSecondaryBrush}"
                                        Margin="8,0,0,0" VerticalAlignment="Bottom"/>
                         </StackPanel>
                     </StackPanel>
@@ -112,7 +112,7 @@
 
                 <!-- Stats strip: 7 chips -->
                 <Border Grid.Column="1" Margin="14,0,0,0" Padding="14,0,0,0"
-                        BorderBrush="#21262d" BorderThickness="1,0,0,0">
+                        BorderBrush="{StaticResource BuildMapBorderBrush}" BorderThickness="1,0,0,0">
                     <StackPanel x:Name="StatsStripPanel" Orientation="Horizontal" VerticalAlignment="Center"/>
                 </Border>
 
@@ -141,13 +141,13 @@
                     <StackPanel Orientation="Horizontal" Margin="6,0,0,0">
                         <Button x:Name="ZoomOutButton" Style="{StaticResource ChainMapTopBarButton}" Click="ZoomOutButton_Click">
                             <Path Data="{StaticResource Icon.Minus}" Width="10" Height="10" Stretch="Uniform"
-                                  Stroke="#c9d1d9" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                  Stroke="{StaticResource BuildMapTextPrimaryBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
                         </Button>
                         <TextBlock x:Name="ZoomPercentText" Text="100%" FontFamily="{StaticResource MonospaceFontFamily}" FontSize="10.5"
-                                   Foreground="#c9d1d9" Width="34" TextAlignment="Center" VerticalAlignment="Center"/>
+                                   Foreground="{StaticResource BuildMapTextPrimaryBrush}" Width="34" TextAlignment="Center" VerticalAlignment="Center"/>
                         <Button x:Name="ZoomInButton" Style="{StaticResource ChainMapTopBarButton}" Click="ZoomInButton_Click">
                             <Path Data="{StaticResource Icon.Plus}" Width="10" Height="10" Stretch="Uniform"
-                                  Stroke="#c9d1d9" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                  Stroke="{StaticResource BuildMapTextPrimaryBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
                         </Button>
                         <Button x:Name="FitButton" Content="Fit" Style="{StaticResource ChainMapTopBarButton}" Click="FitButton_Click"/>
                     </StackPanel>
@@ -155,7 +155,7 @@
                     <Button x:Name="ResetButton" Style="{StaticResource ChainMapTopBarButton}" Margin="6,0,0,0"
                             ToolTip="Discard local edits, reload from GitHub" Click="ResetButton_Click">
                         <Path Data="{StaticResource Icon.RotateCcw}" Width="11" Height="11" Stretch="Uniform"
-                              Stroke="#c9d1d9" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                              Stroke="{StaticResource BuildMapTextPrimaryBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
                     </Button>
                 </StackPanel>
             </Grid>
@@ -164,15 +164,15 @@
         <!-- ── Status strip ── -->
         <Border DockPanel.Dock="Bottom"
                 Height="26" Padding="14,0"
-                Background="#0d1117"
-                BorderBrush="#21262d"
+                Background="{StaticResource BuildMapSurfaceBackgroundBrush}"
+                BorderBrush="{StaticResource BuildMapBorderBrush}"
                 BorderThickness="0,1,0,0">
             <DockPanel LastChildFill="True">
                 <TextBlock x:Name="StatusHintText" DockPanel.Dock="Left"
-                           Text="Loading…" FontSize="10" Foreground="#8b949e"
+                           Text="Loading…" FontSize="10" Foreground="{StaticResource BuildMapTextSecondaryBrush}"
                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                 <TextBlock x:Name="StatusCountsText" DockPanel.Dock="Right"
-                           Text="" FontFamily="{StaticResource MonospaceFontFamily}" FontSize="10" Foreground="#576069"
+                           Text="" FontFamily="{StaticResource MonospaceFontFamily}" FontSize="10" Foreground="{StaticResource BuildMapTextTertiaryBrush}"
                            VerticalAlignment="Center" HorizontalAlignment="Right"/>
             </DockPanel>
         </Border>
@@ -184,11 +184,11 @@
                 <ColumnDefinition Width="312"/>
             </Grid.ColumnDefinitions>
 
-            <Grid Grid.Column="0" Background="#0a0d12">
+            <Grid Grid.Column="0" Background="{StaticResource BuildMapCanvasBackgroundBrush}">
                 <local:ChainCanvasControl x:Name="Canvas"/>
                 <TextBlock x:Name="CanvasPlaceholderText"
                            Text="Loading the chain from GitHub…"
-                           FontSize="12" Foreground="#576069"
+                           FontSize="12" Foreground="{StaticResource BuildMapTextTertiaryBrush}"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
                            TextWrapping="Wrap" MaxWidth="420" TextAlignment="Center"
                            IsHitTestVisible="False"/>
@@ -198,7 +198,7 @@
                  code (BuildChainMapWindow.Inspector.cs) into InspectorHost, same render-from-scratch
                  pattern the canvas/edge layers already use, driven by Canvas.SelectionChanged /
                  Canvas.EdgeSelectionChanged / Canvas.LinkModeChanged. -->
-            <Border Grid.Column="1" Background="#0d1117" BorderBrush="#21262d" BorderThickness="1,0,0,0">
+            <Border Grid.Column="1" Background="{StaticResource BuildMapSurfaceBackgroundBrush}" BorderBrush="{StaticResource BuildMapBorderBrush}" BorderThickness="1,0,0,0">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                               Padding="15,14,15,18">
                     <StackPanel x:Name="InspectorHost"/>
