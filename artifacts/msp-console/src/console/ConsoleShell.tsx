@@ -53,6 +53,7 @@ import {
   groupForPage, groupForMspPage, parseLocation, selectionToPath, type Selection,
 } from "./nav";
 import { RiskRegister } from "@/modules/risk-register/RiskRegister";
+import { SecurityPlan } from "@/modules/security-plan/SecurityPlan";
 import { RetentionQueue } from "@/modules/retention/RetentionQueue";
 import { RetainerHours } from "@/modules/retainer/RetainerHours";
 import { PartnerRevenue } from "./modules/PartnerRevenue";
@@ -297,6 +298,14 @@ function moduleFor(sel: Selection, customers: DirectoryCustomer[], navigate: (ne
     // the register scopes on), not just the numeric id the other modules take.
     const customer = customers.find((c) => c.id === sel.tenant);
     return customer ? <RiskRegister customer={customer} /> : undefined;
+  }
+  if (sel.kind === "page" && sel.page === "sp") {
+    // Security Plan (Git #2603, Feature #1689) — the MSP's own signature route
+    // requires ladder.msp-admin server-side; the same admin gate every other
+    // MSPAdmin-only action in this shell already computes client-side.
+    const customer = customers.find((c) => c.id === sel.tenant);
+    const isAdmin = profile.role === "admin" || profile.mspRole === "PlatformAdmin" || profile.mspRole === "MSPAdmin";
+    return customer ? <SecurityPlan customer={customer} isMspAdmin={isAdmin} /> : undefined;
   }
   if (sel.kind === "page" && sel.page === "poams") {
     // POA&Ms (#3897), README screen 41. This route has no customerId and

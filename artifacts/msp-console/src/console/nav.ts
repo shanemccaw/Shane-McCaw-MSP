@@ -54,6 +54,10 @@ export const CHILD_GROUPS: Group[] = [
       { id: "raci", label: "Ownership", icon: "users-round" },
       { id: "run", label: "Runbooks", icon: "book-open" },
       { id: "dr", label: "Data rights", icon: "scale" },
+      // Security Plan (Git #2603, Feature #1689) — no Claude Design export exists
+      // for this screen; built directly against the real endpoints per Shane's
+      // 2026-09-15 authorization. See SecurityPlan.tsx's own agent-built banner.
+      { id: "sp", label: "Security Plan", icon: "file-check" },
     ],
   },
   {
