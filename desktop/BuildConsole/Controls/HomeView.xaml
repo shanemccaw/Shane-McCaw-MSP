@@ -59,7 +59,7 @@
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="8" Padding="{TemplateBinding Padding}">
                             <Border.Effect>
-                                <DropShadowEffect x:Name="TileGlow" Color="#89B4FA" BlurRadius="12" ShadowDepth="0" Opacity="0"/>
+                                <DropShadowEffect x:Name="TileGlow" Color="{StaticResource AccentColor}" BlurRadius="12" ShadowDepth="0" Opacity="0"/>
                             </Border.Effect>
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
@@ -135,39 +135,39 @@
 
                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                            <TextBlock Text="🚀" FontSize="26" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                            <TextBlock x:Name="GreetingText" Text="Good day, Shane!" FontSize="24" FontWeight="Bold"
+                            <TextBlock Text="🚀" FontSize="{StaticResource HeaderFontSize}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <TextBlock x:Name="GreetingText" Text="Good day, Shane!" FontSize="{StaticResource HeaderFontSize}" FontWeight="Bold"
                                        Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                         </StackPanel>
                         <TextBlock x:Name="MotivationSubtext"
                                    Text="One clear step at a time. What would you like to focus on right now?"
-                                   FontSize="12.5" Foreground="{StaticResource Subtext0Brush}"/>
+                                   FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                     </StackPanel>
 
                     <!-- Fast Action Badges -->
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                         <Button x:Name="BtnQuickNewIssue" Style="{StaticResource QuickActionTile}" Margin="0,0,8,0" Click="BtnQuickNewIssue_Click">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="➕" FontSize="11.5" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="New Issue" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <TextBlock Text="➕" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="New Issue" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
                         <Button x:Name="BtnQuickBuildWatch" Style="{StaticResource QuickActionTile}" Margin="0,0,8,0" Click="BtnQuickBuildWatch_Click">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="🖥️" FontSize="11.5" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="Build Watch" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <TextBlock Text="🖥️" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Build Watch" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
                         <Button x:Name="BtnQuickTestRunner" Style="{StaticResource QuickActionTile}" Margin="0,0,8,0" Click="BtnQuickTestRunner_Click">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="🧪" FontSize="11.5" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="Test Runner" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <TextBlock Text="🧪" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Test Runner" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
                         <Button x:Name="BtnQuickReplit" Style="{StaticResource QuickActionTile}" Click="BtnQuickReplit_Click">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="🌐" FontSize="11.5" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="Replit" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <TextBlock Text="🌐" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Replit" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
                     </StackPanel>
@@ -228,20 +228,20 @@
                                 <StackPanel>
                                     <Grid Margin="0,0,0,10">
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <TextBlock Text="🎯" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="🎯" FontSize="{StaticResource BodyFontSize}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                             <TextBlock Text="ACTIVE FOCUS EPIC" Style="{StaticResource HomeCardHeader}"
                                                        Foreground="{StaticResource BlueBrush}"/>
                                         </StackPanel>
                                         <Border x:Name="FocusPointsPill" Background="{StaticResource Surface0Brush}"
                                                 CornerRadius="9" Padding="8,2" HorizontalAlignment="Right">
-                                            <TextBlock x:Name="FocusPointsText" Text="0 pts" FontSize="10.5"
+                                            <TextBlock x:Name="FocusPointsText" Text="0 pts" FontSize="{StaticResource CaptionFontSize}"
                                                        FontWeight="Bold" Foreground="{StaticResource YellowBrush}"/>
                                         </Border>
                                     </Grid>
 
                                     <!-- Milestone Title & Progress -->
                                     <TextBlock x:Name="FocusMilestoneTitle" Text="No milestone currently focused"
-                                               FontSize="13.5" FontWeight="Bold" Foreground="{StaticResource TextBrush}"
+                                               FontSize="{StaticResource BodyFontSize}" FontWeight="Bold" Foreground="{StaticResource TextBrush}"
                                                TextTrimming="CharacterEllipsis" Margin="0,0,0,8"/>
 
                                     <!-- Progress Track -->
@@ -254,12 +254,12 @@
 
                                     <Grid>
                                         <TextBlock x:Name="FocusProgressText" Text="Select a milestone to start focus"
-                                                   FontSize="11" Foreground="{StaticResource Subtext0Brush}"
+                                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"
                                                    VerticalAlignment="Center"/>
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                             <Button x:Name="BtnMilestoneDetail" Content="View Tab"
                                                     Style="{StaticResource SecondaryButton}" Height="24" Padding="8,0"
-                                                    FontSize="11" Cursor="Hand" Click="BtnMilestoneDetail_Click"/>
+                                                    FontSize="{StaticResource CaptionFontSize}" Cursor="Hand" Click="BtnMilestoneDetail_Click"/>
                                         </StackPanel>
                                     </Grid>
                                 </StackPanel>
@@ -276,13 +276,13 @@
                                 <StackPanel>
                                     <Grid Margin="0,0,0,10">
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <TextBlock Text="📈" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="📈" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                             <TextBlock Text="PROJECTED COMPLETION" Style="{StaticResource HomeCardHeader}"/>
-                                            <TextBlock x:Name="EtaEpicCountText" Text="" FontSize="11" Margin="6,0,0,0"
+                                            <TextBlock x:Name="EtaEpicCountText" Text="" FontSize="{StaticResource CaptionFontSize}" Margin="6,0,0,0"
                                                        VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
                                         </StackPanel>
                                         <Button x:Name="BtnRefreshEta" Content="⟳" HorizontalAlignment="Right"
-                                                Style="{StaticResource IconButton}" FontSize="12" Padding="6,1"
+                                                Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Padding="6,1"
                                                 ToolTip="Refresh projections from GitHub" Click="BtnRefreshEta_Click"/>
                                     </Grid>
 
@@ -292,28 +292,28 @@
                                             CornerRadius="8" Padding="10,8" Margin="0,0,0,10" Visibility="Collapsed">
                                         <StackPanel>
                                             <Grid>
-                                                <TextBlock x:Name="EtaMilestoneTitle" Text="" FontSize="12" FontWeight="SemiBold"
+                                                <TextBlock x:Name="EtaMilestoneTitle" Text="" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                                            Foreground="{StaticResource TextBrush}" TextTrimming="CharacterEllipsis"/>
-                                                <TextBlock x:Name="EtaMilestoneDate" Text="" FontSize="12" FontWeight="Bold"
+                                                <TextBlock x:Name="EtaMilestoneDate" Text="" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                                            HorizontalAlignment="Right" Foreground="{StaticResource GreenBrush}"/>
                                             </Grid>
-                                            <TextBlock x:Name="EtaMilestoneSub" Text="" FontSize="10" Margin="0,2,0,0"
+                                            <TextBlock x:Name="EtaMilestoneSub" Text="" FontSize="{StaticResource CaptionFontSize}" Margin="0,2,0,0"
                                                        Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap"/>
                                         </StackPanel>
                                     </Border>
 
                                     <!-- Per-Epic projected completion rows (rendered in code-behind) -->
-                                    <TextBlock Text="OPEN EPICS" FontSize="9.5" FontWeight="Bold" Margin="2,0,0,6"
+                                    <TextBlock Text="OPEN EPICS" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Margin="2,0,0,6"
                                                Foreground="{StaticResource Subtext0Brush}"
                                                x:Name="EtaEpicsHeader" Visibility="Collapsed"/>
                                     <StackPanel x:Name="EtaEpicList"/>
 
                                     <!-- Honest empty / unavailable state -->
                                     <TextBlock x:Name="EtaEmpty" Text="Projections load from GitHub when the Home tab opens."
-                                               FontSize="11" Foreground="{StaticResource Subtext1Brush}"
+                                               FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"
                                                Margin="2,2,0,0" TextWrapping="Wrap"/>
 
-                                    <TextBlock x:Name="EtaGeneratedText" Text="" FontSize="9.5" Margin="2,8,0,0"
+                                    <TextBlock x:Name="EtaGeneratedText" Text="" FontSize="{StaticResource CaptionFontSize}" Margin="2,8,0,0"
                                                Foreground="{StaticResource Subtext0Brush}" FontStyle="Italic"/>
                                 </StackPanel>
                             </Border>
@@ -345,15 +345,15 @@
                                 <StackPanel>
                                     <Grid Margin="0,0,0,10">
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <TextBlock Text="▶" FontSize="12" Margin="0,0,6,0" Foreground="#F2CA63" VerticalAlignment="Center"/>
+                                            <TextBlock Text="▶" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,6,0" Foreground="#F2CA63" VerticalAlignment="Center"/>
                                             <TextBlock Text="RUNNING NOW" Style="{StaticResource HomeCardHeader}"/>
-                                            <TextBlock x:Name="RunningCountText" Text="(0)" FontSize="11" Margin="6,0,0,0"
+                                            <TextBlock x:Name="RunningCountText" Text="(0)" FontSize="{StaticResource CaptionFontSize}" Margin="6,0,0,0"
                                                        VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
                                         </StackPanel>
                                     </Grid>
                                     <StackPanel x:Name="RunningList"/>
                                     <TextBlock x:Name="RunningEmpty" Text="No active builds running right now."
-                                               FontSize="11" Foreground="{StaticResource Subtext1Brush}"
+                                               FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"
                                                Margin="2,2,0,0" Visibility="Collapsed"/>
                                 </StackPanel>
                             </Border>
@@ -365,12 +365,12 @@
                                 <StackPanel>
                                     <Grid Margin="0,0,0,10">
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <TextBlock Text="🕘" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="🕘" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                             <TextBlock Text="RECENT CHATS" Style="{StaticResource HomeCardHeader}"/>
-                                            <TextBlock x:Name="LeftOffCountText" Text="(0)" FontSize="11" Margin="6,0,0,0"
+                                            <TextBlock x:Name="LeftOffCountText" Text="(0)" FontSize="{StaticResource CaptionFontSize}" Margin="6,0,0,0"
                                                        VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
                                             <Button x:Name="BtnReopenAllLeftOff" Content="Reopen All" Style="{StaticResource SecondaryButton}"
-                                                    FontSize="11" Padding="8,2" Margin="10,0,0,0" Cursor="Hand"
+                                                    FontSize="{StaticResource CaptionFontSize}" Padding="8,2" Margin="10,0,0,0" Cursor="Hand"
                                                     ToolTip="Reopen every remembered chat, in saved order"
                                                     Visibility="Collapsed" Click="BtnReopenAllLeftOff_Click"/>
                                         </StackPanel>
@@ -379,7 +379,7 @@
                                         <StackPanel x:Name="LeftOffList"/>
                                     </ScrollViewer>
                                     <TextBlock x:Name="LeftOffEmpty" Text="No recent chats from your last session."
-                                               FontSize="11" Foreground="{StaticResource Subtext1Brush}"
+                                               FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"
                                                Margin="2,2,0,0" Visibility="Collapsed"/>
                                 </StackPanel>
                             </Border>
@@ -395,31 +395,31 @@
                             <StackPanel>
                                 <Grid Margin="0,0,0,4">
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="🔀" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="🔀" FontSize="{StaticResource BodyFontSize}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                         <TextBlock Text="OPEN/CLOSE RATE" Style="{StaticResource HomeCardHeader}"/>
                                     </StackPanel>
                                     <Button x:Name="BtnRefreshOpenCloseRate" Content="⟳" Style="{StaticResource SecondaryButton}"
-                                            Width="22" Height="22" Padding="0" FontSize="12" FontWeight="Bold" Cursor="Hand"
+                                            Width="22" Height="22" Padding="0" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Cursor="Hand"
                                             HorizontalAlignment="Right" ToolTip="Re-fetch the real daily open/close series now"
                                             Click="BtnRefreshOpenCloseRate_Click"/>
                                 </Grid>
                                 <Grid Margin="0,0,0,8">
-                                    <TextBlock x:Name="OpenCloseRateScopeText" Text="Active milestone" FontSize="10.5"
+                                    <TextBlock x:Name="OpenCloseRateScopeText" Text="Active milestone" FontSize="{StaticResource CaptionFontSize}"
                                                Foreground="{StaticResource Subtext0Brush}" TextTrimming="CharacterEllipsis"/>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                         <Ellipse Width="7" Height="7" Fill="{StaticResource PeachBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                        <TextBlock Text="Opened/day" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                        <TextBlock Text="Opened/day" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                         <Ellipse Width="7" Height="7" Fill="{StaticResource GreenBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                        <TextBlock Text="Closed/day" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Closed/day" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
                                     </StackPanel>
                                 </Grid>
                                 <Canvas x:Name="OpenCloseRateCanvas" Height="120" Background="Transparent"
                                         SizeChanged="OpenCloseRateCanvas_SizeChanged"/>
-                                <TextBlock x:Name="OpenCloseRateSummaryText" Text="" FontSize="10.5"
+                                <TextBlock x:Name="OpenCloseRateSummaryText" Text="" FontSize="{StaticResource CaptionFontSize}"
                                            Foreground="{StaticResource Subtext1Brush}" Margin="0,8,0,0" TextWrapping="Wrap"
                                            Visibility="Collapsed"/>
                                 <TextBlock x:Name="OpenCloseRateEmptyText" Text="Loading real open/close history…"
-                                           FontSize="11" Foreground="{StaticResource Subtext1Brush}" TextWrapping="Wrap"
+                                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" TextWrapping="Wrap"
                                            Margin="2,4,0,0" Visibility="Visible"/>
                             </StackPanel>
                         </Border>
@@ -437,26 +437,26 @@
                                 <UniformGrid Columns="2" Rows="2" Margin="0,0,0,4">
                                     <Button x:Name="BtnNewEpicChat" Style="{StaticResource QuickActionTile}" Margin="0,0,4,6" Click="BtnNewEpicChat_Click">
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="💬" FontSize="12" Margin="0,0,6,0"/>
-                                            <TextBlock Text="New Epic Chat" FontSize="11"/>
+                                            <TextBlock Text="💬" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,6,0"/>
+                                            <TextBlock Text="New Epic Chat" FontSize="{StaticResource CaptionFontSize}"/>
                                         </StackPanel>
                                     </Button>
                                     <Button x:Name="BtnDeployNow" Style="{StaticResource QuickActionTile}" Margin="4,0,0,6" Click="BtnDeployNow_Click">
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="⚡" FontSize="12" Margin="0,0,6,0"/>
-                                            <TextBlock Text="Rebuild &amp; Deploy" FontSize="11"/>
+                                            <TextBlock Text="⚡" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,6,0"/>
+                                            <TextBlock Text="Rebuild &amp; Deploy" FontSize="{StaticResource CaptionFontSize}"/>
                                         </StackPanel>
                                     </Button>
                                     <Button x:Name="BtnOpenGitBoard" Style="{StaticResource QuickActionTile}" Margin="0,0,4,0" Click="BtnOpenGitBoard_Click">
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="📋" FontSize="12" Margin="0,0,6,0"/>
-                                            <TextBlock Text="Git Board" FontSize="11"/>
+                                            <TextBlock Text="📋" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,6,0"/>
+                                            <TextBlock Text="Git Board" FontSize="{StaticResource CaptionFontSize}"/>
                                         </StackPanel>
                                     </Button>
                                     <Button x:Name="BtnOpenSettings" Style="{StaticResource QuickActionTile}" Margin="4,0,0,0" Click="BtnOpenSettings_Click">
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="⚙️" FontSize="12" Margin="0,0,6,0"/>
-                                            <TextBlock Text="Settings" FontSize="11"/>
+                                            <TextBlock Text="⚙️" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,6,0"/>
+                                            <TextBlock Text="Settings" FontSize="{StaticResource CaptionFontSize}"/>
                                         </StackPanel>
                                     </Button>
                                 </UniformGrid>
@@ -477,31 +477,31 @@
                             <StackPanel>
                                 <Grid Margin="0,0,0,4">
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="📈" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="📈" FontSize="{StaticResource BodyFontSize}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                         <TextBlock Text="SCOPE &amp; COMPLETION" Style="{StaticResource HomeCardHeader}"/>
                                     </StackPanel>
                                     <Button x:Name="BtnRefreshBurndown" Content="⟳" Style="{StaticResource SecondaryButton}"
-                                            Width="22" Height="22" Padding="0" FontSize="12" FontWeight="Bold" Cursor="Hand"
+                                            Width="22" Height="22" Padding="0" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Cursor="Hand"
                                             HorizontalAlignment="Right" ToolTip="Re-fetch the real open-issue history now"
                                             Click="BtnRefreshBurndown_Click"/>
                                 </Grid>
                                 <Grid Margin="0,0,0,8">
-                                    <TextBlock x:Name="BurndownScopeText" Text="Active milestone" FontSize="10.5"
+                                    <TextBlock x:Name="BurndownScopeText" Text="Active milestone" FontSize="{StaticResource CaptionFontSize}"
                                                Foreground="{StaticResource Subtext0Brush}" TextTrimming="CharacterEllipsis"/>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                         <Ellipse Width="7" Height="7" Fill="{StaticResource LavenderBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                        <TextBlock Text="Total Scope" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                        <TextBlock Text="Total Scope" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                         <Ellipse Width="7" Height="7" Fill="{StaticResource GreenBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                        <TextBlock Text="Completed" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Completed" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
                                     </StackPanel>
                                 </Grid>
                                 <Canvas x:Name="BurndownCanvas" Height="120" Background="Transparent"
                                         SizeChanged="BurndownCanvas_SizeChanged"/>
-                                <TextBlock x:Name="BurndownSummaryText" Text="" FontSize="10.5"
+                                <TextBlock x:Name="BurndownSummaryText" Text="" FontSize="{StaticResource CaptionFontSize}"
                                            Foreground="{StaticResource Subtext1Brush}" Margin="0,8,0,0" TextWrapping="Wrap"
                                            Visibility="Collapsed"/>
                                 <TextBlock x:Name="BurndownEmptyText" Text="Loading real open-issue history…"
-                                           FontSize="11" Foreground="{StaticResource Subtext1Brush}" TextWrapping="Wrap"
+                                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" TextWrapping="Wrap"
                                            Margin="2,4,0,0" Visibility="Visible"/>
                             </StackPanel>
                         </Border>
@@ -519,33 +519,33 @@
                             <StackPanel>
                                 <Grid Margin="0,0,0,8">
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="📉" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="📉" FontSize="{StaticResource BodyFontSize}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                         <TextBlock Text="EPIC BURNDOWN" Style="{StaticResource HomeCardHeader}"/>
                                     </StackPanel>
                                     <Button x:Name="BtnRefreshEpicBurndown" Content="⟳" Style="{StaticResource SecondaryButton}"
-                                            Width="22" Height="22" Padding="0" FontSize="12" FontWeight="Bold" Cursor="Hand"
+                                            Width="22" Height="22" Padding="0" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Cursor="Hand"
                                             HorizontalAlignment="Right" ToolTip="Re-fetch this Epic's real open-issue history now"
                                             Click="BtnRefreshEpicBurndown_Click"/>
                                 </Grid>
-                                <ComboBox x:Name="EpicPicker" FontSize="10.5" Margin="0,0,0,8"
+                                <ComboBox x:Name="EpicPicker" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,0,8"
                                           DisplayMemberPath="Title" SelectionChanged="EpicPicker_SelectionChanged"/>
                                 <Grid Margin="0,0,0,8">
-                                    <TextBlock x:Name="EpicBurndownScopeText" Text="" FontSize="10.5"
+                                    <TextBlock x:Name="EpicBurndownScopeText" Text="" FontSize="{StaticResource CaptionFontSize}"
                                                Foreground="{StaticResource Subtext0Brush}" TextTrimming="CharacterEllipsis"/>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                         <Ellipse Width="7" Height="7" Fill="{StaticResource LavenderBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                        <TextBlock Text="Total Scope" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                        <TextBlock Text="Total Scope" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                         <Ellipse Width="7" Height="7" Fill="{StaticResource GreenBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                        <TextBlock Text="Completed" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Completed" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
                                     </StackPanel>
                                 </Grid>
                                 <Canvas x:Name="EpicBurndownCanvas" Height="120" Background="Transparent"
                                         SizeChanged="EpicBurndownCanvas_SizeChanged"/>
-                                <TextBlock x:Name="EpicBurndownSummaryText" Text="" FontSize="10.5"
+                                <TextBlock x:Name="EpicBurndownSummaryText" Text="" FontSize="{StaticResource CaptionFontSize}"
                                            Foreground="{StaticResource Subtext1Brush}" Margin="0,8,0,0" TextWrapping="Wrap"
                                            Visibility="Collapsed"/>
                                 <TextBlock x:Name="EpicBurndownEmptyText" Text="Loading real Epics…"
-                                           FontSize="11" Foreground="{StaticResource Subtext1Brush}" TextWrapping="Wrap"
+                                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" TextWrapping="Wrap"
                                            Margin="2,4,0,0" Visibility="Visible"/>
                             </StackPanel>
                         </Border>
@@ -554,9 +554,9 @@
                         <StackPanel x:Name="WhatsNewSection" Margin="0,0,0,16" Visibility="Collapsed">
                             <ToggleButton x:Name="WhatsNewTile" Style="{StaticResource QuietTile}" Click="WhatsNewTile_Click">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="✨" FontSize="13" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="#C6A0F6"/>
-                                    <TextBlock Text="What's New" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="WhatsNewSummaryText" Text="" FontSize="11" Margin="6,0,0,0"
+                                    <TextBlock Text="✨" FontSize="{StaticResource BodyFontSize}" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{StaticResource MauveBrush}"/>
+                                    <TextBlock Text="What's New" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="WhatsNewSummaryText" Text="" FontSize="{StaticResource CaptionFontSize}" Margin="6,0,0,0"
                                                VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
                                 </StackPanel>
                             </ToggleButton>
@@ -569,14 +569,14 @@
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <TextBlock x:Name="WhatsNewVersionText" Text="" FontSize="10"
+                                            <TextBlock x:Name="WhatsNewVersionText" Text="" FontSize="{StaticResource CaptionFontSize}"
                                                        Foreground="{StaticResource Subtext1Brush}"/>
-                                            <TextBlock x:Name="WhatsNewPageIndicatorText" Text="" FontSize="10" Margin="8,0,0,0"
+                                            <TextBlock x:Name="WhatsNewPageIndicatorText" Text="" FontSize="{StaticResource CaptionFontSize}" Margin="8,0,0,0"
                                                        Foreground="{StaticResource Subtext0Brush}" FontStyle="Italic"/>
                                         </StackPanel>
                                         <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                            <Button x:Name="BtnWhatsNewPrev" Content="◀ Older" Style="{StaticResource IconButton}" FontSize="10" Margin="0,0,8,0" Padding="4,2" Click="BtnWhatsNewPrev_Click"/>
-                                            <Button x:Name="BtnWhatsNewNext" Content="Newer ▶" Style="{StaticResource IconButton}" FontSize="10" Padding="4,2" Click="BtnWhatsNewNext_Click"/>
+                                            <Button x:Name="BtnWhatsNewPrev" Content="◀ Older" Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,8,0" Padding="4,2" Click="BtnWhatsNewPrev_Click"/>
+                                            <Button x:Name="BtnWhatsNewNext" Content="Newer ▶" Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" Padding="4,2" Click="BtnWhatsNewNext_Click"/>
                                         </StackPanel>
                                     </Grid>
                                     <StackPanel x:Name="WhatsNewList"/>
@@ -639,10 +639,10 @@
                                             Padding="11,9" Margin="0,2,0,5" MaxWidth="260">
                                         <TextBlock x:Name="MascotQuoteText"
                                                    Text="&quot;Take a deep breath. You're doing amazing! ✨&quot;"
-                                                   FontSize="11.5" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"
+                                                   FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"
                                                    TextAlignment="Center" TextWrapping="Wrap"/>
                                     </Border>
-                                    <TextBlock Text="🐾 Click companion for good vibes" FontSize="10"
+                                    <TextBlock Text="🐾 Click companion for good vibes" FontSize="{StaticResource CaptionFontSize}"
                                                Foreground="{StaticResource Subtext1Brush}" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Grid>
@@ -663,8 +663,8 @@
                                     <Border Grid.Column="0" Background="{StaticResource Surface0Brush}" CornerRadius="8"
                                             Padding="10,8" Margin="0,0,4,0">
                                         <StackPanel HorizontalAlignment="Center">
-                                            <TextBlock Text="🏆 Points" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
-                                            <TextBlock x:Name="StatPointsValue" Text="0" FontSize="18" FontWeight="Bold"
+                                            <TextBlock Text="🏆 Points" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
+                                            <TextBlock x:Name="StatPointsValue" Text="0" FontSize="{StaticResource HeaderFontSize}" FontWeight="Bold"
                                                        Foreground="{StaticResource YellowBrush}"/>
                                         </StackPanel>
                                     </Border>
@@ -673,8 +673,8 @@
                                     <Border Grid.Column="1" Background="{StaticResource Surface0Brush}" CornerRadius="8"
                                             Padding="10,8" Margin="4,0,0,0">
                                         <StackPanel HorizontalAlignment="Center">
-                                            <TextBlock Text="🎯 Milestone" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
-                                            <TextBlock x:Name="StatMilestonePercent" Text="0%" FontSize="18" FontWeight="Bold"
+                                            <TextBlock Text="🎯 Milestone" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
+                                            <TextBlock x:Name="StatMilestonePercent" Text="0%" FontSize="{StaticResource HeaderFontSize}" FontWeight="Bold"
                                                        Foreground="{StaticResource GreenBrush}"/>
                                         </StackPanel>
                                     </Border>
@@ -687,13 +687,13 @@
                                             <Ellipse x:Name="ClaudeStatusDot" Width="8" Height="8" Fill="{StaticResource StatusSuccessBrush}"
                                                      Margin="0,0,6,0" VerticalAlignment="Center"
                                                      Effect="{StaticResource GreenGlowSoft}"/>
-                                            <TextBlock Text="Claude Status:" FontSize="11" Foreground="{StaticResource Subtext0Brush}"
+                                            <TextBlock Text="Claude Status:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"
                                                        VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                            <TextBlock x:Name="ClaudeStatusLabel" Text="Operational" FontSize="11"
+                                            <TextBlock x:Name="ClaudeStatusLabel" Text="Operational" FontSize="{StaticResource CaptionFontSize}"
                                                        FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"
                                                        VerticalAlignment="Center"/>
                                         </StackPanel>
-                                        <TextBlock Text="🟢" FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Text="🟢" FontSize="{StaticResource CaptionFontSize}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Border>
                             </StackPanel>
@@ -704,16 +704,16 @@
                             <StackPanel>
                                 <TextBlock Text="📊 BOARD GLANCE" Style="{StaticResource HomeCardHeader}" Margin="0,0,0,10"/>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                                    <TextBlock Text="• Active Epics:" FontSize="11.5" Foreground="{StaticResource Subtext0Brush}" Width="120"/>
-                                    <TextBlock x:Name="BoardEpicsCount" Text="--" FontSize="11.5" FontWeight="Bold" Foreground="{StaticResource TextBrush}"/>
+                                    <TextBlock Text="• Active Epics:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Width="120"/>
+                                    <TextBlock x:Name="BoardEpicsCount" Text="--" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource TextBrush}"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                                    <TextBlock Text="• Open Issues:" FontSize="11.5" Foreground="{StaticResource Subtext0Brush}" Width="120"/>
-                                    <TextBlock x:Name="BoardIssuesCount" Text="--" FontSize="11.5" FontWeight="Bold" Foreground="{StaticResource TextBrush}"/>
+                                    <TextBlock Text="• Open Issues:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Width="120"/>
+                                    <TextBlock x:Name="BoardIssuesCount" Text="--" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource TextBrush}"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="• Active Milestones:" FontSize="11.5" Foreground="{StaticResource Subtext0Brush}" Width="120"/>
-                                    <TextBlock x:Name="BoardMilestonesCount" Text="--" FontSize="11.5" FontWeight="Bold" Foreground="{StaticResource TextBrush}"/>
+                                    <TextBlock Text="• Active Milestones:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Width="120"/>
+                                    <TextBlock x:Name="BoardMilestonesCount" Text="--" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource TextBrush}"/>
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -723,14 +723,14 @@
                             <StackPanel>
                                 <Grid Margin="0,0,0,10">
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="🏥" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="🏥" FontSize="{StaticResource BodyFontSize}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                         <TextBlock Text="SYSTEM HEALTH &amp; TIERS" Style="{StaticResource HomeCardHeader}"/>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                                         <Border x:Name="OverallHealthPill" Background="#1E3A2F" CornerRadius="8" Padding="6,2" Margin="0,0,6,0">
-                                            <TextBlock x:Name="OverallHealthPillText" Text="Live Checking…" FontSize="10" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
+                                            <TextBlock x:Name="OverallHealthPillText" Text="Live Checking…" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                                         </Border>
-                                        <Button x:Name="BtnRefreshHealth" Content="⟳" Style="{StaticResource SecondaryButton}" Width="22" Height="22" Padding="0" FontSize="12" FontWeight="Bold" Cursor="Hand" ToolTip="Re-check system health now" Click="BtnRefreshHealth_Click"/>
+                                        <Button x:Name="BtnRefreshHealth" Content="⟳" Style="{StaticResource SecondaryButton}" Width="22" Height="22" Padding="0" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Cursor="Hand" ToolTip="Re-check system health now" Click="BtnRefreshHealth_Click"/>
                                     </StackPanel>
                                 </Grid>
 
@@ -742,13 +742,13 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" x:Name="DevServerIcon" Text="💻" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Grid.Column="0" x:Name="DevServerIcon" Text="💻" FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                            <TextBlock Text="Local Dev Server" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
-                                            <TextBlock x:Name="DevServerSummaryText" Text="Checking…" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                                            <TextBlock Text="Local Dev Server" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                                            <TextBlock x:Name="DevServerSummaryText" Text="Checking…" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                                         </StackPanel>
                                         <Border Grid.Column="2" x:Name="DevServerStatusBadge" Background="#1E3A2F" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
-                                            <TextBlock x:Name="DevServerBadgeText" Text="--" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
+                                            <TextBlock x:Name="DevServerBadgeText" Text="--" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                                         </Border>
                                     </Grid>
                                 </Border>
@@ -761,13 +761,13 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" x:Name="DatabaseIcon" Text="🗄️" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Grid.Column="0" x:Name="DatabaseIcon" Text="🗄️" FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                            <TextBlock Text="Database (API Pipe)" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
-                                            <TextBlock x:Name="DatabaseSummaryText" Text="Checking…" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                                            <TextBlock Text="Database (API Pipe)" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                                            <TextBlock x:Name="DatabaseSummaryText" Text="Checking…" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                                         </StackPanel>
                                         <Border Grid.Column="2" x:Name="DatabaseStatusBadge" Background="#1E3A2F" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
-                                            <TextBlock x:Name="DatabaseBadgeText" Text="--" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
+                                            <TextBlock x:Name="DatabaseBadgeText" Text="--" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                                         </Border>
                                     </Grid>
                                 </Border>
@@ -780,13 +780,13 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" x:Name="MutexIcon" Text="🔒" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Grid.Column="0" x:Name="MutexIcon" Text="🔒" FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                            <TextBlock Text="#92 Coordination Mutex" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
-                                            <TextBlock x:Name="MutexSummaryText" Text="Checking…" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                                            <TextBlock Text="#92 Coordination Mutex" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                                            <TextBlock x:Name="MutexSummaryText" Text="Checking…" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                                         </StackPanel>
                                         <Border Grid.Column="2" x:Name="MutexStatusBadge" Background="#1E3A2F" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
-                                            <TextBlock x:Name="MutexBadgeText" Text="--" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
+                                            <TextBlock x:Name="MutexBadgeText" Text="--" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                                         </Border>
                                     </Grid>
                                 </Border>
@@ -800,14 +800,14 @@
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" x:Name="WorktreesIcon" Text="🌿" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Grid.Column="0" x:Name="WorktreesIcon" Text="🌿" FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                            <TextBlock Text="Agent Worktrees" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
-                                            <TextBlock x:Name="WorktreesSummaryText" Text="Checking…" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                                            <TextBlock Text="Agent Worktrees" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                                            <TextBlock x:Name="WorktreesSummaryText" Text="Checking…" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                                         </StackPanel>
-                                        <Button Grid.Column="2" x:Name="BtnCleanWorktrees" Content="🧹 Clean" Style="{StaticResource SecondaryButton}" Height="20" Padding="6,0" FontSize="10" FontWeight="SemiBold" Cursor="Hand" Margin="0,0,6,0" Visibility="Collapsed" Click="BtnCleanWorktrees_Click" ToolTip="Sweep orphaned worktrees now"/>
+                                        <Button Grid.Column="2" x:Name="BtnCleanWorktrees" Content="🧹 Clean" Style="{StaticResource SecondaryButton}" Height="20" Padding="6,0" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Cursor="Hand" Margin="0,0,6,0" Visibility="Collapsed" Click="BtnCleanWorktrees_Click" ToolTip="Sweep orphaned worktrees now"/>
                                         <Border Grid.Column="3" x:Name="WorktreesStatusBadge" Background="#1E3A2F" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
-                                            <TextBlock x:Name="WorktreesBadgeText" Text="--" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
+                                            <TextBlock x:Name="WorktreesBadgeText" Text="--" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                                         </Border>
                                     </Grid>
                                 </Border>
@@ -821,14 +821,14 @@
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" x:Name="StrandedBranchesIcon" Text="🔀" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Grid.Column="0" x:Name="StrandedBranchesIcon" Text="🔀" FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                            <TextBlock Text="Stranded Branches (vs main)" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
-                                            <TextBlock x:Name="StrandedBranchesSummaryText" Text="Checking…" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                                            <TextBlock Text="Stranded Branches (vs main)" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                                            <TextBlock x:Name="StrandedBranchesSummaryText" Text="Checking…" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                                         </StackPanel>
-                                        <Button Grid.Column="2" x:Name="BtnRecheckStranded" Content="🔀 Recheck" Style="{StaticResource SecondaryButton}" Height="20" Padding="6,0" FontSize="10" FontWeight="SemiBold" Cursor="Hand" Margin="0,0,6,0" Visibility="Collapsed" Click="BtnRecheckStranded_Click" ToolTip="Re-run the stranded-branch sweep now (read-only — does not delete branches; see diagnostics log for which branches to review/merge yourself)"/>
+                                        <Button Grid.Column="2" x:Name="BtnRecheckStranded" Content="🔀 Recheck" Style="{StaticResource SecondaryButton}" Height="20" Padding="6,0" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Cursor="Hand" Margin="0,0,6,0" Visibility="Collapsed" Click="BtnRecheckStranded_Click" ToolTip="Re-run the stranded-branch sweep now (read-only — does not delete branches; see diagnostics log for which branches to review/merge yourself)"/>
                                         <Border Grid.Column="3" x:Name="StrandedBranchesStatusBadge" Background="#1E3A2F" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
-                                            <TextBlock x:Name="StrandedBranchesBadgeText" Text="--" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
+                                            <TextBlock x:Name="StrandedBranchesBadgeText" Text="--" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                                         </Border>
                                     </Grid>
                                 </Border>
@@ -841,13 +841,13 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" x:Name="SshIcon" Text="🌐" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Grid.Column="0" x:Name="SshIcon" Text="🌐" FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                            <TextBlock Text="Staging (Replit SSH)" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
-                                            <TextBlock x:Name="SshSummaryText" Text="Checking…" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                                            <TextBlock Text="Staging (Replit SSH)" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                                            <TextBlock x:Name="SshSummaryText" Text="Checking…" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                                         </StackPanel>
                                         <Border Grid.Column="2" x:Name="SshStatusBadge" Background="#1E3A2F" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
-                                            <TextBlock x:Name="SshBadgeText" Text="--" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
+                                            <TextBlock x:Name="SshBadgeText" Text="--" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                                         </Border>
                                     </Grid>
                                 </Border>
@@ -856,10 +856,10 @@
                                 <Border x:Name="HealthDiagnosticsBox" Background="{StaticResource Surface0Brush}" BorderBrush="{StaticResource Surface1Brush}" BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="0,4,0,0" Visibility="Collapsed">
                                     <StackPanel>
                                         <Grid Margin="0,0,0,6">
-                                            <TextBlock x:Name="DiagnosticsHeader" Text="DIAGNOSTIC DETAILS" FontSize="10.5" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}"/>
-                                            <Button x:Name="BtnCloseDiagnostics" Content="✕" Style="{StaticResource SecondaryButton}" Width="18" Height="18" Padding="0" FontSize="10" HorizontalAlignment="Right" Click="BtnCloseDiagnostics_Click"/>
+                                            <TextBlock x:Name="DiagnosticsHeader" Text="DIAGNOSTIC DETAILS" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}"/>
+                                            <Button x:Name="BtnCloseDiagnostics" Content="✕" Style="{StaticResource SecondaryButton}" Width="18" Height="18" Padding="0" FontSize="{StaticResource CaptionFontSize}" HorizontalAlignment="Right" Click="BtnCloseDiagnostics_Click"/>
                                         </Grid>
-                                        <TextBox x:Name="DiagnosticsDetailText" IsReadOnly="True" TextWrapping="Wrap" Background="Transparent" Foreground="{StaticResource TextBrush}" BorderThickness="0" FontFamily="Consolas, monospace" FontSize="10.5" MaxHeight="140" VerticalScrollBarVisibility="Auto"/>
+                                        <TextBox x:Name="DiagnosticsDetailText" IsReadOnly="True" TextWrapping="Wrap" Background="Transparent" Foreground="{StaticResource TextBrush}" BorderThickness="0" FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource MonospaceFontSize}" MaxHeight="140" VerticalScrollBarVisibility="Auto"/>
                                     </StackPanel>
                                 </Border>
 
@@ -871,22 +871,22 @@
                             <StackPanel>
                                 <Grid Margin="0,0,0,10">
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="🗄️" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="🗄️" FontSize="{StaticResource BodyFontSize}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                         <TextBlock Text="PENDING MIGRATIONS" Style="{StaticResource HomeCardHeader}"/>
-                                        <TextBlock x:Name="PendingMigrationsCountText" Text="(–)" FontSize="11" Margin="6,0,0,0"
+                                        <TextBlock x:Name="PendingMigrationsCountText" Text="(–)" FontSize="{StaticResource CaptionFontSize}" Margin="6,0,0,0"
                                                    VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
                                     </StackPanel>
                                     <Button x:Name="BtnRefreshMigrations" Content="⟳" Style="{StaticResource SecondaryButton}"
-                                            Width="22" Height="22" Padding="0" FontSize="12" FontWeight="Bold" Cursor="Hand"
+                                            Width="22" Height="22" Padding="0" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Cursor="Hand"
                                             HorizontalAlignment="Right" ToolTip="Re-scan manual migrations against simulator_migration_runs"
                                             Click="BtnRefreshMigrations_Click"/>
                                 </Grid>
                                 <TextBlock x:Name="MigrationsHintText"
                                            Text="Manual .sql files not yet recorded in simulator_migration_runs. Click one to load it into the SQL Runner for review &amp; manual execution."
-                                           FontSize="10" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap" Margin="0,0,0,8"/>
                                 <StackPanel x:Name="PendingMigrationsList"/>
                                 <TextBlock x:Name="PendingMigrationsEmpty" Text="Scanning migrations…"
-                                           FontSize="11" Foreground="{StaticResource Subtext1Brush}"
+                                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"
                                            Margin="2,2,0,0"/>
                             </StackPanel>
                         </Border>
