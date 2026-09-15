@@ -98,7 +98,7 @@
                                 Width="26" Height="26"
                                 ToolTip="Refresh from Postgres"
                                 Click="BtnRefreshTree_Click">
-                            <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{StaticResource Subtext0Brush}"/>
+                            <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFontFamily}" FontSize="12" Foreground="{StaticResource Subtext0Brush}"/>
                         </Button>
                     </DockPanel>
 
@@ -158,7 +158,7 @@
                             Opacity="0.4"
                             Padding="16">
                         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <TextBlock Text="&#xE8A5;" FontFamily="Segoe MDL2 Assets" FontSize="36" Foreground="{StaticResource BlueBrush}" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+                            <TextBlock Text="&#xE8A5;" FontFamily="{StaticResource IconFontFamily}" FontSize="36" Foreground="{StaticResource BlueBrush}" HorizontalAlignment="Center" Margin="0,0,0,10"/>
                             <TextBlock Text="Issue Grid Placeholder" FontWeight="SemiBold" FontSize="14" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
                             <TextBlock x:Name="TxtMiddleFilterState" Text="Middle Panel Container (Filter Active)" FontSize="11" Foreground="{StaticResource Subtext0Brush}" HorizontalAlignment="Center" Margin="0,4,0,0"/>
                         </StackPanel>
@@ -199,7 +199,7 @@
                             Opacity="0.4"
                             Padding="16">
                         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <TextBlock Text="&#xE946;" FontFamily="Segoe MDL2 Assets" FontSize="32" Foreground="{StaticResource GreenBrush}" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+                            <TextBlock Text="&#xE946;" FontFamily="{StaticResource IconFontFamily}" FontSize="32" Foreground="{StaticResource GreenBrush}" HorizontalAlignment="Center" Margin="0,0,0,10"/>
                             <TextBlock Text="Issue Details Placeholder" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
                             <TextBlock Text="Right Panel Container" FontSize="11" Foreground="{StaticResource Subtext0Brush}" HorizontalAlignment="Center" Margin="0,4,0,0"/>
                         </StackPanel>

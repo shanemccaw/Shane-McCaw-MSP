@@ -67,7 +67,7 @@
                     <Border x:Name="BtnClose" Width="22" Height="22" CornerRadius="4" Cursor="Hand"
                             Background="Transparent"
                             MouseLeftButtonUp="BtnClose_Click">
-                        <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="9"
+                        <TextBlock Text="&#xE8BB;" FontFamily="{StaticResource IconFontFamily}" FontSize="9"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>

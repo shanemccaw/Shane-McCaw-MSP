@@ -42,7 +42,7 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="&#xE71B;"
-                               FontFamily="Segoe MDL2 Assets" FontSize="13"
+                               FontFamily="{StaticResource IconFontFamily}" FontSize="13"
                                Margin="0,0,6,0" VerticalAlignment="Center"
                                Foreground="{StaticResource BlueBrush}"/>
                     <TextBlock Grid.Column="1" Text="LinkedIn Post"

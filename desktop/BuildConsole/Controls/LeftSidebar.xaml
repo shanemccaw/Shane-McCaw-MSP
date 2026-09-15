@@ -51,7 +51,7 @@
                                 Padding="4"
                                 Visibility="Collapsed"
                                 Click="BtnNewItem_Click">
-                            <TextBlock Text="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
+                            <TextBlock Text="&#xE710;" FontFamily="{StaticResource IconFontFamily}" FontSize="13" VerticalAlignment="Center"/>
                         </Button>
                         <Button x:Name="BtnRefreshGitBoard"
                                 Style="{StaticResource IconButton}"
@@ -59,7 +59,7 @@
                                 Padding="4"
                                 Visibility="Collapsed"
                                 Click="BtnRefreshGitBoard_Click">
-                            <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
+                            <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFontFamily}" FontSize="13" VerticalAlignment="Center"/>
                         </Button>
                         <Button x:Name="BtnCollapseAll"
                                 Style="{StaticResource IconButton}"
@@ -67,7 +67,7 @@
                                 Padding="4"
                                 Visibility="Collapsed"
                                 Click="CollapseAll_Click">
-                            <TextBlock Text="&#xE74B;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
+                            <TextBlock Text="&#xE74B;" FontFamily="{StaticResource IconFontFamily}" FontSize="13" VerticalAlignment="Center"/>
                         </Button>
                         <Button x:Name="BtnPinSidebar"
                                 Style="{StaticResource IconButton}"
@@ -75,7 +75,7 @@
                                 Padding="4"
                                 Margin="2,0,0,0"
                                 Click="BtnPinSidebar_Click">
-                            <TextBlock x:Name="PinSidebarIcon" Text="&#xE76B;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="PinSidebarIcon" Text="&#xE76B;" FontFamily="{StaticResource IconFontFamily}" FontSize="13" VerticalAlignment="Center"/>
                         </Button>
                     </StackPanel>
                 </DockPanel>
@@ -146,7 +146,7 @@
                                         Margin="4,0,0,0"
                                         VerticalAlignment="Center"
                                         Click="BtnRefreshChats_Click">
-                                    <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
+                                    <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFontFamily}" FontSize="13" VerticalAlignment="Center"/>
                                 </Button>
                             </Grid>
                             <!-- Git #3790 — Archive is a reversible soft-hide, but archived chats now
@@ -179,7 +179,7 @@
                                     </StackPanel>
                                     <TextBlock x:Name="NewChatChevronGlyph"
                                                Text="&#xE70D;"
-                                               FontFamily="Segoe MDL2 Assets"
+                                               FontFamily="{StaticResource IconFontFamily}"
                                                FontSize="11"
                                                Foreground="#CFE4FB"
                                                HorizontalAlignment="Right"
@@ -238,7 +238,7 @@
                             BorderBrush="{StaticResource Surface1Brush}"
                             BorderThickness="0,0,0,1">
                         <DockPanel>
-                            <TextBlock Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                            <TextBlock Text="&#xE8B7;" FontFamily="{StaticResource IconFontFamily}" FontSize="13"
                                        Foreground="{StaticResource PeachBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                             <TextBlock Text="Shane-McCaw-MSP"
                                        FontSize="11" FontWeight="SemiBold"

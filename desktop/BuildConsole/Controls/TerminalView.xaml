@@ -144,7 +144,7 @@
                 <Button x:Name="SendButton"
                         DockPanel.Dock="Right"
                         Content="&#xE768;"
-                        FontFamily="Segoe MDL2 Assets"
+                        FontFamily="{StaticResource IconFontFamily}"
                         FontSize="14"
                         Style="{StaticResource IconButton}"
                         ToolTip="Run locally (Enter)"

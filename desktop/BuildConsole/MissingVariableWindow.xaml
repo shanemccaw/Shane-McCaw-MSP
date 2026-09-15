@@ -44,7 +44,7 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="&#xE9F5;"
-                               FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"
+                               FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource CaptionFontSize}"
                                Margin="0,0,6,0" VerticalAlignment="Center"
                                Foreground="{StaticResource PeachBrush}"/>
                     <TextBlock Grid.Column="1" Text="Test Variable Needs a Value"

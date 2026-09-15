@@ -32,7 +32,7 @@
         </Border.ContextMenu>
         <Grid>
             <StackPanel Orientation="Horizontal">
-                <TextBlock Text="&#xE70B;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                <TextBlock Text="&#xE70B;" FontFamily="{StaticResource IconFontFamily}" FontSize="12"
                            Foreground="{StaticResource BlueBrush}"
                            VerticalAlignment="Center" Margin="0,0,6,0"/>
                 <TextBlock Text="Test Pad" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"

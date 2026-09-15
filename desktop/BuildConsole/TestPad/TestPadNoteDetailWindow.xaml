@@ -86,7 +86,7 @@
                                       Style="{StaticResource FilterChip}"
                                       Click="ViewModeToggle_Click" Margin="0,0,10,0"/>
                         <Button x:Name="BtnCloseWindow" Style="{StaticResource DialogCaptionCloseButton}" ToolTip="Close" Click="BtnCloseWindow_Click">
-                            <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                            <TextBlock Text="&#xE8BB;" FontFamily="{StaticResource IconFontFamily}" FontSize="10"/>
                         </Button>
                     </StackPanel>
                 </Grid>
