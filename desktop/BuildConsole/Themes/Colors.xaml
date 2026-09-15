@@ -72,4 +72,12 @@
     <SolidColorBrush x:Key="StatusSuccessWashLightBrush"  Color="#1A8FC496"/>
     <SolidColorBrush x:Key="StatusSuccessWashMediumBrush" Color="#338FC496"/>
 
+    <!-- Same low-opacity wash treatment for Error/Warning, so row/badge
+         backgrounds that need a status tint have a real brush instead of a
+         raw hex literal (Git #4200). -->
+    <SolidColorBrush x:Key="StatusErrorWashLightBrush"    Color="#1ADC8A8A"/>
+    <SolidColorBrush x:Key="StatusErrorWashMediumBrush"   Color="#33DC8A8A"/>
+    <SolidColorBrush x:Key="StatusWarningWashLightBrush"  Color="#1AD4A56C"/>
+    <SolidColorBrush x:Key="StatusWarningWashMediumBrush" Color="#33D4A56C"/>
+
 </ResourceDictionary>
