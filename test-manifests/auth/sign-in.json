@@ -2,12 +2,26 @@
   "issue": 2991,
   "feature": "Auth Core: Sign-in + MFA challenge (Feature #1648). Real screens rebuilt from scratch against Design/portal/design_handoff_full_site/screens/Auth Sign-In.dc.html and Auth MFA Challenge.dc.html, superseding the retired portal-v2 login page this file used to cover (that page and its #email/#password/[data-testid='login-submit'] IDs no longer exist -- artifacts/msp-portal was retired wholesale). Wired to the real POST /api/auth/login (auth.ts:321-418) and, on an mfaRequired response, an inline MFA-challenge phase of the SAME page (not a separate route) wired to POST /api/auth/mfa/totp/challenge and POST /api/auth/mfa/bypass (mfa.ts).",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "cd088e8d8",
 
   "notes": [
     "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- these assertions only go green once this session's commit is deployed by the dev-server rebuild.",
     "No known-password test account exists in the local DB for a real end-to-end 401/423/mfaRequired assertion here without writing one -- see auth/password-reset-guard.json for the forgot-password API coverage, which needs no credential. This manifest covers the real page load + form wiring; the credential-branch banners (invalid/locked/mfaRequired) were verified by direct route reading against docs/portal/auth-core-contract-pack.md, not exercised end-to-end here.",
-    "Route is /portal/login (this app mounts at /portal/, no slug prefix for the auth flow)."
+    "Route is /portal/login (this app mounts at /portal/, no slug prefix for the auth flow).",
+    "The nopass 401 (#4132) IS exercised end-to-end below -- id 2606 (other.vitest-2984-865828553@scratch.invalid) is a real row in the local DB with password_hash NULL (a leftover scratch account from another suite), so any password against it deterministically triggers auth.ts:397-399's distinct 401. Do not delete this row; it is the only account presently in this state."
+  ],
+
+  "apiTests": [
+    {
+      "name": "POST /api/auth/login against a passwordless account returns the distinct nopass 401",
+      "sessionTag": "4132-nopass",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "body": { "email": "other.vitest-2984-865828553@scratch.invalid", "password": "anything-not-checked" },
+      "expectStatus": 401,
+      "expectJson": { "error": "No password set for this account. Check your email for a setup link." },
+      "critical": true
+    }
   ],
 
   "uiSteps": [
@@ -54,6 +68,34 @@
       "action": "expect",
       "selector": "[data-testid='login-sign-in-help']",
       "state": "visible"
+    },
+
+    {
+      "name": "Fill and submit a passwordless account's credentials (#4132)",
+      "action": "fill",
+      "selector": "[data-testid='login-email']",
+      "value": "other.vitest-2984-865828553@scratch.invalid",
+      "sessionTag": "4132-nopass"
+    },
+    {
+      "action": "fill",
+      "selector": "[data-testid='login-password']",
+      "value": "anything-not-checked",
+      "sessionTag": "4132-nopass"
+    },
+    {
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "sessionTag": "4132-nopass"
+    },
+    {
+      "name": "DOM renders the design's real nopass banner copy, not the generic invalid-credentials message",
+      "action": "expect",
+      "selector": "body",
+      "state": "visible",
+      "textContains": "You haven't set a password yet",
+      "critical": true,
+      "sessionTag": "4132-nopass"
     }
   ]
 }
