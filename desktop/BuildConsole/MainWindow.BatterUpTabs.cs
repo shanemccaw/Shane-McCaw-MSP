@@ -29,8 +29,10 @@ namespace BuildConsole
     {
         private const string BatterUpTabChannel = "batter-up";
         private const string AiBatterUpTabChannel = "ai-batter-up";
+        private const string WhatsRemainingTabChannel = "whats-remaining";
         private const string BatterUpTabKey = "batter-up:main";
         private const string AiBatterUpTabKey = "ai-batter-up:main";
+        private const string WhatsRemainingTabKey = "whats-remaining:main";
 
         // Git #1872 — the SAME instances every existing wire in MainWindow.xaml.cs
         // (RowsAutoQueued, Initialize, the #1813 BoardRefreshCompleted cascade) already
@@ -39,6 +41,9 @@ namespace BuildConsole
         // one is open.
         private readonly BatterUpPanel _batterUpPanel = new();
         private readonly AiBatterUpPanel _aiBatterUpPanel = new();
+        // Git #4149 — same persistent-singleton-field convention; this panel refreshes itself
+        // (OnIsVisibleChanged) rather than needing a MainWindow-driven wire.
+        private readonly WhatsRemainingPanel _whatsRemainingPanel = new();
 
         /// <summary>Git #1872 — subscribes the two title-bar count badges to each panel's
         /// CountChanged event and seeds them with whatever count each panel already has
@@ -55,6 +60,8 @@ namespace BuildConsole
         private void BtnBatterUp_Click(object sender, RoutedEventArgs e) => OpenBatterUpTab();
 
         private void BtnAiBatterUp_Click(object sender, RoutedEventArgs e) => OpenAiBatterUpTab();
+
+        private void BtnWhatsRemaining_Click(object sender, RoutedEventArgs e) => OpenWhatsRemainingTab();
 
         /// <summary>Open (or focus, across every pane) the single Batter Up document tab.</summary>
         public void OpenBatterUpTab()
@@ -76,6 +83,18 @@ namespace BuildConsole
                 return;
             }
             AddBatterUpDocumentTab(AiBatterUpTabKey, "🔍", "AI Batter Up", _aiBatterUpPanel, AiBatterUpTabChannel);
+        }
+
+        /// <summary>Git #4149 — open (or focus, across every pane) the single What's Remaining
+        /// document tab, via the same recipe as Batter Up / AI Batter Up.</summary>
+        public void OpenWhatsRemainingTab()
+        {
+            if (FocusExistingDocumentTab(WhatsRemainingTabKey))
+            {
+                ActivityLog.Log(WhatsRemainingTabChannel, "focus existing tab");
+                return;
+            }
+            AddBatterUpDocumentTab(WhatsRemainingTabKey, "📋", "What's Remaining", _whatsRemainingPanel, WhatsRemainingTabChannel);
         }
 
         /// <summary>Focus an already-open tab by its Tag key, scanning every split pane — mirrors
