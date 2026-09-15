@@ -69,9 +69,9 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="14,0,0,0" VerticalAlignment="Center">
-                        <TextBlock x:Name="TitleText" Text="Note" FontSize="13" FontWeight="SemiBold"
+                        <TextBlock x:Name="TitleText" Text="Note" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextPrimaryBrush}"/>
-                        <TextBlock x:Name="MetaText" FontSize="11" Margin="10,0,0,0"
+                        <TextBlock x:Name="MetaText" FontSize="{StaticResource CaptionFontSize}" Margin="10,0,0,0"
                                    VerticalAlignment="Center"
                                    Foreground="{StaticResource TextSecondaryBrush}"/>
                     </StackPanel>
@@ -113,8 +113,8 @@
                                  Background="Transparent"
                                  Foreground="{StaticResource TextPrimaryBrush}"
                                  CaretBrush="{StaticResource TextPrimaryBrush}"
-                                 FontFamily="Consolas"
-                                 FontSize="13"
+                                 FontFamily="{StaticResource MonospaceFontFamily}"
+                                 FontSize="{StaticResource MonospaceFontSize}"
                                  Padding="12,10"/>
                     </ScrollViewer>
                 </Grid>
