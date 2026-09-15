@@ -118,12 +118,17 @@ async function emit(level: "info" | "warn" | "error", fields: Record<string, unk
 /**
  * How long a loaded snapshot is served without re-reading.
  *
- * This is deliberately a small, local, transitional cache and NOT an answer to
- * #1704, which holds the permissions engine's real caching/performance strategy as
- * an open decision. The scope here is seven platform rows that only #2460 is
- * expected to change, and the alternative — a DB round trip on every one of 616
- * route gates — would be a real latency regression taken silently on #1704's behalf.
- * When #1704 lands its strategy, this becomes the first thing it replaces.
+ * This is the ONE deliberate exception to the permissions engine's caching decision,
+ * and it is permanent, not a stopgap. #1704's real, final answer (settled by #4191,
+ * `@workspace/db/rbac/access`): there is NO cross-request cache for per-principal
+ * RBAC resolution or per-customer tier entitlement — a revoke or a downgrade must take
+ * effect on the very next request, not after a TTL (see `rbac-capability.ts`, which
+ * reads its per-principal rows live for exactly that reason). This snapshot is a
+ * genuinely different case: seven PLATFORM-WIDE rows, shared by every principal across
+ * 616 route gates, mutated only by a migration — broad, shared and rarely changed, where
+ * a DB round trip per gate would be a real latency cost for no freshness gain. Nothing
+ * per-principal or per-org is ever cached here, and nothing built on `evaluateAccess`
+ * should copy this pattern for data that is.
  */
 const SNAPSHOT_TTL_MS = 30_000;
 

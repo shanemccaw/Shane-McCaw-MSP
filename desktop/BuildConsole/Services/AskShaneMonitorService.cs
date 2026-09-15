@@ -20,6 +20,12 @@ namespace BuildConsole.Services
         public string HtmlUrl { get; init; } = "";
         public string RepoOwner { get; init; } = RepoIdentity.DefaultOwner;
         public string RepoName { get; init; } = RepoIdentity.DefaultName;
+        /// <summary>Git #4202 — the issue's own first real body line, stitched in by
+        /// <see cref="WaitingOnYouService"/> from the same local mirror pass it already reads for
+        /// its own "Shane To-Do" query. Null for every existing caller of
+        /// <see cref="GetOpenItemsAsync"/> (this service never populates it itself) — a purely
+        /// additive field, not a behavior change to the badge/toast callers.</summary>
+        public string? Excerpt { get; init; }
     }
 
     /// <summary>

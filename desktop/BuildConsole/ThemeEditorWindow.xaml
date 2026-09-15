@@ -62,13 +62,13 @@
 
                 <!-- Title & Status -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,16,0">
-                    <TextBlock Text="🎨" FontSize="14" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="🎨" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,8,0" VerticalAlignment="Center"/>
                     <TextBlock Text="WPF Theme Viewer &amp; Editor"
-                               FontSize="12" FontWeight="SemiBold"
+                               FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center"/>
                     <Border Background="{StaticResource Surface0Brush}" CornerRadius="3" Padding="6,2" Margin="10,0,0,0">
                         <TextBlock x:Name="TxtThemeStatus" Text="Loading theme dictionaries..."
-                                   FontSize="11" Foreground="{StaticResource BlueBrush}"/>
+                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource BlueBrush}"/>
                     </Border>
                 </StackPanel>
 
@@ -88,7 +88,7 @@
                                   ToolTip="Click any visual control in the gallery to inspect its brush, color, and typography">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="🔍" Margin="0,0,6,0"/>
-                            <TextBlock x:Name="TxtIdentifyStatus" Text="Point &amp; Identify: OFF" FontWeight="SemiBold" FontSize="11"/>
+                            <TextBlock x:Name="TxtIdentifyStatus" Text="Point &amp; Identify: OFF" FontWeight="SemiBold" FontSize="{StaticResource CaptionFontSize}"/>
                         </StackPanel>
                     </ToggleButton>
 
@@ -102,7 +102,7 @@
                             ToolTip="Reload all three theme dictionaries from disk">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="🔄" Margin="0,0,6,0"/>
-                            <TextBlock Text="Reload" FontSize="11"/>
+                            <TextBlock Text="Reload" FontSize="{StaticResource CaptionFontSize}"/>
                         </StackPanel>
                     </Button>
 
@@ -117,7 +117,7 @@
                             ToolTip="Save all edits back to Colors.xaml, Typography.xaml, DarkTheme.xaml with backups">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="💾" Margin="0,0,6,0"/>
-                            <TextBlock Text="Save Changes" FontSize="11"/>
+                            <TextBlock Text="Save Changes" FontSize="{StaticResource CaptionFontSize}"/>
                         </StackPanel>
                     </Button>
                 </StackPanel>
@@ -152,7 +152,7 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="TxtNotificationMessage" Text="Theme update message"
-                           FontSize="12" Foreground="{StaticResource BlueBrush}" VerticalAlignment="Center"/>
+                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource BlueBrush}" VerticalAlignment="Center"/>
                 <Button Grid.Column="1" Content="✕" Background="Transparent" BorderThickness="0"
                         Foreground="{StaticResource TextSecondaryBrush}" Click="BtnDismissBanner_Click"/>
             </Grid>
@@ -228,13 +228,13 @@
 
                                                 <!-- Key and Hex -->
                                                 <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding Key}" FontWeight="SemiBold" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                                    <TextBlock Text="{Binding Key}" FontWeight="SemiBold" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource TextPrimaryBrush}"/>
                                                     <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                                                        <TextBlock Text="{Binding HexValue}" FontFamily="Cascadia Code, Consolas" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                        <TextBlock Text="{Binding HexValue}" FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource MonospaceFontSize}" Foreground="{StaticResource TextSecondaryBrush}"/>
                                                         <TextBlock Text=" • " Foreground="{StaticResource TextDisabledBrush}"/>
-                                                        <TextBlock Text="{Binding BrightnessDisplay, StringFormat='Bri: {0}'}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                        <TextBlock Text="{Binding BrightnessDisplay, StringFormat='Bri: {0}'}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}"/>
                                                         <TextBlock Text=" • " Foreground="{StaticResource TextDisabledBrush}"/>
-                                                        <TextBlock Text="{Binding ContrastDisplay, StringFormat='CR: {0}'}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                        <TextBlock Text="{Binding ContrastDisplay, StringFormat='CR: {0}'}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}"/>
                                                     </StackPanel>
                                                 </StackPanel>
 
@@ -244,27 +244,27 @@
                                                     <Border Style="{StaticResource WarningChip}" Background="#4A3B18"
                                                             Visibility="{Binding IsTooBright, Converter={StaticResource BoolToVis}}"
                                                             ToolTip="Brightness warning: color is unusually bright or high-glare for dark theme">
-                                                        <TextBlock Text="⚠ Bright" FontSize="9" Foreground="#F9E2AF" FontWeight="Bold"/>
+                                                        <TextBlock Text="⚠ Bright" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource YellowBrush}" FontWeight="Bold"/>
                                                     </Border>
                                                     <Border Style="{StaticResource WarningChip}" Background="#4A2020"
                                                             Visibility="{Binding IsLowContrast, Converter={StaticResource BoolToVis}}"
                                                             ToolTip="Low contrast: does not meet recommended WCAG contrast against #0D1117">
-                                                        <TextBlock Text="⚠ Low CR" FontSize="9" Foreground="#F38BA8" FontWeight="Bold"/>
+                                                        <TextBlock Text="⚠ Low CR" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource RedBrush}" FontWeight="Bold"/>
                                                     </Border>
                                                     <Border Style="{StaticResource WarningChip}" Background="#3A1E4A"
                                                             Visibility="{Binding IsOutlier, Converter={StaticResource BoolToVis}}"
                                                             ToolTip="Outlier: high saturation or harsh magenta/neon outside muted palette">
-                                                        <TextBlock Text="⚠ Outlier" FontSize="9" Foreground="#CBA6F7" FontWeight="Bold"/>
+                                                        <TextBlock Text="⚠ Outlier" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource MauveBrush}" FontWeight="Bold"/>
                                                     </Border>
                                                     <Border Style="{StaticResource WarningChip}" Background="{StaticResource Surface0Brush}"
                                                             Visibility="{Binding IsUnused, Converter={StaticResource BoolToVis}}"
                                                             ToolTip="Unused: not referenced by any brush or style in the theme">
-                                                        <TextBlock Text="Unused" FontSize="9" Foreground="{StaticResource TextDisabledBrush}"/>
+                                                        <TextBlock Text="Unused" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextDisabledBrush}"/>
                                                     </Border>
                                                     
                                                     <!-- Usage count badge -->
                                                     <Border Background="{StaticResource Surface1Brush}" CornerRadius="3" Padding="5,2" Margin="4,0,0,0">
-                                                        <TextBlock Text="{Binding UsageCount, StringFormat='×{0}'}" FontSize="10" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                                        <TextBlock Text="{Binding UsageCount, StringFormat='×{0}'}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextPrimaryBrush}"/>
                                                     </Border>
                                                 </StackPanel>
                                             </Grid>
@@ -312,18 +312,18 @@
                                                             Background="{Binding Brush}"/>
 
                                                     <StackPanel Grid.Column="1" Margin="8,0,0,0">
-                                                        <TextBlock Text="{Binding Key}" FontWeight="SemiBold" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"/>
-                                                        <TextBlock Text="{Binding SourceFile, StringFormat='Source: {0}'}" FontSize="10" Foreground="{StaticResource TextDisabledBrush}"/>
+                                                        <TextBlock Text="{Binding Key}" FontWeight="SemiBold" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                                        <TextBlock Text="{Binding SourceFile, StringFormat='Source: {0}'}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextDisabledBrush}"/>
                                                     </StackPanel>
 
                                                     <Border Grid.Column="2" Background="{StaticResource Surface1Brush}" CornerRadius="3" Padding="5,2">
-                                                        <TextBlock Text="{Binding UsageCount, StringFormat='Used in {0} styles'}" FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                                                        <TextBlock Text="{Binding UsageCount, StringFormat='Used in {0} styles'}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                                                     </Border>
                                                 </Grid>
 
                                                 <!-- Relationship Flow Display -->
                                                 <Border Background="{StaticResource Surface0Brush}" CornerRadius="3" Padding="6,4" Margin="0,6,0,0">
-                                                    <TextBlock FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap">
+                                                    <TextBlock FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap">
                                                         <Run Text="Flow: " FontWeight="SemiBold"/>
                                                         <Run Text="{Binding ColorKey, TargetNullValue='Literal Hex', Mode=OneWay}" Foreground="{StaticResource BlueBrush}"/>
                                                         <Run Text=" ➔ "/>
@@ -349,7 +349,7 @@
                             </Grid.RowDefinitions>
 
                             <TextBlock Grid.Row="0" Text="Typography Resources (from Typography.xaml)"
-                                       FontWeight="SemiBold" FontSize="12" Margin="4,0,0,8" Foreground="{StaticResource Subtext1Brush}"/>
+                                       FontWeight="SemiBold" FontSize="{StaticResource CaptionFontSize}" Margin="4,0,0,8" Foreground="{StaticResource Subtext1Brush}"/>
 
                             <ListBox x:Name="LstTypography" Grid.Row="1"
                                      Background="Transparent" BorderThickness="0"
@@ -366,9 +366,9 @@
                                                         <ColumnDefinition Width="*"/>
                                                         <ColumnDefinition Width="Auto"/>
                                                     </Grid.ColumnDefinitions>
-                                                    <TextBlock Grid.Column="0" Text="{Binding Key}" FontWeight="Bold" FontSize="12" Foreground="{StaticResource BlueBrush}"/>
+                                                    <TextBlock Grid.Column="0" Text="{Binding Key}" FontWeight="Bold" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource BlueBrush}"/>
                                                     <Border Grid.Column="1" Background="{StaticResource Surface0Brush}" CornerRadius="3" Padding="6,2">
-                                                        <TextBlock Text="{Binding Category}" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                        <TextBlock Text="{Binding Category}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}"/>
                                                     </Border>
                                                 </Grid>
 
@@ -379,7 +379,7 @@
                                                            Foreground="{StaticResource TextPrimaryBrush}"
                                                            Margin="0,6,0,6" TextWrapping="Wrap"/>
 
-                                                <TextBlock FontSize="10" Foreground="{StaticResource TextDisabledBrush}">
+                                                <TextBlock FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextDisabledBrush}">
                                                     <Run Text="Family: "/><Run Text="{Binding FontFamily, Mode=OneWay}"/>
                                                     <Run Text=" • Size: "/><Run Text="{Binding FontSize, Mode=OneWay}"/><Run Text="px"/>
                                                     <Run Text=" • Weight: "/><Run Text="{Binding FontWeight, Mode=OneWay}"/>
@@ -396,21 +396,21 @@
                     <TabItem x:Name="TabInspector" Header="🔍 Inspector">
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <StackPanel Margin="6">
-                                <TextBlock Text="Visual Element Inspector" FontWeight="Bold" FontSize="13" Margin="0,0,0,8" Foreground="{StaticResource BlueBrush}"/>
+                                <TextBlock Text="Visual Element Inspector" FontWeight="Bold" FontSize="{StaticResource SubHeaderFontSize}" Margin="0,0,0,8" Foreground="{StaticResource BlueBrush}"/>
                                 <TextBlock Text="Click any visual element in the gallery to reveal its brushes, colors, and typography."
-                                           FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,12"/>
 
                                 <Border Style="{StaticResource InspectorCard}">
                                     <StackPanel>
-                                        <TextBlock Text="Target Visual Element" FontWeight="SemiBold" FontSize="11" Foreground="{StaticResource Subtext0Brush}"/>
-                                        <TextBlock x:Name="TxtInspectElementName" Text="(No element selected)" FontWeight="Bold" FontSize="14" Margin="0,4,0,2" Foreground="{StaticResource TextPrimaryBrush}"/>
-                                        <TextBlock x:Name="TxtInspectElementHierarchy" Text="Hierarchy: None" FontSize="11" Foreground="{StaticResource TextDisabledBrush}" TextWrapping="Wrap"/>
+                                        <TextBlock Text="Target Visual Element" FontWeight="SemiBold" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
+                                        <TextBlock x:Name="TxtInspectElementName" Text="(No element selected)" FontWeight="Bold" FontSize="{StaticResource BodyFontSize}" Margin="0,4,0,2" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                        <TextBlock x:Name="TxtInspectElementHierarchy" Text="Hierarchy: None" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextDisabledBrush}" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Border>
 
                                 <Border Style="{StaticResource InspectorCard}">
                                     <StackPanel>
-                                        <TextBlock Text="Brush &amp; Color Trace" FontWeight="SemiBold" FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,6"/>
+                                        <TextBlock Text="Brush &amp; Color Trace" FontWeight="SemiBold" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,6"/>
                                         <Grid Margin="0,0,0,6">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="28"/>
@@ -419,11 +419,11 @@
                                             <Border x:Name="InspectColorSwatch" Grid.Column="0" Width="22" Height="22" CornerRadius="4"
                                                     BorderBrush="{StaticResource BorderDividerBrush}" BorderThickness="1" Background="Transparent"/>
                                             <StackPanel Grid.Column="1" Margin="8,0,0,0">
-                                                <TextBlock x:Name="TxtInspectBrushName" Text="Brush: None" FontWeight="SemiBold" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"/>
-                                                <TextBlock x:Name="TxtInspectColorName" Text="Color: None" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                <TextBlock x:Name="TxtInspectBrushName" Text="Brush: None" FontWeight="SemiBold" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                                <TextBlock x:Name="TxtInspectColorName" Text="Color: None" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}"/>
                                             </StackPanel>
                                         </Grid>
-                                        <TextBlock x:Name="TxtInspectSourceFile" Text="Defined in: None" FontSize="11" Foreground="{StaticResource BlueBrush}"/>
+                                        <TextBlock x:Name="TxtInspectSourceFile" Text="Defined in: None" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource BlueBrush}"/>
                                         <Button x:Name="BtnEditInspectedBrush" Content="✏ Edit This Brush in Editor" Margin="0,8,0,0"
                                                 Click="BtnEditInspectedBrush_Click" Style="{StaticResource {x:Type Button}}"/>
                                     </StackPanel>
@@ -431,8 +431,8 @@
 
                                 <Border Style="{StaticResource InspectorCard}">
                                     <StackPanel>
-                                        <TextBlock Text="Typography Details" FontWeight="SemiBold" FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
-                                        <TextBlock x:Name="TxtInspectTypography" Text="Font: None" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                        <TextBlock Text="Typography Details" FontWeight="SemiBold" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
+                                        <TextBlock x:Name="TxtInspectTypography" Text="Font: None" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource TextPrimaryBrush}"/>
                                         <Button x:Name="BtnEditInspectedTypography" Content="✏ Edit Typography in Editor" Margin="0,8,0,0"
                                                 Click="BtnEditInspectedTypography_Click" Style="{StaticResource {x:Type Button}}"/>
                                     </StackPanel>
@@ -440,9 +440,9 @@
 
                                 <Border Style="{StaticResource InspectorCard}">
                                     <StackPanel>
-                                        <TextBlock Text="Style &amp; Control Template" FontWeight="SemiBold" FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
-                                        <TextBlock x:Name="TxtInspectStyle" Text="Style: Default" FontSize="11" Foreground="{StaticResource TextPrimaryBrush}"/>
-                                        <TextBlock x:Name="TxtInspectTemplate" Text="Template: Standard" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0"/>
+                                        <TextBlock Text="Style &amp; Control Template" FontWeight="SemiBold" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,4"/>
+                                        <TextBlock x:Name="TxtInspectStyle" Text="Style: Default" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                        <TextBlock x:Name="TxtInspectTemplate" Text="Template: Standard" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0"/>
                                     </StackPanel>
                                 </Border>
                             </StackPanel>
@@ -453,14 +453,14 @@
                     <TabItem x:Name="TabEditor" Header="✏ Editor">
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <StackPanel Margin="6">
-                                <TextBlock Text="Resource Live Editor" FontWeight="Bold" FontSize="13" Margin="0,0,0,4" Foreground="{StaticResource BlueBrush}"/>
+                                <TextBlock Text="Resource Live Editor" FontWeight="Bold" FontSize="{StaticResource SubHeaderFontSize}" Margin="0,0,0,4" Foreground="{StaticResource BlueBrush}"/>
                                 <TextBlock x:Name="TxtEditorTargetDescription" Text="Select a color, brush, or typography resource to edit"
-                                           FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,10"/>
+                                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,10"/>
 
                                 <!-- COLOR & BRUSH EDITOR SECTION -->
                                 <Border x:Name="PnlColorEditor" Style="{StaticResource InspectorCard}">
                                     <StackPanel>
-                                        <TextBlock Text="Color &amp; Brush Controls" FontWeight="SemiBold" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,8"/>
+                                        <TextBlock Text="Color &amp; Brush Controls" FontWeight="SemiBold" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,8"/>
 
                                         <!-- Swatch & Hex input -->
                                         <Grid Margin="0,0,0,10">
@@ -469,37 +469,37 @@
                                                 <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
                                             <Border x:Name="EditorSwatch" Grid.Column="0" Width="36" Height="36" CornerRadius="4"
-                                                    BorderBrush="{StaticResource BorderDividerBrush}" BorderThickness="1" Background="#7C8CF0"/>
+                                                    BorderBrush="{StaticResource BorderDividerBrush}" BorderThickness="1" Background="{StaticResource AccentBrush}"/>
                                             <StackPanel Grid.Column="1" Margin="8,0,0,0">
-                                                <TextBlock Text="Hex Value (#RRGGBB or #AARRGGBB)" FontSize="10" Foreground="{StaticResource TextDisabledBrush}"/>
-                                                <TextBox x:Name="TxtEditorHex" Text="#7C8CF0" FontFamily="Cascadia Code, Consolas"
+                                                <TextBlock Text="Hex Value (#RRGGBB or #AARRGGBB)" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextDisabledBrush}"/>
+                                                <TextBox x:Name="TxtEditorHex" Text="#7C8CF0" FontFamily="{StaticResource MonospaceFontFamily}"
                                                          TextChanged="TxtEditorHex_TextChanged" Margin="0,2,0,0"/>
                                             </StackPanel>
                                         </Grid>
 
                                         <!-- RGB Sliders -->
-                                        <TextBlock Text="RGB Sliders" FontWeight="SemiBold" FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,4,0,2"/>
+                                        <TextBlock Text="RGB Sliders" FontWeight="SemiBold" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,4,0,2"/>
                                         <Grid Margin="0,2">
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="R" Foreground="#F38BA8" VerticalAlignment="Center"/>
+                                            <TextBlock Text="R" Foreground="{StaticResource RedBrush}" VerticalAlignment="Center"/>
                                             <Slider x:Name="SliderR" Grid.Column="1" Minimum="0" Maximum="255" ValueChanged="SliderRgb_ValueChanged"/>
                                             <TextBlock x:Name="TxtValR" Grid.Column="2" Text="124" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                         </Grid>
                                         <Grid Margin="0,2">
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="G" Foreground="#A6E3A1" VerticalAlignment="Center"/>
+                                            <TextBlock Text="G" Foreground="{StaticResource GreenBrush}" VerticalAlignment="Center"/>
                                             <Slider x:Name="SliderG" Grid.Column="1" Minimum="0" Maximum="255" ValueChanged="SliderRgb_ValueChanged"/>
                                             <TextBlock x:Name="TxtValG" Grid.Column="2" Text="140" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                         </Grid>
                                         <Grid Margin="0,2">
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="B" Foreground="#89B4FA" VerticalAlignment="Center"/>
+                                            <TextBlock Text="B" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
                                             <Slider x:Name="SliderB" Grid.Column="1" Minimum="0" Maximum="255" ValueChanged="SliderRgb_ValueChanged"/>
                                             <TextBlock x:Name="TxtValB" Grid.Column="2" Text="240" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                         </Grid>
 
                                         <!-- HSL Sliders -->
-                                        <TextBlock Text="HSL &amp; Brightness" FontWeight="SemiBold" FontSize="11" Foreground="{StaticResource Subtext0Brush}" Margin="0,8,0,2"/>
+                                        <TextBlock Text="HSL &amp; Brightness" FontWeight="SemiBold" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,8,0,2"/>
                                         <Grid Margin="0,2">
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
                                             <TextBlock Text="H" VerticalAlignment="Center"/>
@@ -527,17 +527,17 @@
                                                     <ColumnDefinition Width="Auto"/>
                                                 </Grid.ColumnDefinitions>
                                                 <StackPanel>
-                                                    <TextBlock Text="Contrast against #0D1117:" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
-                                                    <TextBlock x:Name="TxtEditorContrastPreview" Text="6.8:1 (WCAG AAA Pass)" FontWeight="Bold" FontSize="12" Foreground="{StaticResource StatusSuccessBrush}"/>
+                                                    <TextBlock Text="Contrast against #0D1117:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                    <TextBlock x:Name="TxtEditorContrastPreview" Text="6.8:1 (WCAG AAA Pass)" FontWeight="Bold" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource StatusSuccessBrush}"/>
                                                 </StackPanel>
                                                 <Border x:Name="BadgeWcag" Grid.Column="1" Background="#234A2E" CornerRadius="3" Padding="6,2" VerticalAlignment="Center">
-                                                    <TextBlock Text="PASS AAA" FontSize="10" FontWeight="Bold" Foreground="#8FC496"/>
+                                                    <TextBlock Text="PASS AAA" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource StatusSuccessBrush}"/>
                                                 </Border>
                                             </Grid>
                                         </Border>
 
                                         <!-- Quick Adjust Palette Buttons -->
-                                        <TextBlock Text="Palette Helpers" FontSize="11" Foreground="{StaticResource TextDisabledBrush}" Margin="0,0,0,4"/>
+                                        <TextBlock Text="Palette Helpers" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextDisabledBrush}" Margin="0,0,0,4"/>
                                         <UniformGrid Columns="3" Margin="0,0,0,8">
                                             <Button Content="Auto-Darken" Margin="0,0,4,0" Click="BtnAutoDarken_Click"/>
                                             <Button Content="Auto-Lighten" Margin="2,0,2,0" Click="BtnAutoLighten_Click"/>
@@ -553,9 +553,9 @@
                                 <!-- TYPOGRAPHY EDITOR SECTION -->
                                 <Border x:Name="PnlTypographyEditor" Style="{StaticResource InspectorCard}">
                                     <StackPanel>
-                                        <TextBlock Text="Typography Controls" FontWeight="SemiBold" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,8"/>
+                                        <TextBlock Text="Typography Controls" FontWeight="SemiBold" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,8"/>
 
-                                        <TextBlock Text="Font Family" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,2"/>
+                                        <TextBlock Text="Font Family" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,2"/>
                                         <ComboBox x:Name="CmbFontFamily" Margin="0,0,0,8" SelectionChanged="CmbFontFamily_SelectionChanged">
                                             <ComboBoxItem Content="Segoe UI" IsSelected="True"/>
                                             <ComboBoxItem Content="Cascadia Code, Consolas, Courier New"/>
@@ -563,14 +563,14 @@
                                             <ComboBoxItem Content="Calibri"/>
                                         </ComboBox>
 
-                                        <TextBlock Text="Font Size (px)" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,2"/>
+                                        <TextBlock Text="Font Size (px)" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,2"/>
                                         <Grid Margin="0,0,0,8">
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
                                             <Slider x:Name="SliderFontSize" Minimum="9" Maximum="32" Value="14" ValueChanged="SliderFontSize_ValueChanged"/>
                                             <TextBlock x:Name="TxtFontSizeVal" Grid.Column="1" Text="14" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                         </Grid>
 
-                                        <TextBlock Text="Font Weight" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,2"/>
+                                        <TextBlock Text="Font Weight" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,2"/>
                                         <ComboBox x:Name="CmbFontWeight" Margin="0,0,0,8" SelectionChanged="CmbFontWeight_SelectionChanged">
                                             <ComboBoxItem Content="Normal" IsSelected="True"/>
                                             <ComboBoxItem Content="SemiBold"/>
@@ -581,7 +581,7 @@
                                         <!-- Live Preview Box -->
                                         <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="10" Margin="0,4,0,8">
                                             <TextBlock x:Name="TxtTypographyPreview" Text="Live Typography Sample Text (14px)"
-                                                       FontFamily="Segoe UI" FontSize="14" FontWeight="Normal" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                                       FontFamily="{StaticResource DefaultFontFamily}" FontSize="{StaticResource BodyFontSize}" FontWeight="Normal" Foreground="{StaticResource TextPrimaryBrush}"/>
                                         </Border>
 
                                         <Button Content="⚡ Apply Typography to Live Theme" Background="{StaticResource BlueBrushTint}"
@@ -613,11 +613,11 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="🏛 Control Gallery (Combined Theme)" FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}"/>
+                            <TextBlock Text="🏛 Control Gallery (Combined Theme)" FontWeight="Bold" FontSize="{StaticResource HeaderFontSize}" Foreground="{StaticResource TextPrimaryBrush}"/>
                             <TextBlock Text=" • All elements render using Colors.xaml, Typography.xaml, and DarkTheme.xaml"
-                                       FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                       FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="6,0,0,0"/>
                         </StackPanel>
-                        <TextBlock Grid.Column="1" Text="Click any element when Point &amp; Identify is ON" FontSize="11" Foreground="{StaticResource BlueBrush}"/>
+                        <TextBlock Grid.Column="1" Text="Click any element when Point &amp; Identify is ON" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource BlueBrush}"/>
                     </Grid>
                 </Border>
 
@@ -628,7 +628,7 @@
                     <StackPanel Margin="16" MaxWidth="1000" HorizontalAlignment="Left">
                         
                         <!-- ════ SECTION 1: BUTTONS & INTERACTIVE ════ -->
-                        <TextBlock Text="BUTTONS &amp; CTAS" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8"/>
+                        <TextBlock Text="BUTTONS &amp; CTAS" FontWeight="Bold" FontSize="{StaticResource SubHeaderFontSize}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8"/>
                         <Border Style="{StaticResource InspectorCard}">
                             <WrapPanel Orientation="Horizontal">
                                 <Button Content="Standard Button" Margin="0,0,10,10" Width="140"/>
@@ -639,13 +639,13 @@
                                         BorderBrush="{StaticResource StatusSuccessBrush}" Margin="0,0,10,10" Width="130"/>
                                 <Button Content="Disabled Button" IsEnabled="False" Margin="0,0,10,10" Width="130"/>
                                 <Button Style="{StaticResource CaptionButton}" Width="40" Height="30" Margin="0,0,10,10" ToolTip="Caption Button Sample">
-                                    <TextBlock Text="⚙" FontSize="12"/>
+                                    <TextBlock Text="⚙" FontSize="{StaticResource CaptionFontSize}"/>
                                 </Button>
                             </WrapPanel>
                         </Border>
 
                         <!-- ════ SECTION 2: INPUTS & TEXT CONTROLS ════ -->
-                        <TextBlock Text="TEXT INPUTS &amp; EDITORS" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,8"/>
+                        <TextBlock Text="TEXT INPUTS &amp; EDITORS" FontWeight="Bold" FontSize="{StaticResource SubHeaderFontSize}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,8"/>
                         <Border Style="{StaticResource InspectorCard}">
                             <Grid>
                                 <Grid.RowDefinitions>
@@ -659,17 +659,17 @@
                                 </Grid.ColumnDefinitions>
 
                                 <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,10,10">
-                                    <TextBlock Text="Standard TextBox" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                    <TextBlock Text="Standard TextBox" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
                                     <TextBox Text="Default text input field with theme border"/>
                                 </StackPanel>
 
                                 <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,10">
-                                    <TextBlock Text="SearchTextBox (with Clear Affordance)" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                    <TextBlock Text="SearchTextBox (with Clear Affordance)" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
                                     <TextBox Style="{StaticResource SearchTextBox}" Text="Filter manifest queue..."/>
                                 </StackPanel>
 
                                 <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,10,10">
-                                    <TextBlock Text="ComboBox Selector" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                    <TextBlock Text="ComboBox Selector" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
                                     <ComboBox SelectedIndex="0">
                                         <ComboBoxItem Content="Production Environment (Release)"/>
                                         <ComboBoxItem Content="Staging Environment (Preview)"/>
@@ -678,7 +678,7 @@
                                 </StackPanel>
 
                                 <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,0,10">
-                                    <TextBlock Text="EditorTextBox (Monospace Code)" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                    <TextBlock Text="EditorTextBox (Monospace Code)" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
                                     <TextBox Style="{StaticResource EditorTextBox}" Height="34"
                                              Text="git checkout -b feature/theme-viewer"/>
                                 </StackPanel>
@@ -686,7 +686,7 @@
                         </Border>
 
                         <!-- ════ SECTION 3: TOGGLES, SLIDERS & PROGRESS ════ -->
-                        <TextBlock Text="TOGGLES, SLIDERS &amp; PROGRESS" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,8"/>
+                        <TextBlock Text="TOGGLES, SLIDERS &amp; PROGRESS" FontWeight="Bold" FontSize="{StaticResource SubHeaderFontSize}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,8"/>
                         <Border Style="{StaticResource InspectorCard}">
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -706,20 +706,20 @@
 
                                 <!-- Sliders & Progress -->
                                 <StackPanel Grid.Column="1">
-                                    <TextBlock Text="Horizontal Slider (72%)" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                    <TextBlock Text="Horizontal Slider (72%)" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
                                     <Slider Minimum="0" Maximum="100" Value="72" Margin="0,0,0,10"/>
 
-                                    <TextBlock Text="Determinate Progress (65%)" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                    <TextBlock Text="Determinate Progress (65%)" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
                                     <ProgressBar Value="65" Height="8" Margin="0,0,0,10"/>
 
-                                    <TextBlock Text="Indeterminate Progress (Running)" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                    <TextBlock Text="Indeterminate Progress (Running)" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
                                     <ProgressBar IsIndeterminate="True" Height="8"/>
                                 </StackPanel>
                             </Grid>
                         </Border>
 
                         <!-- ════ SECTION 4: TABS, LISTVIEW & DATAGRID ════ -->
-                        <TextBlock Text="DATA &amp; LIST CONTROLS" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,8"/>
+                        <TextBlock Text="DATA &amp; LIST CONTROLS" FontWeight="Bold" FontSize="{StaticResource SubHeaderFontSize}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,8"/>
                         <Border Style="{StaticResource InspectorCard}">
                             <StackPanel>
                                 <TabControl Height="130" Margin="0,0,0,10">
@@ -751,7 +751,7 @@
                         </Border>
 
                         <!-- ════ SECTION 5: SURFACES, CARDS & OVERLAYS ════ -->
-                        <TextBlock Text="SURFACES, CARDS &amp; MOCKUPS" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,8"/>
+                        <TextBlock Text="SURFACES, CARDS &amp; MOCKUPS" FontWeight="Bold" FontSize="{StaticResource SubHeaderFontSize}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,8"/>
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -762,9 +762,9 @@
                             <Border Grid.Column="0" Background="{StaticResource CardBackgroundBrush}" BorderBrush="{StaticResource BorderDividerBrush}"
                                     BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,8,0">
                                 <StackPanel>
-                                    <TextBlock Text="Layered Container Card" FontWeight="Bold" FontSize="13" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                    <TextBlock Text="Layered Container Card" FontWeight="Bold" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource TextPrimaryBrush}"/>
                                     <TextBlock Text="Demonstrates CardBackgroundBrush over PanelBackgroundBrush with 1px border divider."
-                                               FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,8"/>
+                                               FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,8"/>
                                     <Separator Background="{StaticResource BorderDividerBrush}" Margin="0,0,0,8"/>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                         <Button Content="Secondary" Margin="0,0,6,0" Width="80"/>
@@ -780,10 +780,10 @@
                                 <StackPanel>
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                                         <TextBlock Text="💬" Margin="0,0,6,0"/>
-                                        <TextBlock Text="Modal Confirmation Dialog Mockup" FontWeight="Bold" FontSize="12" Foreground="{StaticResource BlueBrush}"/>
+                                        <TextBlock Text="Modal Confirmation Dialog Mockup" FontWeight="Bold" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource BlueBrush}"/>
                                     </StackPanel>
                                     <TextBlock Text="Are you sure you want to apply theme changes to active instances?"
-                                               FontSize="11" Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                                               FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap" Margin="0,0,0,10"/>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                         <Button Content="Cancel" Margin="0,0,6,0" Width="70"/>
                                         <Button Content="Confirm" Background="{StaticResource BlueBrush}" Foreground="White" Width="80"/>
@@ -793,7 +793,7 @@
                         </Grid>
 
                         <!-- ════ SECTION 6: BUILDCONSOLE SPECIFIC CONTROLS ════ -->
-                        <TextBlock Text="BUILDCONSOLE SPECIFIC CONTROLS" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,8"/>
+                        <TextBlock Text="BUILDCONSOLE SPECIFIC CONTROLS" FontWeight="Bold" FontSize="{StaticResource SubHeaderFontSize}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,8"/>
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -815,16 +815,16 @@
                                     </Grid.ColumnDefinitions>
                                     <StackPanel>
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="BuildQueueItem #1048" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                            <TextBlock Text="BuildQueueItem #1048" FontWeight="Bold" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource TextPrimaryBrush}"/>
                                             <Border Background="{StaticResource StatusRunningBrush}" CornerRadius="3" Padding="5,1" Margin="8,0,0,0">
-                                                <TextBlock Text="RUNNING" FontSize="9" FontWeight="Bold" Foreground="#0D1117"/>
+                                                <TextBlock Text="RUNNING" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource AppBackgroundBrush}"/>
                                             </Border>
                                         </StackPanel>
-                                        <TextBlock Text="branch: feature/theme-viewer • commit 41d5b3b" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0"/>
-                                        <TextBlock Text="Elapsed: 01:24 • Scoped logs active" FontSize="10" Foreground="{StaticResource TextDisabledBrush}" Margin="0,2,0,0"/>
+                                        <TextBlock Text="branch: feature/theme-viewer • commit 41d5b3b" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0"/>
+                                        <TextBlock Text="Elapsed: 01:24 • Scoped logs active" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextDisabledBrush}" Margin="0,2,0,0"/>
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                        <Button Content="Abort" Margin="0,0,4,0" Background="{StaticResource StatusErrorBrush}" Foreground="#0D1117" FontWeight="SemiBold" Padding="8,3"/>
+                                        <Button Content="Abort" Margin="0,0,4,0" Background="{StaticResource StatusErrorBrush}" Foreground="{StaticResource AppBackgroundBrush}" FontWeight="SemiBold" Padding="8,3"/>
                                         <Button Content="Logs" Background="{StaticResource Surface0Brush}" Padding="8,3"/>
                                     </StackPanel>
                                 </Grid>
@@ -837,11 +837,11 @@
                                 <StackPanel>
                                     <Grid>
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text="MilestoneCard: v2.4 Release" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"/>
-                                        <TextBlock Grid.Column="1" Text="Due: Oct 1" FontSize="10" Foreground="{StaticResource BlueBrush}"/>
+                                        <TextBlock Text="MilestoneCard: v2.4 Release" FontWeight="Bold" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                        <TextBlock Grid.Column="1" Text="Due: Oct 1" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource BlueBrush}"/>
                                     </Grid>
                                     <ProgressBar Value="72" Height="6" Margin="0,6,0,4"/>
-                                    <TextBlock Text="72% complete • 18 closed / 7 open issues" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                    <TextBlock Text="72% complete • 18 closed / 7 open issues" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}"/>
                                 </StackPanel>
                             </Border>
 
@@ -852,11 +852,11 @@
                                 <StackPanel>
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                                         <Border Background="#2B2745" CornerRadius="3" Padding="5,1" Margin="0,0,6,0">
-                                            <TextBlock Text="EPIC #803" FontSize="9" FontWeight="Bold" Foreground="{StaticResource MauveBrush}"/>
+                                            <TextBlock Text="EPIC #803" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource MauveBrush}"/>
                                         </Border>
-                                        <TextBlock Text="EpicCard: Automated Test Architecture" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                        <TextBlock Text="EpicCard: Automated Test Architecture" FontWeight="Bold" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource TextPrimaryBrush}"/>
                                     </StackPanel>
-                                    <TextBlock Text="Integrated QA HUD + Playwright headless worker test harness." FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                    <TextBlock Text="Integrated QA HUD + Playwright headless worker test harness." FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}"/>
                                 </StackPanel>
                             </Border>
 
@@ -867,11 +867,11 @@
                                 <StackPanel>
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                                         <Border Background="{StaticResource AccentWashMediumBrush}" CornerRadius="3" Padding="5,1" Margin="0,0,6,0">
-                                            <TextBlock Text="ISSUE #2126" FontSize="9" FontWeight="Bold" Foreground="{StaticResource BlueBrush}"/>
+                                            <TextBlock Text="ISSUE #2126" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource BlueBrush}"/>
                                         </Border>
-                                        <TextBlock Text="IssueCard: Shell Redesign &amp; Theme System" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                        <TextBlock Text="IssueCard: Shell Redesign &amp; Theme System" FontWeight="Bold" FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource TextPrimaryBrush}"/>
                                     </StackPanel>
-                                    <TextBlock Text="Single source of truth multi-dictionary theme with live reload." FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                    <TextBlock Text="Single source of truth multi-dictionary theme with live reload." FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextSecondaryBrush}"/>
                                 </StackPanel>
                             </Border>
                         </Grid>

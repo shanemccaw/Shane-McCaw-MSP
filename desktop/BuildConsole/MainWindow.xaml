@@ -110,7 +110,7 @@
                                    VerticalAlignment="Center"/>
                         </Border>
                         <TextBlock Text="Shane McCaw MSP"
-                                   FontSize="12"
+                                   FontSize="{StaticResource CaptionFontSize}"
                                    FontWeight="SemiBold"
                                    Foreground="{StaticResource TextBrush}"
                                    VerticalAlignment="Center"
@@ -202,8 +202,8 @@
                                                 CornerRadius="4"
                                                 Padding="7,2">
                                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                <TextBlock Text="Account:" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                                <TextBlock x:Name="TopAccountToggleText" Text="Primary" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                                <TextBlock Text="Account:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                <TextBlock x:Name="TopAccountToggleText" Text="Primary" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                             </StackPanel>
                                         </Border>
                                     </MenuItem.Header>
@@ -221,8 +221,8 @@
                                                 CornerRadius="4"
                                                 Padding="7,2">
                                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                <TextBlock Text="Location:" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                                <TextBlock x:Name="TopLocationToggleText" Text="Home" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                                <TextBlock Text="Location:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                <TextBlock x:Name="TopLocationToggleText" Text="Home" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                                             </StackPanel>
                                         </Border>
                                     </MenuItem.Header>
@@ -237,9 +237,9 @@
                                                 CornerRadius="4"
                                                 Padding="7,2">
                                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                <TextBlock Text="Auto:" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                                <TextBlock x:Name="TopAutomationToggleText" Text="Off" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
-                                                <TextBlock x:Name="TopAutomationStatusText" Text="" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                                <TextBlock Text="Auto:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                <TextBlock x:Name="TopAutomationToggleText" Text="Off" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                                <TextBlock x:Name="TopAutomationStatusText" Text="" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="6,0,0,0"/>
                                             </StackPanel>
                                         </Border>
                                     </MenuItem.Header>
@@ -256,9 +256,9 @@
                                                 CornerRadius="4"
                                                 Padding="7,2">
                                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                <TextBlock Text="Conservation:" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                                <TextBlock x:Name="TopConservationToggleText" Text="Off" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
-                                                <TextBlock x:Name="TopConservationUsageText" Text="" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                                <TextBlock Text="Conservation:" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                <TextBlock x:Name="TopConservationToggleText" Text="Off" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                                <TextBlock x:Name="TopConservationUsageText" Text="" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="6,0,0,0"/>
                                             </StackPanel>
                                         </Border>
                                     </MenuItem.Header>
@@ -274,9 +274,9 @@
                                           Click="BtnDrainCapped_Click">
                                     <MenuItem.Header>
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="Drain" FontSize="10.5" FontWeight="SemiBold" VerticalAlignment="Center"
+                                            <TextBlock Text="Drain" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" VerticalAlignment="Center"
                                                        Foreground="{StaticResource Subtext0Brush}"/>
-                                            <TextBlock x:Name="TopDrainCappedCount" Text="0" FontSize="10.5" FontWeight="SemiBold"
+                                            <TextBlock x:Name="TopDrainCappedCount" Text="0" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                                        Margin="4,0,0,0" VerticalAlignment="Center"
                                                        Foreground="{StaticResource Subtext0Brush}"/>
                                         </StackPanel>
@@ -310,14 +310,14 @@
                             <Border x:Name="UsageReadoutBorder" Cursor="Help">
                                 <Border.ToolTip>
                                     <ToolTip>
-                                        <TextBlock x:Name="UsageReadoutTooltipText" FontSize="11"/>
+                                        <TextBlock x:Name="UsageReadoutTooltipText" FontSize="{StaticResource CaptionFontSize}"/>
                                     </ToolTip>
                                 </Border.ToolTip>
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock Text="🪙" FontSize="11" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="🪙" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,4,0" VerticalAlignment="Center"/>
                                     <TextBlock x:Name="UsageReadoutText"
                                                Text="0 tokens · ~$0.00 est."
-                                               FontSize="11"
+                                               FontSize="{StaticResource CaptionFontSize}"
                                                FontWeight="SemiBold"
                                                Foreground="{StaticResource Subtext0Brush}"
                                                VerticalAlignment="Center"/>
@@ -327,7 +327,7 @@
                                  (OnSourceInitialized) only when the running exe is under bin\Debug\. -->
                             <TextBlock x:Name="DebugBuildMarkerText"
                                        Text="[DEBUG]"
-                                       FontSize="11"
+                                       FontSize="{StaticResource CaptionFontSize}"
                                        FontWeight="Bold"
                                        Foreground="{StaticResource PeachBrush}"
                                        VerticalAlignment="Center"
@@ -338,7 +338,7 @@
                                  when AppMode.IsAgent. Proves from a screenshot which mode ran. -->
                             <TextBlock x:Name="AgentModeMarkerText"
                                        Text="[AGENT]"
-                                       FontSize="11"
+                                       FontSize="{StaticResource CaptionFontSize}"
                                        FontWeight="Bold"
                                        Foreground="{StaticResource MauveBrush}"
                                        VerticalAlignment="Center"
@@ -380,15 +380,15 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="🔍" FontSize="12"
+                                <TextBlock Grid.Column="0" Text="🔍" FontSize="{StaticResource CaptionFontSize}"
                                            Margin="0,0,7,0" VerticalAlignment="Center"/>
                                 <TextBlock Grid.Column="1"
                                            Text="Search epics, builds, and chats…"
-                                           FontSize="12"
+                                           FontSize="{StaticResource CaptionFontSize}"
                                            Foreground="{StaticResource Subtext0Brush}"
                                            VerticalAlignment="Center"
                                            IsHitTestVisible="False"/>
-                                <TextBlock Grid.Column="2" Text="Ctrl+K" FontSize="10"
+                                <TextBlock Grid.Column="2" Text="Ctrl+K" FontSize="{StaticResource CaptionFontSize}"
                                            Foreground="{StaticResource Subtext1Brush}"
                                            VerticalAlignment="Center" Margin="7,0,2,0"/>
                             </Grid>
@@ -418,8 +418,8 @@
                                 ToolTip="Quick Thought — capture a one-liner without leaving what you're doing"
                                 MouseLeftButtonUp="QuickThoughtPill_Click">
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="&#xE70B;" FontFamily="Segoe MDL2 Assets, Segoe UI Symbol" FontSize="11" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                <TextBlock Text="Quick Thought" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Text="&#xE70B;" FontFamily="Segoe MDL2 Assets, Segoe UI Symbol" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <TextBlock Text="Quick Thought" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Border>
                         <Popup x:Name="QuickThoughtPopup"
@@ -447,13 +447,13 @@
                                                  BorderBrush="{StaticResource Surface2Brush}"
                                                  BorderThickness="1"
                                                  Padding="6,4"
-                                                 FontSize="12"
+                                                 FontSize="{StaticResource BodyFontSize}"
                                                  AcceptsReturn="False"
                                                  TextChanged="QuickThoughtInput_TextChanged"
                                                  PreviewKeyDown="QuickThoughtInput_PreviewKeyDown"/>
                                         <TextBlock x:Name="QuickThoughtPlaceholder"
                                                    Text="Type a thought, hit Enter…"
-                                                   FontSize="12"
+                                                   FontSize="{StaticResource BodyFontSize}"
                                                    Foreground="{StaticResource Subtext0Brush}"
                                                    Margin="8,0,0,0"
                                                    VerticalAlignment="Center"
@@ -461,19 +461,19 @@
                                     </Grid>
                                     <TextBlock x:Name="QuickThoughtSavedFlag"
                                                Text="Saved"
-                                               FontSize="10"
+                                               FontSize="{StaticResource CaptionFontSize}"
                                                Foreground="{StaticResource StatusRunningBrush}"
                                                Margin="0,4,0,0"
                                                Visibility="Collapsed"/>
                                     <Separator Margin="0,8,0,6"/>
                                     <TextBlock Text="Recent"
-                                               FontSize="10"
+                                               FontSize="{StaticResource CaptionFontSize}"
                                                FontWeight="Bold"
                                                Foreground="{StaticResource Subtext0Brush}"
                                                Margin="0,0,0,4"/>
                                     <TextBlock x:Name="QuickThoughtEmptyLabel"
                                                Text="Nothing captured yet."
-                                               FontSize="11"
+                                               FontSize="{StaticResource CaptionFontSize}"
                                                Foreground="{StaticResource Subtext0Brush}"
                                                Visibility="Visible"/>
                                     <StackPanel x:Name="QuickThoughtRecentList" MaxHeight="240"/>
@@ -493,8 +493,8 @@
                                 ToolTip="shaneapp:// is executing — Click to view live streaming console"
                                 MouseLeftButtonUp="TopShaneAppIndicator_Click">
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="⚡" FontSize="11" Foreground="{StaticResource YellowBrush}" VerticalAlignment="Center" Margin="0,0,3,0"/>
-                                <TextBlock x:Name="TopShaneAppIndicatorText" Text="RUNNING" FontSize="10" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Text="⚡" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource YellowBrush}" VerticalAlignment="Center" Margin="0,0,3,0"/>
+                                <TextBlock x:Name="TopShaneAppIndicatorText" Text="RUNNING" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Border>
                         <!-- Git #1866 - thin vertical separator ("|") between the account toggle
@@ -512,7 +512,7 @@
                                 ToolTip="Screen clip (PrintScreen) - drag a region to the clipboard and disk"
                                 Click="ScreenClip_Click"
                                 Padding="6,4">
-                            <TextBlock Text="&#xE7A8;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{StaticResource BlueBrush}"/>
+                            <TextBlock Text="&#xE7A8;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource BlueBrush}"/>
                         </Button>
                         <!-- Git #3657 (sub-issue of Epic #1202) - Shot Vault: browse the real shots
                              screen clip already saves to disk, grouped into runs, with search/tags/Copy. -->
@@ -521,7 +521,7 @@
                                 ToolTip="Shot Vault - browse captured screen clips"
                                 Click="ShotVault_Click"
                                 Padding="6,4">
-                            <TextBlock Text="&#xEB9F;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{StaticResource BlueBrush}"/>
+                            <TextBlock Text="&#xEB9F;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource BlueBrush}"/>
                         </Button>
                         <!-- Git #1872 - Batter Up and AI Batter Up moved out of the queue column
                              into their own document tabs (MainWindow.BatterUpTabs.cs); these two
@@ -535,8 +535,8 @@
                                 Click="BtnBatterUp_Click"
                                 Padding="6,4">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="⚾" FontSize="12" VerticalAlignment="Center"/>
-                                <TextBlock x:Name="TopBatterUpCount" Text="0" FontSize="10.5" FontWeight="SemiBold"
+                                <TextBlock Text="⚾" FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="TopBatterUpCount" Text="0" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                            Margin="4,0,0,0" VerticalAlignment="Center"
                                            Foreground="{StaticResource Subtext0Brush}"/>
                             </StackPanel>
@@ -548,8 +548,8 @@
                                 Click="BtnAiBatterUp_Click"
                                 Padding="6,4">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="🔍" FontSize="12" VerticalAlignment="Center"/>
-                                <TextBlock x:Name="TopAiBatterUpCount" Text="0" FontSize="10.5" FontWeight="SemiBold"
+                                <TextBlock Text="🔍" FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="TopAiBatterUpCount" Text="0" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                            Margin="4,0,0,0" VerticalAlignment="Center"
                                            Foreground="{StaticResource Subtext0Brush}"/>
                             </StackPanel>
@@ -565,7 +565,7 @@
                                 ToolTip="What's Remaining"
                                 Click="BtnWhatsRemaining_Click"
                                 Padding="6,4">
-                            <TextBlock Text="📋" FontSize="12" VerticalAlignment="Center"/>
+                            <TextBlock Text="📋" FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center"/>
                         </Button>
                         <!-- Git #4158 — Git Manager: a brand new, focused document tab showing
                              big push/pull/fix action cards, distinct from Git Doctor's own
@@ -576,7 +576,7 @@
                                 ToolTip="Git Manager"
                                 Click="BtnGitManager_Click"
                                 Padding="6,4">
-                            <TextBlock Text="🔀" FontSize="12" VerticalAlignment="Center"/>
+                            <TextBlock Text="🔀" FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center"/>
                         </Button>
                         <!-- Git #3700 (sub-issue of Feature #1788) — persistent "Ask Shane" counter:
                              every real, open issue currently sitting in the board's "Ask Shane"
@@ -591,36 +591,49 @@
                                 Padding="6,4"
                                 Visibility="Collapsed">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="❓" FontSize="12" VerticalAlignment="Center"/>
-                                <TextBlock x:Name="TopAskShaneCount" Text="0" FontSize="10.5" FontWeight="SemiBold"
+                                <TextBlock Text="❓" FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="TopAskShaneCount" Text="0" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                            Margin="4,0,0,0" VerticalAlignment="Center"
                                            Foreground="{StaticResource PinkBrush}"/>
                             </StackPanel>
+                        </Button>
+                        <!-- Git #4202 — Shane: "How do I track this. How do I know what's waiting
+                             for me." Opens/focuses the read-only Waiting On You document tab: every
+                             real open "Shane To-Do" issue plus every real open "Ask Shane" board
+                             item, repo-wide. No live count badge — this is a viewer, same as
+                             What's Remaining / Git Manager. -->
+                        <Button x:Name="BtnWaitingOnYou"
+                                AutomationProperties.AutomationId="BtnWaitingOnYou"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Waiting On You"
+                                Click="BtnWaitingOnYou_Click"
+                                Padding="6,4">
+                            <TextBlock Text="⏳" FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center"/>
                         </Button>
                         <Button Style="{StaticResource IconButton}"
                                 ToolTip="Toggle Primary Side Bar (Ctrl+B)"
                                 Click="ToggleSidebar_Click"
                                 Padding="6,4">
-                            <TextBlock Text="&#xE899;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
+                            <TextBlock Text="&#xE899;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"/>
                         </Button>
                         <Button Style="{StaticResource IconButton}"
                                 ToolTip="Toggle Panel (Ctrl+`)"
                                 Click="ToggleBottomPanel_Click"
                                 Padding="6,4">
-                            <TextBlock Text="&#xE90A;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
+                            <TextBlock Text="&#xE90A;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"/>
                         </Button>
                         <Button Style="{StaticResource IconButton}"
                                 ToolTip="Toggle Secondary Side Bar"
                                 Click="ToggleQueuePanel_Click"
                                 Padding="6,4">
-                            <TextBlock Text="&#xE89A;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
+                            <TextBlock Text="&#xE89A;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"/>
                         </Button>
                         <Button Style="{StaticResource IconButton}"
                                 ToolTip="Developer Tools"
                                 Click="OpenDevTools_Click"
                                 Padding="6,4"
                                 Margin="4,0,0,0">
-                            <TextBlock Text="&#xE7BE;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{StaticResource MauveBrush}"/>
+                            <TextBlock Text="&#xE7BE;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource MauveBrush}"/>
                         </Button>
                         <!-- Quick Dev Services Control Menu -->
                         <Menu Background="Transparent" BorderThickness="0" VerticalAlignment="Center" Margin="4,0,0,0" WindowChrome.IsHitTestVisibleInChrome="True">
@@ -634,8 +647,8 @@
                                 <MenuItem.Header>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                         <TextBlock x:Name="TopServicesStatusDot" Text="🟢" FontSize="9" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                                        <TextBlock Text="Services" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                        <TextBlock Text=" ▾" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Services" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        <TextBlock Text=" ▾" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
                                     </StackPanel>
                                 </MenuItem.Header>
 
@@ -661,7 +674,7 @@
                                 Padding="6,4"
                                 Margin="4,0,0,0"
                                 WindowChrome.IsHitTestVisibleInChrome="True">
-                            <TextBlock Text="&#xEC15;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{StaticResource MauveBrush}"/>
+                            <TextBlock Text="&#xEC15;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource MauveBrush}"/>
                         </Button>
                     </StackPanel>
 
@@ -677,13 +690,13 @@
                          snap still works fine via WindowChrome, only the hover flyout is missing. -->
                     <StackPanel Grid.Column="3" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
                         <Button x:Name="BtnMinimize" Style="{StaticResource CaptionButton}" ToolTip="Minimize" Click="BtnMinimize_Click">
-                            <TextBlock Text="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                            <TextBlock Text="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"/>
                         </Button>
                         <Button x:Name="BtnMaximizeRestore" Style="{StaticResource CaptionButton}" ToolTip="Maximize" Click="BtnMaximizeRestore_Click">
-                            <TextBlock x:Name="BtnMaximizeRestoreIcon" Text="&#xE922;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                            <TextBlock x:Name="BtnMaximizeRestoreIcon" Text="&#xE922;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"/>
                         </Button>
                         <Button x:Name="BtnCloseWindow" Style="{StaticResource CaptionButtonClose}" ToolTip="Close" Click="BtnCloseWindow_Click">
-                            <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                            <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"/>
                         </Button>
                     </StackPanel>
 
@@ -738,7 +751,7 @@
                         <Button x:Name="BtnUpdate"
                                 Style="{StaticResource PrimaryButton}"
                                 Content="⬆ Update"
-                                FontSize="11" FontWeight="SemiBold"
+                                FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                 Padding="8,1" Margin="8,0,0,0"
                                 Visibility="Collapsed"
                                 Click="BtnUpdate_Click"
@@ -817,7 +830,7 @@
                                     Padding="10,8"
                                     MinWidth="260">
                                 <StackPanel>
-                                    <TextBlock Text="CLAUDE USAGE" FontSize="10" FontWeight="Bold"
+                                    <TextBlock Text="CLAUDE USAGE" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                                Foreground="{StaticResource Subtext0Brush}"
                                                Margin="2,0,2,6"/>
 
@@ -938,7 +951,7 @@
                                     <Button x:Name="BtnLayoutSplitV" Style="{StaticResource IconButton}" Content="⬒ Top/Bottom" ToolTip="Split Top/Bottom (2 Rows)" Click="BtnLayout_Click" Tag="SplitV" Margin="0,0,4,0"/>
                                     <Button x:Name="BtnLayoutGrid4" Style="{StaticResource IconButton}" Content="⊞ 4 Squares" ToolTip="2x2 Grid View" Click="BtnLayout_Click" Tag="Grid4"/>
                                 </StackPanel>
-                                <TextBlock DockPanel.Dock="Left" Text="EDITOR PANES" FontSize="10" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
+                                <TextBlock DockPanel.Dock="Left" Text="EDITOR PANES" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
 
                                 <!-- Git #2800 — live, midnight-resetting daily stats strip. No
                                      DockPanel.Dock set, so it naturally fills the DockPanel's
@@ -948,10 +961,10 @@
                                      visual weight as the label beside it; collapsed until the
                                      first real fetch resolves so it never shows a fabricated 0. -->
                                 <StackPanel x:Name="EditorPanesStatsStrip" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed">
-                                    <TextBlock x:Name="EditorPanesStatNew" Text="New: 0" FontSize="10" Foreground="{StaticResource GreenBrush}" VerticalAlignment="Center" Margin="0,0,10,0" ToolTip="Real issues opened today (resets at UTC midnight)"/>
-                                    <TextBlock x:Name="EditorPanesStatClosed" Text="Closed: 0" FontSize="10" Foreground="{StaticResource MauveBrush}" VerticalAlignment="Center" Margin="0,0,10,0" ToolTip="Real issues closed today (resets at UTC midnight)"/>
-                                    <TextBlock x:Name="EditorPanesStatFeaturesOpen" Text="Features open: 0" FontSize="10" Foreground="{StaticResource PeachBrush}" VerticalAlignment="Center" Margin="0,0,10,0" ToolTip="Real Feature-titled issues in the active milestone not yet 100% complete"/>
-                                    <TextBlock x:Name="EditorPanesStatFeaturesDone" Text="Features done: 0" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" ToolTip="Real Feature-titled issues in the active milestone fully complete"/>
+                                    <TextBlock x:Name="EditorPanesStatNew" Text="New: 0" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource GreenBrush}" VerticalAlignment="Center" Margin="0,0,10,0" ToolTip="Real issues opened today (resets at UTC midnight)"/>
+                                    <TextBlock x:Name="EditorPanesStatClosed" Text="Closed: 0" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource MauveBrush}" VerticalAlignment="Center" Margin="0,0,10,0" ToolTip="Real issues closed today (resets at UTC midnight)"/>
+                                    <TextBlock x:Name="EditorPanesStatFeaturesOpen" Text="Features open: 0" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource PeachBrush}" VerticalAlignment="Center" Margin="0,0,10,0" ToolTip="Real Feature-titled issues in the active milestone not yet 100% complete"/>
+                                    <TextBlock x:Name="EditorPanesStatFeaturesDone" Text="Features done: 0" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" ToolTip="Real Feature-titled issues in the active milestone fully complete"/>
                                 </StackPanel>
                             </DockPanel>
                         </Border>
@@ -1000,7 +1013,7 @@
                                 BorderBrush="{StaticResource Surface1Brush}"
                                 BorderThickness="0,1,0,0" Padding="6,3">
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="📌 PINNED" FontSize="10" FontWeight="Bold"
+                                <TextBlock Text="📌 PINNED" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                            Foreground="{StaticResource Subtext0Brush}"
                                            VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <StackPanel x:Name="PinnedStrip" Orientation="Horizontal"/>
@@ -1092,7 +1105,7 @@
                             <StackPanel Orientation="Horizontal">
                                 <StackPanel Orientation="Horizontal" Width="180" Margin="0,0,20,0">
                                     <TextBlock Text="CPU" Foreground="{StaticResource Subtext1Brush}"
-                                               FontSize="11" VerticalAlignment="Center" Width="30"/>
+                                               FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center" Width="30"/>
                                     <ProgressBar x:Name="CpuMeterBar"
                                                  Style="{StaticResource ResourceMeterBar}"
                                                  Foreground="{StaticResource BlueBrush}"
@@ -1100,11 +1113,11 @@
                                                  VerticalAlignment="Center"/>
                                     <TextBlock x:Name="CpuMeterText" Text="—"
                                                Foreground="{StaticResource TextBrush}"
-                                               FontSize="11" VerticalAlignment="Center" Width="34"/>
+                                               FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center" Width="34"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Width="260">
                                     <TextBlock Text="Memory" Foreground="{StaticResource Subtext1Brush}"
-                                               FontSize="11" VerticalAlignment="Center" Width="42"/>
+                                               FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center" Width="42"/>
                                     <ProgressBar x:Name="MemoryMeterBar"
                                                  Style="{StaticResource ResourceMeterBar}"
                                                  Foreground="{StaticResource MauveBrush}"
@@ -1112,7 +1125,7 @@
                                                  VerticalAlignment="Center"/>
                                     <TextBlock x:Name="MemoryMeterText" Text="—"
                                                Foreground="{StaticResource TextBrush}"
-                                               FontSize="11" VerticalAlignment="Center" Width="110"/>
+                                               FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center" Width="110"/>
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -1237,13 +1250,13 @@
 
                     <DockPanel Grid.Row="0" Margin="4,0,4,8">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="&#xE8B9;" FontFamily="Segoe MDL2 Assets" FontSize="16"
+                            <TextBlock Text="&#xE8B9;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource SubHeaderFontSize}"
                                        Foreground="{StaticResource BlueBrush}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                            <TextBlock Text="OPEN DOCUMENTS" FontSize="12" FontWeight="SemiBold"
+                            <TextBlock Text="OPEN DOCUMENTS" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                                        Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
                         </StackPanel>
                         <TextBlock x:Name="TabSwitcherCountText" DockPanel.Dock="Right" Text="0 tabs"
-                                   FontSize="11" Foreground="{StaticResource Subtext1Brush}"
+                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"
                                    HorizontalAlignment="Right" VerticalAlignment="Center"/>
                     </DockPanel>
 
@@ -1300,13 +1313,13 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="{Binding Glyph}"
-                                               FontFamily="Segoe MDL2 Assets" FontSize="18"
+                                               FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource HeaderFontSize}"
                                                Foreground="{StaticResource BlueBrush}"
                                                VerticalAlignment="Center"/>
                                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
+                                        <TextBlock Text="{Binding Title}" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                    Foreground="{StaticResource TextBrush}"/>
-                                        <TextBlock Text="{Binding Url}" FontSize="11"
+                                        <TextBlock Text="{Binding Url}" FontSize="{StaticResource CaptionFontSize}"
                                                    Foreground="{StaticResource Subtext1Brush}"
                                                    TextTrimming="CharacterEllipsis"/>
                                     </StackPanel>
@@ -1315,7 +1328,7 @@
                                             CornerRadius="3" Padding="6,2"
                                             VerticalAlignment="Center" Margin="8,0,0,0">
                                         <TextBlock Text="{Binding IndexTag}"
-                                                   FontSize="10" Foreground="{StaticResource Subtext0Brush}"/>
+                                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                                     </Border>
                                 </Grid>
                             </DataTemplate>
@@ -1327,9 +1340,9 @@
                             BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0">
                         <DockPanel>
                             <TextBlock Text="Release Ctrl or press Enter to select  •  Esc to cancel"
-                                       FontSize="11" Foreground="{StaticResource Subtext1Brush}"/>
+                                       FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}"/>
                             <TextBlock DockPanel.Dock="Right" Text="Ctrl+Tab ⇆"
-                                       FontSize="11" Foreground="{StaticResource BlueBrush}" HorizontalAlignment="Right"/>
+                                       FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource BlueBrush}" HorizontalAlignment="Right"/>
                         </DockPanel>
                     </Border>
                 </Grid>
@@ -1358,7 +1371,7 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <TextBlock Text="DROP TAB TO DOCK VIEW" FontSize="11" FontWeight="Bold" Foreground="{StaticResource BlueBrush}" HorizontalAlignment="Center" Margin="0,0,0,12"/>
+                    <TextBlock Text="DROP TAB TO DOCK VIEW" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource BlueBrush}" HorizontalAlignment="Center" Margin="0,0,0,12"/>
 
                     <Grid Grid.Row="1">
                         <Grid.ColumnDefinitions>
@@ -1375,7 +1388,7 @@
                         <Button x:Name="BtnDockLeft" Grid.Row="0" Grid.Column="0" Grid.RowSpan="2" Margin="4" Click="DockTarget_Click" AllowDrop="True" Drop="DockTarget_Drop" DragOver="TabDragOver" Tag="SplitH">
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <TextBlock Text="◧" FontSize="28" Foreground="{StaticResource BlueBrush}" HorizontalAlignment="Center"/>
-                                <TextBlock Text="Split Left" FontSize="10" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
+                                <TextBlock Text="Split Left" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
                             </StackPanel>
                         </Button>
 
@@ -1383,7 +1396,7 @@
                         <Button x:Name="BtnDockTop" Grid.Row="0" Grid.Column="1" Margin="4" Click="DockTarget_Click" AllowDrop="True" Drop="DockTarget_Drop" DragOver="TabDragOver" Tag="SplitV">
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <TextBlock Text="⬒" FontSize="20" Foreground="{StaticResource PeachBrush}" HorizontalAlignment="Center"/>
-                                <TextBlock Text="Top" FontSize="10" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
+                                <TextBlock Text="Top" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
                             </StackPanel>
                         </Button>
 
@@ -1391,7 +1404,7 @@
                         <Button x:Name="BtnDockGrid4" Grid.Row="1" Grid.Column="1" Margin="4" Click="DockTarget_Click" AllowDrop="True" Drop="DockTarget_Drop" DragOver="TabDragOver" Tag="Grid4">
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <TextBlock Text="⊞" FontSize="20" Foreground="{StaticResource GreenBrush}" HorizontalAlignment="Center"/>
-                                <TextBlock Text="4 Squares" FontSize="10" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
+                                <TextBlock Text="4 Squares" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
                             </StackPanel>
                         </Button>
 
@@ -1399,7 +1412,7 @@
                         <Button x:Name="BtnDockRight" Grid.Row="0" Grid.Column="2" Grid.RowSpan="2" Margin="4" Click="DockTarget_Click" AllowDrop="True" Drop="DockTarget_Drop" DragOver="TabDragOver" Tag="SplitH_Right">
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <TextBlock Text="◨" FontSize="28" Foreground="{StaticResource BlueBrush}" HorizontalAlignment="Center"/>
-                                <TextBlock Text="Split Right" FontSize="10" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
+                                <TextBlock Text="Split Right" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
                             </StackPanel>
                         </Button>
                     </Grid>

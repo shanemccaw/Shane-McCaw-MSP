@@ -31,10 +31,12 @@ namespace BuildConsole
         private const string AiBatterUpTabChannel = "ai-batter-up";
         private const string WhatsRemainingTabChannel = "whats-remaining";
         private const string GitManagerTabChannel = "git-manager";
+        private const string WaitingOnYouTabChannel = "waiting-on-you";
         private const string BatterUpTabKey = "batter-up:main";
         private const string AiBatterUpTabKey = "ai-batter-up:main";
         private const string WhatsRemainingTabKey = "whats-remaining:main";
         private const string GitManagerTabKey = "git-manager:main";
+        private const string WaitingOnYouTabKey = "waiting-on-you:main";
 
         // Git #1872 — the SAME instances every existing wire in MainWindow.xaml.cs
         // (RowsAutoQueued, Initialize, the #1813 BoardRefreshCompleted cascade) already
@@ -50,6 +52,9 @@ namespace BuildConsole
         // reusing GitDoctorService entirely. Distinct from Git Doctor's own GitDoctorView,
         // which stays hosted exactly where it already is (untouched by this issue).
         private readonly Controls.GitManagerView _gitManagerPanel = new();
+        // Git #4202 — same convention again: Waiting On You refreshes itself
+        // (OnIsVisibleChanged), reusing WaitingOnYouService entirely.
+        private readonly Controls.WaitingOnYouPanel _waitingOnYouPanel = new();
 
         /// <summary>Git #1872 — subscribes the two title-bar count badges to each panel's
         /// CountChanged event and seeds them with whatever count each panel already has
@@ -70,6 +75,8 @@ namespace BuildConsole
         private void BtnWhatsRemaining_Click(object sender, RoutedEventArgs e) => OpenWhatsRemainingTab();
 
         private void BtnGitManager_Click(object sender, RoutedEventArgs e) => OpenGitManagerTab();
+
+        private void BtnWaitingOnYou_Click(object sender, RoutedEventArgs e) => OpenWaitingOnYouTab();
 
         /// <summary>Open (or focus, across every pane) the single Batter Up document tab.</summary>
         public void OpenBatterUpTab()
@@ -117,6 +124,19 @@ namespace BuildConsole
                 return;
             }
             AddSingletonDocumentTab(GitManagerTabKey, "🔀", "Git Manager", _gitManagerPanel, GitManagerTabChannel);
+        }
+
+        /// <summary>Git #4202 — open (or focus, across every pane) the single Waiting On You
+        /// document tab, via the same recipe as Batter Up / AI Batter Up / What's Remaining / Git
+        /// Manager.</summary>
+        public void OpenWaitingOnYouTab()
+        {
+            if (FocusExistingDocumentTab(WaitingOnYouTabKey))
+            {
+                ActivityLog.Log(WaitingOnYouTabChannel, "focus existing tab");
+                return;
+            }
+            AddSingletonDocumentTab(WaitingOnYouTabKey, "⏳", "Waiting On You", _waitingOnYouPanel, WaitingOnYouTabChannel);
         }
 
         /// <summary>Focus an already-open tab by its Tag key, scanning every split pane — mirrors

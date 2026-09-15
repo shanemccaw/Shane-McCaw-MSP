@@ -829,8 +829,13 @@ namespace BuildConsole.Services
         /// <summary>Enables auto-committing automated QA session artifacts to Git with "Automated QA Session <SessionId>: <Summary>".</summary>
         public bool AutomationQaAutoCommitEnabled { get; set; } = true;
 
-        /// <summary>Enables auto-pushing committed automated QA artifacts to the remote branch.</summary>
-        public bool AutomationQaAutoPushEnabled { get; set; } = false;
+        /// <summary>Enables auto-pushing committed automated QA artifacts to the remote branch. Default true
+        /// (Git #4122) — with commit-only (this flag off) the shared main checkout accumulates local-only
+        /// commits on every automated QA run, which permanently breaks the dev-server's fast-forward once
+        /// origin/main moves. The push path now does fetch + rebase-onto-origin/main + retry, and unwinds
+        /// the local commit via 'git reset --keep' rather than stranding it on any failure path — see
+        /// UiAutomationQaSessionService.PushArtifactCommitWithRebaseAsync.</summary>
+        public bool AutomationQaAutoPushEnabled { get; set; } = true;
 
         /// <summary>Threshold in milliseconds above which an API response is logged as slow in the automation report. Default 1500ms.</summary>
         public int AutomationSlowApiThresholdMs { get; set; } = 1500;

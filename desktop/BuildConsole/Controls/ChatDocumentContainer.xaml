@@ -44,6 +44,18 @@
         <SolidColorBrush x:Key="Warm.TextFaint"    Color="#5a5955"/>
         <SolidColorBrush x:Key="Warm.WrenchAmber"  Color="#e2984a"/>
 
+        <!-- Git #4172 — genuinely-inline raw hex found in the audit, not covered by any of the
+             above local palette entries. Added here (not to Themes/Colors.xaml/DarkTheme.xaml)
+             because this file's own comment at the top forbids harmonising its Warm/Cool palette
+             onto the app theme; these are new members of the SAME local dictionary. -->
+        <SolidColorBrush x:Key="Warm.CtxIconHover"  Color="#2f2f2b"/>
+        <SolidColorBrush x:Key="Warm.ShareHover"    Color="#3a3935"/>
+        <SolidColorBrush x:Key="Warm.SubtleBorder"  Color="#3a3a37"/>
+        <SolidColorBrush x:Key="Warm.OnDangerText"  Color="#1a0d0d"/>
+        <SolidColorBrush x:Key="Warm.WarningAmber"  Color="#e2b039"/>
+        <SolidColorBrush x:Key="Warm.OverlayOuter"  Color="#e1141412"/>
+        <SolidColorBrush x:Key="Warm.OverlayInner"  Color="#e0141412"/>
+
         <Style x:Key="Ctx.IconBtn" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
@@ -59,7 +71,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="b" Property="Background" Value="#2f2f2b"/>
+                                <Setter TargetName="b" Property="Background" Value="{StaticResource Warm.CtxIconHover}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -100,37 +112,37 @@
                                    Cursor="Hand" MouseLeftButtonDown="CtxEpic_Click"
                                    ToolTip="This chat's epic — click to open it in the left panel"
                                    Foreground="{StaticResource Cool.EpicNum}"
-                                   FontFamily="Consolas" FontSize="17" FontWeight="ExtraBold"/>
+                                   FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource SubHeaderFontSize}" FontWeight="ExtraBold"/>
                         <TextBlock x:Name="CtxEpicName" Text="" Margin="0,0,10,0" VerticalAlignment="Center"
                                    Foreground="{StaticResource Cool.EpicName}"
-                                   FontSize="12"/>
+                                   FontSize="{StaticResource CaptionFontSize}"/>
                         <Border Width="1" Height="16" Margin="0,0,10,0" Background="{StaticResource Cool.Divider}"/>
                         <TextBlock x:Name="CtxStatVerifying" Margin="0,0,10,0" VerticalAlignment="Center"
-                                   FontSize="11" Foreground="{StaticResource Cool.Verifying}"/>
+                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Cool.Verifying}"/>
                         <TextBlock x:Name="CtxStatInFlight" Margin="0,0,10,0" VerticalAlignment="Center"
-                                   FontSize="11" Foreground="{StaticResource Cool.InFlight}"/>
+                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Cool.InFlight}"/>
                         <TextBlock x:Name="CtxStatQueued" Margin="0,0,10,0" VerticalAlignment="Center"
-                                   FontSize="11" Foreground="{StaticResource Cool.Queued}"/>
+                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Cool.Queued}"/>
                         <TextBlock x:Name="CtxStatBlocked" Margin="0,0,10,0" VerticalAlignment="Center"
-                                   FontSize="11" Foreground="{StaticResource Cool.Blocked}"/>
+                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Cool.Blocked}"/>
                         <TextBlock x:Name="CtxStatComplete" Margin="0,0,10,0" VerticalAlignment="Center"
-                                   FontSize="11" FontWeight="Bold" Foreground="{StaticResource Cool.Complete}"/>
+                                   FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource Cool.Complete}"/>
                         <Border Width="1" Height="16" Margin="0,0,10,0" Background="{StaticResource Cool.Divider}"/>
                         <!-- plan tier pill -->
                         <Border x:Name="CtxPlanPill" Margin="0,0,10,0" VerticalAlignment="Center"
                                 Background="{StaticResource Cool.PillBg}" BorderBrush="{StaticResource Cool.PillBorder}"
                                 BorderThickness="1" CornerRadius="3" Padding="6,1" Visibility="Collapsed">
-                            <TextBlock x:Name="CtxPlanPillText" Text="Pro" FontSize="10" FontWeight="Bold"
+                            <TextBlock x:Name="CtxPlanPillText" Text="Pro" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                        Foreground="{StaticResource Cool.Verifying}"/>
                         </Border>
                         <!-- context-used gauge (two-part estimate, §2; real tokeniser via ChatContextMeterStore when present) -->
                         <TextBlock x:Name="CtxGauge" Text="0 conv + 0 ovh / 900k ctx" VerticalAlignment="Center"
-                                   FontFamily="Consolas" FontSize="11" Foreground="{StaticResource Warm.TextDim}"
+                                   FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Warm.TextDim}"
                                    ToolTip="Estimated context used — conversation + overhead (system prompt + MCP tool schemas). Uses the real meter when available. Git #3724."/>
                         <TextBlock x:Name="CtxMessages" Margin="12,0,0,0" VerticalAlignment="Center"
-                                   FontSize="10.5" Foreground="{StaticResource Warm.TextMuted}"/>
+                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Warm.TextMuted}"/>
                         <TextBlock x:Name="CtxActive" Margin="10,0,0,0" VerticalAlignment="Center"
-                                   FontSize="10.5" Foreground="{StaticResource Warm.TextDim}"/>
+                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Warm.TextDim}"/>
                     </WrapPanel>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -143,12 +155,12 @@
                                 Click="BtnStartNewChat_Click">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
-                                    <Border Background="#e8746f" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                    <Border Background="{StaticResource Cool.Blocked}" CornerRadius="4" Padding="{TemplateBinding Padding}">
                                         <ContentPresenter VerticalAlignment="Center"/>
                                     </Border>
                                 </ControlTemplate>
                             </Button.Template>
-                            <TextBlock Text="Start New Chat" FontSize="10" FontWeight="ExtraBold" Foreground="#1a0d0d"/>
+                            <TextBlock Text="Start New Chat" FontSize="{StaticResource CaptionFontSize}" FontWeight="ExtraBold" Foreground="{StaticResource Warm.OnDangerText}"/>
                         </Button>
                         <!-- ⌸ Detected-in-this-chat toggle (carries an accent dot when undismissed items exist and closed). -->
                         <Grid>
@@ -156,7 +168,7 @@
                                     ToolTip="Detected in this chat — mentioned issues + pinned questions"
                                     Click="BtnDetected_Click">
                                 <TextBlock x:Name="BtnDetectedGlyph" Text="&#xE9D2;" FontFamily="Segoe MDL2 Assets"
-                                           FontSize="12" Foreground="{StaticResource Warm.TextMuted}"/>
+                                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Warm.TextMuted}"/>
                             </Button>
                             <Ellipse x:Name="DetectedDot" Width="6" Height="6" Fill="{StaticResource Warm.Accent}"
                                      HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,2,2,0"
@@ -166,14 +178,14 @@
                         <Button x:Name="BtnFloaty" Style="{StaticResource Ctx.IconBtn}"
                                 ToolTip="Pop this conversation into the always-on-top Claude Floaty"
                                 Click="BtnFloaty_Click">
-                            <TextBlock Text="&#xE8A7;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                            <TextBlock Text="&#xE8A7;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"
                                        Foreground="{StaticResource Warm.TextMuted}"/>
                         </Button>
                         <!-- ⚒ wrench tool menu (always amber, always dotted). -->
                         <Grid>
                             <Button x:Name="BtnWrench" Style="{StaticResource Ctx.IconBtn}"
                                     ToolTip="Chat tools" Click="BtnWrench_Click">
-                                <TextBlock Text="&#xE90F;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                <TextBlock Text="&#xE90F;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"
                                            Foreground="{StaticResource Warm.WrenchAmber}"/>
                             </Button>
                             <Ellipse Width="6" Height="6" Fill="{StaticResource Warm.WrenchAmber}"
@@ -206,23 +218,23 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="&#xE8A0;" FontFamily="Segoe MDL2 Assets" FontSize="12" Margin="0,0,8,0"
+                    <TextBlock Text="&#xE8A0;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Margin="0,0,8,0"
                                VerticalAlignment="Center" Foreground="{StaticResource Warm.TextMuted}"/>
                     <TextBlock Text="Shane McCaw SaaS" VerticalAlignment="Center"
-                               FontSize="13" Foreground="{StaticResource Warm.TextMuted}"/>
+                               FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource Warm.TextMuted}"/>
                     <TextBlock Text="/" Margin="7,0" VerticalAlignment="Center"
-                               FontSize="13" Foreground="{StaticResource Warm.TextFaint}"/>
+                               FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource Warm.TextFaint}"/>
                     <TextBlock x:Name="CrumbEpic" Text="" VerticalAlignment="Center"
-                               FontSize="13" FontWeight="Bold" Foreground="{StaticResource Warm.TextBright}"
+                               FontSize="{StaticResource BodyFontSize}" FontWeight="Bold" Foreground="{StaticResource Warm.TextBright}"
                                Visibility="Collapsed"/>
                     <TextBlock x:Name="CrumbEpicSep" Text="/" Margin="7,0" VerticalAlignment="Center"
-                               FontSize="13" Foreground="{StaticResource Warm.TextFaint}" Visibility="Collapsed"/>
+                               FontSize="{StaticResource BodyFontSize}" Foreground="{StaticResource Warm.TextFaint}" Visibility="Collapsed"/>
                     <TextBlock x:Name="CrumbChat" Text="Chat" VerticalAlignment="Center"
                                Cursor="Hand" MouseLeftButtonDown="CtxEpic_Click"
-                               FontSize="13" FontWeight="Medium" Foreground="{StaticResource Warm.TextBright}"
+                               FontSize="{StaticResource BodyFontSize}" FontWeight="Medium" Foreground="{StaticResource Warm.TextBright}"
                                TextDecorations="Underline"/>
                     <TextBlock Text="&#xE70D;" Margin="7,0,0,0" VerticalAlignment="Center"
-                               FontFamily="Segoe MDL2 Assets" FontSize="9" Foreground="{StaticResource Warm.TextDim}"/>
+                               FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Warm.TextDim}"/>
                 </StackPanel>
                 <Button x:Name="BtnShare" Grid.Column="1" Cursor="Hand" BorderThickness="0"
                         ToolTip="Copy this conversation's claude.ai share link" Click="BtnShare_Click">
@@ -233,15 +245,15 @@
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="sb" Property="Background" Value="#3a3935"/>
+                                    <Setter TargetName="sb" Property="Background" Value="{StaticResource Warm.ShareHover}"/>
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
                     </Button.Template>
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="&#xE72D;" FontFamily="Segoe MDL2 Assets" FontSize="11"
+                        <TextBlock Text="&#xE72D;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"
                                    VerticalAlignment="Center" Margin="0,0,6,0" Foreground="{StaticResource Warm.TextMuted}"/>
-                        <TextBlock Text="Share" FontSize="12.5" FontWeight="SemiBold" Foreground="{StaticResource Warm.TextBody}"/>
+                        <TextBlock Text="Share" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource Warm.TextBody}"/>
                     </StackPanel>
                 </Button>
             </Grid>
@@ -255,9 +267,9 @@
                 BorderThickness="0,0,0,1" BorderBrush="{StaticResource Warm.Border}">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                 <TextBlock Text="&#xE7BA;" Margin="0,0,8,0" VerticalAlignment="Center"
-                           FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="#e2b039"/>
+                           FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Warm.WarningAmber}"/>
                 <TextBlock x:Name="InspectorWarningText" Text="Inspector will ask Claude a question in 5s…"
-                           VerticalAlignment="Center" FontSize="11.5" FontWeight="SemiBold"
+                           VerticalAlignment="Center" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
                            Foreground="{StaticResource Warm.TextBright}"/>
             </StackPanel>
         </Border>
@@ -282,19 +294,19 @@
                             BorderThickness="0,0,0,1" BorderBrush="{StaticResource Warm.Border}">
                         <DockPanel VerticalAlignment="Center">
                             <TextBlock DockPanel.Dock="Right" x:Name="RailClose" Text="&#xE711;" Cursor="Hand"
-                                       FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                       FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource BodyFontSize}"
                                        Foreground="{StaticResource Warm.TextDim}"
                                        MouseLeftButtonDown="RailClose_Click"/>
                             <TextBlock DockPanel.Dock="Right" x:Name="RailMaximize" Text="&#xE740;" Cursor="Hand"
                                        Margin="0,0,12,0" Visibility="Collapsed"
                                        ToolTip="Open the full Log Viewer"
-                                       FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                       FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"
                                        Foreground="{StaticResource Warm.TextDim}"
                                        MouseLeftButtonDown="RailMaximize_Click"/>
                             <TextBlock DockPanel.Dock="Right" x:Name="RailRefresh" Text="&#xE72C;" Cursor="Hand"
                                        Margin="0,0,12,0" Visibility="Collapsed"
                                        ToolTip="Refresh detections"
-                                       FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                       FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"
                                        Foreground="{StaticResource Warm.TextDim}"
                                        MouseLeftButtonDown="RailRefresh_Click"/>
                             <!-- Git #2783 — generic "Send to Chat" rail-header affordance. Shown/enabled for
@@ -303,14 +315,14 @@
                             <TextBlock DockPanel.Dock="Right" x:Name="RailSendToChat" Text="&#xE72A;" Cursor="Hand"
                                        Margin="0,0,12,0" Visibility="Collapsed"
                                        ToolTip="Send this tool's current output to the active Claude chat"
-                                       FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                       FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"
                                        Foreground="{StaticResource Warm.Accent}"
                                        MouseLeftButtonDown="RailSendToChat_Click"/>
                             <TextBlock x:Name="RailGlyph" DockPanel.Dock="Left" Text="&#xE9D2;" Margin="0,0,8,0"
-                                       VerticalAlignment="Center" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                       VerticalAlignment="Center" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource BodyFontSize}"
                                        Foreground="{StaticResource Warm.TextMuted}"/>
                             <TextBlock x:Name="RailTitle" Text="Detected in this chat" VerticalAlignment="Center"
-                                       FontSize="12" FontWeight="Bold" Foreground="{StaticResource Warm.TextBright}"/>
+                                       FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource Warm.TextBright}"/>
                         </DockPanel>
                     </Border>
 
@@ -339,13 +351,13 @@
                         <!-- Tool stub: honest empty body — each tool internal is a sibling Feature under #1202. -->
                         <StackPanel x:Name="ToolStubBody" Visibility="Collapsed" Margin="16" VerticalAlignment="Center">
                             <TextBlock x:Name="ToolStubTitle" Text="Tool" HorizontalAlignment="Center"
-                                       FontSize="12.5" FontWeight="Bold" Foreground="{StaticResource Warm.TextBright}"/>
+                                       FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold" Foreground="{StaticResource Warm.TextBright}"/>
                             <TextBlock Text="This tool ships as its own Feature under #1202."
                                        Margin="0,8,0,0" TextAlignment="Center" TextWrapping="Wrap"
-                                       FontStyle="Italic" FontSize="11" Foreground="{StaticResource Warm.TextDim}"/>
+                                       FontStyle="Italic" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Warm.TextDim}"/>
                             <TextBlock Text="The container shell, header and rail behaviour are wired and ready."
                                        Margin="0,6,0,0" TextAlignment="Center" TextWrapping="Wrap"
-                                       FontSize="10.5" Foreground="{StaticResource Warm.TextFaint}"/>
+                                       FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Warm.TextFaint}"/>
                         </StackPanel>
                         <!-- Git #2769 — real tool internals host. First real occupant: Terminal, which
                              embeds the existing Controls/TerminalView (a real, persistent local shell),
@@ -376,20 +388,20 @@
                                 BorderBrush="{StaticResource Warm.Accent}" BorderThickness="1">
                             <DockPanel>
                                 <TextBlock DockPanel.Dock="Right" Text="&#xE711;" Cursor="Hand" VerticalAlignment="Center"
-                                           FontFamily="Segoe MDL2 Assets" FontSize="11"
+                                           FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}"
                                            Foreground="{StaticResource Warm.TextDim}"
                                            MouseLeftButtonDown="ComposerReturnClear_Click"/>
                                 <TextBlock Text="&#xE72C;" Margin="0,0,7,0" VerticalAlignment="Center"
-                                           FontFamily="Segoe MDL2 Assets" FontSize="11" Foreground="{StaticResource Warm.Accent}"/>
+                                           FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Warm.Accent}"/>
                                 <TextBlock x:Name="ComposerReturnText" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                           FontSize="10.5" Foreground="{StaticResource Warm.TextBody}"/>
+                                           FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Warm.TextBody}"/>
                             </DockPanel>
                         </Border>
                         <Border CornerRadius="26" Background="{StaticResource Warm.Bubble}"
-                                BorderBrush="#3a3a37" BorderThickness="1" Padding="16,8,10,8">
+                                BorderBrush="{StaticResource Warm.SubtleBorder}" BorderThickness="1" Padding="16,8,10,8">
                             <DockPanel>
                                 <TextBlock DockPanel.Dock="Left" Text="&#xE710;" FontFamily="Segoe MDL2 Assets"
-                                           FontSize="13" VerticalAlignment="Bottom" Margin="0,0,10,4"
+                                           FontSize="{StaticResource BodyFontSize}" VerticalAlignment="Bottom" Margin="0,0,10,4"
                                            Foreground="{StaticResource Warm.TextDim}"/>
                                 <Button x:Name="BtnComposerSend" DockPanel.Dock="Right" VerticalAlignment="Bottom"
                                         Cursor="Hand" BorderThickness="0" Background="Transparent"
@@ -403,12 +415,12 @@
                                             </Border>
                                             <ControlTemplate.Triggers>
                                                 <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="cb" Property="Background" Value="#3a3a37"/>
+                                                    <Setter TargetName="cb" Property="Background" Value="{StaticResource Warm.SubtleBorder}"/>
                                                 </Trigger>
                                             </ControlTemplate.Triggers>
                                         </ControlTemplate>
                                     </Button.Template>
-                                    <TextBlock Text="&#xE72A;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                    <TextBlock Text="&#xE72A;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource BodyFontSize}"
                                                Foreground="{StaticResource Warm.Accent}"/>
                                 </Button>
                                 <TextBox x:Name="ChatComposer" AcceptsReturn="True" TextWrapping="Wrap"
@@ -417,7 +429,7 @@
                                          VerticalContentAlignment="Center"
                                          Foreground="{StaticResource Warm.TextBright}"
                                          CaretBrush="{StaticResource Warm.Accent}"
-                                         FontSize="14"
+                                         FontSize="{StaticResource BodyFontSize}"
                                          PreviewKeyDown="ChatComposer_PreviewKeyDown"
                                          TextChanged="ChatComposer_TextChanged"/>
                             </DockPanel>
@@ -431,28 +443,28 @@
                              on the page above. -->
                         <TextBlock Margin="4,6,0,0"
                                    Text="Claude is AI and can make mistakes. Please double-check responses."
-                                   FontSize="11" Foreground="{StaticResource Warm.TextDim}"/>
+                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Warm.TextDim}"/>
                     </StackPanel>
                 </Grid>
             </Border>
 
             <!-- Inspector "blocking" — covers ONLY the composer band (§9). Native WPF over a native
                  band, so no airspace problem; the transcript above stays readable. -->
-            <Border x:Name="InspectorBlockingOverlay" Visibility="Collapsed" Background="#e1141412">
-                <Border Background="#e0141412">
+            <Border x:Name="InspectorBlockingOverlay" Visibility="Collapsed" Background="{StaticResource Warm.OverlayOuter}">
+                <Border Background="{StaticResource Warm.OverlayInner}">
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                         <Border Width="36" Height="36" CornerRadius="18" HorizontalAlignment="Center"
                                 Background="{StaticResource Warm.Bubble}"
                                 BorderBrush="{StaticResource Warm.Accent}" BorderThickness="1">
-                            <TextBlock Text="&#xE756;" FontFamily="Segoe MDL2 Assets" FontSize="16"
+                            <TextBlock Text="&#xE756;" FontFamily="Segoe MDL2 Assets" FontSize="{StaticResource SubHeaderFontSize}"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"
                                        Foreground="{StaticResource Warm.Accent}"/>
                         </Border>
                         <TextBlock Text="Inspector is asking Claude a question…" Margin="0,8,0,2"
-                                   HorizontalAlignment="Center" FontSize="12.5" FontWeight="Bold"
+                                   HorizontalAlignment="Center" FontSize="{StaticResource CaptionFontSize}" FontWeight="Bold"
                                    Foreground="{StaticResource Warm.TextBright}"/>
                         <TextBlock Text="You'll get control back once Claude responds"
-                                   HorizontalAlignment="Center" FontSize="10.5"
+                                   HorizontalAlignment="Center" FontSize="{StaticResource CaptionFontSize}"
                                    Foreground="{StaticResource Warm.TextMuted}"/>
                     </StackPanel>
                 </Border>

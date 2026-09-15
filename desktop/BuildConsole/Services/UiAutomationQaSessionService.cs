@@ -290,23 +290,36 @@ namespace BuildConsole.Services
 
                         if (commitOk)
                         {
-                            var (hashOk, hash, _) = await RunGitCommandWithOutputAsync(repoRoot, "rev-parse --short HEAD");
-                            result.CommitHash = hashOk ? hash.Trim() : "committed";
-
                             if (pushToRemote)
                             {
                                 string branch = await GetGitBranchAsync(repoRoot);
                                 var gitPushSw = Stopwatch.StartNew();
-                                var (pushOk, pushErr) = await RunGitCommandAsync(repoRoot, $"push origin {branch}");
+                                var (pushOk, pushErr) = await PushArtifactCommitWithRebaseAsync(repoRoot, branch, context.SessionId);
                                 gitPushSw.Stop();
                                 if (gitPushSw.ElapsedMilliseconds > 1000)
                                 {
-                                    ActivityLog.Log(Channel, $"Slow git push for automation: {gitPushSw.ElapsedMilliseconds}ms");
+                                    ActivityLog.Log(Channel, $"Slow git push (fetch+rebase+push) for automation: {gitPushSw.ElapsedMilliseconds}ms");
                                 }
-                                if (!pushOk)
+
+                                if (pushOk)
                                 {
-                                    ActivityLog.Log(Channel, $"Git push warning: {pushErr}");
+                                    var (hashOk, hash, _) = await RunGitCommandWithOutputAsync(repoRoot, "rev-parse --short HEAD");
+                                    result.CommitHash = hashOk ? hash.Trim() : "committed";
                                 }
+                                else
+                                {
+                                    // PushArtifactCommitWithRebaseAsync has already unwound the local commit
+                                    // (git reset --keep origin/<branch>) on every failure path so the shared
+                                    // checkout never diverges from origin (Git #4122). No commit landed, so
+                                    // CommitHash stays unset — the artifact files remain on disk uncommitted
+                                    // for the next successful run to pick up.
+                                    result.Error = pushErr;
+                                }
+                            }
+                            else
+                            {
+                                var (hashOk, hash, _) = await RunGitCommandWithOutputAsync(repoRoot, "rev-parse --short HEAD");
+                                result.CommitHash = hashOk ? hash.Trim() : "committed";
                             }
                         }
                         else
@@ -633,6 +646,75 @@ namespace BuildConsole.Services
         {
             var (ok, branch, _) = await RunGitCommandWithOutputAsync(repoRoot, "rev-parse --abbrev-ref HEAD");
             return ok && !string.IsNullOrWhiteSpace(branch) ? branch.Trim() : "main";
+        }
+
+        /// <summary>
+        /// Lands the just-made artifact commit on origin/<paramref name="branch"/> without ever leaving it
+        /// stranded as a local-only commit on the shared main checkout (Git #4122). Each attempt fetches,
+        /// rebases the single artifact commit onto origin's current tip, then pushes — so a concurrent agent
+        /// moving main underneath this run is a normal retry, not a silent divergence. If every attempt is
+        /// exhausted (or the rebase itself conflicts), the local branch is unwound back to origin's real tip
+        /// via 'git reset --keep', which preserves the artifact files as uncommitted working-tree changes
+        /// instead of losing them — only the commit itself is undone, so the checkout can never diverge.
+        /// </summary>
+        private static async Task<(bool success, string? error)> PushArtifactCommitWithRebaseAsync(string repoRoot, string branch, string sessionId)
+        {
+            const int maxAttempts = 3;
+            string? lastError = null;
+
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                var (fetchOk, fetchErr) = await RunGitCommandAsync(repoRoot, $"fetch origin {branch}");
+                if (!fetchOk)
+                {
+                    lastError = $"git fetch origin {branch} failed: {fetchErr}";
+                    ActivityLog.Log(Channel, $"Automated QA push attempt {attempt}/{maxAttempts} for session {sessionId}: {lastError}");
+                    continue;
+                }
+
+                var (rebaseOk, _, rebaseErr) = await RunGitCommandWithOutputAsync(repoRoot, $"rebase origin/{branch}");
+                if (!rebaseOk)
+                {
+                    // A real conflict won't resolve itself on retry — abort cleanly and go straight to
+                    // the unwind-and-fail path below rather than looping.
+                    await RunGitCommandAsync(repoRoot, "rebase --abort");
+                    lastError = $"git rebase origin/{branch} failed: {rebaseErr}";
+                    ActivityLog.Log(Channel, $"Automated QA push attempt {attempt}/{maxAttempts} for session {sessionId}: {lastError}");
+                    break;
+                }
+
+                var (pushOk, pushErr) = await RunGitCommandAsync(repoRoot, $"push origin {branch}");
+                if (pushOk)
+                {
+                    return (true, null);
+                }
+
+                lastError = $"git push origin {branch} failed: {pushErr}";
+                ActivityLog.Log(Channel, $"Automated QA push attempt {attempt}/{maxAttempts} for session {sessionId} rejected: {pushErr}. Retrying with a fresh fetch+rebase.");
+            }
+
+            // Every attempt to land the commit on origin failed. Never leave it stranded as a
+            // local-only commit on the shared checkout — unwind the branch pointer back to
+            // origin's real tip. A best-effort final fetch first, so the reset targets the
+            // freshest origin/<branch> we can reach.
+            var (finalFetchOk, finalFetchErr) = await RunGitCommandAsync(repoRoot, $"fetch origin {branch}");
+            if (!finalFetchOk)
+            {
+                ActivityLog.Log(Channel, $"Automated QA session {sessionId}: final fetch before un-strand reset failed: {finalFetchErr}. Falling back to the last known origin/{branch}.");
+            }
+
+            var (resetOk, _, resetErr) = await RunGitCommandWithOutputAsync(repoRoot, $"reset --keep origin/{branch}");
+            if (!resetOk)
+            {
+                // Even the recovery reset failed — this is the one case genuinely worth failing loudly
+                // for, since a local-only commit may still be sitting on the shared checkout.
+                string failMsg = $"push failed after {maxAttempts} attempt(s) ({lastError}) AND the recovery 'git reset --keep origin/{branch}' also failed ({resetErr}) — a local-only commit may remain stranded on the shared checkout; manual intervention required.";
+                ActivityLog.Log(Channel, $"Automated QA session {sessionId}: {failMsg}");
+                return (false, failMsg);
+            }
+
+            ActivityLog.Log(Channel, $"Automated QA session {sessionId}: push failed after {maxAttempts} attempt(s) ({lastError}). Unwound the local commit via 'git reset --keep origin/{branch}' so the shared checkout stays on origin's HEAD; artifact files remain on disk as uncommitted changes for the next successful run to pick up.");
+            return (false, lastError);
         }
     }
 }

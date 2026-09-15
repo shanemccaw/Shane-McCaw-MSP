@@ -58,6 +58,28 @@ export {
 } from "./evaluate.ts";
 
 export {
+  PORTAL_TIER_MODULE_KEYS,
+  PORTAL_TIER_MODULE_KEY_LIST,
+  isPortalTierModuleKey,
+  type PortalTierModuleKey,
+} from "./tier-modules.ts";
+
+export {
+  TIER_UPGRADE_PATH,
+  evaluateAccess,
+  lowestTierBundling,
+  type AccessAllowed,
+  type AccessDecision,
+  type AccessDenied,
+  type AccessDeniedByEntitlement,
+  type AccessDeniedByRbac,
+  type AccessEvaluationInput,
+  type TierCatalogEntry,
+  type TierEvaluationInput,
+  type TierGrant,
+} from "./access.ts";
+
+export {
   listRoleMembers,
   loadRbacContext,
   loadRbacEvaluator,
