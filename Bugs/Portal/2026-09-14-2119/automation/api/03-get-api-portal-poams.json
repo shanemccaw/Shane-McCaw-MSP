@@ -1,0 +1,37 @@
+{
+  "name": "get-api-portal-poams",
+  "method": "GET",
+  "requestUrl": "http://localhost:5175/api/portal/poams",
+  "statusCode": 402,
+  "durationMs": 0,
+  "reason": "HTTP 402",
+  "requestHeaders": {
+    "Accept": "*/*",
+    "Accept-Encoding": "gzip, deflate, br, zstd",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Connection": "keep-alive",
+    "Host": "localhost:5175",
+    "Referer": "http://localhost:5175/portal/poams",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36 Edg/152.0.0.0",
+    "authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6Mjc1NywiZW1haWwiOiJzaGFuZW1jY2F3K2N1c3RvbWVyQG91dGxvb2suY29tIiwibmFtZSI6IlJCQUMgVGVzdCDigJQgY3VzdG9tZXIiLCJyb2xlIjoiY2xpZW50IiwibXNwUm9sZSI6IkN1c3RvbWVyIiwibXNwSWQiOjEsImN1c3RvbWVySWQiOjEsIm1zcFNsdWciOiJzaGFuZS1tY2Nhdy1jb25zdWx0aW5nIiwiaWF0IjoxNzg5NDM1MTYwLCJleHAiOjE3ODk0MzYwNjB9.o-QtlXjPsQkhpa_WTgRZYrHupRQQX8CNjdB_KF5x_5s",
+    "sec-ch-ua": "\u0022Microsoft Edge\u0022;v=\u0022152\u0022, \u0022Not?A_Brand\u0022;v=\u002224\u0022, \u0022Chromium\u0022;v=\u0022152\u0022, \u0022Microsoft Edge WebView2\u0022;v=\u0022152\u0022",
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": "\u0022Windows\u0022"
+  },
+  "responseHeaders": {
+    "access-control-allow-credentials": "true",
+    "connection": "close",
+    "content-length": "105",
+    "content-type": "application/json; charset=utf-8",
+    "date": "Tue, 15 Sep 2026 01:19:20 GMT",
+    "etag": "W/\u002269-/qXTMyYgXuzSUmida378bMjEMoY\u0022",
+    "vary": "Origin",
+    "x-powered-by": "Express",
+    "x-trace-id": "c7bb74f2-4742-4a17-811a-6a46956d0d24"
+  },
+  "responseBody": "{\u0022error\u0022:\u0022Your current plan does not include \\\u0022poams\\\u0022\u0022,\u0022code\u0022:\u0022TIER_UPGRADE_REQUIRED\u0022,\u0022feature\u0022:\u0022poams\u0022}",
+  "timestamp": "2026-09-14T21:19:20.6079498-04:00"
+}

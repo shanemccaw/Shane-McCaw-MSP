@@ -1,0 +1,97 @@
+{
+  "testName": "Issue #4037 - POA\u0026Ms (#4037, Feature #1935) -- the real customer-facing POA\u0026Ms page in artifacts/portal (/poams), wired to the six live artifacts/api-server/src/routes/portal-poams.ts routes -- see docs/portal/poams-contract-pack.md. No fixture module: every row on screen comes from these endpoints. The sibling exit to the Risk Register (\u0027we ARE fixing this, here is the plan\u0027 vs. \u0027we accept the consequence\u0027).",
+  "productName": "Portal",
+  "sessionId": "2026-09-14-2119",
+  "startedAt": "2026-09-14T21:19:02.4472927-04:00",
+  "endedAt": "2026-09-14T21:19:26.6105574-04:00",
+  "durationSeconds": 24.16,
+  "success": true,
+  "summary": "\u2714 TEST PASSED (1/1 Steps)",
+  "urlsVisited": [
+    "http://localhost:5175/portal/poams"
+  ],
+  "steps": [
+    {
+      "index": 1,
+      "action": "goto",
+      "selector": "/portal/poams",
+      "targetUrl": "http://localhost:5175/portal/poams",
+      "expected": "navigation to http://localhost:5175/portal/poams succeeds",
+      "actual": "succeeded",
+      "passed": true,
+      "durationMs": 1403,
+      "detail": "Navigated to http://localhost:5175/portal/poams",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4037-20260914211853\\screenshots\\1.png",
+      "domSnapshotPath": null
+    }
+  ],
+  "consoleErrors": [],
+  "apiFailures": [
+    {
+      "name": "get-favicon.ico",
+      "method": "GET",
+      "requestUrl": "http://localhost:5175/favicon.ico",
+      "statusCode": 404,
+      "durationMs": 0,
+      "reason": "HTTP 404",
+      "timestamp": "2026-09-14T21:19:16.7078791-04:00"
+    },
+    {
+      "name": "post-api-auth-refresh",
+      "method": "POST",
+      "requestUrl": "http://localhost:5175/api/auth/refresh",
+      "statusCode": 401,
+      "durationMs": 0,
+      "reason": "HTTP 401",
+      "timestamp": "2026-09-14T21:19:16.7787934-04:00"
+    },
+    {
+      "name": "get-api-portal-poams",
+      "method": "GET",
+      "requestUrl": "http://localhost:5175/api/portal/poams",
+      "statusCode": 402,
+      "durationMs": 0,
+      "reason": "HTTP 402",
+      "timestamp": "2026-09-14T21:19:20.6079498-04:00"
+    },
+    {
+      "name": "get-api-portal-poams",
+      "method": "GET",
+      "requestUrl": "http://localhost:5175/api/portal/poams",
+      "statusCode": 402,
+      "durationMs": 0,
+      "reason": "HTTP 402",
+      "timestamp": "2026-09-14T21:19:24.8951903-04:00"
+    }
+  ],
+  "executedCommands": [],
+  "screenshotPaths": [
+    "screenshots/screenshot-01.png"
+  ],
+  "screenshotDiffs": [
+    {
+      "StepIndex": 1,
+      "StepLabel": "goto /portal/poams",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4037-20260914211853\\screenshots\\1.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\poams\\1.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    }
+  ],
+  "domDiffs": [
+    {
+      "StepIndex": 1,
+      "Route": "http://localhost:5175/portal/poams",
+      "Selector": "/portal/poams",
+      "Description": "goto /portal/poams",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [],
+      "SnapshotPath": "dom/dom-step-01.json",
+      "Timestamp": "2026-09-14T21:19:25.361368-04:00"
+    }
+  ],
+  "recommendations": "All automated UI steps passed. Review baseline screenshots for visual drift."
+}
