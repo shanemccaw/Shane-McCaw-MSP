@@ -637,6 +637,7 @@ namespace BuildConsole.Controls
                         _activeIssueDetail.Labels.Remove(labelToRemove);
                         await GitModeDetailsService.UpdateLabelsInPostgresAsync(_activeIssueDetail.IssueNumber, _activeIssueDetail.Labels);
                         RenderLabelChips(_activeIssueDetail.Labels);
+                        await RefreshGraphAsync();
                         ToastEngine.Info("Git Mode Labels", $"Removed label '{labelToRemove}'");
                     }
                 };
@@ -806,6 +807,7 @@ namespace BuildConsole.Controls
                 TxtAddLabel.Text = "";
                 await GitModeDetailsService.UpdateLabelsInPostgresAsync(_activeIssueDetail.IssueNumber, _activeIssueDetail.Labels);
                 RenderLabelChips(_activeIssueDetail.Labels);
+                await RefreshGraphAsync();
                 ToastEngine.Info("Git Mode Labels", $"Added label '{newLbl}' to #{_activeIssueDetail.IssueNumber}");
             }
         }
