@@ -147,11 +147,6 @@ vi.mock("@workspace/db", () => {
 
 // ── Mock: all other workflow-executor.ts dependencies ─────────────────────────
 
-vi.mock("./azure-automation.ts", () => ({
-  createRunbookJob: async () => {},
-  isAzureConfigured: () => false,
-}));
-
 vi.mock("./news-fetcher.ts", () => ({
   fetchNewsHeadlines: async () => [],
   DEFAULT_NEWS_PROMPT: "",

@@ -89,14 +89,6 @@ vi.mock("./logger.ts", () => {
   return { logger: log };
 });
 
-vi.mock("./azure-automation.ts", () => ({
-  createRunbookJob:  async () => "fake-job-id",
-  isAzureConfigured: () => false,
-  getJobStatus:      async () => "Completed",
-  getJobOutput:      async () => "",
-  isTerminalStatus:  () => true,
-}));
-
 vi.mock("./web-push.ts", () => ({
   sendWebPushToAdmins: async (...args: unknown[]) => {
     state.webPushCalls.push(args[0]);

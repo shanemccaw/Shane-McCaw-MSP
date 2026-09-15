@@ -6,7 +6,7 @@
  *   save_to_sharepoint, get_from_sharepoint, generate_pdf,
  *   generate_invoice_stripe_payment, generate_stripe_payment_link,
  *   charge_stripe_invoice, create_phased_invoices, generate_phased_invoice,
- *   approval_gate
+ *   approval_gate, execute_runbook, update_m365_profile, validate_m365_permissions
  *
  * Strategy:
  *   - Graph/SharePoint nodes: missing-credentials failure (live) + dry-run happy path
@@ -14,6 +14,10 @@
  *   - generate_pdf: missing htmlTemplate failure (live) + dry-run happy path
  *   - approval_gate: dry-run happy path
  *   - Exchange nodes: required-field failures (live, credentials mock returns false)
+ *   - execute_runbook / update_m365_profile / validate_m365_permissions: Azure
+ *     Automation script execution was retired (#4262/#4267) — these node types
+ *     now fail explicitly with a clear "no server-side execution binding"
+ *     error instead of the old dead isAzureConfigured() branch.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
@@ -97,14 +101,6 @@ vi.mock("./logger.ts", () => {
   const log = { info: n, warn: n, error: n, debug: n, fatal: n, trace: n, child: () => log };
   return { logger: log };
 });
-
-vi.mock("./azure-automation.ts", () => ({
-  createRunbookJob:  async () => "fake-job-id",
-  isAzureConfigured: () => false,
-  getJobStatus:      async () => "Completed",
-  getJobOutput:      async () => "",
-  isTerminalStatus:  () => true,
-}));
 
 vi.mock("./web-push.ts", () => ({
   sendWebPushToAdmins: async (...args: unknown[]) => {
@@ -1021,5 +1017,86 @@ describe("approval_gate — dry-run returns approval preview", () => {
 
   it("node status is ok", () => {
     expect(capturedStatus()).toBe("ok");
+  });
+});
+
+// =============================================================================
+// execute_runbook / update_m365_profile / validate_m365_permissions —
+// Azure Automation retired, these fail explicitly now (#4262/#4267)
+// =============================================================================
+
+describe("execute_runbook — Azure Automation retired, fails explicitly (live)", () => {
+  beforeEach(async () => {
+    resetState();
+    seedDb(singleNodeGraph("action", {
+      actionType: "execute_runbook",
+      runbookName: "Test-Runbook",
+    }));
+    await executeWorkflowRun(1);
+  });
+
+  it("output.error states there is no server-side execution binding", () => {
+    expect(capturedOutput().error as string).toContain("no server-side execution binding");
+  });
+
+  it("output.error does not mention Azure being unconfigured (the old dead-branch message)", () => {
+    expect(capturedOutput().error as string).not.toContain("not configured");
+  });
+
+  it("node status is error", () => {
+    expect(capturedStatus()).toBe("error");
+  });
+});
+
+describe("update_m365_profile — Azure Automation retired, fails explicitly (live)", () => {
+  beforeEach(async () => {
+    resetState();
+    seedDb(singleNodeGraph("action", {
+      actionType: "update_m365_profile",
+      runbookName: "Update-M365-Profile",
+    }));
+    await executeWorkflowRun(1);
+  });
+
+  it("output.error states there is no server-side execution binding", () => {
+    expect(capturedOutput().error as string).toContain("no server-side execution binding");
+  });
+
+  it("node status is error", () => {
+    expect(capturedStatus()).toBe("error");
+  });
+});
+
+describe("validate_m365_permissions — Azure Automation retired, fails explicitly (live)", () => {
+  beforeEach(async () => {
+    resetState();
+    seedDb(singleNodeGraph("validate_m365_permissions", {
+      clientId: "42",
+    }));
+    await executeWorkflowRun(1);
+  });
+
+  it("output.error states there is no server-side execution binding", () => {
+    expect(capturedOutput().error as string).toContain("no server-side execution binding");
+  });
+
+  it("node status is error", () => {
+    expect(capturedStatus()).toBe("error");
+  });
+});
+
+describe("validate_m365_permissions — missing clientId still fails on that first (live)", () => {
+  beforeEach(async () => {
+    resetState();
+    seedDb(singleNodeGraph("validate_m365_permissions", {}));
+    await executeWorkflowRun(1);
+  });
+
+  it("output.error mentions clientId", () => {
+    expect(capturedOutput().error as string).toContain("clientId");
+  });
+
+  it("node status is error", () => {
+    expect(capturedStatus()).toBe("error");
   });
 });
