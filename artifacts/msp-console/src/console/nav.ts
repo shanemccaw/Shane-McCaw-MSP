@@ -150,9 +150,7 @@ const msp = (id: string): LeafPage => {
  * three named collapsible groups, reusing the same `Group` shape
  * `CHILD_GROUPS` already uses for tenant pages. `settings` (the section
  * header, rendered on the Consulting root) and `exec`/`projects`/`retainer`
- * stay top-level, ungrouped — see `MSP_TOP_LEVEL_IDS`. Workflows/Agents are
- * deliberately left out of every group (separate removal issue, #4152); they
- * stay top-level and ungrouped too, in their existing position.
+ * stay top-level, ungrouped — see `MSP_TOP_LEVEL_IDS`.
  */
 export const MSP_GROUPS: Group[] = [
   {

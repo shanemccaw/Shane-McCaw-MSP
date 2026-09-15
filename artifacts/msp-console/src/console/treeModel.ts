@@ -133,7 +133,7 @@ export function buildTreeNodes(
     };
 
     // Top-level, ungrouped Operations pages (Executive view, Projects,
-    // Retainer hours, and Workflows/Agents left out of every group per #4150).
+    // Retainer hours — #4150).
     for (const id of MSP_TOP_LEVEL_IDS) {
       const p = MSP_PAGES.find((x) => x.id === id);
       if (p) mspLeaf(p, 44);
