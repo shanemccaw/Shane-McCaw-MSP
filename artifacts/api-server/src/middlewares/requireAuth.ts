@@ -316,8 +316,11 @@ export function requireCapability(capability: string) {
  * returned for as long as they have existed, and it is asserted byte-for-byte by
  * `rbac-ladder.live-db.test.ts`. Recovering the rung name from the capability key is
  * a DISPLAY concern only — the decision above was already made from the rows.
+ *
+ * Exported for #4192's `requireAccess`, whose `basis: "rbac"` 403 carries this exact
+ * wording rather than a second copy of it.
  */
-function denialMessage(capability: string): string {
+export function denialMessage(capability: string): string {
   const rung = ladderCapabilityRole(capability);
   return rung
     ? `Insufficient privileges — ${rung} or above required`

@@ -52,6 +52,7 @@
  */
 export { PORTAL_TIER_MODULE_KEYS, type PortalTierModuleKey } from "@workspace/db/rbac/tier-modules";
 import type { PortalTierModuleKey } from "@workspace/db/rbac/tier-modules";
+import type { TierCatalogEntry } from "@workspace/db/rbac/access";
 
 import type { Request, Response, NextFunction } from "express";
 import { db, clientServicesTable, servicesTable } from "@workspace/db";
@@ -96,9 +97,84 @@ export async function resolveCustomerIncludedFeatures(customerId: number): Promi
     .limit(1);
 
   if (!row) return [];
-  const attrs = (row.typeAttributes ?? {}) as Record<string, unknown>;
+  return decodeIncludedFeatures(row.typeAttributes);
+}
+
+/** `services.type_attributes.includedFeatures`, strings only. Never throws on a hand-edited row. */
+function decodeIncludedFeatures(typeAttributes: unknown): string[] {
+  const attrs = (typeAttributes ?? {}) as Record<string, unknown>;
   const included = attrs.includedFeatures;
   return Array.isArray(included) ? included.filter((v): v is string => typeof v === "string") : [];
+}
+
+/**
+ * The customer's active Monitoring tier, as `evaluateAccess()`'s tier half needs it
+ * (#4192): `includedFeatures` AND the `services.tier` label, so a denial's audit line
+ * can name the tier the customer is actually on.
+ *
+ * The same join chain, filter and `orderBy(asc(id))` tie-break as
+ * `resolveCustomerIncludedFeatures` above — one extra column selected, nothing else.
+ * `includedFeatures` is `[]` and `currentTier` is `null` on no active subscription.
+ */
+export async function resolveCustomerTierEntitlement(
+  customerId: number,
+): Promise<{ includedFeatures: string[]; currentTier: string | null }> {
+  const customerUserIds = await resolveCustomerUserIds(customerId);
+  if (customerUserIds.length === 0) return { includedFeatures: [], currentTier: null };
+
+  const [row] = await db
+    .select({ typeAttributes: servicesTable.typeAttributes, tier: servicesTable.tier })
+    .from(clientServicesTable)
+    .innerJoin(servicesTable, eq(servicesTable.id, clientServicesTable.serviceId))
+    .where(
+      and(
+        inArray(clientServicesTable.clientUserId, customerUserIds),
+        eq(clientServicesTable.status, "active"),
+        eq(servicesTable.serviceType, "monitoring_tier"),
+      ),
+    )
+    .orderBy(asc(clientServicesTable.id))
+    .limit(1);
+
+  if (!row) return { includedFeatures: [], currentTier: null };
+  return { includedFeatures: decodeIncludedFeatures(row.typeAttributes), currentTier: row.tier ?? null };
+}
+
+/**
+ * Every `monitoring_tier` catalog row, decoded into `evaluateAccess()`'s
+ * `TierCatalogEntry` shape, so an entitlement denial can name the lowest tier that
+ * bundles the module (#4191 reads the ladder from `sort_order`, not from a compiled
+ * tier list).
+ *
+ * Rows with no `services.tier` are skipped: they name no tier, so they cannot be the
+ * answer to "which tier includes this", and a nameless row must not surface as an
+ * upgrade target.
+ */
+export async function readMonitoringTierCatalog(): Promise<TierCatalogEntry[]> {
+  const rows = await db
+    .select({ tier: servicesTable.tier, sortOrder: servicesTable.sortOrder, typeAttributes: servicesTable.typeAttributes })
+    .from(servicesTable)
+    .where(eq(servicesTable.serviceType, "monitoring_tier"));
+
+  const catalog: TierCatalogEntry[] = [];
+  for (const row of rows) {
+    if (!row.tier) continue;
+    catalog.push({ tier: row.tier, sortOrder: row.sortOrder, includedFeatures: decodeIncludedFeatures(row.typeAttributes) });
+  }
+  return catalog;
+}
+
+/**
+ * The 402 body a tier miss answers with. `requireTierFeature` and #4192's
+ * `requireAccess` both build it here, so the `TIER_UPGRADE_REQUIRED` shape every
+ * portal client already handles has exactly one definition.
+ */
+export function tierUpgradeRequiredBody(moduleKey: string): { error: string; code: "TIER_UPGRADE_REQUIRED"; feature: string } {
+  return {
+    error: `Your current plan does not include "${moduleKey}"`,
+    code: "TIER_UPGRADE_REQUIRED",
+    feature: moduleKey,
+  };
 }
 
 /** One-shot check: does this customer's active Monitoring tier bundle `moduleKey`. */
@@ -126,11 +202,7 @@ export function requireTierFeature(moduleKey: PortalTierModuleKey) {
     try {
       const included = await resolveCustomerIncludedFeatures(customerId);
       if (!included.includes(moduleKey)) {
-        res.status(402).json({
-          error: `Your current plan does not include "${moduleKey}"`,
-          code: "TIER_UPGRADE_REQUIRED",
-          feature: moduleKey,
-        });
+        res.status(402).json(tierUpgradeRequiredBody(moduleKey));
         return;
       }
       next();
