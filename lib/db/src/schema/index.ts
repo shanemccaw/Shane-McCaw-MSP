@@ -712,8 +712,14 @@ export const clientServicesTable = pgTable("client_services", {
   proposedBillingInterval: text("proposed_billing_interval", { enum: CLIENT_BILLING_INTERVALS }),
   proposedByUserId: integer("proposed_by_user_id").references(() => usersTable.id),
   proposedAt: timestamp("proposed_at"),
+  // Git #4403: the Buy-flow checkout session whose payment provisioned this row.
+  // NULL on every row not created off a public purchase. The unique index below
+  // is payment-confirmed's idempotency gate — a replayed or concurrent confirm
+  // for the same session can never provision the same service twice.
+  checkoutSessionId: uuid("checkout_session_id").references((): AnyPgColumn => checkoutSessionsTable.id, { onDelete: "set null" }),
 }, (t) => [
   index("client_services_client_user_id_idx").on(t.clientUserId),
+  uniqueIndex("client_services_checkout_session_service_uidx").on(t.checkoutSessionId, t.serviceId),
 ]);
 
 export type InsertClientService = typeof clientServicesTable.$inferInsert;
