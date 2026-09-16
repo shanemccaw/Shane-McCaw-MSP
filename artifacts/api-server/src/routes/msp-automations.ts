@@ -123,9 +123,9 @@ async function validateWrappedRef(
       .limit(1);
     return row ? null : "Wrapped script not found";
   }
-  const numericId = Number(wrappedRefId);
-  if (!Number.isInteger(numericId) || numericId <= 0) return "wrappedRefId must be the underlying row id";
   if (type === "runbook") {
+    const numericId = Number(wrappedRefId);
+    if (!Number.isInteger(numericId) || numericId <= 0) return "wrappedRefId must be the runbook row id";
     const [row] = await db
       .select({ id: portalRunbooksTable.id })
       .from(portalRunbooksTable)
@@ -133,13 +133,24 @@ async function validateWrappedRef(
       .limit(1);
     return row ? null : "Wrapped runbook not found for this customer";
   }
-  // remediation_step
+  // remediation_step — wrappedRefId is the stepId TEXT (e.g. "s1"), the system's
+  // real per-(customer,step) identity; the numeric row id is never exposed.
   const [row] = await db
     .select({ id: remediationTrackerStepsTable.id })
     .from(remediationTrackerStepsTable)
-    .where(and(eq(remediationTrackerStepsTable.id, numericId), eq(remediationTrackerStepsTable.customerId, customerId)))
+    .where(and(eq(remediationTrackerStepsTable.stepId, wrappedRefId), eq(remediationTrackerStepsTable.customerId, customerId)))
     .limit(1);
   return row ? null : "Wrapped remediation step not found for this customer";
+}
+
+/** Resolve a remediation step's serial id from its (customer, stepId-text) key. */
+async function resolveRemediationStepId(customerId: number, stepKey: string): Promise<number | null> {
+  const [row] = await db
+    .select({ id: remediationTrackerStepsTable.id })
+    .from(remediationTrackerStepsTable)
+    .where(and(eq(remediationTrackerStepsTable.stepId, stepKey), eq(remediationTrackerStepsTable.customerId, customerId)))
+    .limit(1);
+  return row?.id ?? null;
 }
 
 /** Validate optional governance links belong to the same customer/msp. */
@@ -220,6 +231,9 @@ const createSchema = z.object({
   linkedPoamId: z.number().int().positive().nullable().optional(),
   linkedCabId: z.number().int().positive().nullable().optional(),
   linkedRemediationStepId: z.number().int().positive().nullable().optional(),
+  // Client-facing alternative to linkedRemediationStepId: the step's (customer, stepId-text)
+  // key, resolved to the numeric FK server-side (the numeric id is never exposed to clients).
+  linkedRemediationStepKey: z.string().min(1).max(100).nullable().optional(),
 });
 
 router.post(
@@ -249,6 +263,15 @@ router.post(
         res.status(400).json({ error: linkErr });
         return;
       }
+      let linkedRemediationStepId = parsed.data.linkedRemediationStepId ?? null;
+      if (parsed.data.linkedRemediationStepKey != null) {
+        const resolved = await resolveRemediationStepId(customerId, parsed.data.linkedRemediationStepKey);
+        if (resolved === null) {
+          res.status(400).json({ error: "linkedRemediationStepKey not found for this customer" });
+          return;
+        }
+        linkedRemediationStepId = resolved;
+      }
       const [inserted] = await db
         .insert(automationsTable)
         .values({
@@ -260,7 +283,7 @@ router.post(
           description: parsed.data.description ?? null,
           linkedPoamId: parsed.data.linkedPoamId ?? null,
           linkedCabId: parsed.data.linkedCabId ?? null,
-          linkedRemediationStepId: parsed.data.linkedRemediationStepId ?? null,
+          linkedRemediationStepId,
         })
         .returning();
       log.info({ customerId, id: inserted.id, type: inserted.type }, "automation created");
@@ -279,6 +302,8 @@ const patchSchema = z.object({
   linkedPoamId: z.number().int().positive().nullable().optional(),
   linkedCabId: z.number().int().positive().nullable().optional(),
   linkedRemediationStepId: z.number().int().positive().nullable().optional(),
+  // Set (stepId-text) or clear (null) the remediation-step link without the numeric id.
+  linkedRemediationStepKey: z.string().min(1).max(100).nullable().optional(),
 });
 
 router.patch(
@@ -313,8 +338,20 @@ router.patch(
       if (parsed.data.description !== undefined) patch.description = parsed.data.description;
       if (parsed.data.linkedPoamId !== undefined) patch.linkedPoamId = parsed.data.linkedPoamId;
       if (parsed.data.linkedCabId !== undefined) patch.linkedCabId = parsed.data.linkedCabId;
-      if (parsed.data.linkedRemediationStepId !== undefined)
+      if (parsed.data.linkedRemediationStepKey !== undefined) {
+        if (parsed.data.linkedRemediationStepKey === null) {
+          patch.linkedRemediationStepId = null;
+        } else {
+          const resolved = await resolveRemediationStepId(customerId, parsed.data.linkedRemediationStepKey);
+          if (resolved === null) {
+            res.status(400).json({ error: "linkedRemediationStepKey not found for this customer" });
+            return;
+          }
+          patch.linkedRemediationStepId = resolved;
+        }
+      } else if (parsed.data.linkedRemediationStepId !== undefined) {
         patch.linkedRemediationStepId = parsed.data.linkedRemediationStepId;
+      }
 
       const [updated] = await db
         .update(automationsTable)
@@ -409,7 +446,7 @@ router.post(
       }
 
       if (automation.type === "remediation_step") {
-        const stepRowId = Number(automation.wrappedRefId);
+        // wrappedRefId is the stepId text (the system's per-(customer,step) identity).
         const [step] = await db
           .select({
             stepId: remediationTrackerStepsTable.stepId,
@@ -418,7 +455,7 @@ router.post(
           .from(remediationTrackerStepsTable)
           .where(
             and(
-              eq(remediationTrackerStepsTable.id, stepRowId),
+              eq(remediationTrackerStepsTable.stepId, automation.wrappedRefId),
               eq(remediationTrackerStepsTable.customerId, customerId),
             ),
           )
@@ -565,7 +602,7 @@ router.get(
           .from(remediationTrackerStepsTable)
           .where(
             and(
-              eq(remediationTrackerStepsTable.id, Number(automation.wrappedRefId)),
+              eq(remediationTrackerStepsTable.stepId, automation.wrappedRefId),
               eq(remediationTrackerStepsTable.customerId, customerId),
             ),
           )

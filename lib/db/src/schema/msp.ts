@@ -10273,10 +10273,11 @@ export const automationsTable = pgTable("automations", {
   customerId: integer("customer_id").notNull(),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
   type: text("type", { enum: AUTOMATION_TYPES }).notNull(),
-  // Polymorphic pointer at the wrapped underlying row. Holds a UUID string when
-  // type = "script" (powershell_scripts.id) and a stringified serial int when
-  // type = "runbook" (portal_runbooks.id) or "remediation_step"
-  // (remediation_tracker_steps.id).
+  // Polymorphic pointer at the wrapped underlying row. Holds: a UUID string when
+  // type = "script" (powershell_scripts.id); a stringified serial int when
+  // type = "runbook" (portal_runbooks.id); and the stepId TEXT (e.g. "s1") when
+  // type = "remediation_step" — that (customer, stepId) pair is the remediation
+  // system's real identity; its numeric row id is never exposed to clients.
   wrappedRefId: text("wrapped_ref_id").notNull(),
   name: text("name").notNull(),
   description: text("description"),
