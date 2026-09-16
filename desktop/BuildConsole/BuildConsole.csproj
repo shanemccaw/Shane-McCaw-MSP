@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
     <!-- Git #1866 — the desktop screen-clipping tool needs System.Drawing
@@ -31,18 +31,19 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4129.50" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
     <PackageReference Include="AvalonEdit" Version="6.3.1.120" />
     <!-- Direct local Postgres client for shaneapp://executeSql — lets BuildConsole
          run SQL through its OWN local DB connection (LocalSqlExecutor), with zero
-         round-trip to the deployed Replit dev api-server. 7.0.x targets net7.0
-         directly, matching this app's TFM. -->
-    <PackageReference Include="Npgsql" Version="7.0.7" />
-    <!-- Real system-wide CPU % for the bottom-panel resource meters (Processor/%
-         Processor Time/_Total). Not in the .NET base class libraries since
-         .NET Core — Windows-only, which is fine, this app is Windows-only WPF. -->
-    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="7.0.0" />
-    <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.0" />
+         round-trip to the deployed Replit dev api-server. 10.0.x carries an
+         explicit net10.0 dependency group, matching this app's TFM. -->
+    <PackageReference Include="Npgsql" Version="10.0.3" />
+    <!-- System.Diagnostics.PerformanceCounter (real system-wide CPU % for the
+         bottom-panel resource meters) is no longer an explicit PackageReference
+         here — under net10.0-windows the SDK now provides it as part of the
+         pruned/implicit framework set (NU1510 fires if it's left explicit). The
+         type is still referenceable unchanged. -->
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.12" />
   </ItemGroup>
 
   <ItemGroup>
