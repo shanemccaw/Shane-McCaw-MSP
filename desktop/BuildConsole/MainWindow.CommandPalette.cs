@@ -64,8 +64,13 @@ namespace BuildConsole
         /// runs afterward.</summary>
         private CommandPaletteWindow CreateCommandPaletteWindow()
         {
+            // Git #4415 — one reset gate per palette window: a confirmation earned by a preview in
+            // this window can't carry into a later open. The command row only previews; the window
+            // owns the separate typed-phrase step that reaches the real reset.
+            var devResetGate = new DevDatabaseResetGate();
             var win = new CommandPaletteWindow(
-                BuildPaletteCommands(), BuildTrackerApi, LeftSidebar.GetAllEpics(), QueueDb, QueueWatcher)
+                BuildPaletteCommands(devResetGate), BuildTrackerApi, LeftSidebar.GetAllEpics(), QueueDb, QueueWatcher,
+                devResetGate)
             { Owner = this };
 
             // Git #3850 — the epic-*name* matching branch (sibling #3831 covers epic/issue
@@ -143,7 +148,7 @@ namespace BuildConsole
         /// BuildConsole feature (no stub pretending to succeed). These also render
         /// as the tile row per the reference screenshot.
         /// </summary>
-        private List<CommandPaletteWindow.PaletteCommand> BuildPaletteCommands() => new()
+        private List<CommandPaletteWindow.PaletteCommand> BuildPaletteCommands(DevDatabaseResetGate devResetGate) => new()
         {
             new CommandPaletteWindow.PaletteCommand
             {
@@ -169,6 +174,20 @@ namespace BuildConsole
                            + "renders right here, same as Git Pull's result pane.",
                 ActionLabel = "Run Find Tenant-Scoped Tables",
                 RunWithResult = RunPaletteFindTenantScopedTablesWithResultAsync,
+            },
+            new CommandPaletteWindow.PaletteCommand
+            {
+                Glyph = "", // Warning
+                Title = "Reset dev database",
+                Subtitle = "Preview (dry run) of the clean-slate dev DB reset — changes nothing",
+                DetailBody = "Enter runs `node scripts/db/reset-dev-database.mjs --dry-run` (Git #4393) for real: "
+                           + "it live-derives the target MSP, plans the reset from real FK edges, and runs the "
+                           + "deletes inside BEGIN...ROLLBACK. Nothing is changed and no backup is taken. "
+                           + "The real output shows here, ending with the exact phrase to type into the search "
+                           + "box for the separate, destructive step (--yes: backup, then the real reset). "
+                           + "Enter on this row never runs the real reset.",
+                ActionLabel = "Preview Reset (dry run)",
+                RunWithResult = devResetGate.PreviewAsync,
             },
             new CommandPaletteWindow.PaletteCommand
             {

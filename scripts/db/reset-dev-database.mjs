@@ -46,10 +46,12 @@
 //   node scripts/db/reset-dev-database.mjs --yes             # real reset, skips the interactive confirmation prompt
 //   node scripts/db/reset-dev-database.mjs                   # real reset, prompts for confirmation first
 //
-// Both modes always: refuse to run against anything that doesn't look like
-// local dev, take a fresh timestamped pg_dump backup first, print full
-// before/after row counts, and (real run only) confirm the platform boots
-// and MSP-staff login still works afterward.
+// Both modes always refuse to run against anything that doesn't look like
+// local dev and run the BEGIN...ROLLBACK dry run first. --dry-run stops there
+// (no backup taken -- it only reports where a real run's backup would go).
+// A real run then takes a fresh timestamped pg_dump backup, prints full
+// before/after row counts, and confirms the platform boots and MSP-staff
+// login still works afterward.
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
@@ -450,6 +452,10 @@ async function main() {
   console.log("Dry run succeeded: no FK violations, transaction rolled back cleanly.");
 
   if (args.dryRun) {
+    console.log(
+      `\nA real run would first take a fresh pg_dump -Fc backup into ${BACKUP_DIR} ` +
+        `(verified with pg_restore --list) before changing anything.`
+    );
     console.log("\n--dry-run requested: stopping here. No data was changed.");
     return;
   }

@@ -14,6 +14,13 @@ node scripts/db/reset-dev-database.mjs              # real reset -- backs up fir
 node scripts/db/reset-dev-database.mjs --yes        # real reset -- skips the confirmation prompt
 ```
 
+**From BuildConsole's Command Center (Ctrl+K, Git #4415):** the "Reset dev database" row only
+ever runs `--dry-run` — Enter on it (once or repeatedly) never resets anything. The preview's
+output ends with a confirm phrase carrying the live target MSP id (`reset msp #<id>`); typing that
+exact phrase into the palette's search box and pressing Enter is the only way it runs `--yes`, and
+only after a successful preview in that same palette window. One confirmation = one real run. The
+result pane leads with the real backup file path the script reported.
+
 **Safety floor:** refuses to run against anything whose `DATABASE_URL` doesn't look like the
 real local dev database (host must be `localhost`/`127.0.0.1`, and the URL can't match a
 remote-hosting pattern like `neon.tech`/`replit`/`amazonaws`/`rds.`/`supabase`). This script

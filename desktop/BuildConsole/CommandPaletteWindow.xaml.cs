@@ -142,6 +142,20 @@ namespace BuildConsole
         private readonly BuildConsole.Services.BuildQueuePostgresClient? _queueDb;
         private readonly BuildConsole.Services.QueueWatcherService? _queueWatcher;
 
+        // ── Git #4415 — Reset dev database confirm mode ─────────────────────────
+        // The "Reset dev database" command row itself only ever previews (--dry-run). The REAL
+        // reset lives behind this separate mode, entered only by typing the exact confirm phrase
+        // ("reset msp #<id>", the live target MSP id the preview printed) into the input — never
+        // by Enter/click on a command row. Auto-detected from typed text, same as SQL mode.
+        private readonly BuildConsole.Services.DevDatabaseResetGate? _devResetGate;
+        private static readonly System.Text.RegularExpressions.Regex ResetConfirmShape =
+            new(@"^\s*reset\s+msp\s+#\d+\s*$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        private bool _resetConfirmMode;
+        private bool _resetRunning;
+        /// <summary>Real outcome text of the real reset run from this mode — kept until the input changes.</summary>
+        private string? _resetResultText;
+        private bool _resetResultOk;
+
         /// <summary>Raised when "Send to Chat" is clicked on the SQL results panel — MainWindow
         /// wires this to the same shared <c>SendTextToActiveClaudeChatAsync</c> path (#937/#940)
         /// the SQL Runner floaty already uses, never a second mechanism.</summary>
@@ -177,7 +191,8 @@ namespace BuildConsole
             BuildConsole.Services.BuildTrackerApiClient? api = null,
             IEnumerable<(int Number, string Title)>? epics = null,
             BuildConsole.Services.BuildQueuePostgresClient? queueDb = null,
-            BuildConsole.Services.QueueWatcherService? queueWatcher = null)
+            BuildConsole.Services.QueueWatcherService? queueWatcher = null,
+            BuildConsole.Services.DevDatabaseResetGate? devResetGate = null)
         {
             InitializeComponent();
             _commands = commands.ToList();
@@ -185,6 +200,7 @@ namespace BuildConsole
             _epics = epics?.ToList() ?? new List<(int Number, string Title)>();
             _queueDb = queueDb;
             _queueWatcher = queueWatcher;
+            _devResetGate = devResetGate;
             RenderTiles();
             RenderTabs();
             RenderResults();
@@ -308,7 +324,7 @@ namespace BuildConsole
             _searchCts = null;
 
             string q = PaletteInput.Text?.Trim() ?? "";
-            if (_sqlMode || _dispatchMode || q.Length == 0)
+            if (_sqlMode || _dispatchMode || _resetConfirmMode || q.Length == 0)
             {
                 _searchResults = new();
                 return;
@@ -335,7 +351,7 @@ namespace BuildConsole
             if (token.IsCancellationRequested) return;
 
             _searchResults = results;
-            if (!_sqlMode && !_dispatchMode) RenderResults(preserveSelection: true);
+            if (!_sqlMode && !_dispatchMode && !_resetConfirmMode) RenderResults(preserveSelection: true);
         }
 
         private List<PaletteCommand> FilterCommands(string query)
@@ -408,6 +424,18 @@ namespace BuildConsole
                 e.Handled = true;
                 CloseOnce();
             }
+            else if (_resetConfirmMode && e.Key == Key.Enter)
+            {
+                // Git #4415 — the only keyboard path to a REAL reset: Enter while the input holds
+                // the exact confirm phrase after a successful preview. Unarmed (no preview yet, a
+                // wrong MSP id, or the confirmation already consumed by a run) it does nothing.
+                e.Handled = true;
+                _ = RunConfirmedDevResetAsync();
+            }
+            else if (_resetConfirmMode && (e.Key == Key.Down || e.Key == Key.Up || e.Key == Key.Tab))
+            {
+                e.Handled = true;
+            }
             else if (_sqlMode && e.Key == Key.Enter)
             {
                 // Git #3828 — keyboard-only: Enter runs the query without a click, and
@@ -471,6 +499,12 @@ namespace BuildConsole
             PalettePlaceholder.Visibility =
                 PaletteInput.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
             _liveResultText = null;
+
+            // Git #4415 — any edit clears a previous real-reset result; the confirm-phrase shape
+            // (not Dispatch mode) switches the palette into the reset confirm view.
+            _resetResultText = null;
+            _resetConfirmMode = _devResetGate != null && !_dispatchMode
+                && ResetConfirmShape.IsMatch(PaletteInput.Text);
 
             // Git #3828 — real SQL detection: switching in/out of SQL mode resets any
             // stale results from a previous query rather than showing them against new text.
@@ -554,6 +588,7 @@ namespace BuildConsole
 
         private void DetailAction_Click(object sender, MouseButtonEventArgs e)
         {
+            if (_resetConfirmMode) { _ = RunConfirmedDevResetAsync(); return; }
             if (_sqlMode) { _ = RunSqlQueryAsync(); return; }
             if (_dispatchMode)
             {
@@ -697,6 +732,13 @@ namespace BuildConsole
         private void RenderResults(bool preserveSelection = false)
         {
             PaletteResults.Children.Clear();
+
+            if (_resetConfirmMode)
+            {
+                RenderResetConfirmRow();
+                RenderDetail();
+                return;
+            }
 
             if (_dispatchMode)
             {
@@ -903,6 +945,12 @@ namespace BuildConsole
         private void RenderDetail()
         {
             PaletteDetail.Children.Clear();
+
+            if (_resetConfirmMode)
+            {
+                RenderResetConfirmDetail();
+                return;
+            }
 
             if (_dispatchMode)
             {
@@ -1503,6 +1551,217 @@ namespace BuildConsole
                 LineHeight = 17,
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = (Brush)FindResource(_dispatchAnyError ? "StatusErrorBrush" : "TextSecondaryBrush"),
+            });
+        }
+
+        // ── Git #4415 — Reset dev database: typed-phrase confirm step ─────────────────────────
+
+        /// <summary>True when the typed phrase matches a successful preview in this palette session —
+        /// the only state in which Enter/the action button reaches the real reset.</summary>
+        private bool ResetArmed => _devResetGate != null && _devResetGate.Matches(PaletteInput.Text);
+
+        /// <summary>The real reset — only reachable from confirm mode, and the gate re-checks the
+        /// typed phrase itself before running anything.</summary>
+        private async Task RunConfirmedDevResetAsync()
+        {
+            if (_devResetGate == null || _resetRunning || !ResetArmed) return;
+
+            string typed = PaletteInput.Text;
+            _resetRunning = true;
+            _resetResultText = null;
+            RenderResults(preserveSelection: true);
+
+            (bool Ok, string Text) outcome;
+            try
+            {
+                outcome = await _devResetGate.ExecuteAsync(typed);
+            }
+            catch (Exception ex)
+            {
+                outcome = (false, $"✗ Real reset threw before it could report: {ex.Message}");
+            }
+
+            _resetRunning = false;
+            _resetResultOk = outcome.Ok;
+            _resetResultText = outcome.Text;
+
+            // The palette closes itself if it loses focus mid-run; the toast is the outcome's
+            // backstop so a real reset never finishes silently.
+            string firstLines = string.Join(" ", outcome.Text.Split('\n').Take(3).Select(l => l.Trim()).Where(l => l.Length > 0));
+            if (outcome.Ok) ToastEngine.Success("Reset dev database", firstLines);
+            else ToastEngine.Error("Reset dev database", firstLines);
+
+            if (_resetConfirmMode) RenderResults(preserveSelection: true);
+        }
+
+        private void RenderResetConfirmRow()
+        {
+            bool armed = ResetArmed;
+            string subtitle = _resetRunning
+                ? "Backing up, then resetting for real…"
+                : _resetResultText != null
+                    ? (_resetResultOk ? "Real reset completed — backup location in the right pane" : "Real reset failed — see the right pane")
+                    : armed
+                        ? "Confirmed phrase — Enter runs the REAL reset (backup first)"
+                        : "Locked — no matching successful preview in this palette session";
+
+            var dock = new DockPanel();
+            dock.Children.Add(new Border
+            {
+                Width = 30,
+                Height = 30,
+                CornerRadius = new CornerRadius(7),
+                Margin = new Thickness(0, 0, 10, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Background = (Brush)FindResource("CardBackgroundBrush"),
+                Child = new TextBlock
+                {
+                    Text = "", // Segoe MDL2 "Warning"
+                    FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                    FontSize = 13,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = (Brush)FindResource("StatusErrorBrush"),
+                },
+            });
+            DockPanel.SetDock(dock.Children[0], Dock.Left);
+
+            var tag = new Border
+            {
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(6, 2, 6, 2),
+                VerticalAlignment = VerticalAlignment.Center,
+                BorderBrush = (Brush)FindResource("StatusErrorBrush"),
+                BorderThickness = new Thickness(1),
+                Child = new TextBlock
+                {
+                    Text = armed || _resetRunning ? "DESTRUCTIVE" : "LOCKED",
+                    FontSize = 8.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = (Brush)FindResource("StatusErrorBrush"),
+                },
+            };
+            DockPanel.SetDock(tag, Dock.Right);
+            dock.Children.Add(tag);
+
+            var textStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            textStack.Children.Add(new TextBlock
+            {
+                Text = "Confirm & Reset Dev Database For Real",
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = (Brush)FindResource("TextPrimaryBrush"),
+            });
+            textStack.Children.Add(new TextBlock
+            {
+                Text = subtitle,
+                FontSize = 11,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = (Brush)FindResource("TextSecondaryBrush"),
+            });
+            dock.Children.Add(textStack);
+
+            PaletteResults.Children.Add(new Border
+            {
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(10, 8, 10, 8),
+                Margin = new Thickness(0, 2, 0, 2),
+                BorderThickness = new Thickness(1),
+                BorderBrush = (Brush)FindResource(armed || _resetRunning ? "StatusErrorBrush" : "BorderDividerBrush"),
+                Child = dock,
+            });
+        }
+
+        private void RenderResetConfirmDetail()
+        {
+            bool armed = ResetArmed;
+            if (_resetRunning)
+            {
+                PaletteDetailActionHost.Visibility = Visibility.Visible;
+                PaletteDetailActionLabel.Text = "Resetting…";
+            }
+            else if (armed)
+            {
+                PaletteDetailActionHost.Visibility = Visibility.Visible;
+                PaletteDetailActionLabel.Text = "Confirm & Reset For Real  ↵";
+            }
+            else
+            {
+                PaletteDetailActionHost.Visibility = Visibility.Collapsed;
+            }
+
+            PaletteDetail.Children.Add(new Border
+            {
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(6, 2, 6, 2),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                BorderBrush = (Brush)FindResource("StatusErrorBrush"),
+                BorderThickness = new Thickness(1),
+                Child = new TextBlock
+                {
+                    Text = "DESTRUCTIVE — REAL RESET",
+                    FontSize = 8.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = (Brush)FindResource("StatusErrorBrush"),
+                },
+            });
+
+            string title = _devResetGate?.PreviewedMspId is int id && armed
+                ? $"Reset msp #{id} \"{_devResetGate.PreviewedMspName}\""
+                : "Reset dev database";
+            PaletteDetail.Children.Add(new TextBlock
+            {
+                Text = title,
+                Margin = new Thickness(0, 10, 0, 6),
+                FontSize = 15,
+                FontWeight = FontWeights.Bold,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = (Brush)FindResource("TextPrimaryBrush"),
+            });
+
+            string body = _resetRunning
+                ? "Running node scripts/db/reset-dev-database.mjs --yes — it re-runs its own dry run, takes a "
+                  + "pg_dump backup, then commits the reset. The real output (including the backup file) shows here when it finishes."
+                : _resetResultText
+                  ?? (armed
+                      ? "Enter (or the button below) runs node scripts/db/reset-dev-database.mjs --yes for real: its "
+                        + "tenants/customers and their downstream data are deleted after a fresh pg_dump backup. "
+                        + "MSP-staff logins, MSP config and every other MSP are left alone. This confirmation is used up "
+                        + "by one run — another reset needs a new preview."
+                      : _devResetGate?.ConfirmPhrase is string phrase
+                          ? $"That isn't the confirm phrase for the preview you ran. The phrase is: {phrase}"
+                          : "The real reset is locked. Clear the input, select \"Reset dev database\" and press Enter to run "
+                            + "the dry-run preview first — it prints the exact phrase to type here.");
+
+            if (_resetResultText != null)
+            {
+                PaletteDetail.Children.Add(new TextBox
+                {
+                    Text = body,
+                    IsReadOnly = true,
+                    TextWrapping = TextWrapping.Wrap,
+                    AcceptsReturn = true,
+                    FontFamily = new FontFamily("Cascadia Code, Consolas, Courier New"),
+                    FontSize = 10.5,
+                    Background = (Brush)FindResource("CardBackgroundBrush"),
+                    BorderThickness = new Thickness(1),
+                    BorderBrush = (Brush)FindResource(_resetResultOk ? "BorderDividerBrush" : "StatusErrorBrush"),
+                    Foreground = (Brush)FindResource("TextPrimaryBrush"),
+                    Padding = new Thickness(8),
+                    MaxHeight = 330,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                });
+                return;
+            }
+
+            PaletteDetail.Children.Add(new TextBlock
+            {
+                Text = body,
+                FontSize = 11.5,
+                LineHeight = 17,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = (Brush)FindResource(armed ? "StatusErrorBrush" : "TextSecondaryBrush"),
             });
         }
     }
