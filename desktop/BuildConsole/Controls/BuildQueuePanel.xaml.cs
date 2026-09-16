@@ -4539,11 +4539,15 @@ namespace BuildConsole.Controls
                     : $"Click to filter the queue below down to \"{buildSetKey}\" (combines with the status filter + search box above)"
             };
 
+            // Git #4368 — the title/counts line and the badge+icon controls used to share one
+            // Grid row: a long chain title squeezed the send button/needs-attention pill/chevron
+            // toward (and past) the card's right edge, making the dispatch icon unclickable. Two
+            // rows instead: row 0 is the title/counts line alone (full width, free to wrap), row
+            // 1 is the badge+icon strip on its own row underneath, so it never competes with the
+            // title for horizontal space regardless of how long the title is.
             var headerGrid = new Grid();
-            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            headerGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            headerGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             // Git #3813 — the buildSet name used to render in the full-saturation accent
             // color directly, which on a selected row sits on a low-opacity tint of that same
@@ -4580,8 +4584,15 @@ namespace BuildConsole.Controls
             }
             Grid.SetColumn(summaryText, 1);
             summaryRow.Children.Add(summaryText);
-            Grid.SetColumn(summaryRow, 0);
+            Grid.SetRow(summaryRow, 0);
             headerGrid.Children.Add(summaryRow);
+
+            // Git #4368 — the send button, needs-attention pill, and chevron live on their own
+            // row (row 1) underneath the title, right-aligned as a group, instead of fighting the
+            // title line for horizontal space.
+            var badgeRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            Grid.SetRow(badgeRow, 1);
+            headerGrid.Children.Add(badgeRow);
 
             // Git #1932 — only the Verifying items this build set hasn't already sent count
             // toward whether the send button shows/what it sends. GetUnsentVerifying never
@@ -4620,8 +4631,7 @@ namespace BuildConsole.Controls
                     Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
                     ToolTip = $"Send {buildSetKey}'s {landedEligible.Count} verified, not-yet-sent landed item(s) as a landed-list to the active chat"
                 };
-                Grid.SetColumn(sendButton, 1);
-                headerGrid.Children.Add(sendButton);
+                badgeRow.Children.Add(sendButton);
             }
 
             // Git #3616 — a distinct, honestly-labeled "needs attention" pill for Verifying items
@@ -4639,8 +4649,7 @@ namespace BuildConsole.Controls
                     Foreground = (Brush)Application.Current.FindResource("StatusWarningBrush"),
                     ToolTip = $"{needsAttention.Count} Verifying item(s) with no verified DONE bookend yet — not reported as landed: {string.Join(", ", needsAttention.Select(FormatIssueRef))}"
                 };
-                Grid.SetColumn(needsAttentionPill, 2);
-                headerGrid.Children.Add(needsAttentionPill);
+                badgeRow.Children.Add(needsAttentionPill);
             }
 
             var chevron = new ToggleButton
@@ -4652,8 +4661,7 @@ namespace BuildConsole.Controls
                 Margin = new Thickness(6, 0, 0, 0),
                 ToolTip = "Expand for the full per-category breakdown"
             };
-            Grid.SetColumn(chevron, 3);
-            headerGrid.Children.Add(chevron);
+            badgeRow.Children.Add(chevron);
 
             headerBorder.Child = headerGrid;
             wrapper.Children.Add(headerBorder);
