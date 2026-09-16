@@ -23,6 +23,12 @@ import { ConsentOnboardingShell, ConsentCard, ConsentLedger } from "@/components
  * `@workspace/db` into this Vite app — the same reason
  * `account-security-api.ts` (`artifacts/msp-console`) keeps its own literal
  * copy instead of importing the server's Drizzle schema type.
+ *
+ * Git #4435 — `Free` is not a staff role; it's the real customer-facing role
+ * for a funnel Prospect (free-scan lead / assessment buyer before promotion
+ * to `Customer`). It still lands here because `RequireAuth` gates on
+ * anything `!== "Customer"`, but it gets its own honest copy branch below
+ * instead of the "staff account" / Admin Panel messaging the other roles get.
  */
 const ROLE_LABELS: Record<string, string> = {
   Free: "Free",
@@ -55,6 +61,7 @@ const ALL_ROLES = [
 
 export default function PortalIdentityInterstitialPage({ onContinue }: { onContinue: () => void }) {
   const { user, logout } = useAuth();
+  const isFree = user?.mspRole === "Free";
   const roleLabel = (user?.mspRole && ROLE_LABELS[user.mspRole]) || "a staff";
 
   async function handleLogOut() {
@@ -67,13 +74,24 @@ export default function PortalIdentityInterstitialPage({ onContinue }: { onConti
       <ConsentCard>
         <div className="flex flex-col gap-1" data-testid="identity-interstitial-card">
           <span className="text-lg font-bold tracking-tight text-foreground">
-            You signed in with a staff account
+            {isFree ? "Your account isn't fully set up yet" : "You signed in with a staff account"}
           </span>
           <span className="text-[12.5px] leading-relaxed text-muted-foreground" data-testid="identity-interstitial-role">
-            This is the customer portal. Your session carries the{" "}
-            <span className="font-semibold text-foreground">{roleLabel}</span> role, whose home is
-            the Admin Panel. Nothing here is broken — you are just in the customer-facing half of
-            the platform.
+            {isFree ? (
+              <>
+                This is the customer portal. Your session still carries the{" "}
+                <span className="font-semibold text-foreground">Free</span> role from the
+                free-scan/assessment funnel, ahead of your account being promoted to a full
+                Customer. Nothing here is broken — you can continue into the portal now.
+              </>
+            ) : (
+              <>
+                This is the customer portal. Your session carries the{" "}
+                <span className="font-semibold text-foreground">{roleLabel}</span> role, whose home
+                is the Admin Panel. Nothing here is broken — you are just in the customer-facing
+                half of the platform.
+              </>
+            )}
           </span>
         </div>
 
@@ -97,9 +115,11 @@ export default function PortalIdentityInterstitialPage({ onContinue }: { onConti
         </span>
 
         <div className="flex flex-wrap gap-2.5 border-t border-border/60 pt-3.5">
-          <Button variant="outline" data-testid="identity-interstitial-logout" onClick={() => void handleLogOut()}>
-            Log out and sign in at the Admin Panel
-          </Button>
+          {!isFree && (
+            <Button variant="outline" data-testid="identity-interstitial-logout" onClick={() => void handleLogOut()}>
+              Log out and sign in at the Admin Panel
+            </Button>
+          )}
           <Button data-testid="identity-interstitial-accept" onClick={onContinue}>
             Continue into the customer portal
           </Button>
