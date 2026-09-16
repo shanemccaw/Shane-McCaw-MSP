@@ -157,6 +157,12 @@ export interface ResumablePurchase {
   email: string;
   fullName: string;
   company: string | null;
+  /**
+   * Whether the account has an active MFA method. False for a buyer who set a
+   * password through the pre-consent door and left before enrolling — the page
+   * sends them back to that enrollment, which comes before consent.
+   */
+  mfaEnrolled: boolean;
   /** True when the session had lapsed and this call extended it. */
   renewed: boolean;
 }
@@ -232,6 +238,7 @@ export async function findResumablePurchase(userId: number): Promise<ResumablePu
     email: user.email,
     fullName: row.fullName,
     company: row.company,
+    mfaEnrolled: (await activeMfaMethodCount(user.id)) > 0,
     renewed,
   };
 }

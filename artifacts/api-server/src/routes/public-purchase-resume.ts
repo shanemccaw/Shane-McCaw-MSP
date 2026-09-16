@@ -16,7 +16,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
-import { requireAuth } from "../middlewares/requireAuth.ts";
+import jwt from "jsonwebtoken";
+import type { AuthUser } from "../middlewares/requireAuth.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 import { findResumablePurchase, updateMonitoringSelection } from "../lib/account-first-purchase.ts";
@@ -49,8 +50,42 @@ const selectionLimiter = rateLimit({
 // renewal is idempotent and owner-only, and the page calls this once right after
 // sign-in; it is not something a crawler or prefetch can reach without the token.
 
-router.get("/public/purchase/resume", resumeLimiter, requireAuth, async (req: Request, res: Response) => {
-  const userId = req.user!.id;
+/**
+ * The signed-in buyer, from a verified Bearer token. Not requireAuth: that
+ * middleware refuses a token issued with `mfaSetupPending` (MFA enforcement on,
+ * no method enrolled yet — #439), and that is exactly the buyer who created a
+ * password through the pre-consent door and lost the tab before enrolling MFA.
+ * Resuming hands them back only the session their own account already owns,
+ * whose next step is that enrollment. Impersonation tokens are refused: resume
+ * can renew a lapsed session, and admin preview is read-only.
+ */
+function resumePrincipal(req: Request, res: Response): number | null {
+  const header = req.headers.authorization;
+  const secret = process.env.JWT_SECRET;
+  if (!header?.startsWith("Bearer ") || !secret) {
+    res.status(401).json({ error: "Missing or invalid Authorization header" });
+    return null;
+  }
+  try {
+    const payload = jwt.verify(header.slice(7), secret) as AuthUser;
+    if (payload.impersonatedBy) {
+      res.status(403).json({ error: "This action is not available in admin preview mode" });
+      return null;
+    }
+    if (typeof payload.id !== "number") {
+      res.status(401).json({ error: "Invalid or expired token" });
+      return null;
+    }
+    return payload.id;
+  } catch {
+    res.status(401).json({ error: "Invalid or expired token" });
+    return null;
+  }
+}
+
+router.get("/public/purchase/resume", resumeLimiter, async (req: Request, res: Response) => {
+  const userId = resumePrincipal(req, res);
+  if (userId == null) return;
   const purchase = await findResumablePurchase(userId);
 
   if (!purchase) {

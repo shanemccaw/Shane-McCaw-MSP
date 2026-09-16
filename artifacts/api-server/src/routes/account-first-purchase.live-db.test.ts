@@ -30,6 +30,7 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import request from "supertest";
 import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 import { randomUUID } from "node:crypto";
 import { generateSync } from "otplib";
 import { and, eq, inArray, like, sql } from "drizzle-orm";
@@ -217,6 +218,7 @@ describeLive("#4377 — account-first Monitoring order + returning-buyer resume,
     const resumedPending = await request(app).get("/public/purchase/resume").set("Authorization", `Bearer ${token}`);
     expect(resumedPending.status, JSON.stringify(resumedPending.body)).toBe(200);
     expect(resumedPending.body).toMatchObject({
+      mfaEnrolled: true,
       sessionId,
       productSlug: sibling,
       productCategory: "monitoring",
@@ -306,6 +308,29 @@ describeLive("#4377 — account-first Monitoring order + returning-buyer resume,
     expect(none.body.error).toBe("no_purchase_in_progress");
     const [other] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, otherEmail));
     expect(other).toBeTruthy();
+
+    // A buyer who set a password but lost the tab before MFA: under enforcement
+    // their login token carries mfaSetupPending, which requireAuth refuses. Resume
+    // still hands back their own session, reporting MFA not yet enrolled.
+    const halfEmail = emailFor("half");
+    const halfSession = await createSession("half", slug, seats);
+    const halfResolved = await flow.resolvePreConsentPurchaseSession(halfSession);
+    if (!halfResolved.ok) throw new Error(halfResolved.error);
+    const { code: halfCode } = await flow.issueVerificationCode(halfResolved.session);
+    await request(app).post("/public/purchase/pre-consent/verify-code").send({ sessionId: halfSession, code: halfCode }).expect(200);
+    await request(app).post("/public/purchase/pre-consent/create-account").send({ sessionId: halfSession, password: PASSWORD }).expect(200);
+    const [half] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, halfEmail));
+    const setupPendingToken = jwt.sign(
+      { id: half.id, email: halfEmail, role: "client", mspRole: LEGACY_ROLE.monitoringPending, mfaSetupPending: true },
+      process.env.JWT_SECRET!,
+      { expiresIn: "5m" },
+    );
+    const halfResume = await request(app).get("/public/purchase/resume").set("Authorization", `Bearer ${setupPendingToken}`);
+    expect(halfResume.status, JSON.stringify(halfResume.body)).toBe(200);
+    expect(halfResume.body).toMatchObject({ sessionId: halfSession, status: "pending", mfaEnrolled: false });
+    // An admin-preview token never resumes (resume can renew a session).
+    const previewToken = jwt.sign({ id: half.id, email: halfEmail, role: "client", impersonatedBy: 1 }, process.env.JWT_SECRET!, { expiresIn: "5m" });
+    await request(app).get("/public/purchase/resume").set("Authorization", `Bearer ${previewToken}`).expect(403);
 
     // A retainer session is not account-first: its consent URL is untouched,
     // and it cannot be re-pointed at a monitoring tier.
