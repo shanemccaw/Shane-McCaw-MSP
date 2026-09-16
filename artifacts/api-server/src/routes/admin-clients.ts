@@ -40,12 +40,28 @@ const log = logger.child({ channel: "admin.clients" });
 
 // ─── GET /admin/clients/enriched ─────────────────────────────────────────────
 // Returns all clients with project counts, open task counts, and quiz scores.
-router.get("/admin/clients/enriched", requireAdmin, async (_req: Request, res: Response) => {
+//
+// #4320 — this route filtered on bare role='client' with no CLIENT_LADDER_ROLES
+// restriction and no mspId scoping, so staff/ServiceAccount rows (which also
+// carry role='client') surfaced as "customers", and — once a second real MSP
+// exists — any MSP's PlatformAdmin-scoped admin would receive every MSP's
+// clients. Mirrors the pattern already applied at admin-clients.ts:591-604
+// (#4256): restricted to customer-facing ladder rungs, scoped to the caller's
+// MSP when resolveMspId resolves one (PlatformAdmin with no ?mspId= keeps the
+// cross-platform view, same as that route).
+router.get("/admin/clients/enriched", requireAdmin, async (req: Request, res: Response) => {
   try {
+    const mspId = await resolveMspId(req);
+    const conditions = [
+      eq(usersTable.role, "client"),
+      inArray(usersTable.mspRole, CLIENT_LADDER_ROLES),
+    ];
+    if (mspId !== null) conditions.push(eq(usersTable.mspId, mspId));
+
     const clients = await db
       .select()
       .from(usersTable)
-      .where(eq(usersTable.role, "client"))
+      .where(and(...conditions))
       .orderBy(desc(usersTable.createdAt));
 
     if (clients.length === 0) {
