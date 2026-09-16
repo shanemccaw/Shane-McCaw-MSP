@@ -62,6 +62,7 @@ import ConsentDeclinedPage from "@/pages/consent-declined";
 import ConsentTenantConflictPage from "@/pages/consent-tenant-conflict";
 import OnboardingLinkPage from "@/pages/onboarding-link";
 import PortalIdentityInterstitialPage from "@/pages/portal-identity-interstitial";
+import ResumePurchasePage from "@/pages/resume-purchase";
 import LiveDocumentViewerPage from "@/pages/live-document-viewer";
 
 const queryClient = new QueryClient();
@@ -75,6 +76,15 @@ const ROUTER_BASE = (import.meta.env.BASE_URL || "/portal/").replace(/\/$/, "");
 // /api/auth/*). #2991 (Feature #1648, Auth Core) wired the 6 real screens
 // this now links to, so an unauthenticated visitor gets a real path in
 // instead of a dead end.
+/**
+ * The three pre-consent rungs #4370/#4371 put on the ladder. Mirrors
+ * `PENDING_PURCHASE_ROLES` in `artifacts/api-server/src/lib/pending-purchase-gate.ts`
+ * as a local literal — same reason `PortalIdentityInterstitialPage`'s
+ * `ALL_ROLES` keeps its own copy of the taxonomy rather than importing
+ * `@workspace/db` into this Vite app.
+ */
+const PENDING_PURCHASE_ROLES = new Set(["MonitoringPending", "PackPending", "RetainerPending"]);
+
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
   // Feature #1650 / Git #3993 — a staff role that authenticated at the
@@ -109,6 +119,17 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
         </div>
       </div>
     );
+  }
+
+  // Issue 3 of #4376 (#4379) / server-side gate #4375 — a `*Pending` account
+  // has a real, immediately-usable account (#4374) but no consented tenant
+  // yet, and Shane confirmed it may see ONLY the resume-purchase stub —
+  // nothing else in the portal. Checked before the staff-interstitial branch
+  // below (a `*Pending` role would otherwise also match `!== "Customer"`),
+  // and unconditionally — unlike the interstitial, there is no dismiss/
+  // continue action, since there is nothing else here for this account to see.
+  if (user.mspRole && PENDING_PURCHASE_ROLES.has(user.mspRole)) {
+    return <ResumePurchasePage />;
   }
 
   if (user.mspRole && user.mspRole !== "Customer" && !staffAcknowledged) {
@@ -165,6 +186,7 @@ function ProtectedRoutes() {
           <Route path="/projects/:id" component={ProjectDetailPage} />
           <Route path="/break-glass" component={BreakGlassStatusPage} />
           <Route path="/break-glass/:runId" component={BreakGlassStatusPage} />
+          <Route path="/resume-purchase" component={ResumePurchasePage} />
           <Route path="/coming-soon" component={ComingSoon} />
           <Route component={NotFound} />
         </Switch>

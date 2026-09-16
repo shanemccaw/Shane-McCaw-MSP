@@ -12,6 +12,7 @@ import { LEGACY_ROLE, LEGACY_ROLE_ORDER } from "@workspace/db/rbac/legacy-ladder
 import {
   PENDING_PURCHASE_GATE_ALLOWED_PREFIXES,
   PENDING_PURCHASE_GATE_CODE,
+  PENDING_PURCHASE_RESUME_PATH,
   PENDING_PURCHASE_ROLES,
   evaluatePendingPurchaseGate,
   isPendingGateAllowedPath,
@@ -70,11 +71,11 @@ describe("evaluatePendingPurchaseGate", () => {
 });
 
 describe("pendingPurchaseGateBody", () => {
-  it("carries the typed code, the rung, and an honest null resume path until #4379 lands", () => {
+  it("carries the typed code, the rung, and #4379's settled resume path", () => {
     expect(pendingPurchaseGateBody(LEGACY_ROLE.monitoringPending)).toEqual({
       code: PENDING_PURCHASE_GATE_CODE,
       pendingRole: LEGACY_ROLE.monitoringPending,
-      resumePath: null,
+      resumePath: PENDING_PURCHASE_RESUME_PATH,
       allowedPaths: PENDING_PURCHASE_GATE_ALLOWED_PREFIXES,
     });
   });

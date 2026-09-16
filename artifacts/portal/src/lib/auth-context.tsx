@@ -942,6 +942,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
+      // #4375's pending-purchase gate / #4379's resume stub — every API call a
+      // `*Pending` session makes outside `/auth/*`, `/public/*`, `/health`,
+      // `/version` comes back 403 `{ code: "pending_purchase", resumePath }`.
+      // App.tsx's RequireAuth already renders the stub client-side off the
+      // JWT's own mspRole for every normal render, so this is a defense-in-
+      // depth backstop (e.g. a request in flight when the role changed
+      // server-side) rather than the primary path — a hard navigation, since
+      // this runs outside the router.
+      if (res.status === 403) {
+        try {
+          const clone = res.clone();
+          const data = (await clone.json()) as { code?: string; resumePath?: string | null };
+          if (data.code === "pending_purchase" && data.resumePath && window.location.pathname !== data.resumePath) {
+            window.location.href = data.resumePath;
+            return res;
+          }
+        } catch {
+          // body not JSON — fall through to normal error handling below
+        }
+      }
+
       // Surface non-OK responses as toasts so every caller gets consistent
       // error feedback without each page needing its own error handler.
       // Callers doing best-effort background work (opts.silent) handle

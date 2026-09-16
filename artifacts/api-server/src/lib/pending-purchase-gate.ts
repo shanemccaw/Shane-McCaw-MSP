@@ -50,9 +50,14 @@ export const PENDING_PURCHASE_ROLES: readonly MspRole[] = Object.freeze([
  *     `/public/flow/*`) live here.
  *   - **Liveness** — `/health`, `/version`.
  *
- * TODO(#4379): add the resume-purchase stub's own API route(s) here once #4379 settles
- * them. Deliberately not guessed — until then the stub's data read is gated like any
- * other portal route, which fails closed rather than open.
+ * #4379 settled: the stub (`artifacts/portal/src/pages/resume-purchase.tsx`) makes no API
+ * call of its own — a `*Pending` account's real per-user state (product, email, the fact
+ * there is exactly one stage left: grant Microsoft consent) reads straight off the already-
+ * verified JWT, and its "continue" action hands off to the marketing site's existing public
+ * `/buy?product=...` entry point (already covered by `/public/`, and root-relative so it
+ * needs no gate route of its own). Session lifecycle (logout, silent refresh, the
+ * `/auth/me/context` capability read `useAuth` fires on every route) is already covered by
+ * `/auth/`. Nothing new to add here — the allowlist stays as it was.
  */
 export const PENDING_PURCHASE_GATE_ALLOWED_PREFIXES: readonly string[] = Object.freeze([
   "/auth/",
@@ -62,13 +67,13 @@ export const PENDING_PURCHASE_GATE_ALLOWED_PREFIXES: readonly string[] = Object.
 ]);
 
 /**
- * Where the gated portal should send a pending session.
- *
- * TODO(#4379): set to the resume-purchase stub's real portal route once #4379 posts it on
- * #4375. Null until then — the body reports "no destination yet" honestly rather than a
- * guessed path.
+ * Where the gated portal sends a pending session — the real, live route
+ * (#4379): `artifacts/portal/src/pages/resume-purchase.tsx`, registered at
+ * `/resume-purchase` in `App.tsx` and mounted under the portal's `/portal/`
+ * base (see `.replit-artifact/artifact.toml`). Posted on #4375 per that
+ * issue's request.
  */
-export const PENDING_PURCHASE_RESUME_PATH: string | null = null;
+export const PENDING_PURCHASE_RESUME_PATH: string | null = "/portal/resume-purchase";
 
 export interface PendingGatePrincipal {
   /** Legacy top-level role claim. `"admin"` is PlatformAdmin and is never pending. */

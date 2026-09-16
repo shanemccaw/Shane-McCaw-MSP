@@ -88,7 +88,7 @@ describeLive("#4375 — pending-purchase gate against the real database", () => 
   it("walls a RetainerPending session off an ordinary portal route", async () => {
     const res = await request(app).get(`/portal/${TAG}/dashboard`).set("Authorization", `Bearer ${tokenFor(LEGACY_ROLE.retainerPending)}`);
     expect(res.status).toBe(403);
-    expect(res.body).toMatchObject({ code: "pending_purchase", pendingRole: LEGACY_ROLE.retainerPending, resumePath: null });
+    expect(res.body).toMatchObject({ code: "pending_purchase", pendingRole: LEGACY_ROLE.retainerPending, resumePath: "/portal/resume-purchase" });
   });
 
   it("walls a pre-#4371 RetainerNoConsent token the same way", async () => {
