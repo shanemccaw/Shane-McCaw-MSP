@@ -1112,6 +1112,15 @@ export const consentInviteTokensTable = pgTable("consent_invite_tokens", {
   // creates the tenants row under THIS MSP and runs the cross-MSP tenant
   // conflict guard against it. No FK, same as customer_id.
   mspId: integer("msp_id"),
+  // MSP-issued onboarding links (#4426): the onboarding-link token this consent
+  // invite was minted from (POST /api/public/onboarding/link/:token/start-consent).
+  // Null for every other invite path (admin add-client, checkout, self-service).
+  // When set, the consent callback writes the tenants row it creates back into
+  // the matching msp_onboarding_links.resulting_customer_id, giving MyArchitect an
+  // unambiguous token→tenant link to poll (rather than guessing by email+mspId,
+  // which would misfire when two onboarding flows for the same email/MSP overlap —
+  // #4424's stated risk). No FK, matching this table's existing no-FK design.
+  onboardingLinkToken: text("onboarding_link_token"),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   usedAt: timestamp("used_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -1243,6 +1252,13 @@ export const mspOnboardingLinksTable = pgTable("msp_onboarding_links", {
   note: text("note"),
   // After the customer completes checkout, which Portal URL they land on
   redirectPortalUrl: text("redirect_portal_url"),
+  // #4426: the tenants.id (customer id) the consent callback provisioned for this
+  // onboarding link, written back once admin consent completes and the tenant is
+  // created. Null until then. tenants.id — no FK by design, matching the
+  // customer_id convention used across this schema (Phase 7 audit). Lets
+  // GET /api/msp/onboarding/links expose the id so MyArchitect can auto-apply the
+  // deferred retainer settings against the real, unambiguous customer (#4424).
+  resultingCustomerId: integer("resulting_customer_id"),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   usedAt: timestamp("used_at", { withTimezone: true }),
   createdByUserId: integer("created_by_user_id"),

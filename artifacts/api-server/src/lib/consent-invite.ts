@@ -48,7 +48,7 @@ const INVITE_TTL_HOURS = 72;
  */
 export async function createConsentInviteForEmail(
   req: Request,
-  opts: { email: string; name?: string | null; mspId?: number | null },
+  opts: { email: string; name?: string | null; mspId?: number | null; onboardingLinkToken?: string | null },
   executor: InviteInsertExecutor = db,
 ): Promise<{ token: string; consentUrl: string; expiresAt: Date; scopes: string[] }> {
   const token = randomBytes(32).toString("hex");
@@ -62,6 +62,11 @@ export async function createConsentInviteForEmail(
     invitedEmail: opts.email.toLowerCase().trim(),
     invitedName: opts.name?.trim() || null,
     mspId: opts.mspId ?? null, // null → the callback's isDirectBusiness default
+    // #4426: carry the onboarding-link token through so the consent callback can
+    // write the tenant it provisions back to that exact msp_onboarding_links row
+    // (unambiguous token linkage, not an email+mspId guess). Null on every non-
+    // onboarding invite path.
+    onboardingLinkToken: opts.onboardingLinkToken ?? null,
     expiresAt,
   });
 

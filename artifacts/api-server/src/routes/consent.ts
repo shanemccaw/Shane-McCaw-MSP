@@ -69,7 +69,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomBytes, createHash, createHmac, timingSafeEqual } from "crypto";
-import { db, tenantsTable, consentInviteTokensTable, checkoutSessionsTable, servicesTable, mspsTable, clientServicesTable, usersTable, type TenantConsentRecord, type TenantConsentMap } from "@workspace/db";
+import { db, tenantsTable, consentInviteTokensTable, checkoutSessionsTable, servicesTable, mspsTable, clientServicesTable, usersTable, mspOnboardingLinksTable, type TenantConsentRecord, type TenantConsentMap } from "@workspace/db";
 import { eq, and, isNull, gte, desc, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
@@ -683,7 +683,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   // Read ahead of the boundary guard below because an MSP-issued onboarding
   // invite (#4010) carries the mspId the guard has to check against. It is
   // burned only after the guard passes — a refused consent grants nothing.
-  let inviteRecord: { customerId: number | null; clientUserId: number | null; invitedEmail: string | null; invitedName: string | null; mspId: number | null } | null = null;
+  let inviteRecord: { customerId: number | null; clientUserId: number | null; invitedEmail: string | null; invitedName: string | null; mspId: number | null; onboardingLinkToken: string | null } | null = null;
   if (state && !isCheckoutSession) {
     const [row] = await db
       .select({
@@ -694,6 +694,9 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
         invitedEmail: consentInviteTokensTable.invitedEmail,
         invitedName: consentInviteTokensTable.invitedName,
         mspId: consentInviteTokensTable.mspId,
+        // #4426: set only when this invite came from an MSP onboarding link —
+        // used below to write the provisioned tenant back to that link's row.
+        onboardingLinkToken: consentInviteTokensTable.onboardingLinkToken,
       })
       .from(consentInviteTokensTable)
       .where(
@@ -1077,6 +1080,38 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
     );
     res.status(500).send("Consent was approved, but this platform could not record it. Please contact support — do not retry the link.");
     return;
+  }
+
+  // ── #4426: link the provisioned tenant back to its MSP onboarding link ───────
+  // The tenants row now genuinely exists (created just above on the MSP-onboarding
+  // path (c)), so recording its id on the originating msp_onboarding_links row is
+  // an accurate, additive write regardless of anything that happens further down
+  // this callback. It gives MyArchitect an unambiguous token→tenant link to poll,
+  // so a deferred retainer selection auto-applies to THIS customer and never a
+  // wrong one (#4424). Guarded on resulting_customer_id still being null so a
+  // retried/duplicate callback can't overwrite an already-recorded id; the token
+  // is set only on the MSP-onboarding start-consent path, so every other invite
+  // path skips this entirely.
+  if (inviteRecord?.onboardingLinkToken) {
+    try {
+      await db
+        .update(mspOnboardingLinksTable)
+        .set({ resultingCustomerId: consentTenant.id })
+        .where(
+          and(
+            eq(mspOnboardingLinksTable.token, inviteRecord.onboardingLinkToken),
+            isNull(mspOnboardingLinksTable.resultingCustomerId),
+          ),
+        );
+    } catch (err) {
+      // Non-fatal: the tenant and its grant are already recorded. A failure here
+      // only means the operator falls back to the manual retainer step (#4419),
+      // exactly the safety net #4426 keeps in place.
+      log.warn(
+        { err, onboardingLinkToken: stateFingerprint(inviteRecord.onboardingLinkToken), customerId: consentTenant.id },
+        "Consent callback: could not write resulting_customer_id back to the onboarding link (non-fatal)",
+      );
+    }
   }
 
   // ── Mark the checkout session consented ─────────────────────────────────────

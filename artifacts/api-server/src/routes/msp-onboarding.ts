@@ -175,6 +175,9 @@ router.get(
         serviceId: mspOnboardingLinksTable.serviceId,
         note: mspOnboardingLinksTable.note,
         redirectPortalUrl: mspOnboardingLinksTable.redirectPortalUrl,
+        // #4426: null until admin consent provisions the tenant, then the
+        // tenants.id of the customer this link produced — additive field only.
+        resultingCustomerId: mspOnboardingLinksTable.resultingCustomerId,
         expiresAt: mspOnboardingLinksTable.expiresAt,
         usedAt: mspOnboardingLinksTable.usedAt,
         createdByUserId: mspOnboardingLinksTable.createdByUserId,
@@ -339,7 +342,13 @@ router.post(
         )
         .returning({ token: mspOnboardingLinksTable.token });
       if (!claimed) return null;
-      return createConsentInviteForEmail(req, { email: row.customerEmail, mspId: row.mspId }, tx);
+      // #4426: pass this onboarding-link's own token so the consent callback can
+      // write its provisioned tenant back to msp_onboarding_links.resulting_customer_id.
+      return createConsentInviteForEmail(
+        req,
+        { email: row.customerEmail, mspId: row.mspId, onboardingLinkToken: token },
+        tx,
+      );
     });
 
     if (!minted) {
