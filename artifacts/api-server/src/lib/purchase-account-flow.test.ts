@@ -26,7 +26,7 @@ import {
   tenantsTable,
 } from "@workspace/db";
 import { desc, eq, inArray, like, sql } from "drizzle-orm";
-import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
+import { LEGACY_ROLE, type LegacyRole } from "@workspace/db/rbac/legacy-ladder";
 import { resolveProspectRole, provisionProspectAccount } from "./direct-tenant-provisioning.ts";
 import {
   resolvePaidPurchaseSession,
@@ -613,5 +613,89 @@ describe("provisionProspectAccount — a pre-consent *Pending account consents (
       .from(tenantsTable)
       .where(eq(tenantsTable.tenantId, tenantGuid));
     if (tenantRow) createdTenantIds.push(tenantRow.id);
+  });
+});
+
+// ── Git #4392 — paid Monitoring/Pack buyer is promoted to Customer ────────────
+//
+// Shane's decision (2026-09-16): `MonitoringConsented` / `PackConsented` are
+// transient post-consent, pre-payment states; payment promotes the buyer to
+// `Customer`. `RetainerConsented` stays (#3970). The promotion runs inside
+// attachPasswordToAccount — the one point where the session is provably paid
+// AND the address provably the buyer's — for both the `ok` and `already_set`
+// outcomes. The `already_set` shape below is the account-first sequence end to
+// end: *Pending (real password from day one) → consent → *Consented → pay.
+describe("attachPasswordToAccount — payment promotes a *Consented buyer to Customer (#4392, live DB)", () => {
+  async function consentedAccountWithPassword(category: "monitoring" | "config_pack" | "retainer", pending: LegacyRole) {
+    const email = testEmail(`paid-${category}`);
+    const tenantGuid = randomUUID();
+    await db.insert(usersTable).values({
+      email,
+      role: "client",
+      name: "Account-First Buyer",
+      mspRole: pending,
+      passwordHash: await bcrypt.hash("already my password", 4),
+    });
+    const consent = await provisionProspectAccount({ email, fullName: "Account-First Buyer", tenantId: tenantGuid, role: resolveProspectRole(category, true) });
+    expect(consent?.customerId).not.toBeNull();
+    const [tenantRow] = await db.select({ id: tenantsTable.id }).from(tenantsTable).where(eq(tenantsTable.tenantId, tenantGuid));
+    if (tenantRow) createdTenantIds.push(tenantRow.id);
+    return { email, tenantGuid };
+  }
+
+  async function payAndAttach(email: string, productSlug: string, tenantGuid: string) {
+    const session = await resolveOrThrow(await createSession({ email, productSlug, tenantId: tenantGuid }));
+    const { code } = await issueVerificationCode(session);
+    await checkVerificationCode(session.id, code);
+    return attachPasswordToAccount(session, "a brand new password", { provisionIfMissing: true });
+  }
+
+  async function roleOf(email: string) {
+    const [row] = await db.select({ mspRole: usersTable.mspRole }).from(usersTable).where(eq(usersTable.email, email));
+    return row.mspRole;
+  }
+
+  it.each([
+    ["monitoring", LEGACY_ROLE.monitoringPending, LEGACY_ROLE.monitoringConsented, "monitoring-foundation-smb"],
+    ["config_pack", LEGACY_ROLE.packPending, LEGACY_ROLE.packConsented, "monitoring-foundation-smb"],
+  ] as const)("%s: %s → %s → paid → Customer, via the already_set (returning buyer) outcome", async (category, pending, consented, productSlug) => {
+    const { email, tenantGuid } = await consentedAccountWithPassword(category, pending);
+    expect(await roleOf(email)).toBe(consented);
+
+    const r = await payAndAttach(email, productSlug, tenantGuid);
+    expect(r.outcome).toBe("already_set"); // the existing credential is never overwritten
+    expect(await roleOf(email)).toBe(LEGACY_ROLE.customer);
+
+    // Replay is a no-op: still Customer, still already_set.
+    const again = await payAndAttach(email, productSlug, tenantGuid);
+    expect(again.outcome).toBe("already_set");
+    expect(await roleOf(email)).toBe(LEGACY_ROLE.customer);
+  });
+
+  it("retainer: RetainerConsented is a paid terminal state (#3970) — payment does NOT promote it", async () => {
+    const { email, tenantGuid } = await consentedAccountWithPassword("retainer", LEGACY_ROLE.retainerPending);
+    expect(await roleOf(email)).toBe(LEGACY_ROLE.retainerConsented);
+
+    const r = await payAndAttach(email, "architect-essentials-retainer", tenantGuid);
+    expect(r.outcome).toBe("already_set");
+    expect(await roleOf(email)).toBe(LEGACY_ROLE.retainerConsented);
+  });
+
+  it("a paid-but-unconsented Retainer stays RetainerPending — no tenant, so Customer is not even representable", async () => {
+    const email = testEmail("paid-retainer-pending");
+    await db.insert(usersTable).values({
+      email,
+      role: "client",
+      name: "Skipped-Consent Retainer",
+      mspRole: LEGACY_ROLE.retainerPending,
+      passwordHash: await bcrypt.hash("already my password", 4),
+    });
+    const session = await resolveOrThrow(await createSession({ email, productSlug: "architect-essentials-retainer", tenantId: null }));
+    const { code } = await issueVerificationCode(session);
+    await checkVerificationCode(session.id, code);
+
+    const r = await attachPasswordToAccount(session, "a brand new password", { provisionIfMissing: true });
+    expect(r.outcome).toBe("already_set");
+    expect(await roleOf(email)).toBe(LEGACY_ROLE.retainerPending);
   });
 });

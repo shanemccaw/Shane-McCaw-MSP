@@ -537,21 +537,47 @@ export async function provisionProspectAccount(opts: {
 }
 
 /**
- * Promote a funnel Prospect from the pre-payment "Free" role up to
- * `Customer` once payment is confirmed — this is what unlocks the full portal
- * (Customer is the floor for the main portal; Free sits below it — #3590 folded
- * the old "Assessment" tier into Free).
+ * The pre-payment rungs a confirmed payment lifts to `Customer`. `Free` is the
+ * assessment-funnel Prospect (#3590 folded the old "Assessment" tier into it).
+ * `MonitoringConsented` / `PackConsented` are transient post-consent,
+ * pre-payment states, not paid terminal states — Shane's decision on #4392
+ * (2026-09-16): the buyer is promoted to `Customer` on payment and lands in
+ * the portal. `RetainerConsented` is deliberately NOT here: #3970 made it a
+ * distinct paid state that is never merged into `Customer`, and no `*Pending`
+ * rung is here either — a paid-but-unconsented Retainer stays `RetainerPending`
+ * (no tenant, and `Customer` requires one under users_role_scope_check).
+ */
+export const CUSTOMER_PROMOTABLE_ROLES = Object.freeze([
+  LEGACY_ROLE.free,
+  LEGACY_ROLE.monitoringConsented,
+  LEGACY_ROLE.packConsented,
+] as const);
+
+/**
+ * Promote a funnel Prospect from a pre-payment rung (CUSTOMER_PROMOTABLE_ROLES)
+ * up to `Customer` once payment is confirmed — this is what unlocks the full
+ * portal (Customer is the floor for the main portal; Free and the
+ * `*Consented` rungs sit below it).
  *
- * Idempotent and guarded: only rows currently at "Free" are
- * touched, so an existing Customer / MSPAdmin / etc. is never downgraded or
- * re-stamped, and re-delivered webhooks are safe. Non-fatal.
+ * Idempotent and guarded: only rows currently at one of those rungs are
+ * touched, so an existing Customer / RetainerConsented / MSPAdmin / etc. is
+ * never downgraded or re-stamped, and a replayed call is safe. Every
+ * promotable rung already requires a tenant under users_role_scope_check, so
+ * the promoted row satisfies `Customer`'s tenant requirement by construction.
+ * Non-fatal.
+ *
+ * Call it only where BOTH facts hold: the session is paid AND the buyer's
+ * address is proven (attachPasswordToAccount). Payment confirmation alone
+ * arrives before the mailbox is verified, and promoting whatever account
+ * happens to carry an unverified email would let a stranger's payment change
+ * someone else's role.
  */
 export async function promoteMspUserToCustomer(userId: number): Promise<void> {
   try {
     await db
       .update(usersTable)
       .set({ mspRole: LEGACY_ROLE.customer, updatedAt: new Date() })
-      .where(and(eq(usersTable.id, userId), eq(usersTable.mspRole, LEGACY_ROLE.free)));
+      .where(and(eq(usersTable.id, userId), inArray(usersTable.mspRole, [...CUSTOMER_PROMOTABLE_ROLES])));
   } catch (err) {
     log.warn({ err, userId }, "promoteMspUserToCustomer: role promotion failed (non-fatal)");
   }

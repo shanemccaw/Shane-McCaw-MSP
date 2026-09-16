@@ -69,7 +69,7 @@ import {
   servicesTable,
 } from "@workspace/db";
 import { and, desc, eq, gte, isNotNull, isNull } from "drizzle-orm";
-import { provisionProspectAccount, resolveProspectRole } from "./direct-tenant-provisioning.ts";
+import { provisionProspectAccount, resolveProspectRole, promoteMspUserToCustomer } from "./direct-tenant-provisioning.ts";
 import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "auth" });
@@ -374,6 +374,19 @@ export async function attachPasswordToAccount(
       "purchase account flow: provisioned account inline (no consent-time provisioning ran for this session)",
     );
   }
+
+  // #4392 (Shane, 2026-09-16) — the buyer is promoted to `Customer` on payment.
+  // This is the one point in the flow where both facts the promotion needs
+  // hold: `session` is a PaidPurchaseSession (resolvePaidPurchaseSession only
+  // yields one for a paid, unexpired row) and `email` was just re-proven above.
+  // Runs for the returning buyer too, before the `already_set` return below:
+  // an account created before consent (#4374's door, real password from day
+  // one) that consented into `MonitoringConsented`/`PackConsented` and then
+  // paid arrives here exactly as `already_set`, and it is the case #4392 is
+  // about. Guarded inside (only Free / MonitoringConsented / PackConsented
+  // move; RetainerConsented and every *Pending rung stay), so a real
+  // Customer/MSPAdmin returning buyer is a no-op. Non-fatal.
+  await promoteMspUserToCustomer(user.id);
 
   if (user.passwordHash) {
     return { outcome: "already_set", userId: user.id };
