@@ -841,9 +841,10 @@ namespace BuildConsole.Services
         /// <summary>Enables auto-pushing committed automated QA artifacts to the remote branch. Default true
         /// (Git #4122) — with commit-only (this flag off) the shared main checkout accumulates local-only
         /// commits on every automated QA run, which permanently breaks the dev-server's fast-forward once
-        /// origin/main moves. The push path now does fetch + rebase-onto-origin/main + retry, and unwinds
-        /// the local commit via 'git reset --keep' rather than stranding it on any failure path — see
-        /// UiAutomationQaSessionService.PushArtifactCommitWithRebaseAsync.</summary>
+        /// origin/main moves. The publish path builds and pushes the commit in isolation (GIT_INDEX_FILE +
+        /// commit-tree against origin/main), never touching the shared checkout's real index or branch ref,
+        /// so it never rebases/publishes an unrelated local commit and never blocks on a dirty checkout
+        /// (Git #4389) — see UiAutomationQaSessionService.PublishArtifactCommitIsolatedAsync.</summary>
         public bool AutomationQaAutoPushEnabled { get; set; } = true;
 
         /// <summary>Threshold in milliseconds above which an API response is logged as slow in the automation report. Default 1500ms.</summary>
