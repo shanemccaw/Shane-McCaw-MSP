@@ -39,6 +39,7 @@ import {
   paginatedResponse,
 } from "../lib/api-helpers.ts";
 import { cancelJob, requeueJob } from "../lib/msp-jobs.ts";
+import { resolveCustomerTierEntitlement } from "../lib/portal-tier-features.ts";
 import webhooksRouter from "./msp-webhooks.ts";
 import portalWfRouter from "./portal-wf-api.ts";
 import aiBillingRouter from "./ai-billing.ts";
@@ -161,7 +162,19 @@ router.get(
       .limit(pg.pageSize)
       .offset(pg.offset);
 
-    res.json(paginatedResponse(rows, total, pg));
+    // Real Monitoring tier (services.tier via services.service_type =
+    // 'monitoring_tier'), the same resolver Launch Control's entitlement gate
+    // uses (#4213) — not the MSP sales-bundle path, which can't distinguish
+    // Enhanced from Premium. Null when the customer has no active monitoring
+    // subscription; never fabricated.
+    const rowsWithTier = await Promise.all(
+      rows.map(async (row) => {
+        const { currentTier } = await resolveCustomerTierEntitlement(row.id);
+        return { ...row, monitoringTier: currentTier };
+      }),
+    );
+
+    res.json(paginatedResponse(rowsWithTier, total, pg));
   },
 );
 
