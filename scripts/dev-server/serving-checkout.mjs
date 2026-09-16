@@ -373,6 +373,51 @@ export function verifyServingCheckout(config, { commits = [], apiSpawnedAt = nul
   return res;
 }
 
+/**
+ * Git #4390 -- retry wrapper around verifyServingCheckout for the window right
+ * after an api-server rebuild was spawned.
+ *
+ * The bug this closes: refreshMainServer used to call verifyServingCheckout
+ * exactly ONCE, immediately after waitForFreshApiListener resolved. But
+ * waitForFreshApiListener only proves "some pid other than the old ones is on
+ * the port" -- a weak, early signal (it can fire on a transient/orphaned
+ * handle, or on the split second between the new process binding the socket
+ * and node finishing enough startup work for a real snapshot to see it
+ * stably). The real cycle behind Git #4390 (c-1789574065319-10396) rebuilt the
+ * api-server fine and bound :8080 about 4s after the ONE verify call ran --
+ * that single snapshot landed in the gap and reported permanent NOT LIVE
+ * (exit 3) for a restart that had already succeeded.
+ *
+ * This retries the SAME real check on a short interval until it verifies or
+ * `deadline` passes -- but only while the failure is one a few more seconds
+ * could plausibly fix (nothing listening yet / the listener predates the
+ * rebuild / it can't yet be attributed to a checkout). Any other problem
+ * (a commit genuinely absent from the serving checkout, the port held by a
+ * DIFFERENT checkout entirely) is structural, not a timing race -- retrying
+ * for the full window would just delay an honest failure, so those return
+ * immediately on the first attempt.
+ */
+export async function verifyServingCheckoutUntil(config, opts = {}, deadline = Date.now(), { intervalMs = 2000, sleep } = {}) {
+  const doSleep = sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
+  let attempts = 0;
+  let res;
+  for (;;) {
+    res = verifyServingCheckout(config, opts);
+    attempts++;
+    if (res.verified) break;
+    if (!opts.apiSpawnedAt) break; // no rebuild in flight to wait out -- one-shot check
+    const retryable =
+      res.problems.length > 0 &&
+      res.problems.every(
+        (p) => p.includes("nothing is listening") || p.includes("predates the rebuild") || p.includes("could not attribute")
+      );
+    if (!retryable) break;
+    if (Date.now() >= deadline) break;
+    await doSleep(Math.min(intervalMs, Math.max(0, deadline - Date.now())));
+  }
+  return { ...res, attempts };
+}
+
 /** One-line human summary of a verification. */
 export function describeVerification(v) {
   if (!v) return "not verified";

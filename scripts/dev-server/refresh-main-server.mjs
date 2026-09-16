@@ -42,7 +42,7 @@ import { pathToFileURL } from "node:url";
 import { loadConfig } from "./config.mjs";
 import { git, revParse, isAncestor, shortSha, diffNameOnly } from "./git.mjs";
 import { pidAlive } from "./lock.mjs";
-import { findListeningPids, verifyServingCheckout, describeVerification } from "./serving-checkout.mjs";
+import { findListeningPids, verifyServingCheckoutUntil, describeVerification } from "./serving-checkout.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -417,12 +417,21 @@ export async function refreshMainServer(config, { only, dryRun = false, expectCo
   // Git #4033: prove the checkout just refreshed is the one serving the ports, that
   // it contains the commits this restart is for, and (after a rebuild) that a new
   // process took the api port. `ready` used to be only "the port accepts TCP".
+  //
+  // Git #4390: this used to be a single verifyServingCheckout call fired the instant
+  // waitForFreshApiListener resolved -- but that resolves on a weak "some new pid is
+  // on the port" signal, and a rebuilt api-server can genuinely finish binding a few
+  // seconds after that. verifyServingCheckoutUntil retries the same check for the
+  // rest of the rebuild's own timeout budget, but only while the failure looks like
+  // "still starting" -- a structural problem (commit missing, another checkout's
+  // process on the port) still fails on the first attempt, same as before.
   const live = dryRun
     ? null
-    : verifyServingCheckout(config, {
-        commits: expectCommits,
-        apiSpawnedAt: api.restartedApi ? api.spawnedAt : null,
-      });
+    : await verifyServingCheckoutUntil(
+        config,
+        { commits: expectCommits, apiSpawnedAt: api.restartedApi ? api.spawnedAt : null },
+        api.restartedApi ? api.spawnedAt + (config.apiRestartTimeoutMs || config.readyTimeoutMs) : Date.now()
+      );
 
   // Return a shape compatible with the coordinator's restart record (oldPid/newPid/
   // ready) plus the extra main-checkout detail for observability.

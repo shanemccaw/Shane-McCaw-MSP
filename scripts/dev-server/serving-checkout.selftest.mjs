@@ -107,6 +107,68 @@ async function main() {
     let v = sc.verifyServingCheckout(config, { probe: probe(liveTable(startedAt), new Map([[8080, [8736]]])) });
     ok(v.verified, `verify: api built from current HEAD, launched from serving root -> verified (${v.problems.join(" | ")})`);
 
+    // --- Git #4390: the real race -- a single check catches the split second
+    // between waitForFreshApiListener resolving and the rebuilt api-server
+    // actually finishing its bind, vs. retrying the SAME real check recovering it.
+    // Run right after the clean "verified" baseline above, before any of the
+    // later commits in this file would make the api-server look stale for an
+    // unrelated reason.
+    {
+      let calls = 0;
+      const raceOpts = {
+        apiSpawnedAt: startedAt,
+        probe: probe(liveTable(startedAt), null), // readListeners overridden below
+      };
+      raceOpts.probe.readListeners = () => {
+        calls++;
+        return calls === 1 ? new Map() : new Map([[8080, [8736]]]);
+      };
+      const single = sc.verifyServingCheckout(config, raceOpts);
+      ok(
+        !single.verified && single.problems.some((p) => p.includes("nothing is listening")),
+        "#4390: a single check caught mid-bind reports NOT LIVE (the real c-1789574065319-10396 shape)"
+      );
+
+      calls = 0;
+      const sleeps = [];
+      const retried = await sc.verifyServingCheckoutUntil(config, raceOpts, Date.now() + 60_000, {
+        sleep: async (ms) => {
+          sleeps.push(ms);
+        },
+      });
+      ok(
+        retried.verified && retried.attempts === 2,
+        `#4390: retrying the same real check recovers once the fresh listener actually shows up (attempts=${retried.attempts}, problems=${retried.problems?.join(" | ")})`
+      );
+      ok(sleeps.length === 1, "#4390: recovers on the very next attempt -- no extra waiting once verified");
+    }
+
+    // Git #4390: a STRUCTURAL failure (port held by a DIFFERENT checkout) is not a
+    // timing race -- retrying it would just burn the whole deadline on a restart
+    // that was never going to become live. Must fail on the first attempt.
+    {
+      const structuralOpts = { apiSpawnedAt: startedAt, probe: probe(liveTable(startedAt, other), new Map([[8080, [8736]]])) };
+      const res = await sc.verifyServingCheckoutUntil(config, structuralOpts, Date.now() + 60_000, {
+        sleep: async () => {
+          throw new Error("must not sleep for a structural failure");
+        },
+      });
+      ok(
+        !res.verified && res.attempts === 1,
+        "#4390: port held by a DIFFERENT checkout is structural -- fails on the first attempt, never retried"
+      );
+    }
+
+    // Git #4390: no rebuild in flight (apiSpawnedAt unset) -- one-shot check, no retry loop at all.
+    {
+      const res = await sc.verifyServingCheckoutUntil(config, { probe: probe(liveTable(startedAt), new Map()) }, Date.now() + 60_000, {
+        sleep: async () => {
+          throw new Error("must not sleep when there is no rebuild to wait out");
+        },
+      });
+      ok(!res.verified && res.attempts === 1, "#4390: no apiSpawnedAt -- verifyServingCheckoutUntil behaves as a single check");
+    }
+
     v = sc.verifyServingCheckout(config, { probe: probe(liveTable(startedAt, other), new Map([[8080, [8736]]])) });
     ok(!v.verified && v.problems.some((p) => p.includes("NOT from the serving checkout")), "verify: port held by a process from ANOTHER checkout -> not verified (the #4033 shape)");
 
