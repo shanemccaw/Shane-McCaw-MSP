@@ -213,13 +213,27 @@ function compare(
   capability: string,
   old_: boolean,
   new_: boolean,
+  roleShape?: string,
 ): void {
   comparisons++;
   if (old_ === new_) return;
 
-  const known = KNOWN_BY_KEY.get(divergenceKey(shape, system, capability));
+  // Pass A keys by real user id (`user <id>`) so an actual regression on one real
+  // account is never silently absorbed by a shape registered for someone else. But
+  // a KNOWN divergence registered by RUNG NAME (pass B's synthetic shapes) is still
+  // the same real divergence when a real user happens to hold that rung — #4384
+  // hit exactly this: real MonitoringPending/PackPending/RetainerPending test
+  // accounts failed pass A on team.manage even though the identical divergence was
+  // already registered and passing under pass B's synthetic shape. Fall back to the
+  // role-name key before failing.
+  const key = KNOWN_BY_KEY.has(divergenceKey(shape, system, capability))
+    ? divergenceKey(shape, system, capability)
+    : roleShape !== undefined
+      ? divergenceKey(roleShape, system, capability)
+      : divergenceKey(shape, system, capability);
+  const known = KNOWN_BY_KEY.get(key);
   if (known && old_ && !new_) {
-    observedDivergences.add(divergenceKey(shape, system, capability));
+    observedDivergences.add(key);
     console.log(`KNOWN ${subject} — ${system}:${capability}: OLD ALLOW, NEW DENY (${known.issue} — ${known.why})`);
     return;
   }
@@ -377,6 +391,7 @@ for (const row of users) {
       capability.key,
       legacyDecision(user, capability.system, capability.key),
       evaluator.can(capability.key),
+      user.mspRole ?? undefined,
     );
   }
 
