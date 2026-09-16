@@ -1,0 +1,502 @@
+#!/usr/bin/env node
+// scripts/db/reset-dev-database.mjs
+//
+// Git #4393: a real, reusable self-service version of the reset #4272 already
+// executed once by hand (Phase 2 of #4270's tenant-reset chain). Resets the
+// real direct MSP (msp.is_direct_business = true -- "Shane McCaw Consulting")
+// back to a clean-slate, freshly-purchased state: its tenants/customers gone,
+// its MSP-staff logins intact, every other MSP (including vitest/test
+// fixtures) completely untouched.
+//
+// Unlike #4272's one-off manual run, this script does not hardcode a table
+// list or a set of vitest fixture ids. It:
+//   1. Derives the target MSP live (`is_direct_business = true`), not a
+//      hardcoded id -- whichever row is flagged as Shane's real business.
+//   2. Reuses #4313's find-tenant-scoped-tables.mjs (imported, not
+//      reimplemented) to discover -- live, from real information_schema FK
+//      edges -- every table transitively reachable from tenants/users/msps.
+//      That is the reset candidate population; nothing here hardcodes #4271's
+//      one-time snapshot of that list.
+//   3. Computes a real per-table SQL scope via a fixpoint over ALL real FK
+//      edges from each table into an already-scoped parent (not just the
+//      first/shortest edge #4313 reports for display) -- so a table with more
+//      than one FK into scope (e.g. both a tenant_id column and a
+//      resolved_by_user_id column) is scoped by the OR of every real edge,
+//      not just one.
+//   4. Deletes each in-scope table's rows in reverse-resolution order
+//      (children before the parents their own scope query reads from) inside
+//      a BEGIN...ROLLBACK dry run first, then the real transaction -- the
+//      same FK-safe children-first discipline #4272 proved live.
+//   5. Leaves two curated exception sets untouched, both real product/audit
+//      decisions from #4271 (not re-derivable from FK shape alone):
+//        - PRESERVE_TABLES: the 26 MSP-authored-config tables #4271 §4 found
+//          in the FK-reachable set but categorized as config, not per-tenant
+//          operational data (e.g. policy_rules, msp_sops).
+//        - ORPHAN_FULL_WIPE_TABLES: the 11 execution-history tables #4271 §6
+//          found to carry NO FK path to tenants/users/msps at all (so
+//          find-tenant-scoped-tables.mjs structurally cannot discover them --
+//          they are genuinely unscoped, global workflow/comms execution
+//          history) that #4272 proved safe to wipe unconditionally.
+//   Every other MSP's rows -- vitest fixtures included -- are protected
+//   automatically because they never match the live target-MSP scope, not
+//   because of a hardcoded id list that could go stale.
+//
+// Usage:
+//   node scripts/db/reset-dev-database.mjs --dry-run        # BEGIN...ROLLBACK only, prints the plan + counts
+//   node scripts/db/reset-dev-database.mjs --yes             # real reset, skips the interactive confirmation prompt
+//   node scripts/db/reset-dev-database.mjs                   # real reset, prompts for confirmation first
+//
+// Both modes always: refuse to run against anything that doesn't look like
+// local dev, take a fresh timestamped pg_dump backup first, print full
+// before/after row counts, and (real run only) confirm the platform boots
+// and MSP-staff login still works afterward.
+
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { createInterface } from "node:readline";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+
+import {
+  loadDatabaseUrl,
+  queryAllFkEdges,
+  walkClosure,
+} from "./find-tenant-scoped-tables.mjs";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(__dirname, "..", "..");
+
+const ROOTS = ["tenants", "users", "msps"];
+
+// #4271 §4 -- MSP-authored config tables that ARE in the FK-reachable
+// population (they carry an msp_id FK) but are a product decision to
+// preserve, not per-tenant operational output. Not re-derivable from FK
+// shape alone -- this is the real audited categorization, reused as-is.
+const PRESERVE_TABLES = new Set([
+  "signal_derivation_rules",
+  "policy_rules",
+  "signal_rule_groups",
+  "msp_sops",
+  "dashboard_templates",
+  "msp_feature_role_mapping",
+  "msp_roles",
+  "compliance_frameworks",
+  "scope_creep_policies",
+  "sla_policies",
+  "engagement_offer_rules",
+  "msp_sales_bundles",
+  "msp_sla_weights",
+  "change_catalog_items",
+  "lead_offer_inference_rules",
+  "lead_offer_pricing_config",
+  "lead_scoring_config",
+  "lead_scoring_rules",
+  "lead_scoring_tracked_pages",
+  "msp_email_templates",
+  "msp_report_canvases",
+  "msp_report_schedules",
+  "sales_offer_config",
+  "simulation_profiles",
+  "sla_signal_policy_map",
+  "standing_policies",
+]);
+
+// #4271 §6 -- carry no FK to tenants/users/msps at all (verified live at
+// build time against the real schema -- see build-journal/4393.md), so
+// find-tenant-scoped-tables.mjs structurally cannot discover them. #4272
+// proved these safe to wipe unconditionally (global workflow-execution
+// history, not per-tenant data worth preserving across a reset).
+//
+// NOTE: #4271 §6 originally also listed emails, msp_status_report_comments,
+// and msp_refresh_tokens/user_sessions/impersonation_tokens as "orphan-risk
+// unscoped" -- but a live check at build time found all of those DO carry a
+// real FK to users(id) (linked_user_id / author_user_id / user_id) and are
+// therefore reachable via the normal closure path below, which scopes them
+// correctly instead of a blanket wipe. Only the tables below were confirmed
+// to have genuinely no FK path to any root.
+const ORPHAN_FULL_WIPE_TABLES = [
+  "wf_run_node_logs",
+  "wf_run_node_outputs",
+  "wf_trigger_events",
+  "wf_runs",
+  "wf_triggers",
+  "ps_capability_survey_results",
+  "email_events",
+  "exception_groups",
+  "simulator_run_history",
+];
+
+// #4399 (filed by this build): msp_refresh_tokens.user_id is shaped like an
+// FK to users(id) -- NOT NULL, holds real user ids, used for auth -- but has
+// NO enforced FOREIGN KEY constraint in the live schema (confirmed via
+// pg_constraint at build time), so information_schema-driven FK discovery
+// (the whole basis of #4313's closure tool) structurally cannot see it. Left
+// undiscovered, a reset would either miss wiping former customer-user
+// tokens entirely or (worse) have no way to preserve MSP-staff tokens
+// correctly. Injected here as a synthetic edge so it's scoped exactly like a
+// real FK edge would be.
+const UNCONSTRAINED_FK_SHAPED_EDGES = [
+  {
+    childTable: "msp_refresh_tokens",
+    childColumn: "user_id",
+    parentTable: "users",
+    parentColumn: "id",
+    deleteRule: "NO ACTION",
+    constraintName: "(unconstrained -- #4399)",
+  },
+  // Same class of gap, same issue (#4399, comment added by this build):
+  // sla_breaches/sla_compliance_records/sla_timers all carry real msp_id +
+  // customer_id columns but only have an enforced FK on policy_id (-> the
+  // PRESERVED sla_policies config table) -- which is exactly why the closure
+  // tool resolved them via the preserved-config path and left them
+  // unresolved/skipped instead of correctly scoped to the target MSP.
+  ...["sla_breaches", "sla_compliance_records", "sla_timers"].flatMap((t) => [
+    {
+      childTable: t,
+      childColumn: "msp_id",
+      parentTable: "msps",
+      parentColumn: "id",
+      deleteRule: "NO ACTION",
+      constraintName: "(unconstrained -- #4399)",
+    },
+    {
+      childTable: t,
+      childColumn: "customer_id",
+      parentTable: "tenants",
+      parentColumn: "id",
+      deleteRule: "NO ACTION",
+      constraintName: "(unconstrained -- #4399)",
+    },
+  ]),
+];
+
+const BACKUP_DIR = "C:\\Source\\ShaneMcCawConsulting\\db-backups";
+
+function parseArgs(argv) {
+  return {
+    dryRun: argv.includes("--dry-run"),
+    yes: argv.includes("--yes"),
+    json: argv.includes("--json"),
+  };
+}
+
+function isLocalDevUrl(databaseUrl) {
+  let parsed;
+  try {
+    parsed = new URL(databaseUrl);
+  } catch {
+    return false;
+  }
+  const host = parsed.hostname.toLowerCase();
+  const isLocalHost = host === "localhost" || host === "127.0.0.1";
+  const looksRemote = /neon\.tech|replit|amazonaws|azure|rds\.|supabase|render\.com/i.test(
+    databaseUrl
+  );
+  return isLocalHost && !looksRemote;
+}
+
+function psqlValue(databaseUrl, sql) {
+  return execFileSync("psql", [databaseUrl, "-t", "-A", "-c", sql], {
+    encoding: "utf8",
+  }).trim();
+}
+
+function psqlRun(databaseUrl, sql) {
+  return execFileSync("psql", [databaseUrl, "-t", "-A", "-c", sql], {
+    encoding: "utf8",
+  });
+}
+
+function quoteIdent(name) {
+  return `"${name.replace(/"/g, '""')}"`;
+}
+
+function loadTargetMspId(databaseUrl) {
+  const rows = psqlValue(
+    databaseUrl,
+    `SELECT id || '|' || name FROM msps WHERE is_direct_business = true;`
+  );
+  const lines = rows.split("\n").filter(Boolean);
+  if (lines.length !== 1) {
+    throw new Error(
+      `Expected exactly one msps row with is_direct_business = true, found ${lines.length}. ` +
+        `Refusing to guess the target MSP -- this needs a real product decision, not this script.`
+    );
+  }
+  const [id, name] = lines[0].split("|");
+  return { id: Number(id), name };
+}
+
+// Discover the reset candidate population live via #4313's closure tool
+// (imported, not reimplemented), then compute a real per-table scope
+// condition via a fixpoint over ALL real FK edges (not just the shortest
+// edge the closure tool reports for display).
+function buildResetPlan(databaseUrl, targetMspId) {
+  const edges = [...queryAllFkEdges(databaseUrl), ...UNCONSTRAINED_FK_SHAPED_EDGES];
+  const closure = walkClosure(ROOTS, edges);
+  const closureTables = [...closure.keys()].filter((t) => !ROOTS.includes(t));
+
+  const scope = new Map();
+  scope.set("tenants", `msp_id = ${targetMspId}`);
+  scope.set("users", `msp_id = ${targetMspId} AND tenant_id IS NOT NULL`);
+  // msps itself is never deleted (its rows survive a reset), but its scope
+  // condition exists so direct msp_id children can resolve against it.
+  const resolved = new Set(["tenants", "users", "msps"]);
+  const resolutionOrder = []; // parents-first order in which scopes were resolved
+
+  const remaining = new Set(
+    closureTables.filter(
+      (t) => !PRESERVE_TABLES.has(t) && !ORPHAN_FULL_WIPE_TABLES.includes(t)
+    )
+  );
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const table of [...remaining]) {
+      const edgesFromTable = edges.filter(
+        (e) =>
+          e.childTable === table &&
+          resolved.has(e.parentTable) &&
+          !PRESERVE_TABLES.has(e.parentTable)
+      );
+      if (edgesFromTable.length === 0) continue;
+
+      const conditions = edgesFromTable.map((e) => {
+        if (e.parentTable === "msps") {
+          return `${quoteIdent(e.childColumn)} = ${targetMspId}`;
+        }
+        return `${quoteIdent(e.childColumn)} IN (SELECT ${quoteIdent(
+          e.parentColumn
+        )} FROM ${quoteIdent(e.parentTable)} WHERE ${scope.get(e.parentTable)})`;
+      });
+      scope.set(table, conditions.join(" OR "));
+      resolved.add(table);
+      resolutionOrder.push(table);
+      remaining.delete(table);
+      changed = true;
+    }
+  }
+
+  const unresolved = [...remaining];
+
+  // Execution order: reverse of resolution order, so a table's own DELETE
+  // always runs while every table its scope query reads from still has its
+  // pre-reset rows intact, AND children are always deleted before the
+  // parents any blocking (non-CASCADE) FK would otherwise refuse to let go.
+  const executionOrder = [...resolutionOrder].reverse();
+
+  return {
+    scopedTables: executionOrder.map((table) => ({
+      table,
+      whereClause: scope.get(table),
+    })),
+    tenantsWhereClause: scope.get("tenants"),
+    usersWhereClause: scope.get("users"),
+    unresolved,
+    closureSize: closureTables.length,
+  };
+}
+
+function tableExists(databaseUrl, table) {
+  const out = psqlValue(
+    databaseUrl,
+    `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name = '${table.replace(
+      /'/g,
+      "''"
+    )}';`
+  );
+  return out === "1";
+}
+
+function rowCount(databaseUrl, table) {
+  return Number(psqlValue(databaseUrl, `SELECT count(*) FROM ${quoteIdent(table)};`));
+}
+
+function takeBackup(databaseUrl) {
+  if (!existsSync(BACKUP_DIR)) {
+    mkdirSync(BACKUP_DIR, { recursive: true });
+  }
+  const stamp = new Date()
+    .toISOString()
+    .replace(/[:.]/g, "")
+    .replace("T", "T")
+    .replace("Z", "Z");
+  const file = path.join(BACKUP_DIR, `shanemccawmsp_pre-dev-reset_${stamp}.dump`);
+  console.log(`\nTaking backup: ${file}`);
+  execFileSync("pg_dump", [databaseUrl, "-Fc", "-f", file], { stdio: "inherit" });
+  const list = spawnSync("pg_restore", ["--list", file], { encoding: "utf8" });
+  if (list.status !== 0) {
+    throw new Error(`Backup verification failed: pg_restore --list exited ${list.status}`);
+  }
+  const tocEntries = list.stdout.split("\n").filter(Boolean).length;
+  console.log(`Backup verified: pg_restore --list exit 0, ${tocEntries} TOC entries.`);
+  return file;
+}
+
+function runResetSql(databaseUrl, plan, targetMspId, rollback) {
+  const statements = [];
+  statements.push("BEGIN;");
+  for (const { table, whereClause } of plan.scopedTables) {
+    statements.push(`DELETE FROM ${quoteIdent(table)} WHERE ${whereClause};`);
+  }
+  for (const table of ORPHAN_FULL_WIPE_TABLES) {
+    statements.push(`DELETE FROM ${quoteIdent(table)};`);
+  }
+  // users, then tenants -- children (above) must go first so nothing still
+  // references a row we're about to delete via a blocking (non-CASCADE) FK.
+  statements.push(`DELETE FROM users WHERE ${plan.usersWhereClause};`);
+  statements.push(`DELETE FROM tenants WHERE ${plan.tenantsWhereClause};`);
+  statements.push(rollback ? "ROLLBACK;" : "COMMIT;");
+
+  const sql = statements.join("\n");
+  const tmpDir = mkdtempSync(path.join(tmpdir(), "reset-dev-db-"));
+  const sqlFile = path.join(tmpDir, "reset.sql");
+  writeFileSync(sqlFile, sql, "utf8");
+  const result = spawnSync("psql", [databaseUrl, "-v", "ON_ERROR_STOP=1", "-f", sqlFile], {
+    encoding: "utf8",
+  });
+  rmSync(tmpDir, { recursive: true, force: true });
+  return { sql, result };
+}
+
+async function confirm(promptText) {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(promptText, (answer) => {
+      rl.close();
+      resolve(answer.trim().toLowerCase());
+    });
+  });
+}
+
+function checkPlatformBoots() {
+  const health = spawnSync(
+    "curl",
+    ["-s", "-o", "NUL", "-w", "%{http_code}", "http://localhost:8080/api/health"],
+    { encoding: "utf8" }
+  );
+  return health.stdout ? health.stdout.trim() : "no response";
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const databaseUrl = loadDatabaseUrl();
+
+  if (!isLocalDevUrl(databaseUrl)) {
+    console.error(
+      `Refusing to run: DATABASE_URL does not look like the real local dev database ` +
+        `(expected host localhost/127.0.0.1, no remote-hosting hostnames). This script never ` +
+        `runs against anything else.`
+    );
+    process.exit(1);
+  }
+
+  const { id: targetMspId, name: targetMspName } = loadTargetMspId(databaseUrl);
+  console.log(`Target MSP (live-derived, is_direct_business=true): #${targetMspId} "${targetMspName}"`);
+
+  const plan = buildResetPlan(databaseUrl, targetMspId);
+  console.log(
+    `\nDiscovered ${plan.closureSize} table(s) in the live FK-reachable population from roots ${ROOTS.join(", ")}.\n` +
+      `  - ${plan.scopedTables.length} scoped-delete tables (resolved via a real FK chain back to the target MSP)\n` +
+      `  - ${ORPHAN_FULL_WIPE_TABLES.length} orphan full-wipe tables (#4271 §6, no FK path to any root)\n` +
+      `  - ${PRESERVE_TABLES.size} preserved MSP-config tables (#4271 §4, excluded)\n` +
+      `  - users/tenants roots (scoped delete, MSP-staff logins preserved)\n` +
+      `  - msps table itself: never touched`
+  );
+  if (plan.unresolved.length > 0) {
+    console.warn(
+      `\nWARNING: ${plan.unresolved.length} closure table(s) had no resolvable FK path back to a ` +
+        `scoped root/table and were SKIPPED (left untouched), not guessed at: ${plan.unresolved.join(", ")}`
+    );
+  }
+
+  if (args.json) {
+    console.log(JSON.stringify(plan, null, 2));
+  }
+
+  console.log("\n--- Dry run (BEGIN...ROLLBACK) ---");
+  const dryRunOutcome = runResetSql(databaseUrl, plan, targetMspId, /* rollback */ true);
+  if (dryRunOutcome.result.status !== 0) {
+    console.error("Dry run FAILED -- refusing to proceed to a real reset.");
+    console.error(`exit status: ${dryRunOutcome.result.status}`);
+    console.error(dryRunOutcome.result.stdout);
+    console.error(dryRunOutcome.result.stderr);
+    if (dryRunOutcome.result.error) console.error(dryRunOutcome.result.error);
+    process.exit(1);
+  }
+  console.log("Dry run succeeded: no FK violations, transaction rolled back cleanly.");
+
+  if (args.dryRun) {
+    console.log("\n--dry-run requested: stopping here. No data was changed.");
+    return;
+  }
+
+  if (!args.yes) {
+    const answer = await confirm(
+      `\nThis will DELETE msp #${targetMspId} "${targetMspName}"'s tenants/customers and all ` +
+        `their downstream data from ${databaseUrl}. A backup will be taken first. Type "yes" to proceed: `
+    );
+    if (answer !== "yes") {
+      console.log("Aborted -- no data was changed.");
+      return;
+    }
+  }
+
+  const backupFile = takeBackup(databaseUrl);
+
+  const beforeCounts = {};
+  for (const { table } of plan.scopedTables) {
+    if (tableExists(databaseUrl, table)) beforeCounts[table] = rowCount(databaseUrl, table);
+  }
+  for (const table of ORPHAN_FULL_WIPE_TABLES) {
+    if (tableExists(databaseUrl, table)) beforeCounts[table] = rowCount(databaseUrl, table);
+  }
+  beforeCounts.tenants = rowCount(databaseUrl, "tenants");
+  beforeCounts.users = rowCount(databaseUrl, "users");
+
+  console.log("\n--- Executing real reset ---");
+  const realOutcome = runResetSql(databaseUrl, plan, targetMspId, /* rollback */ false);
+  if (realOutcome.result.status !== 0) {
+    console.error("Real reset FAILED after a successful dry run -- this should not happen.");
+    console.error(realOutcome.result.stderr);
+    console.error(`Backup is available at: ${backupFile}`);
+    process.exit(1);
+  }
+  console.log("Reset committed.");
+
+  console.log("\n--- Before / after row counts ---");
+  let changedTables = 0;
+  for (const table of Object.keys(beforeCounts).sort()) {
+    if (!tableExists(databaseUrl, table)) continue;
+    const after = rowCount(databaseUrl, table);
+    if (after !== beforeCounts[table]) {
+      changedTables++;
+      console.log(`  ${table}: ${beforeCounts[table]} -> ${after}`);
+    }
+  }
+  console.log(`${changedTables} table(s) changed.`);
+
+  console.log("\n--- Post-reset verification ---");
+  const httpCode = checkPlatformBoots();
+  console.log(`GET /api/health -> ${httpCode}`);
+  const staffCount = psqlValue(
+    databaseUrl,
+    `SELECT count(*) FROM users WHERE msp_id = ${targetMspId} AND tenant_id IS NULL;`
+  );
+  console.log(`MSP-staff logins preserved (msp_id=${targetMspId}, tenant_id IS NULL): ${staffCount}`);
+  const remainingTenants = psqlValue(
+    databaseUrl,
+    `SELECT count(*) FROM tenants WHERE msp_id = ${targetMspId};`
+  );
+  console.log(`Tenants remaining for msp #${targetMspId}: ${remainingTenants}`);
+
+  console.log(`\nBackup: ${backupFile}`);
+  console.log("Done.");
+}
+
+main().catch((err) => {
+  console.error(err.message || err);
+  process.exit(1);
+});

@@ -36,7 +36,7 @@
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -59,7 +59,7 @@ function parseArgs(argv) {
   return args;
 }
 
-function loadDatabaseUrl() {
+export function loadDatabaseUrl() {
   if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
   const envFile = readFileSync(path.join(repoRoot, ".env.local"), "utf8");
   const match = envFile.match(/^DATABASE_URL=(.+)$/m);
@@ -72,7 +72,7 @@ function loadDatabaseUrl() {
 // All real FK edges in the public schema: child table/column -> parent
 // table/column, plus the real delete rule for that constraint. This is the
 // whole graph -- we walk it in memory rather than issuing one query per hop.
-function queryAllFkEdges(databaseUrl) {
+export function queryAllFkEdges(databaseUrl) {
   const sql = `
     SELECT
       tc.table_name || '|' ||
@@ -131,7 +131,7 @@ function queryAllFkEdges(databaseUrl) {
 // Each discovered table records the *first* edge that reached it (the
 // shortest path) for reporting -- a table can have multiple real parents in
 // scope; we only need one to justify inclusion.
-function walkClosure(roots, edges) {
+export function walkClosure(roots, edges) {
   const edgesByParent = new Map();
   for (const edge of edges) {
     if (!edgesByParent.has(edge.parentTable)) {
@@ -217,4 +217,6 @@ function main() {
   );
 }
 
-main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}
