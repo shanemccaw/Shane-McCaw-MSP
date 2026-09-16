@@ -4043,6 +4043,17 @@ export const checkoutSessionsTable = pgTable("checkout_sessions", {
   // creates nothing.
   rescanSubscriptionId: text("rescan_subscription_id"),
 
+  // ── Buy.tsx recurring purchase subscription (#4431) ─────────────────────────
+  // A Monitoring/Retainer purchase charges month 1 as a one-time PaymentIntent
+  // (card kept on file); payment-confirmed then creates the recurring Stripe
+  // Subscription, anchored one month after that charge. The confirmed intent is
+  // recorded so the set-password / portal-handoff backstops can finish the job
+  // if Stripe failed at confirm time; the subscription id is the idempotency
+  // record (set -> nothing is created again) and is mirrored onto the
+  // client_services row the purchase provisioned.
+  purchasePaymentIntentId: text("purchase_payment_intent_id"),
+  purchaseSubscriptionId: text("purchase_subscription_id"),
+
   // ── Multi-item SOW cart snapshot (#598, Epic #597 stage 1) ────────────────
   // Purely additive extension so a checkout_sessions row can hold a real SOW
   // cart instead of the single `productSlug` this table was built for. The

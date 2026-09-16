@@ -37,8 +37,9 @@
  *     so no retainer_settings row can exist for them (customer_id is NOT NULL,
  *     and GET /portal/retainer has no customer scope for them either). Their
  *     client_services row is still written. `settings` reports `no_tenant`.
- *   - The Stripe subscription itself — this pair charges the first month and
- *     keeps the card on file; subscription creation is still separate work.
+ *   - The Stripe subscription itself — created by #4431's
+ *     purchase-recurring-subscription.ts, which mirrors its id onto the
+ *     client_services row written here.
  *   - `hourly_rate_cents` is left at the table default (30000), the same
  *     default AdminV2's PUT /admin/retainer/:customerId/settings applies when
  *     none is supplied; the catalog carries no per-retainer rate.

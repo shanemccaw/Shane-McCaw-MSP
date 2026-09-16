@@ -79,10 +79,12 @@
  * sequencing #490 proved) so later provisioning can create the real
  * subscription without a second card entry. Stripe renders its own mandate
  * text for it — the honest disclosure that the card is being kept on file.
- * Packs are genuinely one-time and never ask. Subscription creation itself is
- * fulfilment/provisioning work, deliberately out of scope here — same "known
- * gap, nothing here pretends it has happened" stance as the #435 file header.
- * The Monitoring ENTITLEMENT is not: since #4403 a paid confirm provisions the
+ * Packs are genuinely one-time and never ask. Since #4431 a paid confirm then
+ * creates that subscription (lib/purchase-recurring-subscription.ts): same card,
+ * the charged monthly amount, billing_cycle_anchor one month after the charge
+ * so month 1 is never billed twice, idempotent per checkout session, its id
+ * mirrored onto the provisioned client_services row.
+ * The Monitoring ENTITLEMENT is provisioned too: since #4403 a paid confirm provisions the
  * client_services row the Portal's tier gate reads
  * (lib/monitoring-entitlement-provisioning.ts), idempotently per session.
  * Nor is the Retainer entitlement: since #4404 it provisions the client_services
@@ -111,6 +113,11 @@ import { promoteAccountFirstBuyerOnPayment, resolvePaidPurchaseSession } from ".
 import { ensureMonitoringScanKickoff } from "../lib/monitoring-onboarding-scan.ts";
 import { ensureMonitoringEntitlement } from "../lib/monitoring-entitlement-provisioning.ts";
 import { ensureRetainerEntitlement } from "../lib/purchase-retainer-entitlement.ts";
+import {
+  PURCHASE_FLOW_TAG,
+  ensurePurchaseSubscription,
+  recordPurchasePaymentIntent,
+} from "../lib/purchase-recurring-subscription.ts";
 
 const log = logger.child({ channel: "billing" });
 
@@ -118,8 +125,9 @@ const router: IRouter = Router();
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Server-written intent tag /payment-confirmed requires back verbatim. */
-export const PURCHASE_FLOW_TAG = "buy_purchase_flow";
+// Server-written intent tag /payment-confirmed requires back verbatim — shared
+// with the #4431 subscription module, which re-verifies it on backstop retries.
+export { PURCHASE_FLOW_TAG };
 
 export type PurchaseProductType = "monitoring" | "retainer" | "pack";
 
@@ -630,6 +638,13 @@ router.post("/public/purchase/payment-confirmed", async (req: Request, res: Resp
         : order.displayName;
     const paidAmountCents = intent.amount_received || order.amountCents;
 
+    // #4431 — the verified intent is what funds the recurring subscription
+    // below; recorded so the set-password / portal-handoff backstops can retry
+    // subscription creation without the client. First confirm wins. Non-fatal.
+    await recordPurchasePaymentIntent(order.sessionId, intent.id).catch((err) => {
+      log.error({ err, checkoutSessionId: order.sessionId, paymentIntentId: intent.id }, "purchase payment: recording the confirmed intent failed (non-fatal)");
+    });
+
     // Already "paid" from an earlier confirm — replaying is a no-op, not an error.
     if (order.status !== "paid") {
       await db
@@ -780,11 +795,25 @@ router.post("/public/purchase/payment-confirmed", async (req: Request, res: Resp
       log.error({ err, checkoutSessionId: order.sessionId }, "purchase payment: retainer entitlement provisioning failed (non-fatal)");
     }
 
+    // Git #4431 — month 1 was the intent above; this creates the recurring
+    // Stripe subscription that bills month 2 onward, on the card the intent
+    // kept on file, anchored one month after that charge so month 1 is never
+    // billed twice. Runs after the entitlement provisioning so the new
+    // subscription id lands on the client_services row just written (a legacy
+    // pay-then-account order links it at set-password instead). Deliberately
+    // outside the "first confirm" block: a replay after a Stripe failure must be
+    // able to finish the job, and a replay after success is short-circuited by
+    // the session's own recorded subscription id. Never throws; a no-op for packs.
+    const recurringSubscription = await ensurePurchaseSubscription(order.sessionId, { stripe, intent });
+
     res.json({
       ok: true,
       amountCents: paidAmountCents,
       email: order.email,
       productType: order.productType,
+      // Reported plainly, including "failed" — a buyer of a monthly product is
+      // owed the truth about whether the recurring billing took.
+      recurringSubscription,
     });
   } catch (err) {
     log.error({ err, checkoutSessionId: order.sessionId }, "purchase payment: confirm failed");

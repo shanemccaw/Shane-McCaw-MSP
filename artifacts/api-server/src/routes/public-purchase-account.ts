@@ -104,6 +104,7 @@ import { getActiveMfaMethods, getRpId, getRpOrigin, encryptTotp } from "./mfa.ts
 import { ensureMonitoringScanKickoff } from "../lib/monitoring-onboarding-scan.ts";
 import { ensureMonitoringEntitlement } from "../lib/monitoring-entitlement-provisioning.ts";
 import { ensureRetainerEntitlement } from "../lib/purchase-retainer-entitlement.ts";
+import { ensurePurchaseSubscription } from "../lib/purchase-recurring-subscription.ts";
 
 const log = logger.child({ channel: "auth" });
 
@@ -452,6 +453,13 @@ router.post("/public/purchase/set-password", setPasswordLimiter, async (req: Req
     log.error({ err, sessionId: session.id }, "purchase set-password: retainer entitlement provisioning failed (non-fatal)");
   }
 
+  // Git #4431 — the legacy pay-then-account order's client_services row only
+  // exists as of the provisioning above, so the recurring subscription created
+  // at payment-confirmed is linked onto it now; and if Stripe failed at confirm,
+  // creation is retried off the recorded intent. Idempotent per session, a
+  // no-op for packs, never throws.
+  await ensurePurchaseSubscription(session.id);
+
   // Same single-use, short-lived auto-login handoff the assessment flow mints
   // (Git #636): the portal's own boot effect trades it for a real session the
   // instant that tab lands. Phase 4 of #1309 builds the /buy handoff on this.
@@ -578,6 +586,11 @@ router.post("/public/purchase/portal-handoff", handoffLimiter, async (req: Reque
   } catch (err) {
     log.error({ err, sessionId: session.id }, "portal handoff: retainer entitlement provisioning failed (non-fatal)");
   }
+
+  // Git #4431 — same backstop for the recurring subscription: link it onto the
+  // entitlement row, or retry creation after a transient Stripe failure at
+  // confirm. Idempotent per session, a no-op for packs, never throws.
+  await ensurePurchaseSubscription(session.id);
 
   // Same single-use, short-lived shape set-password mints (and #636 before it):
   // 32 CSPRNG bytes, 2-minute TTL, consumed atomically by /auth/signup-exchange.

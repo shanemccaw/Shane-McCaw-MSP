@@ -11,8 +11,8 @@
  *
  * read by portal-tier-features.ts's resolveCustomerIncludedFeatures /
  * resolveCustomerTierEntitlement. This module writes that row and nothing else
- * (no Stripe subscription — still out of scope, per public-purchase-payment.ts's
- * header; `min_bundled_tier` / write_action_catalog is a separate Launch Control
+ * (the Stripe subscription is #4431's purchase-recurring-subscription.ts, which
+ * mirrors its id onto this row; `min_bundled_tier` / write_action_catalog is a separate Launch Control
  * axis and is not touched).
  *
  * ── Idempotency ───────────────────────────────────────────────────────────────
