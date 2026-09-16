@@ -7,72 +7,23 @@
  * POST /api/portal/scripts/:id/download — generate a single-use download token and
  *                                         return the augmented .ps1 script body with
  *                                         the token and ingestion endpoint injected.
+ *
+ * The token-minting / script-augmentation logic lives in the shared
+ * lib/script-download-token.ts primitive (Git #4354) so the unified Automation
+ * wrapper's run path delegates to the exact same mechanism.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import {
-  db,
-  pool,
-  powershellScriptsTable,
-  scriptDownloadTokensTable,
-} from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { pool } from "@workspace/db";
 import { requireCapability } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "workflow.script" });
-import { randomUUID, createHash } from "crypto";
+import {
+  generateScriptDownloadToken,
+  ScriptDownloadTokenError,
+} from "../lib/script-download-token.ts";
 
 const router: IRouter = Router();
-
-function hashToken(plaintext: string): string {
-  return createHash("sha256").update(plaintext).digest("hex");
-}
-
-/** Default token TTL: 72 hours */
-const TOKEN_TTL_MS = 72 * 60 * 60 * 1000;
-
-function buildIngestionUrl(): string {
-  const domain = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
-  if (domain) return `https://${domain}/api/script-ingestion`;
-  return `${process.env.API_BASE_URL ?? "http://localhost:8080"}/api/script-ingestion`;
-}
-
-/**
- * Injects the ingestion token into the PowerShell script body.
- * Adds a header block with $IngestionToken, $IngestionUrl, and
- * instructions to POST results on completion.
- */
-function injectTokenIntoScript(scriptBody: string, token: string, scriptType: string, schemaVersion: string): string {
-  const ingestionUrl = buildIngestionUrl();
-  const header = `# ── Platform Script Library — Auto-Ingestion Header ──────────────────────────
-# This token is single-use and expires in 72 hours. Do not share or reuse it.
-$IngestionToken     = "${token}"
-$IngestionUrl       = "${ingestionUrl}"
-$IngestionScriptType = "${scriptType}"
-$IngestionSchemaVersion = "${schemaVersion}"
-
-# Helper: POST results to the platform ingestion endpoint
-function Submit-ScriptResults {
-    param([Parameter(Mandatory)][hashtable]$Payload)
-    $body = @{
-        scriptType    = $IngestionScriptType
-        schemaVersion = $IngestionSchemaVersion
-        payload       = $Payload
-    } | ConvertTo-Json -Depth 10
-    try {
-        $response = Invoke-RestMethod -Uri $IngestionUrl -Method POST \\
-            -Headers @{ Authorization = "Bearer $IngestionToken"; "Content-Type" = "application/json" } \\
-            -Body $body
-        Write-Output "Results submitted: runResultId=$($response.runResultId)"
-    } catch {
-        Write-Warning "Failed to submit results: $_"
-    }
-}
-# ── End Auto-Ingestion Header ─────────────────────────────────────────────────
-
-`;
-  return header + scriptBody;
-}
 
 // ── GET /api/portal/scripts ───────────────────────────────────────────────────
 
@@ -129,62 +80,30 @@ router.post(
     const { customerId } = req.body as { customerId?: number };
 
     try {
-      const [script] = await db
-        .select({
-          id: powershellScriptsTable.id,
-          title: powershellScriptsTable.title,
-          scriptBody: powershellScriptsTable.scriptBody,
-          scriptType: powershellScriptsTable.scriptType,
-          schemaVersion: powershellScriptsTable.schemaVersion,
-          platformPublished: powershellScriptsTable.platformPublished,
-        })
-        .from(powershellScriptsTable)
-        .where(eq(powershellScriptsTable.id, id))
-        .limit(1);
-
-      if (!script) {
-        res.status(404).json({ error: "Script not found" });
-        return;
-      }
-      if (!script.platformPublished) {
-        res.status(404).json({ error: "Script is not published" });
-        return;
-      }
-
-      const plaintext = randomUUID();
-      const tokenHash = hashToken(plaintext);
-      const expiresAt = new Date(Date.now() + TOKEN_TTL_MS);
-      const scriptType = script.scriptType ?? "m365";
-      const schemaVersion = script.schemaVersion ?? "1.0";
-
-      const [tokenRow] = await db
-        .insert(scriptDownloadTokensTable)
-        .values({
-          tokenHash,
-          scriptId: script.id,
-          mspId: user.mspId ?? null,
-          customerId: customerId ?? null,
-          label: script.title,
-          expiresAt,
-        })
-        .returning({ id: scriptDownloadTokensTable.id, expiresAt: scriptDownloadTokensTable.expiresAt });
-
-      const augmentedScript = injectTokenIntoScript(script.scriptBody, plaintext, scriptType, schemaVersion);
+      const result = await generateScriptDownloadToken({
+        scriptId: id,
+        mspId: user.mspId ?? null,
+        customerId: customerId ?? null,
+      });
 
       log.info(
-        { tokenId: tokenRow.id, scriptId: id, mspId: user.mspId, customerId },
+        { tokenId: result.tokenId, scriptId: id, mspId: user.mspId, customerId },
         "portal-script-library: generated download token",
       );
 
       res.json({
-        tokenId: tokenRow.id,
-        scriptTitle: script.title,
-        scriptType,
-        schemaVersion,
-        expiresAt: tokenRow.expiresAt,
-        scriptBody: augmentedScript,
+        tokenId: result.tokenId,
+        scriptTitle: result.scriptTitle,
+        scriptType: result.scriptType,
+        schemaVersion: result.schemaVersion,
+        expiresAt: result.expiresAt,
+        scriptBody: result.scriptBody,
       });
     } catch (err) {
+      if (err instanceof ScriptDownloadTokenError) {
+        res.status(err.status).json({ error: err.message });
+        return;
+      }
       log.error({ err, scriptId: id }, "portal-script-library: failed to generate download");
       res.status(500).json({ error: "Failed to generate script download" });
     }

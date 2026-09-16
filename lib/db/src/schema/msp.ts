@@ -10238,3 +10238,59 @@ export const automationRegistryTable = pgTable("automation_registry", {
 
 export type AutomationRegistryRow = typeof automationRegistryTable.$inferSelect;
 export type InsertAutomationRegistryRow = typeof automationRegistryTable.$inferInsert;
+
+// ── Unified Automation wrapper (Git #4354) ───────────────────────────────────
+//
+// A real wrapper record that unifies the three separate executable/actionable
+// things MyArchitect (Epic #3454) exposes per tenant — a Script Library script
+// (#4291, powershell_scripts, UUID PK), a Runbook (#3479, portal_runbooks,
+// serial PK) and a Remediation Step (#3471, remediation_tracker_steps, serial
+// PK) — behind one object that can additionally be linked to a POA&M, a Change
+// Control / CAB change-request, and a Remediation Step.
+//
+// This is deliberately DISTINCT from `automation_registry` above (#3771), which
+// is a manual catalogue of Microsoft-ecosystem automations (Power Automate
+// flows / AI Studio agents) with no execution and no underlying-row link. This
+// table wraps a *real executable/actionable row* and delegates run + history to
+// that underlying type's own existing mechanism — it never re-implements
+// execution (Git #4354 scope note).
+//
+// The wrapped row is referenced polymorphically (`type` + text `wrapped_ref_id`)
+// rather than by a single hard FK, because the three underlying tables do not
+// share a PK type — powershell_scripts.id is a UUID while portal_runbooks.id and
+// remediation_tracker_steps.id are serial ints, so no one typed FK column can
+// point at all three. This is the same soft-polymorphic-reference pattern the
+// codebase already uses in `evidence_attachments` (source + sourceRefId, see
+// msp.ts above). The governance links, by contrast, all target serial-int
+// tables and so are real nullable FKs.
+export const AUTOMATION_TYPES = ["script", "runbook", "remediation_step"] as const;
+export type AutomationType = typeof AUTOMATION_TYPES[number];
+
+export const automationsTable = pgTable("automations", {
+  id: serial("id").primaryKey(),
+  // tenants.id space (the JWT customerId claim), no FK — matches automation_registry,
+  // remediation_tracker_steps.customerId and the other customer-scoped msp tables.
+  customerId: integer("customer_id").notNull(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  type: text("type", { enum: AUTOMATION_TYPES }).notNull(),
+  // Polymorphic pointer at the wrapped underlying row. Holds a UUID string when
+  // type = "script" (powershell_scripts.id) and a stringified serial int when
+  // type = "runbook" (portal_runbooks.id) or "remediation_step"
+  // (remediation_tracker_steps.id).
+  wrappedRefId: text("wrapped_ref_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  // Optional governance links — an automation need not be linked to any of these.
+  linkedPoamId: integer("linked_poam_id").references(() => mspPoamsTable.id, { onDelete: "set null" }),
+  linkedCabId: integer("linked_cab_id").references(() => mspChangeRequestsTable.id, { onDelete: "set null" }),
+  linkedRemediationStepId: integer("linked_remediation_step_id").references(() => remediationTrackerStepsTable.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("automations_customer_id_idx").on(t.customerId),
+  index("automations_msp_id_idx").on(t.mspId),
+  index("automations_type_ref_idx").on(t.type, t.wrappedRefId),
+]);
+
+export type AutomationRow = typeof automationsTable.$inferSelect;
+export type InsertAutomationRow = typeof automationsTable.$inferInsert;
