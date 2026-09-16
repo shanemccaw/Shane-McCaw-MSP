@@ -5,6 +5,7 @@ import pinoHttp from "pino-http";
 import { randomUUID } from "crypto";
 import router from "./routes/index.ts";
 import { subscriptionGate } from "./middlewares/subscriptionGate.ts";
+import { pendingPurchaseGate } from "./middlewares/pendingPurchaseGate.ts";
 import { logger } from "./lib/logger.ts";
 import { ConsentRevokedError } from "./lib/graph.ts";
 import { apiError, ApiErrorCode } from "./lib/api-helpers.ts";
@@ -124,7 +125,13 @@ app.use(express.urlencoded({ extended: true }));
 // there is nothing to forget."* Do not move this into the router, and do not add
 // per-route awareness of it; the allowlist inside it is the only place that decides what
 // stays reachable.
-app.use("/api", subscriptionGate, router);
+//
+// #4375 — the pending-purchase gate sits directly behind it, on the same reasoning: a
+// `MonitoringPending`/`PackPending`/`RetainerPending` session reaches only the
+// resume-purchase stub, and a gate in front of routing covers the routes that verify the
+// JWT themselves instead of going through `requireAuth`. Its allowlist lives in
+// `lib/pending-purchase-gate.ts`.
+app.use("/api", subscriptionGate, pendingPurchaseGate, router);
 
 // ── Global error handler ───────────────────────────────────────────────────────
 // ConsentRevokedError bubbles up from graphFetchForTenant when a live Graph call
