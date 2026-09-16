@@ -66,21 +66,22 @@ interface SowPhase {
 }
 
 interface SowAddonTier {
-  serviceSlug: string;
+  tierId: string;
   label: string;
   oneOffCents: number;
   monthlyCents: number;
   detail: string | null;
+  emphasis: "seat-match" | "recommended" | null;
 }
 
 interface SowAddon {
-  key: string;
+  addonId: string;
   name: string;
   blurb: string;
   tierLabel: string;
   tiers: SowAddonTier[];
   selected: boolean;
-  selectedServiceSlug: string | null;
+  selectedTierId: string | null;
 }
 
 interface SowPillarLine {
@@ -141,7 +142,7 @@ interface Sow {
   gateBlockers: SowFindingLine[];
   selection: {
     phaseSlugs: string[];
-    addons: Array<{ key: string; serviceSlug: string }>;
+    addons: Array<{ addonId: string; tierId: string }>;
     paymentPlan: "full" | "phased";
   };
   signature: {
@@ -525,7 +526,7 @@ export default function FreeScanReview() {
   // are always the figures the server would charge.
 
   const writeScope = useCallback(
-    async (next: { phaseSlugs: string[]; addons: Array<{ key: string; serviceSlug: string }>; paymentPlan: "full" | "phased" }) => {
+    async (next: { phaseSlugs: string[]; addons: Array<{ addonId: string; tierId: string }>; paymentPlan: "full" | "phased" }) => {
       setSaving(true);
       setErrorMessage(null);
       try {
@@ -562,14 +563,14 @@ export default function FreeScanReview() {
   const toggleAddon = (addon: SowAddon) => {
     if (!sow || !currentSelection || sow.signature.signed) return;
     const addons = addon.selected
-      ? currentSelection.addons.filter((a) => a.key !== addon.key)
-      : [...currentSelection.addons, { key: addon.key, serviceSlug: addon.selectedServiceSlug ?? addon.tiers[0]!.serviceSlug }];
+      ? currentSelection.addons.filter((a) => a.addonId !== addon.addonId)
+      : [...currentSelection.addons, { addonId: addon.addonId, tierId: addon.selectedTierId ?? addon.tiers[0]!.tierId }];
     void writeScope({ ...currentSelection, addons });
   };
 
-  const pickTier = (addon: SowAddon, serviceSlug: string) => {
+  const pickTier = (addon: SowAddon, tierId: string) => {
     if (!sow || !currentSelection || sow.signature.signed) return;
-    const addons = [...currentSelection.addons.filter((a) => a.key !== addon.key), { key: addon.key, serviceSlug }];
+    const addons = [...currentSelection.addons.filter((a) => a.addonId !== addon.addonId), { addonId: addon.addonId, tierId }];
     void writeScope({ ...currentSelection, addons });
   };
 
@@ -1291,7 +1292,7 @@ export default function FreeScanReview() {
                   </div>
                   {sow.addons.map((addon) => (
                     <div
-                      key={addon.key}
+                      key={addon.addonId}
                       style={{
                         border: `1px solid ${addon.selected ? "rgba(0,180,216,.28)" : "rgba(30,41,59,.7)"}`,
                         borderRadius: 11,
@@ -1333,12 +1334,12 @@ export default function FreeScanReview() {
                         </span>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 9 }}>
                           {addon.tiers.map((tier) => {
-                            const chosen = addon.selected && addon.selectedServiceSlug === tier.serviceSlug;
+                            const chosen = addon.selected && addon.selectedTierId === tier.tierId;
                             return (
                               <div
-                                key={tier.serviceSlug}
-                                onClick={() => pickTier(addon, tier.serviceSlug)}
-                                data-testid={`freescan-review-addon-tier-${tier.serviceSlug}`}
+                                key={tier.tierId}
+                                onClick={() => pickTier(addon, tier.tierId)}
+                                data-testid={`freescan-review-addon-tier-${addon.addonId}-${tier.tierId}`}
                                 style={{
                                   border: `1px solid ${chosen ? "rgba(0,180,216,.55)" : "rgba(30,41,59,.9)"}`,
                                   borderRadius: 10,
@@ -1579,12 +1580,12 @@ export default function FreeScanReview() {
                   Optional services
                 </span>
                 {sow.addons.map((addon) => {
-                  const tier = addon.tiers.find((x) => x.serviceSlug === addon.selectedServiceSlug) ?? addon.tiers[0]!;
+                  const tier = addon.tiers.find((x) => x.tierId === addon.selectedTierId) ?? addon.tiers[0]!;
                   return (
                     <div
-                      key={addon.key}
+                      key={addon.addonId}
                       onClick={() => toggleAddon(addon)}
-                      data-testid={`freescan-review-rail-addon-${addon.key}`}
+                      data-testid={`freescan-review-rail-addon-${addon.addonId}`}
                       style={{
                         display: "flex",
                         alignItems: "center",

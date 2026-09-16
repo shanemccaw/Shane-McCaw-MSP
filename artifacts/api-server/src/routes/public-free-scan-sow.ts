@@ -186,8 +186,8 @@ const scopeSchema = credentialSchema.and(
     addons: z
       .array(
         z.object({
-          key: z.string().trim().min(1).max(40),
-          serviceSlug: z.string().trim().min(1).max(120),
+          addonId: z.string().trim().min(1).max(60),
+          tierId: z.string().trim().min(1).max(60),
         }),
       )
       .max(8)

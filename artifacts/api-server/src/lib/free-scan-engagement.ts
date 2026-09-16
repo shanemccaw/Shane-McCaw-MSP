@@ -165,8 +165,8 @@ export function selectionFromRow(row: FreeScanEngagement): SowSelection {
   return {
     phaseSlugs,
     addons: addons.filter(
-      (a): a is { key: string; serviceSlug: string } =>
-        !!a && typeof a.key === "string" && typeof a.serviceSlug === "string",
+      (a): a is { addonId: string; tierId: string } =>
+        !!a && typeof a.addonId === "string" && typeof a.tierId === "string",
     ),
     paymentPlan: row.paymentPlan === "phased" ? "phased" : "full",
   };
@@ -200,22 +200,30 @@ export async function sowForEngagement(row: FreeScanEngagement): Promise<FreeSca
   });
 }
 
-/** Validate a requested scope against the real catalog structure. */
+/**
+ * Validate a requested scope against the real catalog structure.
+ *
+ * A slug that is not one of the six real phase rows is dropped rather than
+ * stored, and the required phase is re-asserted whatever the caller sent.
+ * Add-on ids/tiers are NOT validated here — `buildFreeScanSow` drops any tier
+ * the real resolver does not produce for this tenant, which is the one place
+ * that knows what is genuinely priceable.
+ */
 export function normaliseRequestedSelection(input: {
   phaseSlugs: string[];
-  addons: Array<{ key: string; serviceSlug: string }>;
+  addons: Array<{ addonId: string; tierId: string }>;
   paymentPlan: "full" | "phased";
-}): { phaseSlugs: string[]; addons: Array<{ key: string; serviceSlug: string }>; paymentPlan: "full" | "phased" } {
+}): { phaseSlugs: string[]; addons: Array<{ addonId: string; tierId: string }>; paymentPlan: "full" | "phased" } {
   const required = FREE_SCAN_SOW_PHASES[0]!.slug;
   const phaseSlugs = FREE_SCAN_SOW_PHASE_SLUGS.filter(
     (slug) => slug === required || input.phaseSlugs.includes(slug),
   );
-  // Deduplicate by add-on key — one tier per add-on, last write wins.
-  const byKey = new Map<string, string>();
-  for (const a of input.addons) byKey.set(a.key, a.serviceSlug);
+  // Deduplicate by add-on id — one tier per add-on, last write wins.
+  const byAddon = new Map<string, string>();
+  for (const a of input.addons) byAddon.set(a.addonId, a.tierId);
   return {
     phaseSlugs,
-    addons: [...byKey].map(([key, serviceSlug]) => ({ key, serviceSlug })),
+    addons: [...byAddon].map(([addonId, tierId]) => ({ addonId, tierId })),
     paymentPlan: input.paymentPlan,
   };
 }
@@ -228,7 +236,7 @@ export function chargeShapeKey(row: FreeScanEngagement, amountCents: number, has
     amountCents,
     hasCustomer ? "cust" : "anon",
     (row.selectedPhaseSlugs ?? []).join("+"),
-    (row.selectedAddons ?? []).map((a) => `${a.key}:${a.serviceSlug}`).join("+"),
+    (row.selectedAddons ?? []).map((a) => `${a.addonId}:${a.tierId}`).join("+"),
   ].join("|");
 }
 

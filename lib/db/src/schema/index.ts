@@ -1106,11 +1106,14 @@ export const freeScanEngagementsTable = pgTable("free_scan_engagements", {
   // signed must not renumber itself on a later read.
   sowReference: text("sow_reference").notNull(),
   // Scope selection. `selectedPhaseSlugs` are real `services.slug` values of the
-  // six `category = 'project'` phase rows; `selectedAddons` are
-  // `{ key, serviceSlug }` pairs naming real catalog rows. Never prices — every
-  // cent is re-resolved from the catalog server-side on each read.
+  // six `category = 'project'` phase rows; `selectedAddons` carries the same
+  // `{ addonId, tierId }` shape `checkout_sessions.sowAddonSelections` already
+  // uses, because both name the same real add-on vocabulary that
+  // `sow-monitoring-addon.ts` resolves (stable catalog keys, not FKs — the
+  // priced row behind a tier is resolved from the tenant's seat count at read
+  // time). Never prices: every cent is re-resolved server-side on each read.
   selectedPhaseSlugs: jsonb("selected_phase_slugs").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
-  selectedAddons: jsonb("selected_addons").$type<Array<{ key: string; serviceSlug: string }>>().notNull().default(sql`'[]'::jsonb`),
+  selectedAddons: jsonb("selected_addons").$type<Array<{ addonId: string; tierId: string }>>().notNull().default(sql`'[]'::jsonb`),
   paymentPlan: text("payment_plan", { enum: ["full", "phased"] }).notNull().default("full"),
   // Signature (#1374 scope item 5). All of it lands in one write, or none of it.
   signerName: text("signer_name"),

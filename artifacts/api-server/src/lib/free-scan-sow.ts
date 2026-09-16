@@ -71,7 +71,8 @@ import {
 import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
 import { getSignalHealthImpacts } from "./health-engine.ts";
 import { COPILOT_GATE_THRESHOLD } from "./copilot-gate.ts";
-import { resolveServicePriceCents, resolveTypeAttributesMonthlyPriceCents } from "./catalog-pricing.ts";
+import { resolveTenantMonitoringAddon, resolveArchitectRetainerAddon } from "./sow-monitoring-addon.ts";
+import { resolveServicePriceCents } from "./catalog-pricing.ts";
 import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -120,56 +121,26 @@ export const PHASED_DEPOSIT_PCT = 40;
 export const QUOTE_VALIDITY_DAYS = 30;
 
 /**
- * The three optional services the rail can add. Nothing here remediates a
- * finding, so none of it moves the gate score — that is stated on the document.
+ * The optional services the rail can add are NOT resolved here.
  *
- * Each `serviceSlugs` entry is a real `services.slug`. Tier LABELS are the
- * catalog rows' own names; tier PRICES are the catalog rows' own prices. There
- * is no invented tier here: an add-on whose catalog rows are missing simply has
- * no options and is not offered.
+ * `sow-monitoring-addon.ts` is this platform's one real answer to "which
+ * optional services may a SOW offer, and at what price for this tenant" —
+ * Tenant Monitoring priced at the tenant's real paid seat band (with #632's
+ * SMB-floor fallback when no seat count can be sourced) and the Architect
+ * Retainer's three real tiers, both off real catalog rows and both already
+ * carrying the corrections #609, #632 and #4074 made to exactly this
+ * resolution. It is reused verbatim rather than re-derived: a second band
+ * matcher here is how #4074's bug happened the first time.
+ *
+ * The design's third add-on (White-Glove Copilot Adoption, three tiers) has no
+ * tier family in the catalog to price against, and that resolver's own header
+ * states the allowed set is those two. It is deliberately not invented here;
+ * filed as a finding on #1374 instead.
  */
-const ADDON_SPECS: ReadonlyArray<{
-  key: string;
-  name: string;
-  blurb: string;
-  tierLabel: string;
-  /** Seat-banded (monitoring) tiers resolve their band from the tenant's real seat count. */
-  seatBanded?: boolean;
-  serviceSlugs: readonly string[];
-  /** Monitoring's band families, in tier order, when `seatBanded`. */
-  seatBandedFamilies?: readonly string[];
-}> = [
-  {
-    key: "adoption",
-    name: "White-Glove Copilot Adoption",
-    blurb:
-      "Remediation fixes your tenant. This addresses your people — launch comms, a pilot cohort, a prompt drip programme and live enablement sessions. A one-time programme, priced by delivery model rather than seat count.",
-    tierLabel: "Delivery model",
-    serviceSlugs: ["copilot-adoption-governance-program"],
-  },
-  {
-    key: "monitor",
-    name: "Tenant Monitoring",
-    blurb:
-      "Six signal engines against your tenant every hour. A scan tells you what is wrong today; monitoring tells you the second it happens again — including the drift that quietly undoes this remediation.",
-    tierLabel: "Seat band",
-    seatBanded: true,
-    seatBandedFamilies: ["monitoring-foundation", "monitoring-growth", "monitoring-premier"],
-    serviceSlugs: [],
-  },
-  {
-    key: "retain",
-    name: "Architect Retainer",
-    blurb:
-      "Direct access to Shane for design decisions, escalations and change review. Hours do not expire within the quarter.",
-    tierLabel: "Monthly hours",
-    serviceSlugs: [
-      "architect-essentials-retainer",
-      "architect-growth-retainer",
-      "architect-enterprise-retainer",
-    ],
-  },
-];
+const ADDON_TIER_LABELS: Readonly<Record<string, string>> = {
+  "tenant-monitoring": "Seat band",
+  "architect-retainer": "Monthly hours",
+};
 
 // ── Wire shapes ───────────────────────────────────────────────────────────────
 
@@ -201,25 +172,32 @@ export interface SowPhase {
   startWeek: number | null;
 }
 
+/**
+ * One tier of one optional service, flattened from `ResolvedAddonTier`
+ * (sow-monitoring-addon.ts) into the cents this document prices everything in.
+ */
 export interface SowAddonTier {
-  serviceSlug: string;
+  tierId: string;
   label: string;
   /** One-time cents; 0 for a purely recurring tier. */
   oneOffCents: number;
   /** Recurring cents per month; 0 for a purely one-time tier. */
   monthlyCents: number;
   detail: string | null;
+  /** Why this tier is called out — `seat-match` is the tenant's own real band. */
+  emphasis: "seat-match" | "recommended" | null;
 }
 
 export interface SowAddon {
-  key: string;
+  /** `ResolvedSowAddon.id` — e.g. `tenant-monitoring`, `architect-retainer`. */
+  addonId: string;
   name: string;
   blurb: string;
   tierLabel: string;
   tiers: SowAddonTier[];
   selected: boolean;
-  /** The chosen tier's `serviceSlug`, or null when the add-on is not taken. */
-  selectedServiceSlug: string | null;
+  /** The chosen tier's id, or null when the add-on is not taken. */
+  selectedTierId: string | null;
 }
 
 export interface SowFindingLine {
@@ -300,7 +278,7 @@ export interface FreeScanSow {
 
   selection: {
     phaseSlugs: string[];
-    addons: Array<{ key: string; serviceSlug: string }>;
+    addons: Array<{ addonId: string; tierId: string }>;
     paymentPlan: "full" | "phased";
   };
 
@@ -316,7 +294,7 @@ export interface FreeScanSow {
 
 export interface SowSelection {
   phaseSlugs: readonly string[];
-  addons: ReadonlyArray<{ key: string; serviceSlug: string }>;
+  addons: ReadonlyArray<{ addonId: string; tierId: string }>;
   paymentPlan: "full" | "phased";
 }
 
@@ -571,9 +549,9 @@ export async function buildFreeScanSow(
     }
   }
 
-  // ── Add-ons, priced off real catalog rows only ──────────────────────────────
-  const selectedAddonByKey = new Map(selection.addons.map((a) => [a.key, a.serviceSlug]));
-  const addons = await buildSowAddons(summary, selectedAddonByKey);
+  // ── Add-ons, resolved by the platform's own real resolver ───────────────────
+  const selectedTierByAddon = new Map(selection.addons.map((a) => [a.addonId, a.tierId]));
+  const addons = await buildSowAddons(tenantRow?.tenantId ?? null, selectedTierByAddon);
 
   // ── Totals ─────────────────────────────────────────────────────────────────
   const selectedPhases = phases.filter((p) => p.selected);
@@ -582,8 +560,8 @@ export async function buildFreeScanSow(
   let addonOneOffCents = 0;
   let recurringMonthlyCents = 0;
   for (const addon of addons) {
-    if (!addon.selected || !addon.selectedServiceSlug) continue;
-    const tier = addon.tiers.find((t) => t.serviceSlug === addon.selectedServiceSlug);
+    if (!addon.selected || !addon.selectedTierId) continue;
+    const tier = addon.tiers.find((t) => t.tierId === addon.selectedTierId);
     if (!tier) continue;
     addonOneOffCents += tier.oneOffCents;
     recurringMonthlyCents += tier.monthlyCents;
@@ -684,8 +662,8 @@ export async function buildFreeScanSow(
       selection: {
         phaseSlugs: phases.filter((p) => p.selected).map((p) => p.slug),
         addons: addons
-          .filter((a) => a.selected && a.selectedServiceSlug)
-          .map((a) => ({ key: a.key, serviceSlug: a.selectedServiceSlug! })),
+          .filter((a) => a.selected && a.selectedTierId)
+          .map((a) => ({ addonId: a.addonId, tierId: a.selectedTierId! })),
         paymentPlan: selection.paymentPlan,
       },
       signature: context.signature,
@@ -695,88 +673,41 @@ export async function buildFreeScanSow(
 }
 
 /**
- * Real seat count for monitoring's seat band — the Licensing pillar's own
- * `licensing.provisioned` stat, i.e. the real `/subscribedSkus` paid-seat
- * arithmetic. Null when that stat has no real value for this tenant, in which
- * case the Monitoring add-on is not offered at all rather than being priced
- * against a guessed seat count.
+ * The optional services this SOW may offer, priced for this tenant — resolved
+ * entirely by `sow-monitoring-addon.ts`, which is the platform's one real
+ * answer to that question. Nothing is re-derived here; this only flattens
+ * dollars to cents and folds in which tier the customer has actually chosen.
  */
-function resolveRealSeatCount(summary: { pillars: PillarSummaryCard[] }): number | null {
-  const licensing = summary.pillars.find((p) => p.pillar === "licensing");
-  const stat = licensing?.stats.find((s) => s.id === "licensing.provisioned");
-  return typeof stat?.value === "number" && stat.value > 0 ? stat.value : null;
-}
-
 async function buildSowAddons(
-  summary: Awaited<ReturnType<typeof buildPillarSummary>>,
-  selectedByKey: ReadonlyMap<string, string>,
+  tenantGuid: string | null,
+  selectedTierByAddon: ReadonlyMap<string, string>,
 ): Promise<SowAddon[]> {
-  const seats = resolveRealSeatCount(summary);
-  const monitoringFamilies = ADDON_SPECS.find((a) => a.seatBanded)?.seatBandedFamilies ?? [];
-
-  const rows = (await db.select(catalogColumns).from(servicesTable)) as CatalogRow[];
-  const bySlug = new Map(rows.map((r) => [r.slug, r]));
+  const resolved = await Promise.all([
+    resolveTenantMonitoringAddon(tenantGuid),
+    resolveArchitectRetainerAddon(tenantGuid),
+  ]);
 
   const out: SowAddon[] = [];
-  for (const spec of ADDON_SPECS) {
-    let tiers: SowAddonTier[];
-
-    if (spec.seatBanded) {
-      // No real seat count means no honest monitoring price — the add-on is
-      // simply not offered rather than quoted against an invented estate size.
-      if (seats === null) continue;
-      tiers = [];
-      for (const family of monitoringFamilies) {
-        const band = rows.find((r) => {
-          if (r.category !== "monitoring" || r.visibility !== "public") return false;
-          if (!r.slug.startsWith(`${family}-`)) return false;
-          const attrs = (r.typeAttributes ?? {}) as { seatMin?: number | null; seatMax?: number | null };
-          const min = attrs.seatMin ?? 0;
-          const max = attrs.seatMax ?? Number.POSITIVE_INFINITY;
-          return seats >= min && seats <= max;
-        });
-        if (!band) continue;
-        const monthlyCents = resolveTypeAttributesMonthlyPriceCents(band, seats);
-        if (monthlyCents <= 0) continue;
-        const attrs = (band.typeAttributes ?? {}) as { tenantTierLabel?: string | null };
-        tiers.push({
-          serviceSlug: band.slug,
-          label: band.name,
-          oneOffCents: 0,
-          monthlyCents,
-          detail: attrs.tenantTierLabel ? `${attrs.tenantTierLabel} band · ${seats.toLocaleString("en-US")} paid seats` : null,
-        });
-      }
-    } else {
-      tiers = [];
-      for (const slug of spec.serviceSlugs) {
-        const row = bySlug.get(slug);
-        if (!row || row.visibility !== "public") continue;
-        const cents = resolveServicePriceCents(row);
-        if (cents <= 0) continue;
-        const recurring = row.category === "retainer";
-        tiers.push({
-          serviceSlug: slug,
-          label: row.name,
-          oneOffCents: recurring ? 0 : cents,
-          monthlyCents: recurring ? cents : 0,
-          detail: row.description,
-        });
-      }
-    }
-
-    if (tiers.length === 0) continue;
-
-    const chosen = selectedByKey.get(spec.key);
-    const selectedServiceSlug = chosen && tiers.some((t) => t.serviceSlug === chosen) ? chosen : null;
+  for (const addon of resolved) {
+    if (!addon || addon.tiers.length === 0) continue;
+    const tiers: SowAddonTier[] = addon.tiers.map((t) => ({
+      tierId: t.id,
+      label: t.label,
+      oneOffCents: Math.round(t.upfrontUsd * 100),
+      monthlyCents: Math.round(t.monthlyUsd * 100),
+      detail: t.detail || null,
+      emphasis: t.emphasis ?? null,
+    }));
+    const chosen = selectedTierByAddon.get(addon.id);
+    const selectedTierId = chosen && tiers.some((t) => t.tierId === chosen) ? chosen : null;
     out.push({
-      key: spec.key,
-      name: spec.name,
-      blurb: spec.blurb,
-      tierLabel: spec.tierLabel,
+      addonId: addon.id,
+      name: addon.title,
+      blurb: addon.blurb,
+      tierLabel: ADDON_TIER_LABELS[addon.id] ?? "Tier",
       tiers,
-      selected: selectedServiceSlug !== null,
-      selectedServiceSlug,
+      selected: selectedTierId !== null,
+      selectedTierId,
     });
   }
 
