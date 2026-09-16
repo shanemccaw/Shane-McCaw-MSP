@@ -102,6 +102,24 @@ live M365 admin-consent + Stripe walkthrough gate). Likewise `customer-admin`/`b
 skipped if the `customer_roles` platform-default catalog doesn't actually carry that row right
 now (see #4400 — the catalog was severely wiped by #4272's reset and needs its own repair).
 
+## Command Center "Clean Dev Database" — the three scripts as one confirmed chain (Git #4417)
+
+BuildConsole's Command Center (Ctrl+K) has a "Clean Dev Database" row that runs
+`find-tenant-scoped-tables.mjs` → `reset-dev-database.mjs --yes` → `reset-rbac-test-accounts.mjs`
+in that order, through the same gates as the individual rows above (no second runner or confirm).
+
+- **Enter on the row only previews:** step 1 for real (read-only), then the `--dry-run` of steps 2
+  and 3, each shown in the right pane as it runs. Nothing changes. The preview ends with the phrase
+  `clean dev db #<live msp id>`; typing it and pressing Enter runs the real chain once.
+- **Step 1 never blocks** — its output is shown whatever it reports.
+- **Fail-stop on step 2:** if the real reset fails, step 3 is marked not run and never starts.
+- **Tenant admin consent before step 3:** after the reset, the chain re-runs step 3's dry run
+  against the reset database. If the script reports no live mccawsoft2 `tenants` row (the row only a
+  manual, browser-based admin consent creates, #4318), the chain stops before step 3 and says so.
+  While that row belongs to the direct MSP, a real reset always deletes it, so the chain stops here
+  every time — grant consent, then run "Reset RBAC test accounts" **on its own**. Re-running the
+  chain would delete the newly consented tenant row again.
+
 ## `find-tenant-scoped-tables.mjs` — live FK-reachability report (Git #4313)
 
 Reports, from real `information_schema` FK edges, every table transitively reachable from a

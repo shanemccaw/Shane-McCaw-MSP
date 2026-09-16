@@ -33,6 +33,10 @@ namespace BuildConsole.Services
         private const string DryRunRollbackMarker = "[dry-run] rolling back — no changes committed.";
         private const string CommitMarker = "[commit] transaction committed.";
         private const string ResultJsonMarker = "=== RESULT (JSON) ===";
+        /// <summary>The script's own <c>[resolve]</c> lines for the live mccawsoft2 tenants row (Git #4417 reads them to
+        /// tell whether tenant admin consent — #4318 — has produced that row yet).</summary>
+        private static readonly Regex TenantRowLine = new(@"^\[resolve\] mccawsoft2 -> tenants\.id=(?<id>\d+), msp_id=(?<msp>\d+)", RegexOptions.Multiline);
+        private const string NoTenantRowMarker = "[resolve] mccawsoft2 -> NO live tenants row right now";
         private static readonly Regex PasswordJsonField = new(@"(""password""\s*:\s*)""(?:[^""\\]|\\.)*""");
 
         private static readonly TimeSpan PreviewTimeout = TimeSpan.FromMinutes(5);
@@ -43,6 +47,13 @@ namespace BuildConsole.Services
 
         /// <summary>Set only by a preview that exited 0, printed its rollback line and a parseable result.</summary>
         public int? PreviewedMspId { get; private set; }
+
+        /// <summary>Git #4417 — from the most recent preview's own output: true when the script resolved a live
+        /// mccawsoft2 tenants row, false when it printed that none exists (tenant-scoped rungs get skipped), null when
+        /// the output said neither (the preview failed before resolving).</summary>
+        public bool? PreviewedTenantRowPresent { get; private set; }
+        /// <summary>Git #4417 — the <c>msp_id</c> of that tenants row, when one was resolved.</summary>
+        public int? PreviewedTenantMspId { get; private set; }
 
         public string? ConfirmPhrase => PreviewedMspId is int id ? $"reset rbac #{id}" : null;
 
@@ -94,6 +105,8 @@ namespace BuildConsole.Services
             try
             {
                 PreviewedMspId = null;
+                PreviewedTenantRowPresent = null;
+                PreviewedTenantMspId = null;
 
                 if (!PaletteScriptProcess.TryResolveScript(ScriptFileName, out var repoRoot, out var scriptPath, out var error))
                     return error;
@@ -108,6 +121,15 @@ namespace BuildConsole.Services
                     "$1\"(dry run — rolled back, not a real credential)\"");
                 var msp = DirectMspLine.Match(stdout);
                 var result = TryParseResult(stdout);
+                if (TenantRowLine.Match(stdout) is { Success: true } tenantRow)
+                {
+                    PreviewedTenantRowPresent = true;
+                    PreviewedTenantMspId = int.Parse(tenantRow.Groups["msp"].Value);
+                }
+                else if (stdout.Contains(NoTenantRowMarker))
+                {
+                    PreviewedTenantRowPresent = false;
+                }
 
                 if (ok && msp.Success && stdout.Contains(DryRunRollbackMarker) && result != null)
                 {

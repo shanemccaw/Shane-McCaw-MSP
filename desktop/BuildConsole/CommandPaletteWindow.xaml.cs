@@ -56,6 +56,16 @@ namespace BuildConsole
             /// real result, and displays it in place of <see cref="DetailBody"/>.
             /// </summary>
             public Func<System.Threading.Tasks.Task<string>>? RunWithResult { get; init; }
+
+            /// <summary>
+            /// Git #4417 — <see cref="RunWithResult"/> for a multi-step command: every text passed to the
+            /// progress callback (the full current text, not a delta) replaces the right pane's "Running…"
+            /// while it runs; the returned text is the final result. Takes precedence over both others.
+            /// </summary>
+            public Func<IProgress<string>, System.Threading.Tasks.Task<string>>? RunWithProgress { get; init; }
+
+            /// <summary>True when the command shows its real result in the palette instead of closing it.</summary>
+            public bool ShowsResultInline => RunWithResult != null || RunWithProgress != null;
         }
 
         // The real category set from the issue/screenshot (Smart All + nine).
@@ -157,6 +167,8 @@ namespace BuildConsole
         /// <summary>Real outcome text of the real reset run from this mode — kept until the input changes.</summary>
         private string? _resetResultText;
         private bool _resetResultOk;
+        /// <summary>Git #4417 — latest streamed step progress of the in-flight run (an <c>IPaletteProgressGate</c>); null otherwise.</summary>
+        private string? _resetProgressText;
 
         /// <summary>Raised when "Send to Chat" is clicked on the SQL results panel — MainWindow
         /// wires this to the same shared <c>SendTextToActiveClaudeChatAsync</c> path (#937/#940)
@@ -550,7 +562,7 @@ namespace BuildConsole
             if (_selectedIndex < 0 || _selectedIndex >= _filtered.Count) return;
             var cmd = _filtered[_selectedIndex];
 
-            if (cmd.RunWithResult != null)
+            if (cmd.ShowsResultInline)
             {
                 _ = RunSelectedWithResultAsync(cmd);
                 return;
@@ -569,15 +581,31 @@ namespace BuildConsole
             _liveResultText = "Running…";
             RenderDetail();
 
+            // Git #4417 — streamed step progress, shown only while this run is still in flight and its
+            // command is still selected (Progress<T> posts back to this UI thread).
+            bool finished = false;
+            var progress = new Progress<string>(text =>
+            {
+                if (finished) return;
+                if (_selectedIndex >= 0 && _selectedIndex < _filtered.Count && _filtered[_selectedIndex] == cmd)
+                {
+                    _liveResultText = text;
+                    RenderDetail();
+                }
+            });
+
             string result;
             try
             {
-                result = await cmd.RunWithResult!();
+                result = cmd.RunWithProgress != null
+                    ? await cmd.RunWithProgress(progress)
+                    : await cmd.RunWithResult!();
             }
             catch (Exception ex)
             {
                 result = $"✗ {ex.Message}";
             }
+            finished = true;
 
             // Only show the result if the same command is still selected — the user may have
             // moved on to a different row while this was running.
@@ -709,7 +737,7 @@ namespace BuildConsole
 
                     // Git #3826 — a RunWithResult tile stays open and shows its real result
                     // inline in the right pane, same as running it via the results list/Enter.
-                    if (local.RunWithResult != null)
+                    if (local.ShowsResultInline)
                     {
                         int idx = _filtered.IndexOf(local);
                         if (idx >= 0)
@@ -1018,7 +1046,7 @@ namespace BuildConsole
                 Foreground = (Brush)FindResource("TextSecondaryBrush"),
             });
 
-            if ((cmd.Run != null || cmd.RunWithResult != null) && !string.IsNullOrEmpty(cmd.ActionLabel))
+            if ((cmd.Run != null || cmd.ShowsResultInline) && !string.IsNullOrEmpty(cmd.ActionLabel))
             {
                 PaletteDetailActionLabel.Text = $"{cmd.ActionLabel}  ↵";
                 PaletteDetailActionHost.Visibility = Visibility.Visible;
@@ -1578,12 +1606,24 @@ namespace BuildConsole
             _resetRunning = true;
             _resetRunningGate = gate;
             _resetResultText = null;
+            _resetProgressText = null;
             RenderResults(preserveSelection: true);
+
+            // Git #4417 — a multi-step gate streams its step progress; shown only in its own confirm view
+            // and only while its run is still in flight (Progress<T> posts back to this UI thread).
+            var progress = new Progress<string>(text =>
+            {
+                if (_resetRunningGate != gate) return;
+                _resetProgressText = text;
+                if (_resetConfirmGate == gate) RenderResults(preserveSelection: true);
+            });
 
             (bool Ok, string Text) outcome;
             try
             {
-                outcome = await gate.ExecuteAsync(typed);
+                outcome = gate is BuildConsole.Services.IPaletteProgressGate progressGate
+                    ? await progressGate.ExecuteAsync(typed, progress)
+                    : await gate.ExecuteAsync(typed);
             }
             catch (Exception ex)
             {
@@ -1592,6 +1632,7 @@ namespace BuildConsole
 
             _resetRunning = false;
             _resetRunningGate = null;
+            _resetProgressText = null;
             _resetResultOk = outcome.Ok;
             // Only show the result against the confirm view it came from (the input may have changed mid-run).
             _resetResultText = gate == _resetConfirmGate ? outcome.Text : null;
@@ -1734,10 +1775,10 @@ namespace BuildConsole
             });
 
             string body = running
-                ? gate.RunningBody
+                ? _resetProgressText ?? gate.RunningBody
                 : _resetResultText ?? (armed ? gate.ArmedBody : gate.LockedBody);
 
-            if (_resetResultText != null)
+            if (_resetResultText != null || (running && _resetProgressText != null))
             {
                 PaletteDetail.Children.Add(new TextBox
                 {
@@ -1749,7 +1790,7 @@ namespace BuildConsole
                     FontSize = 10.5,
                     Background = (Brush)FindResource("CardBackgroundBrush"),
                     BorderThickness = new Thickness(1),
-                    BorderBrush = (Brush)FindResource(_resetResultOk ? "BorderDividerBrush" : "StatusErrorBrush"),
+                    BorderBrush = (Brush)FindResource(running || _resetResultOk ? "BorderDividerBrush" : "StatusErrorBrush"),
                     Foreground = (Brush)FindResource("TextPrimaryBrush"),
                     Padding = new Thickness(8),
                     MaxHeight = 330,

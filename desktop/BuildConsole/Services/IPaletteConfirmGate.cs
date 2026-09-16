@@ -54,6 +54,17 @@ namespace BuildConsole.Services
     }
 
     /// <summary>
+    /// Git #4417 — a confirm gate whose real run has several steps and reports each one as it starts and finishes.
+    /// The palette calls this overload instead of <see cref="IPaletteConfirmGate.ExecuteAsync"/> and renders every
+    /// reported text in the confirm pane while the run is in flight; the returned text is still the final result.
+    /// </summary>
+    public interface IPaletteProgressGate : IPaletteConfirmGate
+    {
+        /// <param name="progress">Receives the full current progress text (not a delta) each time a step changes.</param>
+        Task<(bool Ok, string Text)> ExecuteAsync(string typedConfirmation, IProgress<string> progress);
+    }
+
+    /// <summary>
     /// Git #4415/#4416 — a single, never-retried <c>node &lt;script&gt; [flag]</c> launch shared by the
     /// confirm gates. <see cref="SubprocessRunner"/> is deliberately not used: it re-launches a child
     /// that exits with a crash-class NTSTATUS (e.g. 0xC000013A), which is right for git/gh probes and

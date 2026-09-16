@@ -67,11 +67,14 @@ namespace BuildConsole
             // Git #4415 / #4416 — one gate per destructive action per palette window: a confirmation
             // earned by a preview in this window can't carry into a later open. The command rows only
             // preview; the window owns the separate typed-phrase step that reaches the real run.
+            // Git #4417 — the Clean Dev Database chain composes its own private dev/RBAC gates, so its preview
+            // never arms the standalone phrases above.
             var devResetGate = new DevDatabaseResetGate();
             var rbacResetGate = new RbacTestAccountsResetGate();
+            var cleanDevDbGate = new CleanDevDatabaseChainGate();
             var win = new CommandPaletteWindow(
-                BuildPaletteCommands(devResetGate, rbacResetGate), BuildTrackerApi, LeftSidebar.GetAllEpics(), QueueDb, QueueWatcher,
-                new IPaletteConfirmGate[] { devResetGate, rbacResetGate })
+                BuildPaletteCommands(devResetGate, rbacResetGate, cleanDevDbGate), BuildTrackerApi, LeftSidebar.GetAllEpics(), QueueDb, QueueWatcher,
+                new IPaletteConfirmGate[] { devResetGate, rbacResetGate, cleanDevDbGate })
             { Owner = this };
 
             // Git #3850 — the epic-*name* matching branch (sibling #3831 covers epic/issue
@@ -150,7 +153,7 @@ namespace BuildConsole
         /// as the tile row per the reference screenshot.
         /// </summary>
         private List<CommandPaletteWindow.PaletteCommand> BuildPaletteCommands(
-            DevDatabaseResetGate devResetGate, RbacTestAccountsResetGate rbacResetGate) => new()
+            DevDatabaseResetGate devResetGate, RbacTestAccountsResetGate rbacResetGate, CleanDevDatabaseChainGate cleanDevDbGate) => new()
         {
             new CommandPaletteWindow.PaletteCommand
             {
@@ -205,6 +208,21 @@ namespace BuildConsole
                            + "Enter on this row never runs the real reset.",
                 ActionLabel = "Preview RBAC Reset (dry run)",
                 RunWithResult = rbacResetGate.PreviewAsync,
+            },
+            new CommandPaletteWindow.PaletteCommand
+            {
+                Glyph = "", // Warning
+                Title = "Clean Dev Database",
+                Subtitle = "Preview of the 3-step chain: scan → reset dev DB → recreate RBAC test accounts — changes nothing",
+                DetailBody = "Enter previews the whole chain (Git #4417), step by step: `node scripts/db/find-tenant-scoped-tables.mjs` "
+                           + "for real (read-only), then the real dry runs of `reset-dev-database.mjs` and "
+                           + "`reset-rbac-test-accounts.mjs`. Nothing is changed, no backup is taken and settings.json is not "
+                           + "touched. The preview ends with the exact phrase to type into the search box for the separate, "
+                           + "destructive step, which runs all three for real in order: the scan, the reset (--yes, backup "
+                           + "first; if it fails the chain stops), then the test-account wipe/recreate. Step 3 only runs if the "
+                           + "reset database still has a consented mccawsoft2 tenant (#4318). Enter on this row never runs the real chain.",
+                ActionLabel = "Preview Clean Dev Database Chain",
+                RunWithProgress = cleanDevDbGate.PreviewAsync,
             },
             new CommandPaletteWindow.PaletteCommand
             {
