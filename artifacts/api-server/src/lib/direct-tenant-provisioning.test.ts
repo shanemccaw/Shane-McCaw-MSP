@@ -138,25 +138,25 @@ describe("ensureClientMspUser — cross-MSP customerId patch backstop", () => {
   });
 });
 
-// #3973 (step 3 of #3970) — the real RetainerNoConsent -> RetainerConsented
+// #3973 (step 3 of #3970) — the real RetainerPending -> RetainerConsented
 // role swap at the point a tenant actually gets connected. Same function,
 // same single UPDATE that links tenant_id/mspId — the contract is that the
 // role flips in that exact statement, never as a separate write, and never
 // only sometimes (it must NOT depend on the caller's desiredRole, which
 // carries product-type defaults unrelated to this ladder transition).
-describe("ensureClientMspUser — RetainerNoConsent -> RetainerConsented swap (#3973)", () => {
+describe("ensureClientMspUser — RetainerPending -> RetainerConsented swap (#3973)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSelectResultsQueue = [];
     mockDefaultSelectResult = [];
   });
 
-  it("swaps RetainerNoConsent to RetainerConsented in the SAME update that links the tenant, ignoring desiredRole", async () => {
+  it("swaps RetainerPending to RetainerConsented in the SAME update that links the tenant, ignoring desiredRole", async () => {
     mockSelectResultsQueue = [
       // 1. explicitCustomerId → tenants lookup: tenant 7 under msp 3
       [{ id: 7, mspId: 3 }],
-      // 2. the user's own row: RetainerNoConsent, no tenant/msp yet
-      [{ existingCustomerId: null, existingMspId: null, existingRole: LEGACY_ROLE.retainerNoConsent }],
+      // 2. the user's own row: RetainerPending, no tenant/msp yet
+      [{ existingCustomerId: null, existingMspId: null, existingRole: LEGACY_ROLE.retainerPending }],
     ];
 
     // desiredRole passed as Customer (the caller's product-type default) to
@@ -173,7 +173,7 @@ describe("ensureClientMspUser — RetainerNoConsent -> RetainerConsented swap (#
     });
   });
 
-  it("does not touch mspRole for a role that is neither the unbridged-Free default nor RetainerNoConsent", async () => {
+  it("does not touch mspRole for a role that is neither the unbridged-Free default nor RetainerPending", async () => {
     mockSelectResultsQueue = [
       [{ id: 7, mspId: 3 }],
       [{ existingCustomerId: null, existingMspId: null, existingRole: LEGACY_ROLE.mspOperator }],

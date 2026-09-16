@@ -450,7 +450,7 @@ components:
         mspRole:
           type: string
           nullable: true
-          enum: [PlatformAdmin, MSPAdmin, MSPOperator, Customer, RetainerConsented, RetainerNoConsent, ServiceAccount, Free]
+          enum: [PlatformAdmin, MSPAdmin, MSPOperator, Customer, RetainerConsented, RetainerPending, PackConsented, PackPending, MonitoringConsented, MonitoringPending, ServiceAccount, Free]
         mspId:
           type: integer
           nullable: true

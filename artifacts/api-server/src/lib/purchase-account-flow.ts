@@ -314,7 +314,7 @@ export type AttachPasswordResult =
  * provisionIfMissing: the generalized Buy.tsx path provisions a missing users
  * row through the SAME provisionProspectAccount the consent flow uses — these
  * are paid purchases, not assessment prospects, so the role is never `Free`.
- * #3972 — which of `Customer` / `RetainerConsented` / `RetainerNoConsent` it
+ * #3972 — which of `Customer` / `RetainerConsented` / `RetainerPending` it
  * gets is resolveProspectRole's call, keyed on the session's real product
  * category and whether session.tenantId is set (null on a skipped-consent
  * Retainer buy — see public-purchase-payment.ts's read-consent-optional skip).
@@ -344,7 +344,7 @@ export async function attachPasswordToAccount(
     if (!opts.provisionIfMissing) return { outcome: "account_missing" };
 
     // #3972 — real product type decides the role, not a blanket Customer:
-    // Retainer with no tenant (skipped-consent) is RetainerNoConsent, Retainer
+    // Retainer with no tenant (skipped-consent) is RetainerPending, Retainer
     // with a tenant is RetainerConsented; monitoring/pack (and anything else,
     // which always carries a tenant by the time payment succeeds) stays Customer.
     const category = await resolveProductCategory(session.productSlug);

@@ -189,7 +189,11 @@ export function resolveAuditActorRole(user: { role: "admin" | "client"; mspRole?
       return "service_account";
     case LEGACY_ROLE.customer:
     case LEGACY_ROLE.free:
-    case LEGACY_ROLE.retainerNoConsent:
+    case LEGACY_ROLE.monitoringPending:
+    case LEGACY_ROLE.monitoringConsented:
+    case LEGACY_ROLE.packPending:
+    case LEGACY_ROLE.packConsented:
+    case LEGACY_ROLE.retainerPending:
     case LEGACY_ROLE.retainerConsented:
       return "customer";
     default:

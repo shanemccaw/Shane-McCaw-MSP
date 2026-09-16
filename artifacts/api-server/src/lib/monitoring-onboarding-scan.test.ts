@@ -85,9 +85,9 @@ async function makeUser(tenantId: number | null): Promise<number> {
       email: `test-1314-${RUN_TAG}-${randomBytes(3).toString("hex")}@onboarding-scan-test.invalid`,
       tenantId,
       // #3971's users_role_scope_check requires a tenant for the default "Free"
-      // role — RetainerNoConsent is the one role it exempts, so the no-tenant
+      // role — RetainerPending is the one role it exempts, so the no-tenant
       // case (this helper's whole reason to exist, Git #1314) needs it explicit.
-      ...(tenantId == null ? { mspRole: LEGACY_ROLE.retainerNoConsent } : {}),
+      ...(tenantId == null ? { mspRole: LEGACY_ROLE.retainerPending } : {}),
     })
     .returning({ id: usersTable.id });
   createdUserIds.push(row.id);

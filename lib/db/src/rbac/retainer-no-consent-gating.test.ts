@@ -1,10 +1,10 @@
 /**
- * #3974 — real-database coverage for the RetainerNoConsent gating audit
+ * #3974 — real-database coverage for the RetainerPending gating audit
  * (lib/db/migrations/manual/2026-09-14-rbac-retainer-noconsent-gating-3974.sql).
  *
  * Same discipline as ./customer-admin-billing-roles.test.ts: one outer transaction for
  * the file, a nested savepoint per test, everything rolled back. Proves the real,
- * decided answers for a RetainerNoConsent principal — tenant-scoped capabilities deny,
+ * decided answers for a RetainerPending principal — tenant-scoped capabilities deny,
  * the ladder floor (and therefore any plain-`requireAuth`/`ladder.free` surface —
  * documents/SOW, engagement scope, account settings) allows, marketplace parity with
  * Customer holds, and the billed-party mechanism (#3629) still grants billing
@@ -64,15 +64,15 @@ async function withSavepoint(fn: (t: Tx) => Promise<void>): Promise<void> {
 }
 
 /**
- * RetainerNoConsent legitimately carries no tenant at all (#3971's
+ * RetainerPending legitimately carries no tenant at all (#3971's
  * users_role_scope_check branch) — the one rung besides PlatformAdmin/MSP-staff that
  * doesn't join an existing tenant.
  */
-async function insertRetainerNoConsentUser(t: Tx): Promise<number> {
+async function insertRetainerPendingUser(t: Tx): Promise<number> {
   const email = `zz-test-3974-${Math.random().toString(36).slice(2)}@example.invalid`;
   const [row] = (await t.execute(sql`
     INSERT INTO users (email, role, msp_role, tenant_id)
-    VALUES (${email}, 'client', ${LEGACY_ROLE.retainerNoConsent}, NULL)
+    VALUES (${email}, 'client', ${LEGACY_ROLE.retainerPending}, NULL)
     RETURNING id
   `)).rows as Array<{ id: number }>;
   return row!.id;
@@ -87,7 +87,7 @@ async function insertInvoice(t: Tx, userId: number): Promise<number> {
   return row!.id;
 }
 
-/** The customer-system answer, evaluated with no org (RetainerNoConsent has no tenant). */
+/** The customer-system answer, evaluated with no org (RetainerPending has no tenant). */
 async function customerCan(t: Tx, userId: number, capability: string): Promise<boolean> {
   const evaluator = await loadRbacEvaluator(t as never, { system: "customer", userId, orgId: null });
   return evaluator.can(capability);
@@ -99,26 +99,26 @@ async function mspCan(t: Tx, userId: number, capability: string): Promise<boolea
   return evaluator.can(capability);
 }
 
-describe("#3974 — the seeded RetainerNoConsent/RetainerConsented rows", () => {
+describe("#3974 — the seeded RetainerPending/RetainerConsented rows", () => {
   it("both rungs exist as platform-scoped roles in both systems", async () => {
     const rows = (await tx.execute(sql`
-      SELECT key FROM msp_roles WHERE msp_id IS NULL AND key IN ('RetainerNoConsent', 'RetainerConsented') ORDER BY key
+      SELECT key FROM msp_roles WHERE msp_id IS NULL AND key IN ('RetainerPending', 'RetainerConsented') ORDER BY key
     `)).rows as Array<{ key: string }>;
-    expect(rows.map((r) => r.key)).toEqual(["RetainerConsented", "RetainerNoConsent"]);
+    expect(rows.map((r) => r.key)).toEqual(["RetainerConsented", "RetainerPending"]);
 
     const customerRows = (await tx.execute(sql`
-      SELECT key FROM customer_roles WHERE tenant_id IS NULL AND key IN ('RetainerNoConsent', 'RetainerConsented') ORDER BY key
+      SELECT key FROM customer_roles WHERE tenant_id IS NULL AND key IN ('RetainerPending', 'RetainerConsented') ORDER BY key
     `)).rows as Array<{ key: string }>;
-    expect(customerRows.map((r) => r.key)).toEqual(["RetainerConsented", "RetainerNoConsent"]);
+    expect(customerRows.map((r) => r.key)).toEqual(["RetainerConsented", "RetainerPending"]);
   });
 
   it("ladder.retainer-no-consent and ladder.retainer-consented are real catalogued capabilities", async () => {
     const rows = (await tx.execute(sql`
       SELECT key FROM rbac_capabilities
-       WHERE system = 'msp' AND key IN (${LADDER.retainerNoConsent}, ${LADDER.retainerConsented}) AND is_active
+       WHERE system = 'msp' AND key IN (${LADDER.retainerPending}, ${LADDER.retainerConsented}) AND is_active
        ORDER BY key
     `)).rows as Array<{ key: string }>;
-    expect(rows.map((r) => r.key)).toEqual([LADDER.retainerConsented, LADDER.retainerNoConsent].sort());
+    expect(rows.map((r) => r.key)).toEqual([LADDER.retainerConsented, LADDER.retainerPending].sort());
   });
 
   it("ladder.free now admits both Retainer rungs — the floor every plain requireAuth surface reads", async () => {
@@ -128,38 +128,38 @@ describe("#3974 — the seeded RetainerNoConsent/RetainerConsented rows", () => 
       WHERE m.msp_id IS NULL AND m.capability_key = ${LADDER.free}
     `)).rows as Array<{ key: string }>;
     const keys = rows.map((r) => r.key);
-    expect(keys).toContain("RetainerNoConsent");
+    expect(keys).toContain("RetainerPending");
     expect(keys).toContain("RetainerConsented");
   });
 
-  it("ladder.customer-user (the Customer floor) does NOT admit RetainerNoConsent", async () => {
+  it("ladder.customer-user (the Customer floor) does NOT admit RetainerPending", async () => {
     const rows = (await tx.execute(sql`
       SELECT r.key FROM msp_feature_role_mapping m
       JOIN msp_roles r ON r.id::text IN (SELECT jsonb_array_elements_text(m.roles -> 'allow'))
       WHERE m.msp_id IS NULL AND m.capability_key = ${LADDER.customer}
     `)).rows as Array<{ key: string }>;
-    expect(rows.map((r) => r.key)).not.toContain("RetainerNoConsent");
+    expect(rows.map((r) => r.key)).not.toContain("RetainerPending");
   });
 });
 
-describe("#3974 — a real RetainerNoConsent principal, no tenant", () => {
+describe("#3974 — a real RetainerPending principal, no tenant", () => {
   it("clears the Free floor (documents/SOW, engagement scope, account settings sit behind this)", async () => {
     await withSavepoint(async (t) => {
-      const id = await insertRetainerNoConsentUser(t);
+      const id = await insertRetainerPendingUser(t);
       expect(await mspCan(t, id, LADDER.free)).toBe(true);
     });
   });
 
   it("does NOT clear the Customer floor (no tenant-scoped ladder surface)", async () => {
     await withSavepoint(async (t) => {
-      const id = await insertRetainerNoConsentUser(t);
+      const id = await insertRetainerPendingUser(t);
       expect(await mspCan(t, id, LADDER.customer)).toBe(false);
     });
   });
 
   it("is denied team.manage and changes.approve — both explicitly, tenant-scoped", async () => {
     await withSavepoint(async (t) => {
-      const id = await insertRetainerNoConsentUser(t);
+      const id = await insertRetainerPendingUser(t);
       expect(await customerCan(t, id, "team.manage")).toBe(false);
       expect(await customerCan(t, id, "changes.approve")).toBe(false);
     });
@@ -167,14 +167,14 @@ describe("#3974 — a real RetainerNoConsent principal, no tenant", () => {
 
   it("is allowed marketplace.browse-full — parity with a paying Customer", async () => {
     await withSavepoint(async (t) => {
-      const id = await insertRetainerNoConsentUser(t);
+      const id = await insertRetainerPendingUser(t);
       expect(await customerCan(t, id, "marketplace.browse-full")).toBe(true);
     });
   });
 
   it("holds neither billing capability until actually billed", async () => {
     await withSavepoint(async (t) => {
-      const id = await insertRetainerNoConsentUser(t);
+      const id = await insertRetainerPendingUser(t);
       expect(await customerCan(t, id, "billing.view")).toBe(false);
       expect(await customerCan(t, id, "billing.manage")).toBe(false);
     });
@@ -182,7 +182,7 @@ describe("#3974 — a real RetainerNoConsent principal, no tenant", () => {
 
   it("the billed-party trigger (#3629) grants billing regardless of msp_role", async () => {
     await withSavepoint(async (t) => {
-      const id = await insertRetainerNoConsentUser(t);
+      const id = await insertRetainerPendingUser(t);
       await insertInvoice(t, id);
       expect(await customerCan(t, id, "billing.view")).toBe(true);
       expect(await customerCan(t, id, "billing.manage")).toBe(true);

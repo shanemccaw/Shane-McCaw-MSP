@@ -84,7 +84,7 @@ function flagless(rung: LegacyRole): LegacyUserRow {
 
 /**
  * #3974 (#4208) — known, deliberate real-DB overrides for the two BRAND NEW rungs
- * (`RetainerNoConsent`/`RetainerConsented`, #3971) that `LEGACY_CAPABILITY_RULES`
+ * (`RetainerPending`/`RetainerConsented`, #3971) that `LEGACY_CAPABILITY_RULES`
  * cannot answer correctly on its own.
  *
  * That transcription is pinned to code that predates both rungs entirely, so its
@@ -103,9 +103,17 @@ function flagless(rung: LegacyRole): LegacyUserRow {
  * is a standalone script that opens a real DB connection at module load.
  */
 const KNOWN_DENY_OVERRIDES: ReadonlyArray<{ system: RbacSystem; capabilityKey: string; role: LegacyRole }> = [
-  { system: "customer", capabilityKey: "team.manage", role: "RetainerNoConsent" },
-  { system: "customer", capabilityKey: "changes.approve", role: "RetainerNoConsent" },
+  { system: "customer", capabilityKey: "team.manage", role: "RetainerPending" },
+  { system: "customer", capabilityKey: "changes.approve", role: "RetainerPending" },
   { system: "customer", capabilityKey: "team.manage", role: "RetainerConsented" },
+  // #4371 — the Monitoring/Pack rungs take the Retainer pair's decisions (see
+  // `2026-09-16-rbac-retainer-pending-rename-4371.sql` and parity-check.ts).
+  { system: "customer", capabilityKey: "team.manage", role: "MonitoringPending" },
+  { system: "customer", capabilityKey: "changes.approve", role: "MonitoringPending" },
+  { system: "customer", capabilityKey: "team.manage", role: "PackPending" },
+  { system: "customer", capabilityKey: "changes.approve", role: "PackPending" },
+  { system: "customer", capabilityKey: "team.manage", role: "MonitoringConsented" },
+  { system: "customer", capabilityKey: "team.manage", role: "PackConsented" },
 ];
 
 /**

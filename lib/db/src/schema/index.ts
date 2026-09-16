@@ -173,13 +173,15 @@ export const usersTable = pgTable("users", {
   index("users_tenant_id_idx").on(t.tenantId),
   index("users_manager_user_id_idx").on(t.managerUserId),
   // #3971 — `RetainerConsented` has a tenant (same requirement shape as `Customer`/`Free`);
-  // `RetainerNoConsent` has no tenant, ever, while in that state (its own OR branch, no
-  // scope column required). `Free`'s own requirement is untouched — still strictly
-  // tenant-required. Kept in sync with the manual migration of the same name.
+  // `RetainerPending` (named `RetainerNoConsent` until #4371) has no tenant, ever, while in
+  // that state (its own OR branch, no scope column required). `Free`'s own requirement is
+  // untouched — still strictly tenant-required. Kept in sync with the manual migration of
+  // the same name and `2026-09-16-rbac-retainer-pending-rename-4371.sql`. The four
+  // Monitoring/Pack rungs are not admitted here yet — widening it for them is #4372.
   check("users_role_scope_check", sql`
     (${t.mspRole} IN ('Customer', 'Free', 'RetainerConsented') AND ${t.tenantId} IS NOT NULL)
     OR
-    (${t.mspRole} = 'RetainerNoConsent')
+    (${t.mspRole} = 'RetainerPending')
     OR
     (${t.mspRole} IN ('MSPAdmin', 'MSPOperator', 'ServiceAccount') AND ${t.mspId} IS NOT NULL)
     OR

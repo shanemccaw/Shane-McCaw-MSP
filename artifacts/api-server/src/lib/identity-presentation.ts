@@ -76,7 +76,11 @@ export function portalLandingSurface(effective: LegacyRole | undefined): PortalL
  */
 const ROLE_LABELS: Readonly<Record<LegacyRole, string>> = Object.freeze({
   Free: "Free",
-  RetainerNoConsent: "Retainer (No Consent)",
+  MonitoringPending: "Monitoring (Pending)",
+  MonitoringConsented: "Monitoring (Consented)",
+  PackPending: "Pack (Pending)",
+  PackConsented: "Pack (Consented)",
+  RetainerPending: "Retainer (Pending)",
   RetainerConsented: "Retainer (Consented)",
   Customer: "Customer",
   ServiceAccount: "Service Account",

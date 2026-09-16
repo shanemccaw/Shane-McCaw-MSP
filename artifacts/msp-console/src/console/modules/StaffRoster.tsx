@@ -64,7 +64,11 @@ const ROLE_TONE: Record<string, Tone> = {
   MSPOperator: signal.ok,
   Customer: signal.neutral,
   Free: signal.neutral,
-  RetainerNoConsent: signal.neutral,
+  MonitoringPending: signal.neutral,
+  MonitoringConsented: signal.neutral,
+  PackPending: signal.neutral,
+  PackConsented: signal.neutral,
+  RetainerPending: signal.neutral,
   RetainerConsented: signal.neutral,
   ServiceAccount: signal.neutral,
 };
@@ -87,7 +91,15 @@ function nonStaffAccountLabel(role: string | null | undefined): string {
       return "a customer login";
     case "Free":
       return "a free-tier sign-up";
-    case "RetainerNoConsent":
+    case "MonitoringPending":
+      return "a monitoring client (not yet consented)";
+    case "MonitoringConsented":
+      return "a monitoring client";
+    case "PackPending":
+      return "a pack client (not yet consented)";
+    case "PackConsented":
+      return "a pack client";
+    case "RetainerPending":
       return "a retainer client (not yet consented)";
     case "RetainerConsented":
       return "a retainer client";

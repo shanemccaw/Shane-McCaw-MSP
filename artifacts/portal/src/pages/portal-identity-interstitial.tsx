@@ -5,7 +5,8 @@ import { ConsentOnboardingShell, ConsentCard, ConsentLedger } from "@/components
 /**
  * Identity interstitial (Feature #1650, Git #3993; originally Git #1296).
  * `/portal/` is customer-only. A staff role (PlatformAdmin, MSPAdmin,
- * MSPOperator, ServiceAccount, Free, RetainerNoConsent, RetainerConsented)
+ * MSPOperator, ServiceAccount, Free, MonitoringPending, MonitoringConsented,
+ * PackPending, PackConsented, RetainerPending, RetainerConsented)
  * that authenticates here instead of at /admin-panel/ needs to know that's
  * what happened, rather than silently landing on a customer page —
  * App.tsx's RequireAuth renders this in place of the protected routes
@@ -18,14 +19,18 @@ import { ConsentOnboardingShell, ConsentCard, ConsentLedger } from "@/components
  * been updated, so every real Customer failed `!== "CustomerUser"` above and
  * was wrongly shown this screen. Mirrors `LEGACY_ROLE_ORDER` /
  * `LEGACY_ROLE` in `lib/db/src/rbac/legacy-ladder.ts` (the real, current
- * 8-value taxonomy) as a local literal rather than importing
+ * 12-value taxonomy) as a local literal rather than importing
  * `@workspace/db` into this Vite app — the same reason
  * `account-security-api.ts` (`artifacts/msp-console`) keeps its own literal
  * copy instead of importing the server's Drizzle schema type.
  */
 const ROLE_LABELS: Record<string, string> = {
   Free: "Free",
-  RetainerNoConsent: "Retainer (No Consent)",
+  MonitoringPending: "Monitoring (Pending)",
+  MonitoringConsented: "Monitoring (Consented)",
+  PackPending: "Pack (Pending)",
+  PackConsented: "Pack (Consented)",
+  RetainerPending: "Retainer (Pending)",
   RetainerConsented: "Retainer (Consented)",
   Customer: "Customer",
   ServiceAccount: "Service Account",
@@ -35,7 +40,11 @@ const ROLE_LABELS: Record<string, string> = {
 };
 const ALL_ROLES = [
   "Free",
-  "RetainerNoConsent",
+  "MonitoringPending",
+  "MonitoringConsented",
+  "PackPending",
+  "PackConsented",
+  "RetainerPending",
   "RetainerConsented",
   "Customer",
   "ServiceAccount",

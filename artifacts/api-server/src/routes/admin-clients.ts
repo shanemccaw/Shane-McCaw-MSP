@@ -579,7 +579,11 @@ router.get("/admin/clients/:id/health/summary", requireAdmin, async (req: Reques
 //     users column rides along by omission.
 const CLIENT_LADDER_ROLES = [
   LEGACY_ROLE.free,
-  LEGACY_ROLE.retainerNoConsent,
+  LEGACY_ROLE.monitoringPending,
+  LEGACY_ROLE.monitoringConsented,
+  LEGACY_ROLE.packPending,
+  LEGACY_ROLE.packConsented,
+  LEGACY_ROLE.retainerPending,
   LEGACY_ROLE.retainerConsented,
   LEGACY_ROLE.customer,
 ];

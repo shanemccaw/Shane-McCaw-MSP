@@ -58,7 +58,8 @@ import { useAuth } from "@/contexts/AuthContext";
  * `Assessment` folded into `Free` by #3590; this copy had not been updated. */
 export type AccountSecurityRole =
   | "PlatformAdmin" | "MSPAdmin" | "MSPOperator" | "ServiceAccount"
-  | "RetainerNoConsent" | "RetainerConsented" | "Customer" | "Free";
+  | "RetainerPending" | "RetainerConsented" | "Customer"
+  | "MonitoringPending" | "MonitoringConsented" | "PackPending" | "PackConsented" | "Free";
 
 export interface AccountSecurityUser {
   readonly id: number;

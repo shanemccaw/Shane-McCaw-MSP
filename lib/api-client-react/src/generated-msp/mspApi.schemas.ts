@@ -32,7 +32,11 @@ export const MspUserProfileMspRole = {
   MSPOperator: 'MSPOperator',
   Customer: 'Customer',
   RetainerConsented: 'RetainerConsented',
-  RetainerNoConsent: 'RetainerNoConsent',
+  RetainerPending: 'RetainerPending',
+  PackConsented: 'PackConsented',
+  PackPending: 'PackPending',
+  MonitoringConsented: 'MonitoringConsented',
+  MonitoringPending: 'MonitoringPending',
   ServiceAccount: 'ServiceAccount',
   Free: 'Free',
 } as const;

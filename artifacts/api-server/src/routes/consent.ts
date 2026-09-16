@@ -1282,7 +1282,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       // #3972 — a Retainer product gets RetainerConsented (this callback only
       // ever runs with a real just-consented tenant GUID, so a Retainer buy
       // reaching here is by definition the consented case, never
-      // RetainerNoConsent); everything else keeps `Customer` directly (a
+      // RetainerPending); everything else keeps `Customer` directly (a
       // passwordless account can't log in until setup, so this grants no
       // premature access).
       let serviceType: string | null = null;

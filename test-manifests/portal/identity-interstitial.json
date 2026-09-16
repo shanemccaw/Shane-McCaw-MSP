@@ -1,5 +1,5 @@
 {
-  "feature": "Identity interstitial (Git #1296; rebuilt against the new artifacts/portal scaffold in Feature #1650, Git #3993): a non-Customer role (PlatformAdmin, MSPAdmin, MSPOperator, ServiceAccount, Free, RetainerNoConsent, RetainerConsented) logging in through the customer-facing /portal/ login now lands on a client-side interstitial (App.tsx's RequireAuth gate, not a routed page) instead of the customer Overview. It offers two choices -- log out and go sign in at /admin-panel/, or acknowledge and continue into the customer Overview for this browser tab. Customer is unaffected and lands straight on the Overview.",
+  "feature": "Identity interstitial (Git #1296; rebuilt against the new artifacts/portal scaffold in Feature #1650, Git #3993): a non-Customer role (PlatformAdmin, MSPAdmin, MSPOperator, ServiceAccount, Free, RetainerPending, RetainerConsented) logging in through the customer-facing /portal/ login now lands on a client-side interstitial (App.tsx's RequireAuth gate, not a routed page) instead of the customer Overview. It offers two choices -- log out and go sign in at /admin-panel/, or acknowledge and continue into the customer Overview for this browser tab. Customer is unaffected and lands straight on the Overview.",
   "baseUrl": "{{DEPLOY_URL}}",
   "lastVerifiedAgainstCommit": "PENDING",
 

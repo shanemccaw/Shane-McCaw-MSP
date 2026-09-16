@@ -391,8 +391,13 @@ describe("#3590 — CustomerUser renamed Customer, Assessment folded into Free",
     // transcribed `role !== Free` predicate admits them. Their real Portal catalog
     // gating is #3970's `feature_role_mapping` work; this oracle only reflects that they
     // are not `Free`. Listed in LEGACY_ROLE_ORDER order (both sit between Free and Customer).
+    // #4371 — the same holds for the four Monitoring/Pack rungs below them.
     expect(allowed).toEqual([
-      LEGACY_ROLE.retainerNoConsent,
+      LEGACY_ROLE.monitoringPending,
+      LEGACY_ROLE.monitoringConsented,
+      LEGACY_ROLE.packPending,
+      LEGACY_ROLE.packConsented,
+      LEGACY_ROLE.retainerPending,
       LEGACY_ROLE.retainerConsented,
       LEGACY_ROLE.customer,
       LEGACY_ROLE.serviceAccount,
@@ -401,6 +406,65 @@ describe("#3590 — CustomerUser renamed Customer, Assessment folded into Free",
       LEGACY_ROLE.platformAdmin,
     ]);
     expect(legacyDecision(row(LEGACY_ROLE.free, "admin"), "customer", "marketplace.browse-full")).toBe(true);
+  });
+});
+
+describe("#4371 — Monitoring/Pack Pending/Consented rungs, RetainerNoConsent renamed RetainerPending", () => {
+  it("is exactly the twelve rungs, in the order #4370 fixed", () => {
+    expect([...LEGACY_ROLE_ORDER]).toEqual([
+      "Free",
+      "MonitoringPending",
+      "MonitoringConsented",
+      "PackPending",
+      "PackConsented",
+      "RetainerPending",
+      "RetainerConsented",
+      "Customer",
+      "ServiceAccount",
+      "MSPOperator",
+      "MSPAdmin",
+      "PlatformAdmin",
+    ]);
+  });
+
+  it("preserves the relative order of every rung that existed before #4371", () => {
+    const before = ["Free", "RetainerPending", "RetainerConsented", "Customer", "ServiceAccount", "MSPOperator", "MSPAdmin", "PlatformAdmin"];
+    const indices = before.map((rung) => legacyRoleIndex(rung));
+    expect(indices.every((idx) => idx >= 0)).toBe(true);
+    expect([...indices].sort((a, b) => a - b)).toEqual(indices);
+  });
+
+  it("places no new rung above RetainerPending, so every floor at or above it keeps its allow set", () => {
+    for (const rung of [LEGACY_ROLE.monitoringPending, LEGACY_ROLE.monitoringConsented, LEGACY_ROLE.packPending, LEGACY_ROLE.packConsented]) {
+      expect(legacyRoleIndex(rung)).toBeGreaterThan(legacyRoleIndex(LEGACY_ROLE.free));
+      expect(legacyRoleIndex(rung)).toBeLessThan(legacyRoleIndex(LEGACY_ROLE.retainerPending));
+      expect(legacyRequireRole({ role: "client", mspRole: rung }, LEGACY_ROLE.free)).toBe(true);
+      expect(legacyRequireRole({ role: "client", mspRole: rung }, LEGACY_ROLE.retainerPending)).toBe(false);
+    }
+  });
+
+  it("gives the four new rungs their own new capability keys", () => {
+    expect(ladderCapabilityKey(LEGACY_ROLE.monitoringPending)).toBe("ladder.monitoring-pending");
+    expect(ladderCapabilityKey(LEGACY_ROLE.monitoringConsented)).toBe("ladder.monitoring-consented");
+    expect(ladderCapabilityKey(LEGACY_ROLE.packPending)).toBe("ladder.pack-pending");
+    expect(ladderCapabilityKey(LEGACY_ROLE.packConsented)).toBe("ladder.pack-consented");
+    expect(LADDER.monitoringPending).toBe("ladder.monitoring-pending");
+    expect(LADDER.packConsented).toBe("ladder.pack-consented");
+  });
+
+  it("keeps RetainerPending on the already-shipped key ladder.retainer-no-consent", () => {
+    expect(ladderCapabilityKey(LEGACY_ROLE.retainerPending)).toBe("ladder.retainer-no-consent");
+    expect(LADDER.retainerPending).toBe("ladder.retainer-no-consent");
+    expect(ladderCapabilityRole("ladder.retainer-no-consent")).toBe(LEGACY_ROLE.retainerPending);
+  });
+
+  it("reads a pre-rename RetainerNoConsent claim as RetainerPending", () => {
+    expect(canonicalRoleValue("RetainerNoConsent")).toBe("RetainerPending");
+    expect(RETIRED_ROLE_VALUES.RetainerNoConsent).toBe(LEGACY_ROLE.retainerPending);
+    expect(isLegacyRole("RetainerNoConsent")).toBe(false);
+    expect(effectiveLegacyRole({ role: "client", mspRole: "RetainerNoConsent" })).toBe(LEGACY_ROLE.retainerPending);
+    expect(legacyRequireRole({ role: "client", mspRole: "RetainerNoConsent" }, LEGACY_ROLE.retainerPending)).toBe(true);
+    expect(legacyRequireRole({ role: "client", mspRole: "RetainerNoConsent" }, LEGACY_ROLE.retainerConsented)).toBe(false);
   });
 });
 

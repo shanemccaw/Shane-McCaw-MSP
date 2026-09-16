@@ -56,7 +56,11 @@ const ROLE_TONE: Record<AccountSecurityRole, Tone> = {
   ServiceAccount: signal.info,
   Customer: signal.neutral,
   Free: signal.neutral,
-  RetainerNoConsent: signal.neutral,
+  MonitoringPending: signal.neutral,
+  MonitoringConsented: signal.neutral,
+  PackPending: signal.neutral,
+  PackConsented: signal.neutral,
+  RetainerPending: signal.neutral,
   RetainerConsented: signal.neutral,
 };
 

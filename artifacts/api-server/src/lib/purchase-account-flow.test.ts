@@ -333,9 +333,9 @@ describe("attachPasswordToAccount", () => {
   it("attaches to an EXISTING password-less account without provisioning a second one", async () => {
     const email = testEmail("existing");
     // #3971's users_role_scope_check requires a tenant for the default "Free"
-    // role — RetainerNoConsent is the one role it exempts, so this tenant-less
+    // role — RetainerPending is the one role it exempts, so this tenant-less
     // pre-existing-Prospect fixture needs it explicit (#3972).
-    await db.insert(usersTable).values({ email, role: "client", name: "Pre-Existing Prospect", mspRole: LEGACY_ROLE.retainerNoConsent });
+    await db.insert(usersTable).values({ email, role: "client", name: "Pre-Existing Prospect", mspRole: LEGACY_ROLE.retainerPending });
 
     const session = await resolveOrThrow(await createSession({ email }));
     const { code } = await issueVerificationCode(session);
@@ -354,8 +354,8 @@ describe("attachPasswordToAccount", () => {
 // ── Git #3972 — real-product-type role assignment ──────────────────────────────
 
 describe("resolveProspectRole — #3972, the real-product-type -> role mapping", () => {
-  it("retainer with no tenant (skipped consent) is RetainerNoConsent", () => {
-    expect(resolveProspectRole("retainer", false)).toBe(LEGACY_ROLE.retainerNoConsent);
+  it("retainer with no tenant (skipped consent) is RetainerPending", () => {
+    expect(resolveProspectRole("retainer", false)).toBe(LEGACY_ROLE.retainerPending);
   });
 
   it("retainer with a tenant is RetainerConsented", () => {
@@ -371,9 +371,9 @@ describe("resolveProspectRole — #3972, the real-product-type -> role mapping",
     expect(resolveProspectRole(null, true)).toBe(LEGACY_ROLE.customer);
   });
 
-  it("no tenant is ALWAYS RetainerNoConsent regardless of category — the only role users_role_scope_check permits tenant-less", () => {
-    expect(resolveProspectRole("monitoring", false)).toBe(LEGACY_ROLE.retainerNoConsent);
-    expect(resolveProspectRole(null, false)).toBe(LEGACY_ROLE.retainerNoConsent);
+  it("no tenant is ALWAYS RetainerPending regardless of category — the only role users_role_scope_check permits tenant-less", () => {
+    expect(resolveProspectRole("monitoring", false)).toBe(LEGACY_ROLE.retainerPending);
+    expect(resolveProspectRole(null, false)).toBe(LEGACY_ROLE.retainerPending);
   });
 });
 
@@ -426,7 +426,7 @@ describe("attachPasswordToAccount — real product type decides the provisioned 
     if (tenantRow) createdTenantIds.push(tenantRow.id);
   });
 
-  it("a retainer purchase with a skipped (null) tenant provisions RetainerNoConsent", async () => {
+  it("a retainer purchase with a skipped (null) tenant provisions RetainerPending", async () => {
     const email = testEmail("retainer-no-consent");
     const session = await resolveOrThrow(
       await createSession({ email, productSlug: "architect-essentials-retainer", tenantId: null }),
@@ -441,7 +441,7 @@ describe("attachPasswordToAccount — real product type decides the provisioned 
       .select({ mspRole: usersTable.mspRole, tenantId: usersTable.tenantId })
       .from(usersTable)
       .where(eq(usersTable.email, email));
-    expect(user.mspRole).toBe(LEGACY_ROLE.retainerNoConsent);
+    expect(user.mspRole).toBe(LEGACY_ROLE.retainerPending);
     expect(user.tenantId).toBeNull();
   });
 });

@@ -45,17 +45,29 @@
  */
 export const LEGACY_ROLE_ORDER = [
   "Free",
+  // #4371 (issue 1 of #4370) — the same Pending/Consented pair #3971 introduced for
+  // Retainer, extended per product to Monitoring and Packs. Inserted between `Free` and
+  // `RetainerPending`, so the relative order of every pre-existing rung is again preserved
+  // byte-for-byte and no new rung outranks a Retainer rung or a full paid `Customer`.
+  // A `*Pending` rung has not yet consented to tenant access; a `*Consented` rung has.
+  // For Packs this governs READ consent only — write consent stays a post-payment,
+  // in-portal, `Customer`-tier action (#4370).
+  "MonitoringPending",
+  "MonitoringConsented",
+  "PackPending",
+  "PackConsented",
   // #3971 (step 1 of #3970) — the two Retainer tiers, added parallel to `Free`/`Customer`.
   // Placed BETWEEN `Free` and `Customer` deliberately: the relative order of every
   // pre-existing rung is preserved byte-for-byte (Free < Customer < ServiceAccount < …),
   // so every existing `legacyRequireRole` comparison is unchanged, and neither Retainer
-  // rung outranks a full paid `Customer`. `RetainerNoConsent` (a retainer client who has
-  // not yet consented to tenant access — no tenant, ever, while in this state) sits just
-  // above `Free`; `RetainerConsented` (has a tenant, same requirement shape as `Customer`)
-  // above that but still below `Customer`. The live gate reads seeded `ladder.*` rows, not
+  // rung outranks a full paid `Customer`. `RetainerPending` (a retainer client who has
+  // not yet consented to tenant access — no tenant, ever, while in this state; named
+  // `RetainerNoConsent` until #4371) sits just above the Monitoring/Pack rungs;
+  // `RetainerConsented` (has a tenant, same requirement shape as `Customer`) above that
+  // but still below `Customer`. The live gate reads seeded `ladder.*` rows, not
   // this index at runtime (#2460), so this ordering only fixes how a later step's seed
   // enumerates these rungs — the Portal gating itself is #3970's `feature_role_mapping` work.
-  "RetainerNoConsent",
+  "RetainerPending",
   "RetainerConsented",
   "Customer",
   "ServiceAccount",
@@ -81,10 +93,16 @@ export type LegacyRole = typeof LEGACY_ROLE_ORDER[number];
  * 30 — and `canonicalRoleValue` maps those onto the value they now mean, so a session
  * straddling the deploy is decided as the role it actually holds rather than as no role
  * at all. Retire this with the claim itself.
+ *
+ * #4371 — `RetainerNoConsent` is renamed `RetainerPending`, the same way:
+ * `2026-09-16-rbac-retainer-pending-rename-4371.sql` rewrites the stored rows, and this
+ * entry covers a JWT signed before that deploy. Its capability key
+ * (`ladder.retainer-no-consent`) does not move — see `LADDER_CAPABILITY_KEYS`.
  */
 export const RETIRED_ROLE_VALUES: Readonly<Record<string, LegacyRole>> = Object.freeze({
   CustomerUser: "Customer",
   Assessment: "Free",
+  RetainerNoConsent: "RetainerPending",
 });
 
 /** A role value as it should be read today: a retired spelling becomes what it was renamed to. */
@@ -116,7 +134,11 @@ export function canonicalRoleValue<T extends string | null | undefined>(value: T
  */
 export const LEGACY_ROLE = Object.freeze({
   free: "Free",
-  retainerNoConsent: "RetainerNoConsent",
+  monitoringPending: "MonitoringPending",
+  monitoringConsented: "MonitoringConsented",
+  packPending: "PackPending",
+  packConsented: "PackConsented",
+  retainerPending: "RetainerPending",
   retainerConsented: "RetainerConsented",
   customer: "Customer",
   serviceAccount: "ServiceAccount",
@@ -263,7 +285,14 @@ export const LADDER_CAPABILITY_KEYS: Readonly<Record<LegacyRole, string>> = Obje
   // #3971 — one capability key per new rung, same lowercase-kebab convention. New keys,
   // never-before-shipped, so there is no immutability constraint to honour (unlike
   // `ladder.customer-user`, kept verbatim through the #3590 rename).
-  RetainerNoConsent: "ladder.retainer-no-consent",
+  // #4371 — the four Monitoring/Pack rungs are new keys too, same convention.
+  MonitoringPending: "ladder.monitoring-pending",
+  MonitoringConsented: "ladder.monitoring-consented",
+  PackPending: "ladder.pack-pending",
+  PackConsented: "ladder.pack-consented",
+  // #4371 — the rung was renamed `RetainerNoConsent` → `RetainerPending`, but this key had
+  // already shipped, so it keeps its spelling exactly as `ladder.customer-user` did (#3590).
+  RetainerPending: "ladder.retainer-no-consent",
   RetainerConsented: "ladder.retainer-consented",
   Customer: "ladder.customer-user",
   ServiceAccount: "ladder.service-account",
@@ -292,7 +321,11 @@ export function ladderCapabilityKey(role: LegacyRole): string {
  */
 export const LADDER = Object.freeze({
   free: LADDER_CAPABILITY_KEYS.Free,
-  retainerNoConsent: LADDER_CAPABILITY_KEYS.RetainerNoConsent,
+  monitoringPending: LADDER_CAPABILITY_KEYS.MonitoringPending,
+  monitoringConsented: LADDER_CAPABILITY_KEYS.MonitoringConsented,
+  packPending: LADDER_CAPABILITY_KEYS.PackPending,
+  packConsented: LADDER_CAPABILITY_KEYS.PackConsented,
+  retainerPending: LADDER_CAPABILITY_KEYS.RetainerPending,
   retainerConsented: LADDER_CAPABILITY_KEYS.RetainerConsented,
   customer: LADDER_CAPABILITY_KEYS.Customer,
   serviceAccount: LADDER_CAPABILITY_KEYS.ServiceAccount,
