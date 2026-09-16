@@ -715,6 +715,59 @@ export async function resolvePreConsentAccountUser(session: PreConsentPurchaseSe
   return { outcome: "ok", userId: user.id, email, passwordSet: Boolean(user.passwordHash) };
 }
 
+export type AccountFirstPaymentPromotion =
+  | { outcome: "not_paid" }
+  | { outcome: "not_account_first" }
+  | { outcome: "email_not_verified" }
+  | { outcome: "account_missing" }
+  | { outcome: "email_mismatch" }
+  | { outcome: "promoted"; userId: number };
+
+/**
+ * #4378 — #4392's promote-on-payment for the account-first order.
+ *
+ * attachPasswordToAccount is where #4392 wired the `Customer` promotion, but an
+ * account-first buyer (#4374's door: code, password and MFA all happen before
+ * consent) never reaches set-password after paying — Buy.tsx goes straight
+ * from payment to the post-payment stages. Without this, a paid Pack buyer
+ * would sit at `PackConsented` in front of write access, which is a
+ * `Customer`-tier step.
+ *
+ * Both facts promoteMspUserToCustomer requires hold here, established on THIS
+ * session rather than inferred from an email match: the session is paid, and
+ * its accountUserId was recorded by createPreConsentAccount — which only runs
+ * for a mailbox proven on this same session — and that account still carries
+ * the session's verified address. A session with no accountUserId at payment
+ * time is a legacy (pay-then-account) purchase and is left to set-password.
+ * Idempotent: the promotion is guarded to the promotable rungs.
+ */
+export async function promoteAccountFirstBuyerOnPayment(rawSessionId: unknown): Promise<AccountFirstPaymentPromotion> {
+  const resolved = await resolvePaidPurchaseSession(rawSessionId);
+  if (!resolved.ok) return { outcome: "not_paid" };
+  const session = resolved.session;
+  if (session.accountUserId == null) return { outcome: "not_account_first" };
+
+  const email = await getVerifiedEmail(session);
+  if (!email) return { outcome: "email_not_verified" };
+
+  const [user] = await db
+    .select({ id: usersTable.id, email: usersTable.email })
+    .from(usersTable)
+    .where(eq(usersTable.id, session.accountUserId))
+    .limit(1);
+  if (!user) return { outcome: "account_missing" };
+  if (user.email !== email) {
+    log.warn(
+      { sessionId: session.id, userId: user.id },
+      "account-first payment: REFUSED promotion — the session's account no longer carries its verified address",
+    );
+    return { outcome: "email_mismatch" };
+  }
+
+  await promoteMspUserToCustomer(user.id);
+  return { outcome: "promoted", userId: user.id };
+}
+
 /**
  * Git #1315 (Epic #1309, Phase 6) — the session's product category
  * (`services.category`), so the portal-handoff caller can tell each landing

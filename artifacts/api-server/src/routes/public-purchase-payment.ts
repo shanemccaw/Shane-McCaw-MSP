@@ -101,6 +101,7 @@ import { logger } from "../lib/logger.ts";
 import { sendEmail, purchaseConfirmationEmail } from "../lib/mailer.ts";
 import { markAssessmentLeadPurchased } from "../lib/crm-pipeline.ts";
 import { ensureFlowStripeCustomer } from "../lib/assessment-flow-rescan-addon.ts";
+import { promoteAccountFirstBuyerOnPayment } from "../lib/purchase-account-flow.ts";
 
 const log = logger.child({ channel: "billing" });
 
@@ -672,6 +673,29 @@ router.post("/public/purchase/payment-confirmed", async (req: Request, res: Resp
       void markAssessmentLeadPurchased(order.email, paidDisplayName);
     }
 
+    // #4378 — an account-first buyer (account created on this session before
+    // consent, #4374) never passes set-password after paying, which is where
+    // #4392 promotes to `Customer`. Promote here instead; a legacy
+    // pay-then-account session has no accountUserId yet and is a no-op.
+    // Runs on a replayed confirm too (guarded, idempotent), so a buyer whose
+    // first confirm response was lost is still promoted. Non-fatal.
+    try {
+      const promotion = await promoteAccountFirstBuyerOnPayment(order.sessionId);
+      if (promotion.outcome === "promoted") {
+        log.info(
+          { checkoutSessionId: order.sessionId, userId: promotion.userId },
+          "purchase payment: account-first buyer promoted to Customer on payment",
+        );
+      } else if (promotion.outcome !== "not_account_first") {
+        log.warn(
+          { checkoutSessionId: order.sessionId, outcome: promotion.outcome },
+          "purchase payment: account-first promotion not applied",
+        );
+      }
+    } catch (err) {
+      log.error({ err, checkoutSessionId: order.sessionId }, "purchase payment: account-first promotion failed (non-fatal)");
+    }
+
     res.json({
       ok: true,
       amountCents: paidAmountCents,
@@ -682,6 +706,87 @@ router.post("/public/purchase/payment-confirmed", async (req: Request, res: Resp
     log.error({ err, checkoutSessionId: order.sessionId }, "purchase payment: confirm failed");
     res.status(500).json({ error: "confirm_failed" });
   }
+});
+
+// ── POST /api/public/purchase/pack-anchor ─────────────────────────────────────
+//
+// #4378 — Packs' account-first order (account -> read consent -> pack
+// selection/pay). A pack session's paid set is ALWAYS its own productSlug plus
+// the payment-intent's extra packSlugs, and the session is created at the
+// account step, before the buyer has settled on packs. The old order dropped
+// the session on any selection change and minted a new one; account-first
+// cannot (the address now carries a real account, so checkout-session refuses
+// it), so without this a deselected first pack would still be charged.
+//
+// Moves the session's own pack to one the buyer actually has selected. Only
+// before payment (pending or consented — consent binds the tenant, not the
+// pack), only config_pack -> config_pack, and only to a real, public
+// config_pack row. What is bought, never what it costs: payment-intent still
+// prices every slug from the catalog.
+
+const packAnchorSchema = z.object({
+  sessionId: z.string(),
+  productSlug: z.string().trim().min(1).max(120),
+});
+
+router.post("/public/purchase/pack-anchor", async (req: Request, res: Response) => {
+  const parsed = packAnchorSchema.safeParse(req.body);
+  if (!parsed.success || !UUID_RE.test(parsed.data.sessionId)) {
+    res.status(400).json({ error: "sessionId and productSlug are required" });
+    return;
+  }
+  const { sessionId, productSlug } = parsed.data;
+
+  const [session] = await db
+    .select({ id: checkoutSessionsTable.id, status: checkoutSessionsTable.status, productSlug: checkoutSessionsTable.productSlug })
+    .from(checkoutSessionsTable)
+    .where(and(eq(checkoutSessionsTable.id, sessionId), gte(checkoutSessionsTable.expiresAt, new Date())))
+    .limit(1);
+  if (!session) {
+    res.status(404).json({ error: "session_expired" });
+    return;
+  }
+  if (session.status !== "pending" && session.status !== "consented") {
+    res.status(409).json({ error: "selection_locked" });
+    return;
+  }
+
+  const rows = await db
+    .select({ slug: servicesTable.slug, category: servicesTable.category, visibility: servicesTable.visibility })
+    .from(servicesTable)
+    .where(inArray(servicesTable.slug, [session.productSlug, productSlug]));
+  const bySlug = new Map(rows.map((r) => [r.slug, r]));
+  if (bySlug.get(session.productSlug)?.category !== "config_pack") {
+    res.status(409).json({ error: "not_a_pack_session" });
+    return;
+  }
+  if (session.productSlug === productSlug) {
+    res.json({ ok: true, productSlug, changed: false });
+    return;
+  }
+  const target = bySlug.get(productSlug);
+  if (!target || target.category !== "config_pack" || target.visibility !== "public") {
+    res.status(404).json({ error: "pack_not_found" });
+    return;
+  }
+
+  // Status re-checked in the write itself, so a payment landing between the
+  // read above and this update can never have its paid pack moved.
+  const updated = await db
+    .update(checkoutSessionsTable)
+    .set({ productSlug, updatedAt: new Date() })
+    .where(and(eq(checkoutSessionsTable.id, sessionId), inArray(checkoutSessionsTable.status, ["pending", "consented"])))
+    .returning({ id: checkoutSessionsTable.id });
+  if (updated.length === 0) {
+    res.status(409).json({ error: "selection_locked" });
+    return;
+  }
+
+  log.info(
+    { checkoutSessionId: sessionId, from: session.productSlug, to: productSlug },
+    "purchase payment: pack session re-anchored to a pack the buyer has selected",
+  );
+  res.json({ ok: true, productSlug, changed: true });
 });
 
 export default router;

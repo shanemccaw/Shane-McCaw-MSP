@@ -667,7 +667,8 @@ export const CUSTOMER_PROMOTABLE_ROLES = Object.freeze([
  * Non-fatal.
  *
  * Call it only where BOTH facts hold: the session is paid AND the buyer's
- * address is proven (attachPasswordToAccount). Payment confirmation alone
+ * address is proven (attachPasswordToAccount, and for the account-first order
+ * promoteAccountFirstBuyerOnPayment, #4378). Payment confirmation alone
  * arrives before the mailbox is verified, and promoting whatever account
  * happens to carry an unverified email would let a stranger's payment change
  * someone else's role.

@@ -32,9 +32,37 @@
       "method": "GET",
       "path": "/api/public/purchase/pack-run-status?sessionId=nope",
       "expect": { "status": 400, "jsonPath": "$.error", "value": "session_invalid" }
+    },
+    {
+      "sessionTag": "4378-account-first",
+      "name": "Git #4378 GUARD — pack-anchor with a non-UUID sessionId: 400, nothing moved",
+      "method": "POST",
+      "path": "/api/public/purchase/pack-anchor",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "sessionId": "not-a-uuid", "productSlug": "entra-id-quickstart-v1" },
+      "expect": { "status": 400 }
+    },
+    {
+      "sessionTag": "4378-account-first",
+      "name": "Git #4378 GUARD — pack-anchor with an unknown (valid-shape) session: 404 session_expired",
+      "method": "POST",
+      "path": "/api/public/purchase/pack-anchor",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "sessionId": "00000000-0000-4000-8000-000000004378", "productSlug": "entra-id-quickstart-v1" },
+      "expect": { "status": 404, "jsonPath": "$.error", "value": "session_expired" }
     }
   ],
   "notes": [
+    "Git #4378 (sessionTag 4378-account-first): Packs run account -> read consent -> packs/pay. /buy?product=pack",
+    "opens on the account step (data-stage='identity'): name/email/company mint the checkout session, then",
+    "#4374's pre-consent door (/api/public/purchase/pre-consent/*) proves the mailbox, creates the PackPending",
+    "account and enrolls MFA; only then does the buying screen (connect card, packs, pay) render. The old",
+    "PACK1/PACK2 buying-screen assertions and PACK6 (#1304 Coming soon badge, repointed to copilot by #4321) were",
+    "removed: they are unreachable without a real emailed code and real MFA enrollment. The #1304 drop-",
+    "unavailable-pack effect is unchanged code. The server half (pack-anchor gate matrix; PackConsented ->",
+    "Customer promotion at payment-confirmed; portal handoff for the account-first session) is covered",
+    "live against Postgres by artifacts/api-server/src/routes/public-purchase-account-first-pack.live-db.test.ts.",
+    "",
     "Git #1316 (sessionTag 1316-pack-flow): apiTests cover the fail-closed guards of the REAL pack",
     "dry-run/execute/run-status endpoints (public-purchase-packs.ts). The paid-session happy path",
     "needs a real paid+consented checkout session and REAL Graph reads/writes, so it is exercised by",
@@ -130,18 +158,13 @@
     { "sessionTag": "1379-retainer-slug-fix", "action": "expect", "selector": "[data-testid='buy-summary-sub']", "state": "visible", "textContains": "Enterprise" },
     { "sessionTag": "1379-retainer-slug-fix", "action": "expect", "selector": "[data-testid='buy-summary-total']", "state": "visible", "textContains": "$5,500" },
 
-    { "sessionTag": "1317-integration", "name": "PACK1 (Git #1317) — packs now show the REQUIRED read-consent connect card: the server demands read consent before a pack payment (#1311 fail-closed mapping + #1307 payment gate), so the UI offers it up front instead of failing at pay.", "action": "goto", "target": "/buy?product=pack&packs=entra,ca" },
-    { "action": "expect", "selector": "[data-testid='buy-heading']", "state": "visible", "textContains": "Buy the pack" },
-    { "sessionTag": "1317-integration", "action": "expect", "selector": "[data-testid='buy-connect']", "state": "visible" },
-    { "action": "expect", "selector": "[data-testid='buy-summary-sub']", "state": "visible", "textContains": "2 packs, one dry run" },
-    { "action": "expect", "selector": "[data-testid='buy-summary-total']", "state": "visible", "textContains": "$998" },
-    { "action": "expect", "selector": "[data-testid='buy-payment-fields']", "state": "visible" },
-    { "sessionTag": "1317-integration", "name": "PACK2 (Git #1317) — with no tenant connected, the pack pay CTA is the connect gate, terms ticked or not.", "action": "click", "selector": "[data-testid='buy-terms']" },
-    { "sessionTag": "1317-integration", "action": "expect", "selector": "[data-testid='buy-pay']", "state": "visible", "textContains": "Connect your tenant to continue" },
-
-    { "name": "PACK6a (Git #1304, repointed by #4321) -- Copilot Readiness has no real services row and shows a Coming soon badge (MFA Enforcement, the pack this test originally targeted, now has a real row).", "action": "goto", "target": "/buy?product=pack&packs=entra,copilot" },
-    { "name": "PACK6b -- the option row renders the badge.", "action": "expect", "selector": "[data-testid='buy-option-coming-soon-copilot']", "state": "visible" },
-    { "name": "PACK6c -- the not-yet-available pack is dropped from the URL-preselected basket once the live catalogue read resolves, leaving only Entra ID Quick-Start.", "action": "expect", "selector": "[data-testid='buy-summary-sub']", "state": "visible", "textContains": "Entra ID Quick-Start Pack" },
-    { "name": "PACK6d -- the total reflects only the real pack ($799), not the sum with the unavailable one.", "action": "expect", "selector": "[data-testid='buy-summary-total']", "state": "visible", "textContains": "$799" }
+    { "sessionTag": "4378-account-first", "name": "PACK1 (Git #4378) — packs are account-first: /buy?product=pack opens on the account step, not the buying screen. Account comes before read consent and payment.", "action": "goto", "target": "/buy?product=pack&packs=entra,ca" },
+    { "sessionTag": "4378-account-first", "action": "expect", "selector": "[data-testid='buy-page'][data-stage='identity']", "state": "visible" },
+    { "sessionTag": "4378-account-first", "action": "expect", "selector": "[data-testid='buy-account']", "state": "visible", "textContains": "Start with your account" },
+    { "sessionTag": "4378-account-first", "action": "expect", "selector": "[data-testid='buy-steprail']", "state": "visible", "textContains": "Create account" },
+    { "sessionTag": "4378-account-first", "action": "expect", "selector": "[data-testid='buy-email']", "state": "visible" },
+    { "sessionTag": "4378-account-first", "action": "expect", "selector": "[data-testid='buy-account-advance']", "state": "visible", "textContains": "Email me a code" },
+    { "sessionTag": "4378-account-first", "name": "PACK2 (Git #4378) — no read-consent card and no pay button exist before the account does.", "action": "expect", "selector": "[data-testid='buy-connect']", "state": "absent" },
+    { "sessionTag": "4378-account-first", "action": "expect", "selector": "[data-testid='buy-pay']", "state": "absent" }
   ]
 }

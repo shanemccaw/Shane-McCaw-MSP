@@ -85,7 +85,13 @@ function resolvePackSlug(services: PublicService[], packName: string): string | 
 // purchase) — a real purchase session never sees fixture data.
 
 type Product = "monitoring" | "retainer" | "pack";
+// #4376 — products that run the account-first order: a real account (code,
+// password, MFA through #4374's pre-consent door) BEFORE read consent and
+// payment, instead of the paid door's account creation after payment.
+// Everything from write access onward is unchanged for them.
+const ACCOUNT_FIRST_PRODUCTS: readonly Product[] = ["pack"];
 type Stage =
+  | "identity"
   | "buy"
   | "connecting"
   | "paying"
@@ -151,6 +157,10 @@ interface State {
   acctBusy: boolean;
   /** Error/info line on the account screens — real endpoint outcomes only. */
   acctNotice: { kind: "error" | "info"; text: string } | null;
+  /** Account-first order (#4376): the pre-consent account exists with MFA
+   *  enrolled. From here the session is the buyer's and is never dropped —
+   *  checkout-session refuses a new one for an address that has an account. */
+  accountDone: boolean;
   writeGranted: boolean;
   writeDeclined: boolean;
   writeError: string | null;
@@ -203,7 +213,7 @@ function initialState(): State {
     preScanStep: 0,
     seatInput: qs("seats") || "",
     seatEdited: false,
-    stage: "buy",
+    stage: ACCOUNT_FIRST_PRODUCTS.includes(product) ? "identity" : "buy",
     email: "",
     fullName: "",
     company: "",
@@ -220,12 +230,19 @@ function initialState(): State {
     mfaSetup: null,
     acctBusy: false,
     acctNotice: null,
+    accountDone: false,
     writeGranted: false,
     writeDeclined: false,
     writeError: null,
     handoffBusy: false,
     handoffError: null,
   };
+}
+
+// The first stage after payment AND a finished account. Write consent is
+// Packs-only in this public flow (#1312); every other product is done.
+function postAccountStage(product: Product): Stage {
+  return product === "pack" ? "write" : "done";
 }
 
 // A small icon shell mirroring the design's ic() (24×24, currentColor, stroke 2).
@@ -337,6 +354,11 @@ export default function Buy() {
   const isMon = st.product === "monitoring";
   const isRet = st.product === "retainer";
   const isPack = st.product === "pack";
+  const accountFirst = ACCOUNT_FIRST_PRODUCTS.includes(st.product);
+  // Which door the code/password/MFA calls go through: the account-first order
+  // creates the account before consent (#4374's pre-consent door, keyed on the
+  // same session), the legacy order after payment (#1310's paid door).
+  const acctApi = accountFirst ? "/api/public/purchase/pre-consent" : "/api/public/purchase";
 
   // ── Git #1380: localhost-only [DEBUG] autofill ──────────────────────────────
   // Hard-gated on the REAL runtime hostname (not a build-time env var, so it can
@@ -495,17 +517,29 @@ export default function Buy() {
     }
   };
   const invalidated = (s: State): Partial<State> => {
-    if (!s.sessionId) return {};
+    // Account-first (#4376): once the account exists the session is kept —
+    // identity is locked on screen, and a pack change moves the session's own
+    // pack at pay time (pack-anchor) instead of minting a new session.
+    if (!s.sessionId || s.accountDone) return {};
     clearPersistedSession();
     return { sessionId: null, connected: false, intent: null, payingError: null };
   };
 
+  // Account-first packs create the session at the account step, before the
+  // buyer settles on packs, so it is anchored on a pack that is really for sale
+  // (the pre-consent door refuses a session with no catalogued category).
+  // submit() re-anchors it on the real selection before pricing.
+  const sessionPackKey = accountFirst
+    ? (packKeys.find((k) => availablePackKeys.has(k)) ??
+      PACKS.find((p) => availablePackKeys.has(p.key))?.key ??
+      packKeys[0])
+    : packKeys[0];
   const resolveSelectedSlug = (): string | null =>
     isMon
       ? resolveMonitoringSlug(catalogServices, monSel.key, seats)
       : isRet
         ? resolveRetainerSlug(catalogServices, retSel.name)
-        : resolvePackSlug(catalogServices, PACKS_BY_KEY[packKeys[0]]?.name ?? "");
+        : resolvePackSlug(catalogServices, PACKS_BY_KEY[sessionPackKey]?.name ?? "");
 
   // Create (or reuse) the real checkout session. Throws with a buyer-facing
   // message on refusal; the caller decides which error slot shows it.
@@ -624,6 +658,8 @@ export default function Buy() {
   // it to a popup, and poll until the callback stamps the session consented.
   const doConnect = async () => {
     if (st.stage !== "buy") return;
+    // Account-first (#4376): read consent runs as the buyer's own account.
+    if (accountFirst && !st.accountDone) return;
     if (catalogLoading) {
       // The consent URL is minted against a session created from the live
       // catalog's slug — not resolvable yet. Say so instead of ignoring the click.
@@ -690,7 +726,7 @@ export default function Buy() {
     const sessionId = sessionIdArg ?? st.sessionId;
     if (!sessionId) return;
     try {
-      const res = await fetch("/api/public/purchase/send-verification-code", {
+      const res = await fetch(`${acctApi}/send-verification-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId }),
@@ -718,6 +754,27 @@ export default function Buy() {
     }
   };
 
+  // Account-first (#4376) opening step: the buyer's identity mints the real
+  // checkout session the pre-consent door is keyed on, and the first code is
+  // mailed to prove the address before any account is created.
+  const startAccount = async () => {
+    if (st.stage !== "identity" || st.acctBusy) return;
+    if (catalogLoading) {
+      set({ acctNotice: { kind: "error", text: "Still loading the catalogue — try again in a moment." } });
+      return;
+    }
+    set({ acctBusy: true, acctNotice: null });
+    try {
+      const sessionId = await ensureSession();
+      set({ acctBusy: false, stage: "code", codeInput: "" });
+      await sendCode(sessionId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not start your account. Please try again.";
+      authLog.warn({ err: message }, "account-first purchase: account step could not start");
+      set({ acctBusy: false, acctNotice: { kind: "error", text: message } });
+    }
+  };
+
   // Real Stripe confirm callback (#1307's payment-confirmed), shared by the
   // StripePaymentElement's onSuccess and the alreadyPaid recovery path below.
   // Throws on failure -- the element's own contract shows a thrown message in
@@ -740,6 +797,13 @@ export default function Buy() {
       );
     }
     log.info({ sessionId, paymentIntentId }, "purchase payment confirmed");
+    if (accountFirst) {
+      // The account was created, proven and MFA-enrolled before consent
+      // (#4376); payment-confirmed promotes it server-side (#4378). Straight
+      // on to the unchanged post-payment stages — no second account step.
+      set((s) => ({ stage: postAccountStage(s.product), creatingIntent: false, acctNotice: null }));
+      return;
+    }
     set({ stage: "code", codeInput: "", acctNotice: null });
     // The paid session may now be emailed its verification code (#1310).
     void sendCode(sessionId);
@@ -751,6 +815,7 @@ export default function Buy() {
   // catalog slug the session is created against -- see resolve*Slug above.
   const submit = async () => {
     if (st.stage !== "buy") return;
+    if (accountFirst && !st.accountDone) return;
     if (connectRequired && !st.connected) return;
     if (!st.agreed) return;
     if (hasUnavailablePack) return;
@@ -785,6 +850,31 @@ export default function Buy() {
           authLog.warn({ status: skipRes.status, error: skipErr.error, sessionId }, "read-consent-skip refused");
         } else if (skipRes) {
           authLog.info({ sessionId }, "read consent explicitly skipped for this retainer purchase");
+        }
+      }
+
+      // Account-first packs (#4378): the session was created at the account
+      // step on a placeholder pack, and a pack session's own slug is always
+      // part of what is charged — move it onto the buyer's real first pack
+      // before pricing, so a pack they deselected is never billed.
+      if (isPack && accountFirst) {
+        const anchorSlug = resolvePackSlug(catalogServices, PACKS_BY_KEY[packKeys[0]]?.name ?? "");
+        if (!anchorSlug) {
+          throw new Error("This option isn't available to purchase right now. Please choose another.");
+        }
+        const anchorRes = await fetch("/api/public/purchase/pack-anchor", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId, productSlug: anchorSlug }),
+        });
+        if (!anchorRes.ok) {
+          const anchorErr = (await anchorRes.json().catch(() => ({}))) as { error?: string };
+          log.warn({ status: anchorRes.status, error: anchorErr.error, sessionId }, "pack session re-anchor refused");
+          throw new Error(
+            anchorErr.error === "pack_not_found"
+              ? "This option isn't available to purchase right now. Please choose another."
+              : "Could not start payment. Please try again.",
+          );
         }
       }
 
@@ -859,7 +949,7 @@ export default function Buy() {
     const code = st.codeInput;
     set({ stage: "verifying", acctNotice: null });
     try {
-      const res = await fetch("/api/public/purchase/verify-code", {
+      const res = await fetch(`${acctApi}/verify-code`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId, code }),
@@ -904,7 +994,7 @@ export default function Buy() {
     const sessionId = sessionIdArg ?? st.sessionId;
     if (!sessionId) return;
     try {
-      const res = await fetch("/api/public/purchase/mfa/totp/setup", {
+      const res = await fetch(`${acctApi}/mfa/totp/setup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId }),
@@ -939,6 +1029,35 @@ export default function Buy() {
     if (!pwOk || !st.sessionId || st.acctBusy) return;
     const sessionId = st.sessionId;
     set({ acctBusy: true, acctNotice: null });
+    if (accountFirst) {
+      // #4374's door: the proven mailbox becomes a real password-bearing
+      // account now, at the product's *Pending rung, before any tenant exists.
+      try {
+        const res = await fetch(`${acctApi}/create-account`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId, password: st.pw1 }),
+        });
+        const data = (await res.json().catch(() => ({}))) as { ok?: boolean; alreadyCreated?: boolean; error?: string };
+        if (!res.ok || !data.ok) {
+          authLog.warn({ status: res.status, error: data.error, sessionId }, "pre-consent create-account refused");
+          throw new Error(
+            data.error === "already_has_account"
+              ? "This email already has a Portal account — sign in at the Portal instead."
+              : data.error === "email_not_verified"
+                ? "Your email needs verifying first. Go back and enter the code from your inbox."
+                : "Could not create your account. Please try again.",
+          );
+        }
+        authLog.info({ sessionId, alreadyCreated: data.alreadyCreated }, "pre-consent purchase account created");
+        set({ acctBusy: false, stage: "mfa", acctNotice: null, mfaSetup: null });
+        void loadTotpSetup(sessionId);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Could not create your account. Please try again.";
+        set({ acctBusy: false, acctNotice: { kind: "error", text: message } });
+      }
+      return;
+    }
     try {
       const res = await fetch("/api/public/purchase/set-password", {
         method: "POST",
@@ -974,14 +1093,18 @@ export default function Buy() {
     set({ mfaMethod: m, acctNotice: null });
     if (m === "app" && !st.mfaSetup) void loadTotpSetup();
   };
-  // Where the account stage lands once MFA is enrolled. Write consent is
+  // Where the account stage lands once MFA is enrolled (or, account-first,
+  // once payment is confirmed). Write consent is
   // Packs-only in this public flow — the server refuses every other product
   // before minting anything (#1312) — so Monitoring/Retainer go straight to
   // done, where the Portal's own authenticated pages own any later SOP
   // write-access grant.
+  // Account-first (#4376): MFA is the end of the account step, which comes
+  // before consent and payment — back to the buying screen, account done.
   const afterMfa = () =>
     set((s) => ({
-      stage: s.product === "pack" ? "write" : "done",
+      stage: accountFirst ? "buy" : postAccountStage(s.product),
+      accountDone: accountFirst ? true : s.accountDone,
       acctBusy: false,
       acctNotice: null,
     }));
@@ -995,7 +1118,7 @@ export default function Buy() {
       if (!st.mfaSetup) return;
       set({ acctBusy: true, acctNotice: null });
       try {
-        const res = await fetch("/api/public/purchase/mfa/totp/verify-setup", {
+        const res = await fetch(`${acctApi}/mfa/totp/verify-setup`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sessionId, secret: st.mfaSetup.secret, code: st.mfaCode }),
@@ -1015,7 +1138,7 @@ export default function Buy() {
     // Passkey
     set({ acctBusy: true, acctNotice: null });
     try {
-      const optRes = await fetch("/api/public/purchase/mfa/passkey/registration-options", {
+      const optRes = await fetch(`${acctApi}/mfa/passkey/registration-options`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId }),
@@ -1027,7 +1150,7 @@ export default function Buy() {
       }
       const options = await optRes.json();
       const attResp = await startRegistration({ optionsJSON: options });
-      const verRes = await fetch("/api/public/purchase/mfa/passkey/verify-registration", {
+      const verRes = await fetch(`${acctApi}/mfa/passkey/verify-registration`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId, response: attResp }),
@@ -1256,18 +1379,20 @@ export default function Buy() {
   const stepLabels = isMon
     ? ["Connect", "Tier", "Pay", "Create account", "Portal"]
     : isPack
-      ? ["Pack", "Pay", "Create account", "Write access", "Scan", "Approve", "Record"]
+      ? // #4378 — account → read consent → packs/pay; from write access on unchanged.
+        ["Create account", "Connect", "Pack & pay", "Write access", "Scan", "Approve", "Record"]
       : ["Tier", "Pay", "Create account", "Portal"];
   const acctIdx = isMon ? 3 : 2;
   const packStageIdx: Record<string, number> = {
-    buy: 0,
-    connecting: 0,
-    paying: 1,
-    code: 2,
-    verifying: 2,
-    password: 2,
-    mfa: 2,
-    logging: 2,
+    identity: 0,
+    code: 0,
+    verifying: 0,
+    password: 0,
+    mfa: 0,
+    logging: 0,
+    buy: st.connected ? 2 : 1,
+    connecting: 1,
+    paying: 2,
     write: 3,
     granting: 3,
     prescan: 4,
@@ -1276,7 +1401,7 @@ export default function Buy() {
     executed: 6,
     done: 6,
   };
-  const accountStages: Stage[] = ["code", "verifying", "password", "mfa", "logging"];
+  const accountStages: Stage[] = ["identity", "code", "verifying", "password", "mfa", "logging"];
   const at = isPack
     ? packStageIdx[st.stage] ?? 0
     : st.stage === "done"
@@ -1554,39 +1679,67 @@ export default function Buy() {
   const acctIsCode = st.stage === "code" || st.stage === "verifying";
   const acctIsPassword = st.stage === "password";
   const acctIsMfa = st.stage === "mfa" || st.stage === "logging";
-  const acctReady = acctIsCode
-    ? st.codeInput.length === 6
-    : acctIsPassword
-      ? pwOk
-      : mfaOk;
+  // Account-first (#4376) opens with the buyer's identity — the fields the
+  // checkout session (and so the pre-consent door) is created from.
+  const acctIsIdentity = st.stage === "identity";
+  const identityOk = !!st.email.trim() && !!st.fullName.trim() && !!st.company.trim() && !catalogLoading;
+  const acctReady = acctIsIdentity
+    ? identityOk
+    : acctIsCode
+      ? st.codeInput.length === 6
+      : acctIsPassword
+        ? pwOk
+        : mfaOk;
+  const acctStepNo = acctIsIdentity ? 1 : acctIsCode ? 2 : acctIsPassword ? 3 : 4;
   const acct = {
-    step:
-      "Paid · " +
-      (acctIsCode ? "step 1 of 3" : acctIsPassword ? "step 2 of 3" : "step 3 of 3"),
+    step: accountFirst
+      ? "Create your account · step " + acctStepNo + " of 4"
+      : "Paid · " +
+        (acctIsCode ? "step 1 of 3" : acctIsPassword ? "step 2 of 3" : "step 3 of 3"),
     email: st.email.trim() || "your billing address",
-    title: acctIsCode
-      ? "Check your email for a six-digit code"
-      : acctIsPassword
-        ? "Set a password"
-        : "Add a second factor",
-    body: acctIsCode
-      ? "Payment went through. We sent a code to " +
-        (st.email.trim() || "your billing address") +
-        " — entering it proves the address is yours and creates your Portal account."
-      : acctIsPassword
-        ? "This is the password you will use at portal.shanemccaw.com. Twelve characters minimum, one capital, one number."
-        : "Your tenant’s data sits behind this account, so a second factor is required rather than offered.",
-    cta: acctIsCode
-      ? "Verify and continue"
-      : acctIsPassword
-        ? "Set password"
-        : "Finish and sign in",
-    advance: acctIsCode ? verifyCode : acctIsPassword ? savePw : finishAccount,
-    foot: acctIsCode
-      ? "The code expires in ten minutes."
-      : acctIsPassword
-        ? "Stored hashed. Shane cannot read it."
-        : "You will be signed in automatically — no second login.",
+    title: acctIsIdentity
+      ? "Start with your account"
+      : acctIsCode
+        ? "Check your email for a six-digit code"
+        : acctIsPassword
+          ? "Set a password"
+          : "Add a second factor",
+    body: acctIsIdentity
+      ? "Your account comes first, before anything touches your tenant or your card. The read-only connection and the payment are then made as you, not as an anonymous checkout."
+      : acctIsCode
+        ? (accountFirst ? "We sent a code to " : "Payment went through. We sent a code to ") +
+          (st.email.trim() || "your billing address") +
+          " — entering it proves the address is yours and creates your Portal account."
+        : acctIsPassword
+          ? "This is the password you will use at portal.shanemccaw.com. Twelve characters minimum, one capital, one number."
+          : "Your tenant’s data sits behind this account, so a second factor is required rather than offered.",
+    cta: acctIsIdentity
+      ? "Email me a code"
+      : acctIsCode
+        ? "Verify and continue"
+        : acctIsPassword
+          ? "Set password"
+          : accountFirst
+            ? "Finish and continue"
+            : "Finish and sign in",
+    advance: acctIsIdentity
+      ? startAccount
+      : acctIsCode
+        ? verifyCode
+        : acctIsPassword
+          ? savePw
+          : finishAccount,
+    foot: acctIsIdentity
+      ? "Nothing is charged and nothing is connected at this step."
+      : acctIsCode
+        ? "The code expires in ten minutes."
+        : acctIsPassword
+          ? "Stored hashed. Shane cannot read it."
+          : accountFirst
+            ? isPack
+              ? "Next, connect your tenant read-only, then choose your packs and pay."
+              : "Next, connect your tenant read-only, then pay."
+            : "You will be signed in automatically — no second login.",
   };
   const pwRules = [
     { text: "At least 12 characters", ok: st.pw1.length >= 12 },
@@ -2301,6 +2454,9 @@ export default function Buy() {
                     {connectedCard.body}
                   </span>
                 </span>
+                {/* Account-first (#4376): the consent is bound to the buyer's
+                    own session, which is never dropped — no switching tenant here. */}
+                {!accountFirst && (
                 <button
                   onClick={reconnect}
                   style={{
@@ -2318,6 +2474,7 @@ export default function Buy() {
                 >
                   Change
                 </button>
+                )}
               </div>
             )}
           </div>
@@ -2491,6 +2648,7 @@ export default function Buy() {
                         type="text"
                         value={st.email}
                         onChange={onEmail}
+                        readOnly={st.accountDone}
                         placeholder="billing@yourcompany.com"
                         style={inputStyle}
                       />
@@ -2499,6 +2657,7 @@ export default function Buy() {
                         type="text"
                         value={st.fullName}
                         onChange={onFullName}
+                        readOnly={st.accountDone}
                         placeholder="Full name"
                         style={inputStyle}
                       />
@@ -2507,6 +2666,7 @@ export default function Buy() {
                         type="text"
                         value={st.company}
                         onChange={onCompany}
+                        readOnly={st.accountDone}
                         placeholder="Company"
                         style={inputStyle}
                       />
@@ -2699,6 +2859,35 @@ export default function Buy() {
               gap: "14px",
             }}
           >
+            {acctIsIdentity && (
+              <>
+                <FocusInput
+                  data-testid="buy-email"
+                  type="text"
+                  value={st.email}
+                  onChange={onEmail}
+                  placeholder="billing@yourcompany.com"
+                  style={inputStyle}
+                />
+                <FocusInput
+                  data-testid="buy-fullname"
+                  type="text"
+                  value={st.fullName}
+                  onChange={onFullName}
+                  placeholder="Full name"
+                  style={inputStyle}
+                />
+                <FocusInput
+                  data-testid="buy-company"
+                  type="text"
+                  value={st.company}
+                  onChange={onCompany}
+                  placeholder="Company"
+                  style={inputStyle}
+                />
+              </>
+            )}
+
             {acctIsCode && (
               <>
                 <FocusInput
