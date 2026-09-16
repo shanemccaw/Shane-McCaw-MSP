@@ -387,7 +387,11 @@ export default function Buy() {
 
   // A pack pre-selected via the URL (?tier=/?packs=) may not have a real services-table
   // backing yet (Git #1304) -- drop it from the selection once the live catalogue read
-  // resolves, same gate the option rows below enforce on click.
+  // resolves, same gate the option rows below enforce on click. Git #4321: this must
+  // also re-run if availablePackKeys itself changes after the catalogue has already
+  // settled (e.g. a services refetch onboards or retires a pack) -- omitting it from
+  // the deps left a stale closure that would never re-filter against a catalogue
+  // update that arrived after the initial load.
   useEffect(() => {
     if (!isPack || catalogLoading) return;
     set((s) => {
@@ -398,8 +402,7 @@ export default function Buy() {
         ? {}
         : { packSel: filtered };
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPack, catalogLoading]);
+  }, [isPack, catalogLoading, availablePackKeys]);
 
   // ── Derived model (ported from the design's helpers) ──────────────────────────
   const monSel = MON_TIERS.find((t) => t.key === st.choice) || MON_TIERS[1];
