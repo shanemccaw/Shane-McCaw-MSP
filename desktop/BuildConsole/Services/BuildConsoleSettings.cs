@@ -990,6 +990,9 @@ namespace BuildConsole.Services
 
         private static string SettingsPath => Path.Combine(SettingsDir, "settings.json");
 
+        /// <summary>Git #4416 — the real settings.json path this instance reads/writes, for reporting only.</summary>
+        public static string SettingsFilePath => SettingsPath;
+
         // Git #2770 — the intermittent "Git 401 that clears itself after a manual Queue Panel
         // refresh" traced to THIS method colliding with a concurrent Save(). Load() reads
         // settings.json fresh on every call and is invoked from many threads/timers at once

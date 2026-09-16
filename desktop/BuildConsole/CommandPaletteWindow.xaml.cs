@@ -142,15 +142,17 @@ namespace BuildConsole
         private readonly BuildConsole.Services.BuildQueuePostgresClient? _queueDb;
         private readonly BuildConsole.Services.QueueWatcherService? _queueWatcher;
 
-        // ── Git #4415 — Reset dev database confirm mode ─────────────────────────
-        // The "Reset dev database" command row itself only ever previews (--dry-run). The REAL
-        // reset lives behind this separate mode, entered only by typing the exact confirm phrase
-        // ("reset msp #<id>", the live target MSP id the preview printed) into the input — never
-        // by Enter/click on a command row. Auto-detected from typed text, same as SQL mode.
-        private readonly BuildConsole.Services.DevDatabaseResetGate? _devResetGate;
-        private static readonly System.Text.RegularExpressions.Regex ResetConfirmShape =
-            new(@"^\s*reset\s+msp\s+#\d+\s*$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        private bool _resetConfirmMode;
+        // ── Git #4415 / #4416 — destructive-action confirm mode ─────────────────
+        // A destructive command row ("Reset dev database", "Reset RBAC test accounts") itself only
+        // ever previews (--dry-run). The REAL run lives behind this separate mode, entered only by
+        // typing that gate's exact confirm phrase ("reset msp #<id>", "reset rbac #<id>" — the live
+        // id its preview printed) into the input — never by Enter/click on a command row.
+        // Auto-detected from typed text, same as SQL mode; _resetConfirmGate is the gate whose
+        // shape the input matches.
+        private readonly List<BuildConsole.Services.IPaletteConfirmGate> _confirmGates;
+        private BuildConsole.Services.IPaletteConfirmGate? _resetConfirmGate;
+        private bool ResetConfirmMode => _resetConfirmGate != null;
+        /// <summary>True while ANY gate's real run is in flight — one destructive run per palette at a time.</summary>
         private bool _resetRunning;
         /// <summary>Real outcome text of the real reset run from this mode — kept until the input changes.</summary>
         private string? _resetResultText;
@@ -192,7 +194,7 @@ namespace BuildConsole
             IEnumerable<(int Number, string Title)>? epics = null,
             BuildConsole.Services.BuildQueuePostgresClient? queueDb = null,
             BuildConsole.Services.QueueWatcherService? queueWatcher = null,
-            BuildConsole.Services.DevDatabaseResetGate? devResetGate = null)
+            IEnumerable<BuildConsole.Services.IPaletteConfirmGate>? confirmGates = null)
         {
             InitializeComponent();
             _commands = commands.ToList();
@@ -200,7 +202,7 @@ namespace BuildConsole
             _epics = epics?.ToList() ?? new List<(int Number, string Title)>();
             _queueDb = queueDb;
             _queueWatcher = queueWatcher;
-            _devResetGate = devResetGate;
+            _confirmGates = confirmGates?.ToList() ?? new List<BuildConsole.Services.IPaletteConfirmGate>();
             RenderTiles();
             RenderTabs();
             RenderResults();
@@ -324,7 +326,7 @@ namespace BuildConsole
             _searchCts = null;
 
             string q = PaletteInput.Text?.Trim() ?? "";
-            if (_sqlMode || _dispatchMode || _resetConfirmMode || q.Length == 0)
+            if (_sqlMode || _dispatchMode || ResetConfirmMode || q.Length == 0)
             {
                 _searchResults = new();
                 return;
@@ -351,7 +353,7 @@ namespace BuildConsole
             if (token.IsCancellationRequested) return;
 
             _searchResults = results;
-            if (!_sqlMode && !_dispatchMode && !_resetConfirmMode) RenderResults(preserveSelection: true);
+            if (!_sqlMode && !_dispatchMode && !ResetConfirmMode) RenderResults(preserveSelection: true);
         }
 
         private List<PaletteCommand> FilterCommands(string query)
@@ -424,15 +426,15 @@ namespace BuildConsole
                 e.Handled = true;
                 CloseOnce();
             }
-            else if (_resetConfirmMode && e.Key == Key.Enter)
+            else if (ResetConfirmMode && e.Key == Key.Enter)
             {
-                // Git #4415 — the only keyboard path to a REAL reset: Enter while the input holds
+                // Git #4415 / #4416 — the only keyboard path to a REAL run: Enter while the input holds
                 // the exact confirm phrase after a successful preview. Unarmed (no preview yet, a
                 // wrong MSP id, or the confirmation already consumed by a run) it does nothing.
                 e.Handled = true;
-                _ = RunConfirmedDevResetAsync();
+                _ = RunConfirmedResetAsync();
             }
-            else if (_resetConfirmMode && (e.Key == Key.Down || e.Key == Key.Up || e.Key == Key.Tab))
+            else if (ResetConfirmMode && (e.Key == Key.Down || e.Key == Key.Up || e.Key == Key.Tab))
             {
                 e.Handled = true;
             }
@@ -500,11 +502,11 @@ namespace BuildConsole
                 PaletteInput.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
             _liveResultText = null;
 
-            // Git #4415 — any edit clears a previous real-reset result; the confirm-phrase shape
-            // (not Dispatch mode) switches the palette into the reset confirm view.
+            // Git #4415 / #4416 — any edit clears a previous real-run result; a gate's confirm-phrase
+            // shape (not Dispatch mode) switches the palette into that gate's confirm view.
             _resetResultText = null;
-            _resetConfirmMode = _devResetGate != null && !_dispatchMode
-                && ResetConfirmShape.IsMatch(PaletteInput.Text);
+            string typedText = PaletteInput.Text;
+            _resetConfirmGate = _dispatchMode ? null : _confirmGates.FirstOrDefault(g => g.ConfirmShape.IsMatch(typedText));
 
             // Git #3828 — real SQL detection: switching in/out of SQL mode resets any
             // stale results from a previous query rather than showing them against new text.
@@ -588,7 +590,7 @@ namespace BuildConsole
 
         private void DetailAction_Click(object sender, MouseButtonEventArgs e)
         {
-            if (_resetConfirmMode) { _ = RunConfirmedDevResetAsync(); return; }
+            if (ResetConfirmMode) { _ = RunConfirmedResetAsync(); return; }
             if (_sqlMode) { _ = RunSqlQueryAsync(); return; }
             if (_dispatchMode)
             {
@@ -733,7 +735,7 @@ namespace BuildConsole
         {
             PaletteResults.Children.Clear();
 
-            if (_resetConfirmMode)
+            if (ResetConfirmMode)
             {
                 RenderResetConfirmRow();
                 RenderDetail();
@@ -946,7 +948,7 @@ namespace BuildConsole
         {
             PaletteDetail.Children.Clear();
 
-            if (_resetConfirmMode)
+            if (ResetConfirmMode)
             {
                 RenderResetConfirmDetail();
                 return;
@@ -1554,56 +1556,68 @@ namespace BuildConsole
             });
         }
 
-        // ── Git #4415 — Reset dev database: typed-phrase confirm step ─────────────────────────
+        // ── Git #4415 / #4416 — destructive quick actions: typed-phrase confirm step ───────────
 
-        /// <summary>True when the typed phrase matches a successful preview in this palette session —
-        /// the only state in which Enter/the action button reaches the real reset.</summary>
-        private bool ResetArmed => _devResetGate != null && _devResetGate.Matches(PaletteInput.Text);
+        /// <summary>True when the typed phrase matches a successful preview of the active gate in this
+        /// palette session — the only state in which Enter/the action button reaches the real run.</summary>
+        private bool ResetArmed => _resetConfirmGate != null && _resetConfirmGate.Matches(PaletteInput.Text);
 
-        /// <summary>The real reset — only reachable from confirm mode, and the gate re-checks the
-        /// typed phrase itself before running anything.</summary>
-        private async Task RunConfirmedDevResetAsync()
+        /// <summary>The gate whose real run is in flight (null when none). "Running" is rendered only in
+        /// that gate's own confirm view.</summary>
+        private BuildConsole.Services.IPaletteConfirmGate? _resetRunningGate;
+        private bool ActiveGateRunning => _resetRunningGate != null && _resetRunningGate == _resetConfirmGate;
+
+        /// <summary>The real run — only reachable from confirm mode, and the gate re-checks the typed
+        /// phrase itself before running anything. One destructive run per palette at a time.</summary>
+        private async Task RunConfirmedResetAsync()
         {
-            if (_devResetGate == null || _resetRunning || !ResetArmed) return;
+            var gate = _resetConfirmGate;
+            if (gate == null || _resetRunning || !ResetArmed) return;
 
             string typed = PaletteInput.Text;
             _resetRunning = true;
+            _resetRunningGate = gate;
             _resetResultText = null;
             RenderResults(preserveSelection: true);
 
             (bool Ok, string Text) outcome;
             try
             {
-                outcome = await _devResetGate.ExecuteAsync(typed);
+                outcome = await gate.ExecuteAsync(typed);
             }
             catch (Exception ex)
             {
-                outcome = (false, $"✗ Real reset threw before it could report: {ex.Message}");
+                outcome = (false, $"✗ Real run threw before it could report: {ex.Message}");
             }
 
             _resetRunning = false;
+            _resetRunningGate = null;
             _resetResultOk = outcome.Ok;
-            _resetResultText = outcome.Text;
+            // Only show the result against the confirm view it came from (the input may have changed mid-run).
+            _resetResultText = gate == _resetConfirmGate ? outcome.Text : null;
 
             // The palette closes itself if it loses focus mid-run; the toast is the outcome's
-            // backstop so a real reset never finishes silently.
+            // backstop so a real run never finishes silently. Gates keep their first three lines
+            // free of secrets (the RBAC gate's new credentials appear only further down the pane).
             string firstLines = string.Join(" ", outcome.Text.Split('\n').Take(3).Select(l => l.Trim()).Where(l => l.Length > 0));
-            if (outcome.Ok) ToastEngine.Success("Reset dev database", firstLines);
-            else ToastEngine.Error("Reset dev database", firstLines);
+            if (outcome.Ok) ToastEngine.Success(gate.ToastTitle, firstLines);
+            else ToastEngine.Error(gate.ToastTitle, firstLines);
 
-            if (_resetConfirmMode) RenderResults(preserveSelection: true);
+            if (ResetConfirmMode) RenderResults(preserveSelection: true);
         }
 
         private void RenderResetConfirmRow()
         {
+            var gate = _resetConfirmGate!;
             bool armed = ResetArmed;
-            string subtitle = _resetRunning
-                ? "Backing up, then resetting for real…"
+            bool running = ActiveGateRunning;
+            string subtitle = running
+                ? gate.RunningSubtitle
                 : _resetResultText != null
-                    ? (_resetResultOk ? "Real reset completed — backup location in the right pane" : "Real reset failed — see the right pane")
+                    ? gate.CompletedSubtitle(_resetResultOk)
                     : armed
-                        ? "Confirmed phrase — Enter runs the REAL reset (backup first)"
-                        : "Locked — no matching successful preview in this palette session";
+                        ? gate.ArmedSubtitle
+                        : gate.LockedSubtitle;
 
             var dock = new DockPanel();
             dock.Children.Add(new Border
@@ -1635,7 +1649,7 @@ namespace BuildConsole
                 BorderThickness = new Thickness(1),
                 Child = new TextBlock
                 {
-                    Text = armed || _resetRunning ? "DESTRUCTIVE" : "LOCKED",
+                    Text = armed || running ? "DESTRUCTIVE" : "LOCKED",
                     FontSize = 8.5,
                     FontWeight = FontWeights.Bold,
                     Foreground = (Brush)FindResource("StatusErrorBrush"),
@@ -1647,7 +1661,7 @@ namespace BuildConsole
             var textStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
             textStack.Children.Add(new TextBlock
             {
-                Text = "Confirm & Reset Dev Database For Real",
+                Text = gate.ConfirmRowTitle,
                 FontSize = 13,
                 FontWeight = FontWeights.SemiBold,
                 TextTrimming = TextTrimming.CharacterEllipsis,
@@ -1668,23 +1682,25 @@ namespace BuildConsole
                 Padding = new Thickness(10, 8, 10, 8),
                 Margin = new Thickness(0, 2, 0, 2),
                 BorderThickness = new Thickness(1),
-                BorderBrush = (Brush)FindResource(armed || _resetRunning ? "StatusErrorBrush" : "BorderDividerBrush"),
+                BorderBrush = (Brush)FindResource(armed || running ? "StatusErrorBrush" : "BorderDividerBrush"),
                 Child = dock,
             });
         }
 
         private void RenderResetConfirmDetail()
         {
+            var gate = _resetConfirmGate!;
             bool armed = ResetArmed;
-            if (_resetRunning)
+            bool running = ActiveGateRunning;
+            if (running)
             {
                 PaletteDetailActionHost.Visibility = Visibility.Visible;
-                PaletteDetailActionLabel.Text = "Resetting…";
+                PaletteDetailActionLabel.Text = gate.ActionLabelRunning;
             }
-            else if (armed)
+            else if (armed && !_resetRunning)
             {
                 PaletteDetailActionHost.Visibility = Visibility.Visible;
-                PaletteDetailActionLabel.Text = "Confirm & Reset For Real  ↵";
+                PaletteDetailActionLabel.Text = gate.ActionLabelArmed;
             }
             else
             {
@@ -1700,19 +1716,16 @@ namespace BuildConsole
                 BorderThickness = new Thickness(1),
                 Child = new TextBlock
                 {
-                    Text = "DESTRUCTIVE — REAL RESET",
+                    Text = gate.DetailTag,
                     FontSize = 8.5,
                     FontWeight = FontWeights.Bold,
                     Foreground = (Brush)FindResource("StatusErrorBrush"),
                 },
             });
 
-            string title = _devResetGate?.PreviewedMspId is int id && armed
-                ? $"Reset msp #{id} \"{_devResetGate.PreviewedMspName}\""
-                : "Reset dev database";
             PaletteDetail.Children.Add(new TextBlock
             {
-                Text = title,
+                Text = gate.DetailTitle(armed),
                 Margin = new Thickness(0, 10, 0, 6),
                 FontSize = 15,
                 FontWeight = FontWeights.Bold,
@@ -1720,19 +1733,9 @@ namespace BuildConsole
                 Foreground = (Brush)FindResource("TextPrimaryBrush"),
             });
 
-            string body = _resetRunning
-                ? "Running node scripts/db/reset-dev-database.mjs --yes — it re-runs its own dry run, takes a "
-                  + "pg_dump backup, then commits the reset. The real output (including the backup file) shows here when it finishes."
-                : _resetResultText
-                  ?? (armed
-                      ? "Enter (or the button below) runs node scripts/db/reset-dev-database.mjs --yes for real: its "
-                        + "tenants/customers and their downstream data are deleted after a fresh pg_dump backup. "
-                        + "MSP-staff logins, MSP config and every other MSP are left alone. This confirmation is used up "
-                        + "by one run — another reset needs a new preview."
-                      : _devResetGate?.ConfirmPhrase is string phrase
-                          ? $"That isn't the confirm phrase for the preview you ran. The phrase is: {phrase}"
-                          : "The real reset is locked. Clear the input, select \"Reset dev database\" and press Enter to run "
-                            + "the dry-run preview first — it prints the exact phrase to type here.");
+            string body = running
+                ? gate.RunningBody
+                : _resetResultText ?? (armed ? gate.ArmedBody : gate.LockedBody);
 
             if (_resetResultText != null)
             {

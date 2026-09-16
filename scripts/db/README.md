@@ -74,6 +74,16 @@ node scripts/db/reset-rbac-test-accounts.mjs --dry-run   # BEGIN...ROLLBACK -- p
 node scripts/db/reset-rbac-test-accounts.mjs              # real run -- wipes + recreates, prints creds once
 ```
 
+**From BuildConsole's Command Center (Ctrl+K, Git #4416):** same typed-phrase gate as the dev
+reset above. The "Reset RBAC test accounts" row only ever runs `--dry-run` (the rolled-back
+passwords in its output are redacted, and it lists which `TEST_RBAC_*` settings.json vars a real
+run would add/update). Typing the phrase the preview prints (`reset rbac #<live msp id>`) and
+pressing Enter runs the real wipe/recreate once. BuildConsole — not this script — then writes the
+new `TEST_RBAC_<ROLE>_EMAIL` / `TEST_RBAC_<ROLE>_PASSWORD` pairs into `settings.json`
+(`TestEnvironmentVariables`), re-reads the file to confirm every value, and shows the new
+credentials in the result pane. Pairs for accounts the run skipped (and so deleted without
+recreating) are left in settings.json untouched and named in the result.
+
 **What it does:** deletes only the `shanemccaw+<tag>@outlook.com` accounts it itself owns (a
 fixed tag list — never a blanket "everything under this tenant" delete, since a real customer
 signup can share the same tenant row), then recreates one fresh account per real,

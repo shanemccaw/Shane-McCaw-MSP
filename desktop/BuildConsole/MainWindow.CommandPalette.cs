@@ -64,13 +64,14 @@ namespace BuildConsole
         /// runs afterward.</summary>
         private CommandPaletteWindow CreateCommandPaletteWindow()
         {
-            // Git #4415 — one reset gate per palette window: a confirmation earned by a preview in
-            // this window can't carry into a later open. The command row only previews; the window
-            // owns the separate typed-phrase step that reaches the real reset.
+            // Git #4415 / #4416 — one gate per destructive action per palette window: a confirmation
+            // earned by a preview in this window can't carry into a later open. The command rows only
+            // preview; the window owns the separate typed-phrase step that reaches the real run.
             var devResetGate = new DevDatabaseResetGate();
+            var rbacResetGate = new RbacTestAccountsResetGate();
             var win = new CommandPaletteWindow(
-                BuildPaletteCommands(devResetGate), BuildTrackerApi, LeftSidebar.GetAllEpics(), QueueDb, QueueWatcher,
-                devResetGate)
+                BuildPaletteCommands(devResetGate, rbacResetGate), BuildTrackerApi, LeftSidebar.GetAllEpics(), QueueDb, QueueWatcher,
+                new IPaletteConfirmGate[] { devResetGate, rbacResetGate })
             { Owner = this };
 
             // Git #3850 — the epic-*name* matching branch (sibling #3831 covers epic/issue
@@ -148,7 +149,8 @@ namespace BuildConsole
         /// BuildConsole feature (no stub pretending to succeed). These also render
         /// as the tile row per the reference screenshot.
         /// </summary>
-        private List<CommandPaletteWindow.PaletteCommand> BuildPaletteCommands(DevDatabaseResetGate devResetGate) => new()
+        private List<CommandPaletteWindow.PaletteCommand> BuildPaletteCommands(
+            DevDatabaseResetGate devResetGate, RbacTestAccountsResetGate rbacResetGate) => new()
         {
             new CommandPaletteWindow.PaletteCommand
             {
@@ -188,6 +190,21 @@ namespace BuildConsole
                            + "Enter on this row never runs the real reset.",
                 ActionLabel = "Preview Reset (dry run)",
                 RunWithResult = devResetGate.PreviewAsync,
+            },
+            new CommandPaletteWindow.PaletteCommand
+            {
+                Glyph = "", // Warning
+                Title = "Reset RBAC test accounts",
+                Subtitle = "Preview (dry run) of the RBAC login-test account wipe/recreate — changes nothing",
+                DetailBody = "Enter runs `node scripts/db/reset-rbac-test-accounts.mjs --dry-run` (Git #4396) for real: "
+                           + "it resolves the live tenant/MSP, deletes and recreates the shanemccaw+<role>@outlook.com "
+                           + "accounts inside BEGIN...ROLLBACK, and lists which settings.json TEST_RBAC_* vars a real run "
+                           + "would write. No account changes and settings.json is not touched. The output ends with the "
+                           + "exact phrase to type into the search box for the separate, destructive step (real wipe + "
+                           + "recreate, then the new credentials written to settings.json and re-read to confirm). "
+                           + "Enter on this row never runs the real reset.",
+                ActionLabel = "Preview RBAC Reset (dry run)",
+                RunWithResult = rbacResetGate.PreviewAsync,
             },
             new CommandPaletteWindow.PaletteCommand
             {

@@ -1,6 +1,4 @@
 using System;
-using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -31,7 +29,7 @@ namespace BuildConsole.Services
     /// never render in the palette's own pane. The typed phrase is the script's own confirmation
     /// model (it prompts "Type yes to proceed") moved into the palette's input box.
     /// </summary>
-    public sealed class DevDatabaseResetGate
+    public sealed class DevDatabaseResetGate : IPaletteConfirmGate
     {
         /// <summary>The script prints exactly this for the live-derived target MSP (reset-dev-database.mjs main()).</summary>
         private static readonly Regex TargetMspLine =
@@ -62,6 +60,35 @@ namespace BuildConsole.Services
 
         public bool IsRunning => Volatile.Read(ref _running) == 1;
 
+        /// <summary>Typed text of this shape switches the palette into this gate's confirm mode.</summary>
+        public Regex ConfirmShape { get; } = new(@"^\s*reset\s+msp\s+#\d+\s*$", RegexOptions.IgnoreCase);
+
+        // ── Palette confirm-mode copy (IPaletteConfirmGate, Git #4416 — moved here verbatim from the window) ──
+        public string ToastTitle => "Reset dev database";
+        public string ConfirmRowTitle => "Confirm & Reset Dev Database For Real";
+        public string RunningSubtitle => "Backing up, then resetting for real…";
+        public string ArmedSubtitle => "Confirmed phrase — Enter runs the REAL reset (backup first)";
+        public string LockedSubtitle => "Locked — no matching successful preview in this palette session";
+        public string CompletedSubtitle(bool ok) =>
+            ok ? "Real reset completed — backup location in the right pane" : "Real reset failed — see the right pane";
+        public string DetailTag => "DESTRUCTIVE — REAL RESET";
+        public string DetailTitle(bool armed) =>
+            PreviewedMspId is int id && armed ? $"Reset msp #{id} \"{PreviewedMspName}\"" : "Reset dev database";
+        public string RunningBody =>
+            "Running node scripts/db/reset-dev-database.mjs --yes — it re-runs its own dry run, takes a "
+            + "pg_dump backup, then commits the reset. The real output (including the backup file) shows here when it finishes.";
+        public string ArmedBody =>
+            "Enter (or the button below) runs node scripts/db/reset-dev-database.mjs --yes for real: its "
+            + "tenants/customers and their downstream data are deleted after a fresh pg_dump backup. "
+            + "MSP-staff logins, MSP config and every other MSP are left alone. This confirmation is used up "
+            + "by one run — another reset needs a new preview.";
+        public string LockedBody => ConfirmPhrase is string phrase
+            ? $"That isn't the confirm phrase for the preview you ran. The phrase is: {phrase}"
+            : "The real reset is locked. Clear the input, select \"Reset dev database\" and press Enter to run "
+              + "the dry-run preview first — it prints the exact phrase to type here.";
+        public string ActionLabelArmed => "Confirm & Reset For Real  ↵";
+        public string ActionLabelRunning => "Resetting…";
+
         /// <summary>True only when a successful preview exists and <paramref name="typed"/> is exactly
         /// the confirm phrase (surrounding whitespace ignored, case-insensitive).</summary>
         public bool Matches(string? typed)
@@ -82,14 +109,14 @@ namespace BuildConsole.Services
                 PreviewedMspId = null;
                 PreviewedMspName = null;
 
-                if (!TryResolveScript(out var repoRoot, out var scriptPath, out var error))
+                if (!PaletteScriptProcess.TryResolveScript("reset-dev-database.mjs", out var repoRoot, out var scriptPath, out var error))
                     return error;
 
                 var (exitCode, stdout, stderr, launchError) =
-                    await RunOnceAsync(repoRoot, scriptPath, "--dry-run", PreviewTimeout);
+                    await PaletteScriptProcess.RunOnceAsync(repoRoot, scriptPath, "--dry-run", PreviewTimeout);
                 bool ok = launchError == null && exitCode == 0;
 
-                string output = Combine(stdout, stderr);
+                string output = PaletteScriptProcess.Combine(stdout, stderr);
                 var target = TargetMspLine.Match(stdout);
 
                 if (ok && target.Success && output.Contains(DryRunOkMarker))
@@ -135,14 +162,14 @@ namespace BuildConsole.Services
             PreviewedMspName = null;
             try
             {
-                if (!TryResolveScript(out var repoRoot, out var scriptPath, out var error))
+                if (!PaletteScriptProcess.TryResolveScript("reset-dev-database.mjs", out var repoRoot, out var scriptPath, out var error))
                     return (false, error);
 
                 ActivityLog.Log("command-palette.dev-reset", $"REAL reset confirmed by typed phrase for msp #{mspId} — running reset-dev-database.mjs --yes.");
                 var (exitCode, stdout, stderr, launchError) =
-                    await RunOnceAsync(repoRoot, scriptPath, "--yes", ExecuteTimeout);
+                    await PaletteScriptProcess.RunOnceAsync(repoRoot, scriptPath, "--yes", ExecuteTimeout);
 
-                string output = Combine(stdout, stderr);
+                string output = PaletteScriptProcess.Combine(stdout, stderr);
                 string? backupPath = BackupLine.Matches(output).Select(m => m.Groups["path"].Value).LastOrDefault();
                 string? backupVerified = BackupVerifiedLine.Match(output) is { Success: true } v ? v.Value.Trim() : null;
                 bool ok = launchError == null && exitCode == 0;
@@ -164,84 +191,5 @@ namespace BuildConsole.Services
                 Volatile.Write(ref _running, 0);
             }
         }
-
-        private static bool TryResolveScript(out string repoRoot, out string scriptPath, out string error)
-        {
-            repoRoot = BuildTrackerConfig.FindRepoRoot() ?? "";
-            scriptPath = repoRoot.Length > 0 ? Path.Combine(repoRoot, "scripts", "db", "reset-dev-database.mjs") : "";
-            error = "";
-            if (repoRoot.Length == 0)
-            {
-                error = "Repo root not found — could not locate scripts/db/reset-dev-database.mjs.";
-                return false;
-            }
-            if (!File.Exists(scriptPath))
-            {
-                error = $"Script not found at {scriptPath}.";
-                return false;
-            }
-            return true;
-        }
-
-        /// <summary>
-        /// A single, never-retried launch for both steps. <see cref="SubprocessRunner"/> is
-        /// deliberately not used here: it re-launches a child that exits with a crash-class NTSTATUS
-        /// (e.g. 0xC000013A), which is right for git/gh probes and wrong for a database reset, and it
-        /// reads output in the console code page, which mangles the script's UTF-8 ("§" → "┬º").
-        /// Stdin is redirected and closed so the script's interactive prompt can never block (it is
-        /// skipped by --yes anyway).
-        /// </summary>
-        private static async Task<(int ExitCode, string StdOut, string StdErr, string? LaunchError)> RunOnceAsync(
-            string repoRoot, string scriptPath, string flag, TimeSpan timeout)
-        {
-            var psi = new ProcessStartInfo
-            {
-                FileName = "node",
-                WorkingDirectory = repoRoot,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                RedirectStandardInput = true,
-                StandardOutputEncoding = System.Text.Encoding.UTF8,
-                StandardErrorEncoding = System.Text.Encoding.UTF8,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            psi.ArgumentList.Add(scriptPath);
-            psi.ArgumentList.Add(flag);
-
-            using var proc = new Process { StartInfo = psi };
-            try
-            {
-                if (!proc.Start()) return (-1, "", "", "node failed to start");
-            }
-            catch (Exception ex)
-            {
-                return (-1, "", "", ex.Message);
-            }
-            try { proc.StandardInput.Close(); } catch { }
-
-            var outTask = proc.StandardOutput.ReadToEndAsync();
-            var errTask = proc.StandardError.ReadToEndAsync();
-            using var cts = new CancellationTokenSource(timeout);
-            try
-            {
-                await proc.WaitForExitAsync(cts.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                try { proc.Kill(true); } catch { }
-                string partialOut = await SafeRead(outTask);
-                string partialErr = await SafeRead(errTask);
-                return (-2, partialOut, partialErr, $"timed out after {timeout.TotalMinutes:F0} min — killed (an uncommitted reset transaction rolls back)");
-            }
-            return (proc.ExitCode, await outTask.ConfigureAwait(false), await errTask.ConfigureAwait(false), null);
-
-            static async Task<string> SafeRead(Task<string> t)
-            {
-                try { return await t.ConfigureAwait(false); } catch { return ""; }
-            }
-        }
-
-        private static string Combine(string? stdout, string? stderr) => $"{stdout}\n{stderr}".Trim();
     }
 }
