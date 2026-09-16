@@ -229,9 +229,19 @@ router.get("/admin/projects", requireCapability("ladder.msp-operator"), async (r
   if (!scope) return;
   // #4248's project picker narrows to one client; the MSP filter still applies on top.
   const clientUserIdParam = typeof req.query.clientUserId === "string" ? parseInt(req.query.clientUserId, 10) : NaN;
+  // #4342: a tenant can have several users, so there's no single tenant->clientUserId
+  // mapping on the client side. Resolve customerId (tenants.id) server-side to every
+  // user in that tenant and filter projects owned by any of them.
+  const customerIdParam = typeof req.query.customerId === "string" ? parseInt(req.query.customerId, 10) : NaN;
   const conditions = [];
   if (scope.mspId !== null) conditions.push(inArray(projectsTable.id, mspProjectIds(scope.mspId)));
   if (!isNaN(clientUserIdParam)) conditions.push(eq(projectsTable.clientUserId, clientUserIdParam));
+  if (!isNaN(customerIdParam)) {
+    conditions.push(inArray(
+      projectsTable.clientUserId,
+      db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.tenantId, customerIdParam)),
+    ));
+  }
   const projects = await db.select().from(projectsTable)
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(projectsTable.createdAt));
