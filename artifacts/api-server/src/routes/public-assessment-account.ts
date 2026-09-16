@@ -63,8 +63,14 @@
  *    real session the moment that tab loads. Same cross-app handoff shape as
  *    the existing impersonation_token/printToken/docPrintToken tokens, not an
  *    improvised new mechanism.
- *  - It does not promote the Prospect's role or run paid provisioning. Those
- *    remain the known gap already documented in public-assessment-payment.ts.
+ *  - #4394: /set-password now DOES promote the Prospect's role to `Customer`
+ *    (promoteMspUserToCustomer), at this route's own paid+verified point — the
+ *    same guard attachPasswordToAccount applies in purchase-account-flow.ts.
+ *    It still does NOT run the rest of paid-order provisioning (contract,
+ *    project, invoice, a client_services row for the base assessment itself —
+ *    only the optional rescan add-on gets one, in
+ *    public-assessment-payment.ts's createRescanSubscription). That remains
+ *    the known gap documented there; filed as its own finding, Git #4434.
  *  - It does not enrol MFA. #439 is deliberately a separate, final
  *    pre-deployment build so that development test runs are not gated behind
  *    an MFA enrolment on every refresh.
@@ -89,6 +95,7 @@ import { z } from "zod";
 import { createAuditLog } from "../lib/audit.ts";
 import { getEmailTemplateOrFallback, sendEmailOrThrow } from "../lib/mailer.ts";
 import { getMspPortalLandingUrl } from "../lib/portal-url.ts";
+import { promoteMspUserToCustomer } from "../lib/direct-tenant-provisioning.ts";
 import { logger } from "../lib/logger.ts";
 
 // Account creation, email-proof-of-control and credential storage are all `auth`
@@ -578,6 +585,17 @@ router.post("/public/flow/set-password", setPasswordLimiter, async (req: Request
     res.status(409).json({ error: "account_missing" });
     return;
   }
+
+  // #4394 — the buyer is promoted to `Customer` on payment, at the one point in
+  // this flow where both facts the promotion needs hold: `session` is paid
+  // (resolvePaidSession only yields one for a `paid`, unexpired row) and `email`
+  // was just re-proven above via the verified code. Runs before the
+  // `already_set` return below, exactly like #4392's identical promotion in
+  // purchase-account-flow.ts's attachPasswordToAccount, so a returning buyer
+  // (already-set password, re-paying) is promoted too. Guarded inside
+  // promoteMspUserToCustomer (only Free / MonitoringConsented / PackConsented
+  // move), so a real Customer/staff account is a no-op. Non-fatal.
+  await promoteMspUserToCustomer(user.id);
 
   if (user.passwordHash) {
     // A returning buyer. Their existing credential is not replaceable through a
