@@ -1,7 +1,7 @@
 {
   "feature": "Generalized read-consent flow for Buy.tsx purchase sessions (Git #1311, Epic #1309 Phase 2): session-keyed read-consent URL mint with server-resolved requirement (required vs optional), the explicit Retainer skip branch, its fail-closed refusal for Monitoring, and the skip's visibility on consent-status.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "40dbcb3ab108378f6e108b35b92576dd95e301d4",
+  "lastVerifiedAgainstCommit": "86af59956",
 
   "notes": [
     "WHAT THIS COVERS: the #1311 backend extraction only — no UI is wired to these routes yet (Buy.tsx wiring is Phase 8, #1309). Every call is either the genuine PUBLIC intake (POST /api/public/checkout-session, minting a real checkout_sessions row + funnel lead per run — same accepted side effect as billing/retainer-signup.json's CREATE) or a session-keyed public flow route.",
