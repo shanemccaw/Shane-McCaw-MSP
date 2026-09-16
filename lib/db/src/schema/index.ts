@@ -1075,6 +1075,83 @@ export const freeScanReturnLinksTable = pgTable("free_scan_return_links", {
 export type InsertFreeScanReturnLink = typeof freeScanReturnLinksTable.$inferInsert;
 export type FreeScanReturnLink = typeof freeScanReturnLinksTable.$inferSelect;
 
+// Git #1374 (Phase of Feature #1352, Free Scan) — the Review step's engagement
+// record: the Statement of Work a Free Scan Prospect scopes, signs and pays for.
+//
+// Keyed on `customerId` (tenants.id) rather than on a checkout session, because
+// the Prospect reaches this screen through TWO real doors and both are the same
+// engagement: the live flow's checkout `sessionId` (#1358) and the emailed
+// return link (#1359), which has no checkout session at all. `checkoutSessionId`
+// records the live door when that is the one used — it is the Stripe binding,
+// not the identity.
+//
+// Deliberately NOT a row in `assessment_sow_agreements`: that table is the
+// Assessment wizard's own signature record, bound to
+// `insights_generated_documents` / the Assessment cart, and workflow-executor's
+// `create_phased_invoices` node resolves rows there by `checkout_session_id`.
+// A Free Scan engagement landing in that table would be picked up by that node
+// as an Assessment phased plan, which it is not.
+//
+// The scope selection persists BEFORE signature (a Prospect sets scope, leaves,
+// and comes back), so a row exists in `draft` from the first scope change. It
+// locks at signature: a non-null `signedAt` is the gate every scope write checks.
+export const freeScanEngagementsTable = pgTable("free_scan_engagements", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull().unique().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  // The live-flow checkout session, when that is the door the Prospect came in
+  // by. Null for a return-link-only engagement — see the note above.
+  checkoutSessionId: uuid("checkout_session_id").references(() => checkoutSessionsTable.id, { onDelete: "set null" }),
+  // Human-readable SOW id printed on the document. Derived once, at creation,
+  // from real values (tenant + date) and then stable — a document a customer
+  // signed must not renumber itself on a later read.
+  sowReference: text("sow_reference").notNull(),
+  // Scope selection. `selectedPhaseSlugs` are real `services.slug` values of the
+  // six `category = 'project'` phase rows; `selectedAddons` are
+  // `{ key, serviceSlug }` pairs naming real catalog rows. Never prices — every
+  // cent is re-resolved from the catalog server-side on each read.
+  selectedPhaseSlugs: jsonb("selected_phase_slugs").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  selectedAddons: jsonb("selected_addons").$type<Array<{ key: string; serviceSlug: string }>>().notNull().default(sql`'[]'::jsonb`),
+  paymentPlan: text("payment_plan", { enum: ["full", "phased"] }).notNull().default("full"),
+  // Signature (#1374 scope item 5). All of it lands in one write, or none of it.
+  signerName: text("signer_name"),
+  signerRole: text("signer_role"),
+  // Drawn-signature PNG data URL, or the typed name rendered as one — the same
+  // contract `assessment_sow_agreements.signature_data` already carries.
+  signatureData: text("signature_data"),
+  signatureIp: text("signature_ip"),
+  termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
+  signedAt: timestamp("signed_at", { withTimezone: true }),
+  // The whole computed SOW as it stood at signature — the figures the customer
+  // actually saw and agreed to. Read back rather than recomputed once signed, so
+  // a later scan cannot silently restate a signed document.
+  signedSowSnapshot: jsonb("signed_sow_snapshot"),
+  // Money captured at signature, in cents, so a catalog price edit afterwards
+  // cannot change what was agreed.
+  agreedServicesCents: integer("agreed_services_cents"),
+  agreedRecurringMonthlyCents: integer("agreed_recurring_monthly_cents"),
+  // What Stripe is actually asked for now: the discounted full fee, or the deposit.
+  chargedCents: integer("charged_cents"),
+  depositPct: integer("deposit_pct"),
+  status: text("status", { enum: ["draft", "signed", "paid"] }).notNull().default("draft"),
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  paidAt: timestamp("paid_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("free_scan_engagements_checkout_session_idx").on(t.checkoutSessionId),
+  uniqueIndex("free_scan_engagements_payment_intent_uidx")
+    .on(t.stripePaymentIntentId)
+    .where(sql`stripe_payment_intent_id IS NOT NULL`),
+  // A signed row must carry the whole signature block, never a partial one.
+  check(
+    "free_scan_engagements_signature_check",
+    sql`(${t.signedAt} IS NULL) OR (${t.signerName} IS NOT NULL AND ${t.signerRole} IS NOT NULL AND ${t.signatureData} IS NOT NULL AND ${t.termsAcceptedAt} IS NOT NULL)`,
+  ),
+]);
+
+export type InsertFreeScanEngagement = typeof freeScanEngagementsTable.$inferInsert;
+export type FreeScanEngagement = typeof freeScanEngagementsTable.$inferSelect;
+
 // Git #415. Same shape as impersonationTokensTable/accountSetupTokensTable —
 // a short-lived, single-use bearer token headless Chromium exchanges (via
 // POST /auth/print-exchange) for a real short-lived JWT for the SAME user who
