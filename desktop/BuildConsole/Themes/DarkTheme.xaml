@@ -1285,7 +1285,15 @@
         <Setter Property="Background" Value="{StaticResource Surface0Brush}"/>
     </Style>
 
-    <Style TargetType="{x:Type StatusBar}" BasedOn="{StaticResource {x:Type StatusBar}}">
+    <!-- Git #4439 — same bug class already fixed above for ComboBox: the plain
+         property setters here (Background/Foreground/etc., via BasedOn = the
+         OS-default Aero/Fluent StatusBar ControlTemplate) never actually reach
+         the real chrome, so the body/panel area renders with the system's
+         default light gray regardless of the Background setter. A full
+         template is the only way to actually own every pixel. The ItemsPresenter
+         below still hosts MainWindow.xaml's own custom StatusBar.ItemsPanel Grid
+         layout (Deploy/queue-counts/usage/clock columns) unchanged. -->
+    <Style TargetType="{x:Type StatusBar}">
         <Setter Property="Background"      Value="{StaticResource CrustBrush}"/>
         <Setter Property="Foreground"      Value="{StaticResource Subtext0Brush}"/>
         <Setter Property="BorderBrush"     Value="{StaticResource Surface0Brush}"/>
@@ -1294,13 +1302,39 @@
         <Setter Property="FontFamily"      Value="Segoe UI"/>
         <Setter Property="FontSize"        Value="12"/>
         <Setter Property="Padding"         Value="0"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type StatusBar}">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}">
+                        <ItemsPresenter Margin="{TemplateBinding Padding}"
+                                        VerticalAlignment="Center"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
-    <Style TargetType="{x:Type StatusBarItem}" BasedOn="{StaticResource {x:Type StatusBarItem}}">
+    <!-- StatusBarItem's own OS-default template has the identical gap — give it
+         a real template too rather than assume it's fine because StatusBar was
+         the reported symptom. -->
+    <Style TargetType="{x:Type StatusBarItem}">
         <Setter Property="Foreground"               Value="{StaticResource Subtext0Brush}"/>
         <Setter Property="Background"               Value="Transparent"/>
         <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="Padding"                  Value="6,0"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type StatusBarItem}">
+                    <Border Background="{TemplateBinding Background}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- ══════════════════════════════════════════════════════════════════
