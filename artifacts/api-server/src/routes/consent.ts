@@ -80,6 +80,7 @@ import { verifyTenantConsentWithMicrosoft, type ConsentVerificationResult } from
 import { startPowerPlatformEnrollmentDeviceCode, pollPowerPlatformEnrollmentDeviceCode } from "../lib/power-platform-admin.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { resolveOrCreateDirectTenant, resolveOrCreateTenantForMsp, provisionProspectAccount, resolveProspectRole } from "../lib/direct-tenant-provisioning.ts";
+import { ensureRetainerEntitlement } from "../lib/purchase-retainer-entitlement.ts";
 import { getReadConsentRequirementForProduct, buildSessionReadConsentUrl } from "../lib/read-consent-flow.ts";
 import { checkAccountFirstConsentReadyForSession } from "../lib/account-first-purchase.ts";
 import { logger } from "../lib/logger.ts";
@@ -1391,6 +1392,40 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
               { tenant, sessionId: stateFingerprint(state), userId: prospect.userId },
               "consent callback: Prospect user was created WITHOUT a tenant link (users.tenant_id) — customer provisioning failed; payment webhook will retry and alert",
             );
+          }
+          // Git #4432 — a skipped-consent (#1311) Retainer buyer already has a
+          // paid client_services row (payment-confirmed provisioned it with
+          // settings: "no_tenant") but no retainer_settings, because at
+          // payment time customerId was null. The tenant link ensureClientMspUser
+          // just made (inside provisionProspectAccount, via the RetainerPending ->
+          // RetainerConsented swap) is the first moment retainer_settings can be
+          // written. ensureRetainerEntitlement is idempotent on both its writes
+          // (client_services on checkoutSessionId+serviceId, retainer_settings on
+          // customer_id) — re-running it here for a normal immediate-consent
+          // Retainer purchase (customerId already resolved at payment time) is a
+          // safe no-op, not a duplicate provision.
+          if (category === "retainer" && prospect.customerId != null) {
+            try {
+              const outcome = await ensureRetainerEntitlement({
+                id: state,
+                productSlug: productSlug ?? "",
+                email: sessionEmail,
+                fullName: sessionFullName ?? "",
+                company: sessionCompany,
+                industry: sessionIndustry,
+                tenantId: tenant,
+                accountUserId: prospect.userId,
+              });
+              log.info(
+                { tenant, userId: prospect.userId, customerId: prospect.customerId, outcome },
+                "consent callback: ensureRetainerEntitlement re-run after tenant link — retainer_settings backfilled for a (possibly skipped-consent) Retainer buyer",
+              );
+            } catch (err) {
+              log.error(
+                { err, tenant, userId: prospect.userId, sessionId: stateFingerprint(state) },
+                "consent callback: ensureRetainerEntitlement FAILED after consent — retainer_settings may still be missing; manual AdminV2 setup required",
+              );
+            }
           }
           // Free Scan return link (Git #1359, Phase 7 of #1352): a free
           // assessment Prospect gets an emailed "view your results" link — its
