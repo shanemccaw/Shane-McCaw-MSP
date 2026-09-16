@@ -3084,6 +3084,44 @@ export const insightsGeneratedDocumentsTable = pgTable("insights_generated_docum
 export type InsertInsightsGeneratedDocument = typeof insightsGeneratedDocumentsTable.$inferInsert;
 export type InsightsGeneratedDocument = typeof insightsGeneratedDocumentsTable.$inferSelect;
 
+// ── Document Hub attachments (#4349) ────────────────────────────────────────
+//
+// Links one `insights_generated_documents` row (Document Hub, #3486) onto a
+// POA&M, a CAB meeting, or a support ticket — "attach this document to that
+// record" from the Documents workspace. Same polymorphic (targetKind,
+// targetRefId) shape `evidence_attachments` (msp.ts) already uses for the
+// same reason: the three target tables don't share one id space and a support
+// ticket isn't even a local table (Zoho-backed, msp-support.ts), so
+// `targetRefId` is TEXT rather than an integer FK — `msp_poams.id` and
+// `cab_meetings.id` stringified, or the Zoho ticket id, depending on
+// `targetKind`. No FK by design, matching the evidence-attachments precedent.
+export const DOCUMENT_HUB_ATTACHMENT_TARGET_KINDS = ["poam", "cab_meeting", "support_ticket"] as const;
+export type DocumentHubAttachmentTargetKind = (typeof DOCUMENT_HUB_ATTACHMENT_TARGET_KINDS)[number];
+
+export const documentHubAttachmentsTable = pgTable("document_hub_attachments", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  documentId: integer("document_id").notNull().references(() => insightsGeneratedDocumentsTable.id, { onDelete: "cascade" }),
+  targetKind: text("target_kind", { enum: DOCUMENT_HUB_ATTACHMENT_TARGET_KINDS }).notNull(),
+  /** msp_poams.id / cab_meetings.id (stringified) or the Zoho ticket id, depending on targetKind. No FK — see header. */
+  targetRefId: text("target_ref_id").notNull(),
+  /** Denormalized display label captured at attach time (e.g. the POA&M's poamId code, the CAB
+   * meeting's title, the ticket's subject) — the three target kinds have no shared lookup path,
+   * so this avoids a join fan-out across three unrelated tables (one of them not even local)
+   * just to render an attachment list. */
+  targetLabel: text("target_label").notNull(),
+  attachedByUserId: integer("attached_by_user_id"),
+  attachedByPersonId: text("attached_by_person_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("document_hub_attachments_document_id_idx").on(t.documentId),
+  index("document_hub_attachments_target_idx").on(t.targetKind, t.targetRefId),
+  index("document_hub_attachments_msp_idx").on(t.mspId),
+]);
+
+export type DocumentHubAttachment = typeof documentHubAttachmentsTable.$inferSelect;
+export type InsertDocumentHubAttachment = typeof documentHubAttachmentsTable.$inferInsert;
+
 // ── Assessment SOW agreements — signature + payment for the Assessment wizard ──
 //
 // One row per time an Assessment customer signs a consolidated_sow scope and

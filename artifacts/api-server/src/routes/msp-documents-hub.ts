@@ -30,6 +30,9 @@
  *   POST /api/msp/documents-hub/:id/share       — create a customer share link (reuses
  *                                                  the existing quick_win_result_shares
  *                                                  token/expiry mechanism)
+ *   GET  /api/msp/documents-hub/:id/attachments — this document's real attach-to-record rows (#4349)
+ *   POST /api/msp/documents-hub/:id/attachments — attach this document to a POA&M, CAB meeting,
+ *                                                  or support ticket (#4349)
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -40,6 +43,8 @@ import {
   tenantsTable,
   projectsTable,
   quickWinResultSharesTable,
+  documentHubAttachmentsTable,
+  DOCUMENT_HUB_ATTACHMENT_TARGET_KINDS,
 } from "@workspace/db";
 import { eq, and, inArray, gte, lte, desc } from "drizzle-orm";
 import { requireCapability, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth.ts";
@@ -48,6 +53,7 @@ import { stripStagedForReviewBanner } from "../lib/sow-pricing.ts";
 import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
 import { buildHtmlDoc, htmlToPdf } from "../lib/html-pdf.ts";
 import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
+import { personIdForUser } from "../lib/portal-ownership.ts";
 import { logger } from "../lib/logger.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
@@ -352,6 +358,87 @@ router.post("/msp/documents-hub/:id/share", requireCapability("ladder.msp-operat
   } catch (err) {
     log.error({ err }, "msp-documents-hub: POST /msp/documents-hub/:id/share failed");
     res.status(500).json({ error: "Failed to generate share link" });
+  }
+});
+
+// ── Document Hub attachments (#4349) ────────────────────────────────────────
+// Attach a document to a POA&M, CAB meeting, or support ticket. No cross-check
+// against msp_poams/cab_meetings/Zoho here — targetRefId is caller-supplied
+// (the MyArchitect client resolves it from that record's own real list first),
+// same trust boundary requireCapability("ladder.msp-operator") already gates
+// every other write in this router behind.
+
+router.get("/msp/documents-hub/:id/attachments", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
+  try {
+    const mspId = resolveMspIdStrict(req);
+    if (mspId === null) { res.status(403).json({ error: "MSP context required" }); return; }
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+    const doc = await loadScopedDocument(mspId, id, await resolveStaffScopedCustomerIds(req.user!));
+    if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
+
+    const rows = await db
+      .select()
+      .from(documentHubAttachmentsTable)
+      .where(and(eq(documentHubAttachmentsTable.mspId, mspId), eq(documentHubAttachmentsTable.documentId, id)))
+      .orderBy(desc(documentHubAttachmentsTable.createdAt));
+
+    res.json({ attachments: rows });
+  } catch (err) {
+    log.error({ err }, "msp-documents-hub: GET /msp/documents-hub/:id/attachments failed");
+    res.status(500).json({ error: "Failed to fetch attachments" });
+  }
+});
+
+router.post("/msp/documents-hub/:id/attachments", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
+  try {
+    const mspId = resolveMspIdStrict(req);
+    if (mspId === null) { res.status(403).json({ error: "MSP context required" }); return; }
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+    const doc = await loadScopedDocument(mspId, id, await resolveStaffScopedCustomerIds(req.user!));
+    if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
+
+    const targetKind = String(req.body?.targetKind ?? "");
+    const targetRefId = String(req.body?.targetRefId ?? "").trim();
+    const targetLabel = String(req.body?.targetLabel ?? "").trim();
+
+    if (!(DOCUMENT_HUB_ATTACHMENT_TARGET_KINDS as readonly string[]).includes(targetKind)) {
+      res.status(400).json({ error: `targetKind must be one of: ${DOCUMENT_HUB_ATTACHMENT_TARGET_KINDS.join(", ")}` });
+      return;
+    }
+    if (!targetRefId || !targetLabel) {
+      res.status(400).json({ error: "targetRefId and targetLabel are required" });
+      return;
+    }
+
+    const [attachment] = await db.insert(documentHubAttachmentsTable).values({
+      mspId,
+      documentId: id,
+      targetKind: targetKind as (typeof DOCUMENT_HUB_ATTACHMENT_TARGET_KINDS)[number],
+      targetRefId,
+      targetLabel,
+      attachedByUserId: req.user!.id,
+      attachedByPersonId: personIdForUser(req.user!.id),
+    }).returning();
+
+    await auditPrivilegedRead({
+      actorUserId: req.user!.id,
+      actorName: req.user!.email,
+      actorRole: resolveAuditActorRole(req.user!),
+      actionType: "insights_document_attached_to_record",
+      entityType: "insights_generated_document",
+      entityId: doc.id,
+      entityLabel: `${doc.title} -> ${targetKind}:${targetLabel}`,
+      clientId: doc.customerId ?? null,
+    });
+
+    res.status(201).json(attachment);
+  } catch (err) {
+    log.error({ err }, "msp-documents-hub: POST /msp/documents-hub/:id/attachments failed");
+    res.status(500).json({ error: "Failed to create attachment" });
   }
 });
 
