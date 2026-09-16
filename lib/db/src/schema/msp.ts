@@ -9573,6 +9573,9 @@ export const EVIDENCE_LINK_TYPES = [
   "risk",
   "kanban_card",
   "poam",
+  // #4350 — SOW & Assessment scope items also carry evidence (Scope Item
+  // contextual tab: Attach Evidence). finding/gap/risk were already anticipated.
+  "scope_item",
 ] as const;
 export type EvidenceLinkType = typeof EVIDENCE_LINK_TYPES[number];
 
@@ -10295,3 +10298,160 @@ export const automationsTable = pgTable("automations", {
 
 export type AutomationRow = typeof automationsTable.$inferSelect;
 export type InsertAutomationRow = typeof automationsTable.$inferInsert;
+
+/**
+ * #4350 — SOW & Assessment expansion.
+ *
+ * The read-only #3475 assessment viewer (an aggregate CopilotScore / gate
+ * verdict / remediation %) had no Scope Item, Finding, Gap or Risk as real,
+ * separate CRUD objects. These four tables are that missing operator-authored
+ * layer, consumed by MyArchitect's SOW & Assessment workspace (Epic #3454):
+ *
+ *   scope_items → findings → gaps → risks, with real cross-workspace conversions
+ *   Gap→POA&M (msp_poams), Gap/Risk→CAB Change (msp_change_requests) and
+ *   Gap→Automation (automations, #4354).
+ *
+ * Evidence is NOT re-modelled here — every object attaches evidence through the
+ * shared `evidence` / `evidence_links` layer (#4353) using linked_type
+ * "scope_item"|"finding"|"gap"|"risk" (all present in EVIDENCE_LINK_TYPES).
+ *
+ * Scoping mirrors `automations`: `customerId` (tenants.id space, no FK — the
+ * customer-scoped msp convention) plus `mspId` (FK to msps, cascade). Peer
+ * cross-object links (relatedGapId, relatedFindingId, relatedRiskId) are soft
+ * integer references with no DB FK — the same soft-reference pattern
+ * `evidence_links.linked_id` / `automations.wrapped_ref_id` use, chosen here to
+ * avoid a circular finding⇄gap⇄risk FK cycle. The conversion links, by contrast,
+ * target already-defined serial-int tables and so are real nullable FKs.
+ */
+
+/** The six assessment pillars — verbatim from #4350's own scope-item category list. */
+export const ASSESSMENT_CATEGORIES = [
+  "Identity",
+  "Security",
+  "Compliance",
+  "Governance",
+  "Copilot",
+  "Adoption",
+] as const;
+export type AssessmentCategory = typeof ASSESSMENT_CATEGORIES[number];
+
+/** Severity vocabulary shared by findings, gaps and risks. */
+export const ASSESSMENT_SEVERITIES = ["info", "low", "medium", "high", "critical"] as const;
+export type AssessmentSeverity = typeof ASSESSMENT_SEVERITIES[number];
+
+export const ASSESSMENT_PRIORITIES = ["low", "medium", "high", "critical"] as const;
+export type AssessmentPriority = typeof ASSESSMENT_PRIORITIES[number];
+
+export const ASSESSMENT_LIKELIHOODS = ["low", "medium", "high"] as const;
+export type AssessmentLikelihood = typeof ASSESSMENT_LIKELIHOODS[number];
+
+export const ASSESSMENT_IMPACTS = ["low", "medium", "high"] as const;
+export type AssessmentImpact = typeof ASSESSMENT_IMPACTS[number];
+
+export const ASSESSMENT_SCOPE_ITEM_STATUSES = ["proposed", "in_scope", "out_of_scope"] as const;
+export type AssessmentScopeItemStatus = typeof ASSESSMENT_SCOPE_ITEM_STATUSES[number];
+
+export const ASSESSMENT_FINDING_STATUSES = ["open", "triaged", "converted", "dismissed"] as const;
+export type AssessmentFindingStatus = typeof ASSESSMENT_FINDING_STATUSES[number];
+
+export const ASSESSMENT_GAP_STATUSES = ["open", "in_remediation", "resolved", "accepted", "converted"] as const;
+export type AssessmentGapStatus = typeof ASSESSMENT_GAP_STATUSES[number];
+
+export const ASSESSMENT_RISK_STATUSES = ["open", "mitigated", "accepted", "transferred", "converted"] as const;
+export type AssessmentRiskStatus = typeof ASSESSMENT_RISK_STATUSES[number];
+
+// ── A. Scope Definition ───────────────────────────────────────────────────────
+export const assessmentScopeItemsTable = pgTable("assessment_scope_items", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  category: text("category", { enum: ASSESSMENT_CATEGORIES }).notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  priority: text("priority", { enum: ASSESSMENT_PRIORITIES }).notNull().default("medium"),
+  status: text("status", { enum: ASSESSMENT_SCOPE_ITEM_STATUSES }).notNull().default("proposed"),
+  createdByUserId: integer("created_by_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("assessment_scope_items_customer_idx").on(t.customerId),
+  index("assessment_scope_items_msp_idx").on(t.mspId),
+]);
+export type AssessmentScopeItem = typeof assessmentScopeItemsTable.$inferSelect;
+export type InsertAssessmentScopeItem = typeof assessmentScopeItemsTable.$inferInsert;
+
+// ── B. Assessment Findings ────────────────────────────────────────────────────
+export const assessmentFindingsTable = pgTable("assessment_findings", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description"),
+  severity: text("severity", { enum: ASSESSMENT_SEVERITIES }).notNull().default("medium"),
+  category: text("category", { enum: ASSESSMENT_CATEGORIES }),
+  /** Soft reference to the gap this finding was converted into / relates to. */
+  relatedGapId: integer("related_gap_id"),
+  status: text("status", { enum: ASSESSMENT_FINDING_STATUSES }).notNull().default("open"),
+  createdByUserId: integer("created_by_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("assessment_findings_customer_idx").on(t.customerId),
+  index("assessment_findings_msp_idx").on(t.mspId),
+]);
+export type AssessmentFinding = typeof assessmentFindingsTable.$inferSelect;
+export type InsertAssessmentFinding = typeof assessmentFindingsTable.$inferInsert;
+
+// ── C. Gap Analysis ───────────────────────────────────────────────────────────
+export const assessmentGapsTable = pgTable("assessment_gaps", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description"),
+  severity: text("severity", { enum: ASSESSMENT_SEVERITIES }).notNull().default("medium"),
+  category: text("category", { enum: ASSESSMENT_CATEGORIES }),
+  /** Soft references to the finding this gap came from and the risk it feeds. */
+  relatedFindingId: integer("related_finding_id"),
+  relatedRiskId: integer("related_risk_id"),
+  recommendedRemediation: text("recommended_remediation"),
+  status: text("status", { enum: ASSESSMENT_GAP_STATUSES }).notNull().default("open"),
+  /** Real conversion FKs — nullable, set when the gap is converted. */
+  convertedToPoamId: integer("converted_to_poam_id").references(() => mspPoamsTable.id, { onDelete: "set null" }),
+  convertedToCabId: integer("converted_to_cab_id").references(() => mspChangeRequestsTable.id, { onDelete: "set null" }),
+  convertedToAutomationId: integer("converted_to_automation_id").references(() => automationsTable.id, { onDelete: "set null" }),
+  createdByUserId: integer("created_by_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("assessment_gaps_customer_idx").on(t.customerId),
+  index("assessment_gaps_msp_idx").on(t.mspId),
+]);
+export type AssessmentGap = typeof assessmentGapsTable.$inferSelect;
+export type InsertAssessmentGap = typeof assessmentGapsTable.$inferInsert;
+
+// ── D. Risk Register ──────────────────────────────────────────────────────────
+export const assessmentRisksTable = pgTable("assessment_risks", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description"),
+  likelihood: text("likelihood", { enum: ASSESSMENT_LIKELIHOODS }).notNull().default("medium"),
+  impact: text("impact", { enum: ASSESSMENT_IMPACTS }).notNull().default("medium"),
+  severity: text("severity", { enum: ASSESSMENT_SEVERITIES }).notNull().default("medium"),
+  category: text("category", { enum: ASSESSMENT_CATEGORIES }),
+  /** Soft reference to the related gap. */
+  relatedGapId: integer("related_gap_id"),
+  status: text("status", { enum: ASSESSMENT_RISK_STATUSES }).notNull().default("open"),
+  convertedToPoamId: integer("converted_to_poam_id").references(() => mspPoamsTable.id, { onDelete: "set null" }),
+  convertedToCabId: integer("converted_to_cab_id").references(() => mspChangeRequestsTable.id, { onDelete: "set null" }),
+  createdByUserId: integer("created_by_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("assessment_risks_customer_idx").on(t.customerId),
+  index("assessment_risks_msp_idx").on(t.mspId),
+]);
+export type AssessmentRisk = typeof assessmentRisksTable.$inferSelect;
+export type InsertAssessmentRisk = typeof assessmentRisksTable.$inferInsert;
