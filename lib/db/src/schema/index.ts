@@ -172,16 +172,20 @@ export const usersTable = pgTable("users", {
   index("users_msp_id_idx").on(t.mspId),
   index("users_tenant_id_idx").on(t.tenantId),
   index("users_manager_user_id_idx").on(t.managerUserId),
-  // #3971 — `RetainerConsented` has a tenant (same requirement shape as `Customer`/`Free`);
-  // `RetainerPending` (named `RetainerNoConsent` until #4371) has no tenant, ever, while in
-  // that state (its own OR branch, no scope column required). `Free`'s own requirement is
-  // untouched — still strictly tenant-required. Kept in sync with the manual migration of
-  // the same name and `2026-09-16-rbac-retainer-pending-rename-4371.sql`. The four
-  // Monitoring/Pack rungs are not admitted here yet — widening it for them is #4372.
+  // #3971 / #4372 — the three `*Consented` rungs (`RetainerConsented`, `MonitoringConsented`,
+  // `PackConsented`) have a tenant: consent is the moment a tenant becomes known, so they
+  // share `Customer`/`Free`'s requirement shape. The three `*Pending` rungs
+  // (`RetainerPending` — named `RetainerNoConsent` until #4371 — `MonitoringPending`,
+  // `PackPending`) are a purchaser who has paid but not yet consented, so there is no
+  // tenant to point at, ever, while in that state: their own OR branch, no scope column
+  // required. That exemption is per-rung, not a general relaxation — `Free`'s own
+  // requirement is untouched (still strictly tenant-required), and a `*Consented` row
+  // with no tenant is still refused. Kept in sync with
+  // `2026-09-16-users-role-scope-check-pending-rungs-4372.sql`.
   check("users_role_scope_check", sql`
-    (${t.mspRole} IN ('Customer', 'Free', 'RetainerConsented') AND ${t.tenantId} IS NOT NULL)
+    (${t.mspRole} IN ('Customer', 'Free', 'RetainerConsented', 'MonitoringConsented', 'PackConsented') AND ${t.tenantId} IS NOT NULL)
     OR
-    (${t.mspRole} = 'RetainerPending')
+    (${t.mspRole} IN ('RetainerPending', 'MonitoringPending', 'PackPending'))
     OR
     (${t.mspRole} IN ('MSPAdmin', 'MSPOperator', 'ServiceAccount') AND ${t.mspId} IS NOT NULL)
     OR

@@ -46,6 +46,10 @@ export default defineConfig({
       // with Customer, and the billed-party trigger still granting billing
       // independent of msp_role. Runs against DATABASE_URL, everything rolled back.
       "src/rbac/retainer-no-consent-gating.test.ts",
+      // #4372 — users_role_scope_check against real inserts: every *Pending rung is
+      // accepted tenant-less, every *Consented rung (and Free/Customer) still refused.
+      // Runs against DATABASE_URL, everything rolled back.
+      "src/schema/users-role-scope-check.test.ts",
     ],
   },
 });
