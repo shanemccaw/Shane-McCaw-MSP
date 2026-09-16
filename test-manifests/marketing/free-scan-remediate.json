@@ -1,0 +1,213 @@
+{
+  "feature": "Marketing Free Scan Remediate step (/scan/remediate) — Git #1375, Phase of Feature #1352. Step 5 of 5: a real, narrowly-scoped write-consent gate recreated from the confirmed design's {{ writeStage }} block (Design/marketing/marketing_handoff/Marketing Checkout.dc.html), followed by the real findings-driven remediation guide. The Graph application permissions on the consent card are DERIVED per Prospect from the phases they actually bought in the Review step (#1374) through their own scan's open findings, the active config packs that fix them, and those packs' real Graph writes — never a fixed list and never a fixture. Served by routes/public-free-scan-remediate.ts -> lib/free-scan-write-scopes.ts + lib/remediation-checklist.ts.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "5af1975e2",
+  "notes": [
+    "SCOPE OF THIS MANIFEST — what is deterministically assertable from a browser and an HTTP client:",
+    "",
+    "  1. The identity and payment gates on all four /api/public/free-scan/remediate/* routes",
+    "     (apiTests). Every one is unauthenticated on purpose — a Free Scan Prospect is never issued",
+    "     a JWT (#656), and paying for a SOW does not create one — so each resolves the tenant only",
+    "     from a live checkout sessionId or an emailed fsr_ return token, exactly as #1358/#1359/#1374",
+    "     already do. These assert the real refusal codes for a missing credential, a malformed",
+    "     sessionId, a well-formed-but-unknown sessionId and a bogus return token.",
+    "",
+    "  2. That the Remediate page renders the shared flow strip with Remediate as the CURRENT step and",
+    "     Consent/Scan/Results/Review already ticked (uiSteps). This is #1375's scope item 6 and it",
+    "     holds with no credential at all, because the strip renders above everything else.",
+    "",
+    "  3. That a visitor with no free-scan session gets the honest 'we lost track of your scan' state",
+    "     rather than a consent screen with nothing behind it.",
+    "",
+    "WHAT IS NOT ASSERTED HERE, and why:",
+    "",
+    "  The write-consent screen itself and the guide behind it need a real consented tenant with a",
+    "  completed scan AND a signed, paid engagement — none of which a browser can mint here, since the",
+    "  read consent is granted in a popup on Microsoft's own domain and the payment goes through",
+    "  Stripe's cross-origin Payment Element. Faking a session to reach those screens would be coverage",
+    "  of a fixture, not of the product. Both halves are covered instead against live Postgres:",
+    "",
+    "    artifacts/api-server/src/lib/free-scan-write-scopes.live-db.test.ts — seeds a scratch Prospect",
+    "    with real findings on two pillars and asserts the derivation: only permissions the write app",
+    "    genuinely requests appear, each carries the real phase and real check key behind it, deferring",
+    "    a phase drops that phase's permissions, a bought phase with nothing executable is named",
+    "    honestly, and the asked/beyond-scope lists partition the registration exactly.",
+    "",
+    "    artifacts/api-server/src/routes/public-free-scan-remediate.live-db.test.ts — asserts the gates",
+    "    end to end: an unpaid engagement and a tenant with no read grant are both refused BEFORE any",
+    "    consent_invite_tokens row exists; a decline never touches tenants.consent.writeBack; the",
+    "    checklist claim lands in remediation_tracker_steps keyed by checkKey under the real customerId;",
+    "    and the happy path mints exactly one HMAC-bound, single-use consent URL aimed at this tenant.",
+    "",
+    "  The Microsoft admin-consent screen is Microsoft's own page and is never driven from here. The",
+    "  grant is only ever recognised through the shared, unchanged /api/admin/write-consent/callback,",
+    "  which requires Microsoft to actually issue a write-app token for the tenant first (#4197)."
+  ],
+  "apiTests": [
+    {
+      "name": "REMEDIATE READ GUARD (Git #1375) — a body carrying neither credential is refused 400 credential_required",
+      "sessionTag": "1375-remediate",
+      "method": "POST",
+      "path": "/api/public/free-scan/remediate/read",
+      "headers": { "Content-Type": "application/json" },
+      "body": {},
+      "expect": { "status": 400, "jsonPath": "$.error", "value": "credential_required" }
+    },
+    {
+      "name": "REMEDIATE READ GUARD (Git #1375) — a malformed sessionId is refused 400 session_invalid",
+      "sessionTag": "1375-remediate",
+      "method": "POST",
+      "path": "/api/public/free-scan/remediate/read",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "sessionId": "nope" },
+      "expect": { "status": 400, "jsonPath": "$.error", "value": "session_invalid" }
+    },
+    {
+      "name": "REMEDIATE READ GUARD (Git #1375) — a well-formed but non-existent sessionId is refused 404 session_expired",
+      "sessionTag": "1375-remediate",
+      "method": "POST",
+      "path": "/api/public/free-scan/remediate/read",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "sessionId": "00000000-0000-4000-8000-000000000000" },
+      "expect": { "status": 404, "jsonPath": "$.error", "value": "session_expired" }
+    },
+    {
+      "name": "REMEDIATE READ GUARD (Git #1375) — the return-link door refuses a non-fsr token 401 link_invalid",
+      "sessionTag": "1375-remediate",
+      "method": "POST",
+      "path": "/api/public/free-scan/remediate/read",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "returnToken": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" },
+      "expect": { "status": 401, "jsonPath": "$.error", "value": "link_invalid" }
+    },
+    {
+      "name": "WRITE-CONSENT GUARD (Git #1375) — a consent-URL request with no credential is refused 400 before any token is minted",
+      "sessionTag": "1375-remediate",
+      "method": "POST",
+      "path": "/api/public/free-scan/remediate/write-consent-url",
+      "headers": { "Content-Type": "application/json" },
+      "body": {},
+      "expect": { "status": 400, "jsonPath": "$.error", "value": "credential_required" }
+    },
+    {
+      "name": "WRITE-CONSENT GUARD (Git #1375) — an unknown session can never reach Microsoft's consent screen (404 session_expired)",
+      "sessionTag": "1375-remediate",
+      "method": "POST",
+      "path": "/api/public/free-scan/remediate/write-consent-url",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "sessionId": "00000000-0000-4000-8000-000000000000" },
+      "expect": { "status": 404, "jsonPath": "$.error", "value": "session_expired" }
+    },
+    {
+      "name": "WRITE-CONSENT GUARD (Git #1375) — a bogus return token cannot mint a consent URL (401 link_invalid)",
+      "sessionTag": "1375-remediate",
+      "method": "POST",
+      "path": "/api/public/free-scan/remediate/write-consent-url",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "returnToken": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" },
+      "expect": { "status": 401, "jsonPath": "$.error", "value": "link_invalid" }
+    },
+    {
+      "name": "DECLINE GUARD (Git #1375) — a decline with no credential is refused 400 credential_required",
+      "sessionTag": "1375-remediate",
+      "method": "POST",
+      "path": "/api/public/free-scan/remediate/decline-write",
+      "headers": { "Content-Type": "application/json" },
+      "body": {},
+      "expect": { "status": 400, "jsonPath": "$.error", "value": "credential_required" }
+    },
+    {
+      "name": "DECLINE GUARD (Git #1375) — an unknown session cannot record a decline (404 session_expired)",
+      "sessionTag": "1375-remediate",
+      "method": "POST",
+      "path": "/api/public/free-scan/remediate/decline-write",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "sessionId": "00000000-0000-4000-8000-000000000000" },
+      "expect": { "status": 404, "jsonPath": "$.error", "value": "session_expired" }
+    },
+    {
+      "name": "CHECKLIST WRITE GUARD (Git #1375) — a claim with no credential is refused 400",
+      "sessionTag": "1375-remediate",
+      "method": "PUT",
+      "path": "/api/public/free-scan/remediate/checklist/identity:ca-mfa-coverage",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "status": "completed" },
+      "expect": { "status": 400 }
+    },
+    {
+      "name": "CHECKLIST WRITE GUARD (Git #1375) — a status outside the stored vocabulary is refused 400",
+      "sessionTag": "1375-remediate",
+      "method": "PUT",
+      "path": "/api/public/free-scan/remediate/checklist/identity:ca-mfa-coverage",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "sessionId": "00000000-0000-4000-8000-000000000000", "status": "totally-made-up" },
+      "expect": { "status": 400 }
+    },
+    {
+      "name": "CHECKLIST WRITE GUARD (Git #1375) — an unknown session cannot write a claim (404 session_expired)",
+      "sessionTag": "1375-remediate",
+      "method": "PUT",
+      "path": "/api/public/free-scan/remediate/checklist/identity:ca-mfa-coverage",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "sessionId": "00000000-0000-4000-8000-000000000000", "status": "completed" },
+      "expect": { "status": 404, "jsonPath": "$.error", "value": "session_expired" }
+    }
+  ],
+  "uiSteps": [
+    { "action": "goto", "target": "/scan/remediate", "sessionTag": "1375-remediate" },
+    {
+      "action": "expect",
+      "selector": "[data-testid='freescan-flow-strip']",
+      "state": "visible",
+      "sessionTag": "1375-remediate"
+    },
+    {
+      "action": "expect",
+      "selector": "[data-testid='freescan-flow-step-remediate'][data-state='now']",
+      "state": "visible",
+      "sessionTag": "1375-remediate"
+    },
+    {
+      "action": "expect",
+      "selector": "[data-testid='freescan-flow-step-consent'][data-state='done']",
+      "state": "visible",
+      "sessionTag": "1375-remediate"
+    },
+    {
+      "action": "expect",
+      "selector": "[data-testid='freescan-flow-step-scan'][data-state='done']",
+      "state": "visible",
+      "sessionTag": "1375-remediate"
+    },
+    {
+      "action": "expect",
+      "selector": "[data-testid='freescan-flow-step-results'][data-state='done']",
+      "state": "visible",
+      "sessionTag": "1375-remediate"
+    },
+    {
+      "action": "expect",
+      "selector": "[data-testid='freescan-flow-step-review'][data-state='done']",
+      "state": "visible",
+      "sessionTag": "1375-remediate"
+    },
+    {
+      "action": "expect",
+      "selector": "body",
+      "textContains": "We lost track of your scan",
+      "sessionTag": "1375-remediate"
+    },
+    {
+      "action": "expect",
+      "selector": "[data-testid='freescan-remediate-write-consent']",
+      "state": "absent",
+      "sessionTag": "1375-remediate"
+    },
+    {
+      "action": "expect",
+      "selector": "[data-testid='freescan-remediate-grant']",
+      "state": "absent",
+      "sessionTag": "1375-remediate"
+    }
+  ]
+}

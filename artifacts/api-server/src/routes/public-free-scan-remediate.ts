@@ -232,6 +232,9 @@ router.post("/public/free-scan/remediate/read", remediateLimiter, noStore, async
 // and every check inside it are untouched.
 
 router.post("/public/free-scan/remediate/write-consent-url", remediateLimiter, noStore, async (req: Request, res: Response) => {
+  // Credential shape first, deployment config second: a request with no
+  // credential is a bad request whether or not the write app happens to be
+  // configured, and answering 503 to it would report an outage that is not one.
   const parsed = credentialSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "credential_required" });
