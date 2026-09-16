@@ -159,6 +159,19 @@ namespace BuildConsole
             },
             new CommandPaletteWindow.PaletteCommand
             {
+                Glyph = "\uE8A1", // Database / View
+                Title = "Find tenant-scoped tables",
+                Subtitle = "Live FK-reachability report over the local dev database",
+                DetailBody = "Runs the real, read-only `node scripts/db/find-tenant-scoped-tables.mjs` "
+                           + "(Git #4313) \u2014 a live BFS over `information_schema` FK edges from the "
+                           + "tenants/users/msps roots. The real stdout (every reachable table, its "
+                           + "scope and how it's reached, plus whether each edge is ON DELETE CASCADE) "
+                           + "renders right here, same as Git Pull's result pane.",
+                ActionLabel = "Run Find Tenant-Scoped Tables",
+                RunWithResult = RunPaletteFindTenantScopedTablesWithResultAsync,
+            },
+            new CommandPaletteWindow.PaletteCommand
+            {
                 Glyph = "\uE77F", // Paste
                 Title = "Paste Manual Build",
                 Subtitle = "Paste a full build prompt (with --flags) into the queue",
@@ -233,6 +246,39 @@ namespace BuildConsole
             string full = $"{result.Stdout}\n{result.Stderr}".Trim();
             if (string.IsNullOrWhiteSpace(full))
                 full = result.Success ? "git pull succeeded (no output)." : $"git pull failed (exit {result.ExitCode}), no output.";
+            return full;
+        }
+
+        /// <summary>Git #4414 — runs the real, read-only `node scripts/db/find-tenant-scoped-tables.mjs`
+        /// (per #4414/#3827) via <see cref="SubprocessRunner"/> and returns its real, actual stdout/stderr
+        /// for the palette's right pane to show inline, same shape as <see cref="RunPaletteGitPullWithResultAsync"/>.
+        /// Read-only script — no confirmation step.</summary>
+        private async System.Threading.Tasks.Task<string> RunPaletteFindTenantScopedTablesWithResultAsync()
+        {
+            string? repoRoot = BuildTrackerConfig.FindRepoRoot();
+            if (repoRoot == null)
+            {
+                ToastEngine.Warning("Find Tenant-Scoped Tables", "repo root not found — could not run the script.");
+                return "Repo root not found — could not locate scripts/db/find-tenant-scoped-tables.mjs.";
+            }
+
+            string scriptPath = System.IO.Path.Combine(repoRoot, "scripts", "db", "find-tenant-scoped-tables.mjs");
+            if (!System.IO.File.Exists(scriptPath))
+            {
+                ToastEngine.Warning("Find Tenant-Scoped Tables", "script not found on disk.");
+                return $"Script not found at {scriptPath}.";
+            }
+
+            var result = await SubprocessRunner.RunAsync("node", new[] { scriptPath }, workingDirectory: repoRoot);
+
+            if (result.Ok)
+                ToastEngine.Success("Find Tenant-Scoped Tables", "report finished — real output below.");
+            else
+                ToastEngine.Warning("Find Tenant-Scoped Tables", $"failed — {result.ShortError()}");
+
+            string full = $"{result.StdOut}\n{result.StdErr}".Trim();
+            if (string.IsNullOrWhiteSpace(full))
+                full = result.Ok ? "Script finished with no output." : $"Script failed (exit {result.ExitCode}), no output.";
             return full;
         }
     }
