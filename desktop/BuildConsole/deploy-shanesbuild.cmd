@@ -8,35 +8,49 @@ set "CONFIG=Release"
 set "BUILD_OUT=%PROJECT_DIR%bin\%CONFIG%\net10.0-windows"
 set "OUT_DIR=%PROJECT_DIR%bin\ShanesBuild"
 set "NOTIFY_PS1=%~dp0deploy-shanesbuild-notify.ps1"
-set "CLAUDE_EXE=%USERPROFILE%\.local\bin\claude.exe"
 
-REM Any failure below shows a dismissable dialog before exiting instead of
-REM letting the console window just vanish (that was the original complaint —
-REM the message was there in the console output, but the window closed before
-REM anyone could read it).
-
-set "GIT_CLEAN_FIX_TRIED=0"
-set "GIT_MERGE_FIX_TRIED=0"
+REM Any failure below shows a dismissable dialog (real build/deploy errors)
+REM or a printed block + `pause` (git state - see below) instead of letting
+REM the console window just vanish before anyone can read it.
+REM
+REM Git handling philosophy: auto-fix ONLY the two states that are provably
+REM safe and non-destructive (fast-forward pull, fast-forward push - nothing
+REM is rewritten or discarded either way). Anything else (a dirty working
+REM tree, or history that's genuinely diverged) is NOT auto-fixed and NEVER
+REM spawns Claude itself - it just prints a copy-paste-ready diagnostic block
+REM and stops, so Shane can hand it to Claude (or fix it) himself.
 
 :CHECK_CLEAN
 echo === Checking BuildConsole's own files are clean (ignoring Marketing/Portal/Product elsewhere in the monorepo) ===
 set "DIRTY="
 for /f "delims=" %%S in ('git -C "%PROJECT_DIR_NOSLASH%" status --porcelain -- . 2^>nul') do set "DIRTY=1"
 if defined DIRTY (
-  if "%GIT_CLEAN_FIX_TRIED%"=="0" (
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%NOTIFY_PS1%" -YesNo -Title "ShanesBuild Deploy - Git issue" -Message "desktop\BuildConsole at %PROJECT_DIR% has uncommitted/untracked changes - refusing to build over them. (Changes elsewhere in the repo - Marketing, Portal, etc - are ignored.) Spawn Claude Code to fix it automatically?"
-    if not errorlevel 1 (
-      set "GIT_CLEAN_FIX_TRIED=1"
-      echo === Spawning Claude Code to fix the dirty working tree ===
-      if exist "%CLAUDE_EXE%" (
-        start "Claude Code - Git Cleanup" /wait "%CLAUDE_EXE%" --permission-mode auto --print --output-format text -- "desktop/BuildConsole at %PROJECT_DIR_NOSLASH% has uncommitted or untracked changes (git status --porcelain -- . scoped to that folder), which is blocking a ShanesBuild deploy (deploy-shanesbuild.cmd refuses to build over dirty BuildConsole files; it deliberately ignores dirty state elsewhere in the monorepo like Marketing/Portal/Product). Investigate what changed under desktop/BuildConsole, then follow this repo's own CLAUDE.md git conventions ('Leave the working tree clean') to resolve it: commit and push any genuine work of yours, git checkout -- any accidental/scratch edits, or delete (and .gitignore if it will recur) stray untracked files - whichever is actually appropriate for what you find. Do not force-discard anything you did not create without first understanding what it is. When done, git status --porcelain -- . run from desktop/BuildConsole must be empty."
-      ) else (
-        echo claude.exe not found at %CLAUDE_EXE% - cannot auto-fix.
-      )
-      goto CHECK_CLEAN
-    )
-  )
-  powershell -NoProfile -ExecutionPolicy Bypass -File "%NOTIFY_PS1%" -Title "ShanesBuild Deploy - Error" -Message "desktop\BuildConsole at %PROJECT_DIR% is still dirty. Commit, stash elsewhere, or discard the change, then re-run deploy-shanesbuild.cmd."
+  echo.
+  echo ================================================================
+  echo  ShanesBuild Deploy - BLOCKED: uncommitted changes
+  echo ================================================================
+  echo desktop\BuildConsole has uncommitted/untracked changes, so the build
+  echo refuses to run over them. ^(Changes elsewhere in the repo - Marketing,
+  echo Portal, etc - are ignored; only this folder is checked.^)
+  echo.
+  echo This can't be auto-fixed safely - it might be work in progress.
+  echo Copy everything between the ---- lines below and paste it to Claude,
+  echo or resolve it yourself, then re-run this script.
+  echo ----------------------------------------------------------------
+  echo Fix desktop\BuildConsole's dirty git working tree so ShanesBuild can
+  echo deploy. Working dir: %PROJECT_DIR_NOSLASH%
+  echo.
+  echo git status --porcelain -- . output:
+  git -C "%PROJECT_DIR_NOSLASH%" status --porcelain -- .
+  echo.
+  echo Follow this repo's CLAUDE.md git conventions ^("Leave the working tree
+  echo clean"^): commit + push genuine work, git checkout -- any accidental
+  echo edits, or delete ^(and .gitignore if it'll recur^) stray untracked
+  echo files - whichever actually fits what's there. Don't force-discard
+  echo anything you didn't create without understanding it first.
+  echo ----------------------------------------------------------------
+  echo.
+  pause
   exit /b 1
 )
 
@@ -47,32 +61,55 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo === Pulling latest from origin/main ===
+echo === Fetching origin/main ===
 git -C "%PROJECT_DIR_NOSLASH%" fetch origin main
 if errorlevel 1 (
   powershell -NoProfile -ExecutionPolicy Bypass -File "%NOTIFY_PS1%" -Title "ShanesBuild Deploy - Error" -Message "git fetch origin main failed at %PROJECT_DIR%. Check network/auth, then re-run deploy-shanesbuild.cmd."
   exit /b 1
 )
 
-:CHECK_MERGE
-git -C "%PROJECT_DIR_NOSLASH%" merge --ff-only origin/main
-if errorlevel 1 (
-  if "%GIT_MERGE_FIX_TRIED%"=="0" (
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%NOTIFY_PS1%" -YesNo -Title "ShanesBuild Deploy - Git issue" -Message "Local history at %PROJECT_DIR% has diverged from origin/main and cannot fast-forward. Spawn Claude Code to fix it automatically?"
-    if not errorlevel 1 (
-      set "GIT_MERGE_FIX_TRIED=1"
-      echo === Spawning Claude Code to fix the diverged history ===
-      if exist "%CLAUDE_EXE%" (
-        start "Claude Code - Git Cleanup" /wait "%CLAUDE_EXE%" --permission-mode auto --print --output-format text -- "The local main branch at %PROJECT_DIR_NOSLASH% has diverged from origin/main and 'git merge --ff-only origin/main' just failed there, which is blocking a ShanesBuild deploy (deploy-shanesbuild.cmd requires a clean fast-forward). Reconcile it per this repo's own CLAUDE.md git conventions - commit directly to main, no new branches - by rebasing or merging onto the current origin/main and pushing, so a plain 'git merge --ff-only origin/main' would succeed afterward. If you find uncommitted work of your own in the process, commit and push it first; leave anything you did not create alone. Confirm the branch is genuinely an ancestor of/equal to origin/main when done."
-      ) else (
-        echo claude.exe not found at %CLAUDE_EXE% - cannot auto-fix.
-      )
-      goto CHECK_MERGE
-    )
+set "SYNC_RETRY=0"
+
+:CHECK_SYNC
+set "BEHIND="
+set "AHEAD="
+for /f "tokens=1,2" %%A in ('git -C "%PROJECT_DIR_NOSLASH%" rev-list --left-right --count origin/main...HEAD') do (
+  set "BEHIND=%%A"
+  set "AHEAD=%%B"
+)
+
+if "%BEHIND%"=="0" if "%AHEAD%"=="0" goto SYNCED
+
+if "%AHEAD%"=="0" (
+  echo === Local is %BEHIND% commit^(s^) behind origin/main - fast-forwarding ^(non-destructive^) ===
+  git -C "%PROJECT_DIR_NOSLASH%" merge --ff-only origin/main
+  if errorlevel 1 (
+    call :PRINT_SYNC_DIAGNOSTIC "fast-forward pull failed unexpectedly"
+    exit /b 1
   )
-  powershell -NoProfile -ExecutionPolicy Bypass -File "%NOTIFY_PS1%" -Title "ShanesBuild Deploy - Error" -Message "Local history at %PROJECT_DIR% has diverged from origin/main and cannot fast-forward. Resolve manually (rebase/merge) in the main checkout, then re-run deploy-shanesbuild.cmd."
+  goto SYNCED
+)
+
+if "%BEHIND%"=="0" (
+  echo === Local is %AHEAD% commit^(s^) ahead of origin/main - pushing ^(fast-forward, non-destructive^) ===
+  git -C "%PROJECT_DIR_NOSLASH%" push origin HEAD:main
+  if not errorlevel 1 goto SYNCED
+  if "%SYNC_RETRY%"=="0" (
+    echo === Push was rejected - someone else likely pushed just now. Re-fetching and retrying once ===
+    set "SYNC_RETRY=1"
+    git -C "%PROJECT_DIR_NOSLASH%" fetch origin main
+    goto CHECK_SYNC
+  )
+  call :PRINT_SYNC_DIAGNOSTIC "push to origin/main kept failing after a retry"
   exit /b 1
 )
+
+REM Both ahead and behind: real divergence. Not safe to auto-resolve
+REM (needs a real rebase/merge decision) - print and stop.
+call :PRINT_SYNC_DIAGNOSTIC "local main has diverged from origin/main (both ahead and behind) and can't fast-forward either way"
+exit /b 1
+
+:SYNCED
 
 echo === Deploying commit ===
 for /f "delims=" %%C in ('git -C "%PROJECT_DIR_NOSLASH%" log -1 --oneline') do echo %%C
@@ -103,3 +140,33 @@ start "" "%OUT_DIR%\BuildConsole.exe"
 
 echo === Done ===
 endlocal
+exit /b 0
+
+:PRINT_SYNC_DIAGNOSTIC
+echo.
+echo ================================================================
+echo  ShanesBuild Deploy - BLOCKED: %~1
+echo ================================================================
+echo desktop\BuildConsole at %PROJECT_DIR_NOSLASH% can't be auto-synced with
+echo origin/main. This needs a real decision (rebase/merge), so it hasn't
+echo been touched. Copy everything between the ---- lines below and paste
+echo it to Claude, or resolve it yourself, then re-run this script.
+echo ----------------------------------------------------------------
+echo Reconcile desktop\BuildConsole's local main with origin/main so a plain
+echo 'git merge --ff-only origin/main' would succeed afterward. Working dir:
+echo %PROJECT_DIR_NOSLASH%
+echo.
+echo Commits on origin/main not yet local ^(git log HEAD..origin/main --oneline^):
+git -C "%PROJECT_DIR_NOSLASH%" log HEAD..origin/main --oneline
+echo.
+echo Local commits not yet on origin/main ^(git log origin/main..HEAD --oneline^):
+git -C "%PROJECT_DIR_NOSLASH%" log origin/main..HEAD --oneline
+echo.
+echo Follow this repo's CLAUDE.md git conventions - commit directly to main,
+echo no new branches - by rebasing or merging onto current origin/main and
+echo pushing. If there's uncommitted work of your own, commit and push it
+echo first; leave anything you didn't create alone.
+echo ----------------------------------------------------------------
+echo.
+pause
+goto :eof
