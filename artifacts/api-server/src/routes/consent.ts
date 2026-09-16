@@ -69,7 +69,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomBytes, createHash, createHmac, timingSafeEqual } from "crypto";
-import { db, tenantsTable, consentInviteTokensTable, checkoutSessionsTable, servicesTable, mspsTable, type TenantConsentRecord, type TenantConsentMap } from "@workspace/db";
+import { db, tenantsTable, consentInviteTokensTable, checkoutSessionsTable, servicesTable, mspsTable, clientServicesTable, usersTable, type TenantConsentRecord, type TenantConsentMap } from "@workspace/db";
 import { eq, and, isNull, gte, desc, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
@@ -162,6 +162,54 @@ async function resolveCallbackTenant(
   }
 
   return { ok: true, id: row.id, tenantId: row.tenantId };
+}
+
+/**
+ * Has this tenant ever completed a real purchase? (#4334)
+ *
+ * The same-MSP arm of the #4226 create-path guard below refuses a consent whose
+ * GUID already has a tenants row. That is right for a tenant somebody is
+ * actually paying for, and wrong for the case it also caught: a buyer whose own
+ * checkout was interrupted after consent but before payment. `Buy.tsx` keeps the
+ * checkout-session id in React state only, so any reload before payment mints a
+ * BRAND-NEW session; its consent callback then lands on the tenants row the
+ * abandoned session already created and — with nothing to tell the two apart —
+ * was refused with "contact support", dead-ending the buyer's own retry. Same
+ * shape for a Free Scan prospect coming back to buy for real.
+ *
+ * "Ever completed a real purchase" is what separates them, and it is asked in
+ * two places because a purchase can land through two genuinely different doors:
+ *
+ *   1. `checkout_sessions.status = 'paid'`, matched on the Microsoft tenant GUID
+ *      this callback itself stamps into `checkout_sessions.tenant_id`. The cheap
+ *      primary probe — one single-table lookup, no join — and the row every
+ *      self-service purchase actually flips (public-purchase-payment.ts,
+ *      public-assessment-payment.ts).
+ *   2. An `active` client_services entitlement on any user scoped to this
+ *      tenant. One indexed join (users.tenant_id → client_services.client_user_id)
+ *      covering a purchase that never went through a checkout session at all —
+ *      an operator-created or MSP-channel entitlement, whose tenant would
+ *      otherwise read as "never bought anything".
+ *
+ * Both run only on the already-rare collision path, and the second exists
+ * precisely so this fails CLOSED: a paying customer's tenant must stay
+ * unattachable from a create-path consent, which is the hijack #4226 closed.
+ */
+async function tenantHasCompletedPurchase(customerId: number, tenantFromMicrosoft: string): Promise<boolean> {
+  const [paidSession] = await db
+    .select({ id: checkoutSessionsTable.id })
+    .from(checkoutSessionsTable)
+    .where(and(eq(checkoutSessionsTable.tenantId, tenantFromMicrosoft), eq(checkoutSessionsTable.status, "paid")))
+    .limit(1);
+  if (paidSession) return true;
+
+  const [entitlement] = await db
+    .select({ id: clientServicesTable.id })
+    .from(clientServicesTable)
+    .innerJoin(usersTable, eq(clientServicesTable.clientUserId, usersTable.id))
+    .where(and(eq(usersTable.tenantId, customerId), eq(clientServicesTable.status, "active")))
+    .limit(1);
+  return entitlement != null;
 }
 
 /**
@@ -688,9 +736,9 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   // ensureClientMspUser (lib/direct-tenant-provisioning.ts) is a post-payment backstop for this same case.
   // One guard for both: a second copy for the onboarding path is exactly how
   // this class of leak comes back.
-  // Since #4226 the same guard also refuses a GUID whose customer object sits
-  // under the SAME MSP (see endTenantAlreadyRegistered below): every path that
-  // reaches it creates a customer, and none may attach to an existing one.
+  // Since #4226 the same guard also covers a GUID whose customer object sits
+  // under the SAME MSP (see endTenantAlreadyRegistered below) — refused if that
+  // customer has ever completed a purchase, resumed onto if it has not (#4334).
   // The refusal every cross-MSP check below ends with. The only popup ending
   // that deliberately does NOT close itself: this is a terminal refusal the
   // buyer has to actually read, and the flow behind it will never advance (the
@@ -712,14 +760,17 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       () => `${hostBase}/portal/consent/tenant-conflict?tenant=${encodeURIComponent(tenant)}`,
     );
 
-  // The refusal for a GUID that already has a customer object under the SAME
-  // MSP this consent would create under (#4226). Microsoft's confirmation below
-  // proves the tenant consented to this app — not that whoever holds `state`
-  // is that tenant's admin, and a tenant GUID is public (OpenID metadata). So a
-  // create-path consent never attaches to an existing customer: that would
-  // re-stamp its grant and link a new buyer / invite holder to someone else's
-  // customer record. A genuine returning customer goes through support. Not
-  // the cross-MSP page: that page tells the buyer another provider owns the
+  // The refusal for a GUID that already has a PAYING customer object under the
+  // SAME MSP this consent would create under (#4226, narrowed by #4334).
+  // Microsoft's confirmation below proves the tenant consented to this app — not
+  // that whoever holds `state` is that tenant's admin, and a tenant GUID is
+  // public (OpenID metadata). So a create-path consent never attaches to a
+  // customer record that has real value on it: that would re-stamp its grant and
+  // link a new buyer / invite holder to someone else's account. A genuine
+  // returning customer goes through support. (A same-MSP customer that has never
+  // completed a purchase is the buyer's own abandoned attempt, not someone
+  // else's record — that case resumes instead, see tenantHasCompletedPurchase.)
+  // Not the cross-MSP page: that page tells the buyer another provider owns the
   // tenant, which is not what happened here. A portal-origin request gets a
   // plain status response, like the other refusals in this file.
   const endTenantAlreadyRegistered = () => {
@@ -739,6 +790,12 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
     }
     res.status(409).send(detail);
   };
+
+  // #4334: set when the same-MSP guard below finds an existing tenants row for
+  // this GUID that has never completed a purchase — the buyer's own interrupted
+  // checkout, or a free-tier prospect now buying for real. The rest of the
+  // callback then runs against THAT row instead of creating a second one.
+  let resumeExistingCustomerId: number | null = null;
 
   let expectedMspId: number | null = null;
   if (inviteRecord?.mspId != null) {
@@ -778,11 +835,48 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       return;
     }
 
-    // #4226: the same-MSP case is refused too. Every path reaching this guard
-    // is a create path (no customer named on the token), so an existing row
-    // for the GUID is never a legitimate attach target.
+    // #4226: the same-MSP case is refused too — every path reaching this guard
+    // is a create path (no customer named on the token), so an existing row for
+    // the GUID is not automatically a legitimate attach target.
+    //
+    // #4334 splits that in two, on the one question that actually distinguishes
+    // a hijack from a retry: has this tenant ever completed a real purchase?
+    //
+    //   - YES → unchanged. An existing PAYING customer's tenant is exactly what
+    //     #4226 exists to keep unattachable: `tenant` is unsigned and a tenant
+    //     GUID is public (OpenID metadata), so whoever holds `state` is not
+    //     thereby that tenant's admin. Refuse, stamp nothing, send them to
+    //     support.
+    //   - NO → this is the buyer's own dead-end, not an attack. Their first
+    //     attempt created this row and then never paid (see
+    //     tenantHasCompletedPurchase's header for the Buy.tsx mechanism), or it
+    //     is a Free Scan prospect converting. Attach to the existing row and
+    //     carry on to payment; there is no customer value on it to hijack, and
+    //     the alternative — "contact support" — is a lost sale for a buyer who
+    //     did nothing wrong.
+    //
+    // Still gated on the cross-MSP check above having passed, so a resume can
+    // only ever land on a row under the SAME MSP this consent would create
+    // under. The cross-MSP arm is untouched and still fails closed.
     if (conflictingCustomer && inviteRecord?.customerId == null) {
-      log.warn(
+      const alreadyPurchased = await tenantHasCompletedPurchase(conflictingCustomer.id, tenant);
+      if (alreadyPurchased) {
+        log.warn(
+          {
+            tenantId: tenant,
+            sessionId: isCheckoutSession ? stateFingerprint(state) : undefined,
+            mspInvite: !isCheckoutSession,
+            existingCustomerId: conflictingCustomer.id,
+            existingMspId: conflictingCustomer.mspId,
+          },
+          "Consent callback: REFUSED — this Microsoft tenant already has a PAYING customer object; a create-path consent does not attach to it (no token burn, session flip, grant or account)",
+        );
+        endTenantAlreadyRegistered();
+        return;
+      }
+
+      resumeExistingCustomerId = conflictingCustomer.id;
+      log.info(
         {
           tenantId: tenant,
           sessionId: isCheckoutSession ? stateFingerprint(state) : undefined,
@@ -790,10 +884,8 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
           existingCustomerId: conflictingCustomer.id,
           existingMspId: conflictingCustomer.mspId,
         },
-        "Consent callback: REFUSED — this Microsoft tenant already has a customer object; a create-path consent does not attach to it (no token burn, session flip, grant or account)",
+        "Consent callback: RESUMING onto the existing customer object for this tenant — it has never completed a purchase, so this is the buyer's own interrupted checkout (or a free-tier prospect buying), not a claim on someone else's record (#4334)",
       );
-      endTenantAlreadyRegistered();
-      return;
     }
   }
 
@@ -889,6 +981,26 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
           : "Consent callback: invited customer row no longer exists — no grant recorded",
       );
       res.status(400).send("This consent link was issued for a different Microsoft organisation. Please ask your provider for a new link.");
+      return;
+    }
+    consentTenant = { id: bound.id };
+  } else if (resumeExistingCustomerId != null) {
+    // (a2) #4334 — the same-MSP guard above found an existing, never-purchased
+    //      tenants row for this exact GUID and chose to resume onto it. That row
+    //      IS the identity now, so this is path (a)'s shape, not a create path:
+    //      resolve by id and re-require the GUID Microsoft returned to match the
+    //      row's own tenant_id, so a row that changed (or vanished) between the
+    //      guard and here fails closed rather than granting onto the wrong
+    //      customer. resolveOrCreateDirectTenant is deliberately NOT called —
+    //      it would hand back this same row with created:false, which the
+    //      post-guard race check below (rightly) refuses.
+    const bound = await resolveCallbackTenant(resumeExistingCustomerId, tenant);
+    if (!bound.ok) {
+      log.warn(
+        { tenant, customerId: resumeExistingCustomerId, expectedTenantId: bound.expectedTenantId, reason: bound.reason },
+        "Consent callback: REFUSED — the existing customer this consent was resuming onto no longer matches this Microsoft tenant; no grant recorded (#4334)",
+      );
+      endTenantAlreadyRegistered();
       return;
     }
     consentTenant = { id: bound.id };
@@ -1084,18 +1196,26 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   // never go through this branch since isCheckoutSession customers have no
   // inviteRecord. Guarded to only flip customers currently "onboarding" so an
   // admin's deliberate "inactive"/"archived" status is never silently overwritten.
-  if (inviteRecord?.customerId != null) {
+  //
+  // #4334: a resumed invite consent (the guard above attached to an existing,
+  // never-purchased row rather than creating one) is still an MSP-channel
+  // consent, so it flips the same way — otherwise resuming would silently leave
+  // the customer parked in "onboarding" forever. Still guarded on the current
+  // status being "onboarding", so an admin's deliberate inactive/archived
+  // status is never overwritten by either case.
+  const statusFlipCustomerId = inviteRecord ? (inviteRecord.customerId ?? resumeExistingCustomerId) : null;
+  if (statusFlipCustomerId != null) {
     await db
       .update(tenantsTable)
       .set({ status: "active", updatedAt: new Date() })
       .where(
         and(
-          eq(tenantsTable.id, inviteRecord.customerId),
+          eq(tenantsTable.id, statusFlipCustomerId),
           eq(tenantsTable.status, "onboarding"),
         ),
       )
       .catch((err: unknown) => {
-        log.warn({ err, customerId: inviteRecord?.customerId }, "Consent callback: failed to flip customer status to active (non-fatal)");
+        log.warn({ err, customerId: statusFlipCustomerId }, "Consent callback: failed to flip customer status to active (non-fatal)");
       });
   }
 
@@ -1415,16 +1535,31 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
     }
   })();
 
+  // #4334: a resumed consent lands on the same success ending as a first-time
+  // one — it IS a success — but says so in its own words. The buyer just
+  // re-approved an organisation that was already connected by their own earlier,
+  // abandoned attempt; "Access granted" alone reads as if something new happened
+  // and leaves them wondering whether the first attempt is still half-finished
+  // somewhere. Positive, self-closing, and explicit that payment is what comes
+  // next — the opposite of the "contact support" dead end this replaces.
   endConsentCallback(
     res,
     uiOrigin,
-    {
-      title: "Access granted",
-      heading: "Access granted",
-      detail: "You can close this window — the page you started from is already continuing on its own.",
-      tone: "ok",
-      autoClose: true,
-    },
+    resumeExistingCustomerId != null
+      ? {
+          title: "Already connected",
+          heading: "Already connected — continuing to payment",
+          detail: "This Microsoft organisation was already connected from an earlier attempt, so there was nothing new to approve. You can close this window — the page you started from is continuing to payment on its own.",
+          tone: "ok",
+          autoClose: true,
+        }
+      : {
+          title: "Access granted",
+          heading: "Access granted",
+          detail: "You can close this window — the page you started from is already continuing on its own.",
+          tone: "ok",
+          autoClose: true,
+        },
     () => successRedirect,
   );
 });
