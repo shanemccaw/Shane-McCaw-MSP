@@ -85,6 +85,9 @@
  * The Monitoring ENTITLEMENT is not: since #4403 a paid confirm provisions the
  * client_services row the Portal's tier gate reads
  * (lib/monitoring-entitlement-provisioning.ts), idempotently per session.
+ * Nor is the Retainer entitlement: since #4404 it provisions the client_services
+ * row plus the retainer_settings row the Portal's My Architect page reads
+ * (lib/purchase-retainer-entitlement.ts), on the same per-session key.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
