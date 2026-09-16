@@ -19,24 +19,24 @@ set "GIT_CLEAN_FIX_TRIED=0"
 set "GIT_MERGE_FIX_TRIED=0"
 
 :CHECK_CLEAN
-echo === Checking working tree is clean ===
+echo === Checking BuildConsole's own files are clean (ignoring Marketing/Portal/Product elsewhere in the monorepo) ===
 set "DIRTY="
-for /f "delims=" %%S in ('git -C "%PROJECT_DIR_NOSLASH%" status --porcelain 2^>nul') do set "DIRTY=1"
+for /f "delims=" %%S in ('git -C "%PROJECT_DIR_NOSLASH%" status --porcelain -- . 2^>nul') do set "DIRTY=1"
 if defined DIRTY (
   if "%GIT_CLEAN_FIX_TRIED%"=="0" (
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%NOTIFY_PS1%" -YesNo -Title "ShanesBuild Deploy - Git issue" -Message "Working tree at %PROJECT_DIR% is dirty - refusing to build over uncommitted changes. Spawn Claude Code to fix it automatically?"
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%NOTIFY_PS1%" -YesNo -Title "ShanesBuild Deploy - Git issue" -Message "desktop\BuildConsole at %PROJECT_DIR% has uncommitted/untracked changes - refusing to build over them. (Changes elsewhere in the repo - Marketing, Portal, etc - are ignored.) Spawn Claude Code to fix it automatically?"
     if not errorlevel 1 (
       set "GIT_CLEAN_FIX_TRIED=1"
       echo === Spawning Claude Code to fix the dirty working tree ===
       if exist "%CLAUDE_EXE%" (
-        start "Claude Code - Git Cleanup" /wait "%CLAUDE_EXE%" --permission-mode auto --print --output-format text -- "The working tree at %PROJECT_DIR_NOSLASH% is dirty (uncommitted or untracked changes), which is blocking a ShanesBuild deploy (deploy-shanesbuild.cmd refuses to build over a dirty tree). Investigate what changed, then follow this repo's own CLAUDE.md git conventions ('Leave the working tree clean') to resolve it: commit and push any genuine work of yours, git checkout -- any accidental/scratch edits, or delete (and .gitignore if it will recur) stray untracked files - whichever is actually appropriate for what you find. Do not force-discard anything you did not create without first understanding what it is. When done, git status --porcelain at that path must be empty."
+        start "Claude Code - Git Cleanup" /wait "%CLAUDE_EXE%" --permission-mode auto --print --output-format text -- "desktop/BuildConsole at %PROJECT_DIR_NOSLASH% has uncommitted or untracked changes (git status --porcelain -- . scoped to that folder), which is blocking a ShanesBuild deploy (deploy-shanesbuild.cmd refuses to build over dirty BuildConsole files; it deliberately ignores dirty state elsewhere in the monorepo like Marketing/Portal/Product). Investigate what changed under desktop/BuildConsole, then follow this repo's own CLAUDE.md git conventions ('Leave the working tree clean') to resolve it: commit and push any genuine work of yours, git checkout -- any accidental/scratch edits, or delete (and .gitignore if it will recur) stray untracked files - whichever is actually appropriate for what you find. Do not force-discard anything you did not create without first understanding what it is. When done, git status --porcelain -- . run from desktop/BuildConsole must be empty."
       ) else (
         echo claude.exe not found at %CLAUDE_EXE% - cannot auto-fix.
       )
       goto CHECK_CLEAN
     )
   )
-  powershell -NoProfile -ExecutionPolicy Bypass -File "%NOTIFY_PS1%" -Title "ShanesBuild Deploy - Error" -Message "Working tree at %PROJECT_DIR% is still dirty. Commit, stash elsewhere, or discard the change, then re-run deploy-shanesbuild.cmd."
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%NOTIFY_PS1%" -Title "ShanesBuild Deploy - Error" -Message "desktop\BuildConsole at %PROJECT_DIR% is still dirty. Commit, stash elsewhere, or discard the change, then re-run deploy-shanesbuild.cmd."
   exit /b 1
 )
 
