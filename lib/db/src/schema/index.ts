@@ -1138,6 +1138,23 @@ export const freeScanEngagementsTable = pgTable("free_scan_engagements", {
   status: text("status", { enum: ["draft", "signed", "paid"] }).notNull().default("draft"),
   stripePaymentIntentId: text("stripe_payment_intent_id"),
   paidAt: timestamp("paid_at", { withTimezone: true }),
+  // ── Remediate step: the write-consent decision (Git #1375) ─────────────────
+  // The AUTHORITATIVE grant is, and stays, `tenants.consent.writeBack` — written
+  // only by the Microsoft-verified write-consent callback. These three columns
+  // record what happened at THIS step, which that key cannot express:
+  //   • `declined` has no home on tenants.consent at all until Microsoft
+  //     redirects back, and "Not now — stay read-only" never reaches Microsoft.
+  //   • `requested` is the fact a Prospect was sent to the consent screen, so a
+  //     return that never completed is distinguishable from one never started.
+  // A `granted` value here is a convenience mirror of the real grant, never a
+  // substitute for it: every gate in the platform keeps reading writeBack.
+  writeConsentDecision: text("write_consent_decision", { enum: ["requested", "granted", "declined"] }),
+  writeConsentDecidedAt: timestamp("write_consent_decided_at", { withTimezone: true }),
+  // The derived scope list actually put in front of the Prospect at that moment
+  // (lib/free-scan-write-scopes.ts). Snapshotted for the same reason
+  // `signedSowSnapshot` is: a later scan or catalog edit must not restate what
+  // somebody was already asked to approve.
+  writeConsentScopes: jsonb("write_consent_scopes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [

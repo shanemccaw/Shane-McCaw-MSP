@@ -89,7 +89,7 @@ function noStore(_req: Request, res: Response, next: () => void): void {
 
 // ── Identity ──────────────────────────────────────────────────────────────────
 
-const credentialSchema = z
+export const credentialSchema = z
   .object({
     sessionId: z.string().optional(),
     returnToken: z.string().max(200).optional(),
@@ -99,8 +99,12 @@ const credentialSchema = z
 /**
  * Resolve the acting Prospect from whichever door the caller used, or respond
  * and return null so callers can `if (!actor) return;`.
+ *
+ * Exported for the Remediate step (#1375), which is the same Prospect, the same
+ * two doors and the same "never a caller-supplied customerId" rule — a second
+ * copy of this would be a second place for that identity contract to drift.
  */
-async function resolveActor(
+export async function resolveActor(
   credential: { sessionId?: string; returnToken?: string },
   res: Response,
 ): Promise<FreeScanActor | null> {

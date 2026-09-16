@@ -1737,6 +1737,100 @@ router.post("/portal/consent/debug-write-reconsent-link", requireCapability("lad
   res.json({ consentUrl, expiresAt });
 });
 
+// ── POST /api/portal/consent/write-consent-link ────────────────────────────────
+//
+// The REAL, non-debug portal door to the write-consent flow (Git #1375).
+//
+// WHY THIS EXISTS. The Free Scan Remediate step's "Not now — stay read-only"
+// button carries a promise in the design's own final copy: *"Decline and
+// nothing is lost — you can grant it from the Portal whenever you want."* Before
+// this route the only portal-side door was
+// `POST /portal/consent/debug-write-reconsent-link` immediately above — marked
+// "⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION" and hard-gated to
+// `tenants.is_testbed`, so for every real customer that promise resolved to
+// nothing. A promise on a paid customer's screen needs a route that works for
+// them, not one that 403s outside the testbed.
+//
+// IT IS NOT A LOOSENING OF THE DEBUG ROUTE. Same mint, same single-use
+// `consent_invite_tokens` row, same HMAC-signed state, same ONE fixed callback,
+// and the callback's own checks (#4197's Microsoft verification, the tenant-GUID
+// cross-check, the single-use token burn) are untouched. What changes is the
+// gate in FRONT of it, in both directions: the testbed restriction is replaced
+// by a real authorization floor of `ladder.customer-user` rather than
+// `ladder.free`. Granting an application write access to your whole Microsoft
+// tenant is not a Free-tier action, and the debug route's `ladder.free` floor
+// was only ever defensible because `is_testbed` was doing the real gating.
+//
+// The debug route is deliberately left exactly as it is: it is somebody else's
+// to delete, and removing it is not this issue's call to make.
+
+router.post("/portal/consent/write-consent-link", requireCapability("ladder.customer-user"), async (req: Request, res: Response) => {
+  if (!process.env.MT_APP_WRITE_CLIENT_ID) {
+    res.status(503).json({ error: "Write app credentials not configured (MT_APP_WRITE_CLIENT_ID)" });
+    return;
+  }
+
+  const customerId = (req.user as { customerId?: number } | undefined)?.customerId;
+  if (typeof customerId !== "number" || Number.isNaN(customerId)) {
+    res.status(403).json({ error: "No customer identity on token" });
+    return;
+  }
+
+  const [customer] = await db
+    .select({ tenantId: tenantsTable.tenantId, consent: tenantsTable.consent })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, customerId))
+    .limit(1);
+
+  if (!customer) {
+    res.status(404).json({ error: "Customer not found" });
+    return;
+  }
+
+  // Fails closed the same way `resolveConsentedTenant` does: the read grant is
+  // what establishes which Microsoft tenant this customer actually is, and the
+  // write app must be aimed at that same tenant, never at "common".
+  const tenantHint = customer.tenantId?.trim();
+  if (!tenantHint || customer.consent?.graph?.status !== "granted") {
+    res.status(409).json({ error: "read_consent_required" });
+    return;
+  }
+
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+
+  await db.insert(consentInviteTokensTable).values({
+    token,
+    tenantId: tenantHint,
+    customerId,
+    clientUserId: req.user!.id,
+    expiresAt,
+  });
+
+  const callbackUrl = `${getHostBase(req)}/api/admin/write-consent/callback`;
+  const consentUrl = buildAdminConsentUrl(
+    tenantHint,
+    // "popup": the portal page stays put and polls its own consent status,
+    // same as every other in-app grant (#474).
+    signWriteConsentState(customerId, token, "popup"),
+    callbackUrl,
+    process.env.MT_APP_WRITE_CLIENT_ID,
+  );
+
+  await createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.email ?? "customer",
+    actorRole: "client",
+    actionType: "write_consent_invite_created",
+    entityType: "tenant_write_consent",
+    metadata: { tenantHint, customerId, expiresAt, origin: "portal_self_service" },
+  });
+
+  log.info({ customerId, tenantHint }, "portal: customer requested the write-consent link themselves");
+
+  res.json({ consentUrl, expiresAt, permissions: REQUIRED_WRITE_APP_PERMISSIONS });
+});
+
 // ── GET /api/admin/write-consent/callback ──────────────────────────────────────
 // Microsoft redirects here after the customer's admin approves or declines the
 // WRITE app. One FIXED URL for every customer (registered once in Azure);
