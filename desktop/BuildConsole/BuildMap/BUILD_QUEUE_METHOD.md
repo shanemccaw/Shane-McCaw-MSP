@@ -244,6 +244,8 @@ Posted: <UTC ISO8601>
 
 \- Per-issue bookend at build-journal/<N>.md — IN FLIGHT first (own commit), DONE with real hash last (own commit)
 
+\- \*\*Close this issue yourself as the final step\*\* — `gh issue close <N> --reason completed` (or the GraphQL `closeIssue` mutation with `stateReason: COMPLETED`) — immediately after the DONE bookend commit, in the same session. A real DONE bookend with the issue left open is an incomplete build, not a finished one. Verify first per §7 (merge-base check, bookend both entries present) before closing — the verification requirement doesn't change, only who performs it and when.
+
 \- Plan doc (build-journal/<N>-plan.md) before code changes, Changes Made / Verification Results headers in the DONE bookend — see §4.4
 
 \- Timestamp on this dispatch and on bookend status lines ("Posted: <UTC ISO8601>")
@@ -529,6 +531,10 @@ Some transitions need a human confirmation, not just an automatic bookend check:
 &#x20;
 
 \## 7. Closing out — verification, not trust
+
+&#x20;
+
+This checklist is performed by the finishing build agent itself, on its own issue, as the last real step of its own build — not only by a separate later auditor; a later chat re-verifying is a safety net, not the primary mechanism.
 
 &#x20;
 
