@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <title>Article | Shane McCaw Consulting</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#020617}
+    a{color:#00B4D8}a:hover{color:#5ed2ea}
+  </style>
+</helmet>
+<div style="background:#020617;color:#f8fafc;font-family:Inter,system-ui,sans-serif;min-height:100vh" data-screen-label="Article">
+  <dc-import name="Marketing Nav" current="resources" hint-size="100%,58px"></dc-import>
+
+  <section id="top" data-screen-label="Article header" style="position:relative;overflow:hidden;border-bottom:1px solid rgba(30,41,59,.8);background:radial-gradient(circle 900px at 80% -30%, rgba(139,92,246,.12), rgba(2,6,23,0) 62%), radial-gradient(circle 700px at 4% 0%, rgba(0,120,212,.08), rgba(2,6,23,0) 66%)">
+    <div style="position:relative;max-width:1200px;margin:0 auto;padding:clamp(28px,5vw,48px) clamp(16px,4vw,32px) clamp(26px,4vw,40px)">
+      <a href="Marketing Resources.dc.html" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:#94a3b8;text-decoration:none" style-hover="color:#00B4D8"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"></path><path d="m12 19-7-7 7-7"></path></svg>All resources</a>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:22px 0 16px">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#60a5fa;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.2);border-radius:999px;padding:5px 11px;white-space:nowrap">{{ article.category }}</span>
+        <span style="font-size:12.5px;color:#94a3b8">{{ article.date }}</span><span style="color:#64748b">&#183;</span><span style="font-size:12.5px;color:#94a3b8">{{ article.readingTime }}</span>
+      </div>
+      <h1 style="font-size:clamp(26px,3.8vw,40px);line-height:1.12;letter-spacing:-.025em;font-weight:800;color:#f8fafc;margin:0 0 16px;max-width:900px;text-wrap:pretty">{{ article.title }}</h1>
+      <p style="font-size:clamp(15px,2.2vw,18px);line-height:1.65;color:#94a3b8;margin:0;max-width:780px;text-wrap:pretty">{{ article.summary }}</p>
+    </div>
+  </section>
+
+  <div style="max-width:1200px;margin:0 auto;padding:clamp(28px,4vw,44px) clamp(16px,4vw,32px) clamp(20px,3vw,32px);display:grid;grid-template-columns:{{ colTemplate }};gap:clamp(24px,4vw,56px);align-items:start">
+    <aside style="position:sticky;top:76px;display:{{ tocDisplay }};flex-direction:column;gap:14px;border-left:1px solid rgba(30,41,59,.9);padding-left:20px">
+      <span style="font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#475569">On this page</span>
+      <nav style="display:flex;flex-direction:column;gap:9px">
+        <sc-for list="{{ article.sections }}" as="s" hint-placeholder-count="5">
+          <a href="{{ s.anchor }}" style="font-size:12.5px;line-height:1.4;font-weight:600;color:#94a3b8;text-decoration:none" style-hover="color:#00B4D8">{{ s.h }}</a>
+        </sc-for>
+      </nav>
+    </aside>
+
+    <article data-screen-label="Article body" style="min-width:0;max-width:760px">
+      <sc-for list="{{ article.sections }}" as="s" hint-placeholder-count="5">
+        <section id="{{ s.id }}" style="margin-bottom:34px;scroll-margin-top:90px">
+          <h2 style="font-size:clamp(20px,2.8vw,26px);line-height:1.2;letter-spacing:-.02em;font-weight:800;color:#f8fafc;margin:0 0 14px;text-wrap:pretty">{{ s.h }}</h2>
+          <sc-for list="{{ s.blocks }}" as="b" hint-placeholder-count="2">
+            <sc-if value="{{ b.isP }}" hint-placeholder-val="{{ true }}">
+              <p style="font-size:15.5px;line-height:1.75;color:#cbd5e1;margin:0 0 16px;text-wrap:pretty">{{ b.text }}</p>
+            </sc-if>
+            <sc-if value="{{ b.isList }}" hint-placeholder-val="{{ false }}">
+              <ul style="list-style:none;margin:0 0 18px;padding:0;display:flex;flex-direction:column;gap:10px">
+                <sc-for list="{{ b.items }}" as="li" hint-placeholder-count="3">
+                  <li style="display:flex;gap:11px;font-size:15px;line-height:1.65;color:#cbd5e1"><span style="flex:none;margin-top:6px;width:6px;height:6px;border-radius:999px;background:#00B4D8"></span><span style="text-wrap:pretty">{{ li }}</span></li>
+                </sc-for>
+              </ul>
+            </sc-if>
+            <sc-if value="{{ b.isNote }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;gap:13px;border:1px solid rgba(0,180,216,.28);background:rgba(0,180,216,.06);border-radius:14px;padding:16px 18px;margin:0 0 18px">
+                <span style="flex:none;width:30px;height:30px;border-radius:9px;background:rgba(0,180,216,.12);border:1px solid rgba(0,180,216,.25);color:#00B4D8;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg></span>
+                <div style="min-width:0">
+                  <div style="font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#00B4D8;margin-bottom:5px">{{ b.label }}</div>
+                  <p style="font-size:14.5px;line-height:1.65;color:#e2e8f0;margin:0;text-wrap:pretty">{{ b.text }}</p>
+                </div>
+              </div>
+            </sc-if>
+          </sc-for>
+        </section>
+      </sc-for>
+
+      <div data-screen-label="Author and share" style="border-top:1px solid rgba(30,41,59,.9);padding-top:24px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:18px 24px">
+        <div style="display:flex;align-items:center;gap:14px;min-width:0">
+          <span style="flex:none;width:46px;height:46px;border-radius:14px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff">SM</span>
+          <div style="min-width:0">
+            <div style="font-size:15px;font-weight:700;color:#f8fafc;line-height:1.3">Shane McCaw</div>
+            <div style="font-size:12.5px;color:#94a3b8;line-height:1.4">Lead M365 Architect at NASA &#183; 30 years in the Microsoft ecosystem</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#475569;white-space:nowrap">Share</span>
+          <a href="{{ article.linkedin }}" target="_blank" rel="noopener noreferrer" aria-label="Share on LinkedIn" style="width:36px;height:36px;border-radius:10px;border:1px solid rgba(148,163,184,.2);background:rgba(255,255,255,.04);color:#94a3b8;display:flex;align-items:center;justify-content:center" style-hover="color:#00B4D8;border-color:rgba(0,180,216,.45)"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M20.45 20.45h-3.55v-5.57c0-1.33-.03-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.36V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.73v20.54C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.73C24 .77 23.2 0 22.22 0z"></path></svg></a>
+          <a href="{{ article.x }}" target="_blank" rel="noopener noreferrer" aria-label="Share on X" style="width:36px;height:36px;border-radius:10px;border:1px solid rgba(148,163,184,.2);background:rgba(255,255,255,.04);color:#94a3b8;display:flex;align-items:center;justify-content:center" style-hover="color:#f8fafc;border-color:rgba(148,163,184,.4)"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M18.9 1.15h3.68l-8.04 9.19L24 22.85h-7.4l-5.8-7.58-6.64 7.58H.47l8.6-9.83L0 1.15h7.6l5.24 6.93 6.06-6.93zm-1.29 19.5h2.04L6.49 3.24H4.3l13.31 17.41z"></path></svg></a>
+        </div>
+      </div>
+    </article>
+  </div>
+
+  <section data-screen-label="Related articles" style="border-top:1px solid rgba(30,41,59,.8)">
+    <div style="max-width:1200px;margin:0 auto;padding:clamp(34px,5vw,52px) clamp(16px,4vw,32px)">
+      <h2 style="font-size:clamp(20px,3vw,27px);line-height:1.15;letter-spacing:-.022em;font-weight:800;color:#f8fafc;margin:0 0 22px">Keep reading</h2>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,290px),1fr));gap:16px">
+        <sc-for list="{{ related }}" as="r" hint-placeholder-count="3">
+          <article style="display:flex;flex-direction:column;border:1px solid rgba(30,41,59,.9);border-radius:16px;background:rgba(15,23,42,.5);padding:22px;transition:border-color .2s,transform .2s" style-hover="border-color:rgba(0,120,212,.45);transform:translateY(-3px)">
+            <span style="align-self:flex-start;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#60a5fa;background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.2);border-radius:999px;padding:5px 11px;margin-bottom:16px;white-space:nowrap">{{ r.category }}</span>
+            <h3 style="font-size:17px;line-height:1.3;letter-spacing:-.015em;font-weight:700;margin:0 0 10px;text-wrap:pretty"><a href="{{ r.href }}" style="color:#f8fafc;text-decoration:none" style-hover="color:#00B4D8">{{ r.title }}</a></h3>
+            <p style="font-size:13.5px;line-height:1.6;color:#94a3b8;margin:0 0 18px;flex:1">{{ r.summary }}</p>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:14px;border-top:1px solid rgba(30,41,59,.9);font-size:12px;color:#94a3b8">
+              <span>{{ r.readingTime }}</span>
+              <a href="{{ r.href }}" style="display:flex;align-items:center;gap:5px;font-size:13px;font-weight:700;color:#00B4D8;text-decoration:none;white-space:nowrap" style-hover="color:#5ed2ea">Read More<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></a>
+            </div>
+          </article>
+        </sc-for>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Closing CTA" style="max-width:860px;margin:0 auto;padding:clamp(36px,6vw,56px) clamp(16px,4vw,32px) clamp(60px,9vw,96px)">
+    <div style="position:relative;overflow:hidden;text-align:center;border:1px solid rgba(0,120,212,.3);border-radius:20px;background:radial-gradient(700px 320px at 50% -20%,rgba(0,120,212,.18),transparent 60%),linear-gradient(168deg,rgba(10,37,64,.5),#070d1e 64%);padding:clamp(30px,5vw,50px) clamp(20px,5vw,44px)">
+      <h2 style="font-size:clamp(24px,4vw,35px);line-height:1.12;letter-spacing:-.025em;font-weight:800;color:#f8fafc;margin:0 0 14px;text-wrap:pretty">Found a gap you'd rather not tackle <span style="color:#00B4D8">alone?</span></h2>
+      <p style="font-size:15px;line-height:1.65;color:#94a3b8;margin:0 auto 24px;max-width:560px">Shane has spent 30 years in the Microsoft ecosystem and currently serves as Lead M365 Architect at NASA. Book a free 30-minute discovery call to talk through what you're seeing.</p>
+      <div style="display:flex;justify-content:center;flex-wrap:wrap;gap:12px">
+        <a href="Marketing Free Scan.dc.html" style="display:inline-flex;align-items:center;gap:8px;padding:0 24px;min-height:50px;border-radius:12px;font-size:15px;font-weight:700;color:#fff;background:linear-gradient(90deg,#3b82f6,#8b5cf6);text-decoration:none;white-space:nowrap"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>Book a Consultation</a>
+      </div>
+      <p style="margin:18px 0 0;font-size:13px;letter-spacing:.02em;color:#94a3b8">No pitch. No obligation. Just clarity.</p>
+    </div>
+  </section>
+
+  <dc-import name="Marketing Footer" hint-size="100%,300px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;slug&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;m365-tenant-management-best-practices-modern-teams&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;m365-tenant-management-best-practices-modern-teams&quot;,&quot;copilot-rollout-failing&quot;,&quot;m365-tenant-health-check&quot;,&quot;sharepoint-intranet-architecture&quot;,&quot;power-automate-approval-workflows&quot;,&quot;dlp-sensitivity-labels&quot;,&quot;m365-migration-checklist&quot;],&quot;description&quot;:&quot;Which article to render when no ?slug= is present in the URL&quot;}}">
+const P = (text) => ({ k: "p", text });
+const L = (...items) => ({ k: "ul", items });
+const N = (label, text) => ({ k: "note", label, text });
+
+const ARTICLES = [
+  {
+    slug: "m365-tenant-management-best-practices-modern-teams",
+    category: "M365 Best Practices",
+    title: "Microsoft 365 Tenant Management: Best Practices for Modern Teams",
+    summary: "Unlock productivity across your organization with proven Microsoft 365 tenant management strategies. Learn essential best practices that help distributed teams collaborate effectively while maintaining security and governance.",
+    date: "July 6, 2026", readingTime: "6 min read",
+    sections: [
+      { h: "Start with the tenant, not the tools", blocks: [
+        P("Most organizations buy Microsoft 365 licenses and then discover the tenant underneath them was never designed. Teams get created on demand, SharePoint sites multiply, guests accumulate, and two years later nobody can answer a basic question like who has access to the finance site."),
+        P("Tenant management is the practice of deciding those things deliberately and then keeping them decided. Every control below is cheap to turn on at the start and expensive to retrofit once thousands of objects exist."),
+      ]},
+      { h: "The four decisions that shape everything else", blocks: [
+        L(
+          "Identity: who can sign in, from where, and with what second factor. Conditional Access is the single highest-leverage configuration in the tenant.",
+          "Collaboration boundary: whether guests are allowed, per workload, and whether anyone can invite them.",
+          "Container lifecycle: who may create a Team or site, how it gets named, and what happens when it goes quiet.",
+          "Data classification: which sensitivity labels exist and what each one enforces.",
+        ),
+        P("Answer those four and the rest of tenant management is maintenance. Leave them open and every later project negotiates them again from scratch."),
+      ]},
+      { h: "Governance that distributed teams tolerate", blocks: [
+        P("Governance fails when it makes the fast path the non-compliant one. If requesting a Team takes three days, people will use a chat group and a personal OneDrive folder instead."),
+        L(
+          "Self-service creation behind a short request form, provisioned automatically within minutes.",
+          "A naming convention applied by the provisioning flow rather than by policy documents.",
+          "Expiry with owner attestation, so unused containers disappear without an administrator hunting them.",
+          "Guest access reviewed on a schedule instead of revoked in a panic.",
+        ),
+        N("Rule of thumb", "If a control cannot be automated, it will not survive contact with a busy organization. Prefer the policy you can enforce in the platform over the one you can only publish."),
+      ]},
+      { h: "What to monitor every month", blocks: [
+        P("A tenant drifts. Admin roles get handed out for a project and never revoked, OAuth applications are consented to by users, external sharing links outlive the deals they were created for."),
+        L(
+          "Privileged role assignments and how many are permanent rather than just-in-time.",
+          "New enterprise applications and the permissions they hold.",
+          "Anonymous sharing links and their age.",
+          "Licence assignment against actual usage, per workload.",
+          "Conditional Access policy changes and report-only gaps.",
+        ),
+      ]},
+      { h: "Where to start this week", blocks: [
+        P("Pick the smallest loop that produces evidence: export the current state of those five monitors, write down what surprised you, and fix the one item with the widest blast radius. Then schedule the same export for a month from now."),
+        P("Tenant management is not a project with an end date. It is a monthly habit that keeps the platform matching the decisions you have already made."),
+      ]},
+    ],
+  },
+  {
+    slug: "copilot-rollout-failing",
+    category: "Copilot AI Tips",
+    title: "5 Reasons Your Copilot Rollout Is Failing (And How to Fix It)",
+    summary: "Most Copilot deployments underperform not because of the AI, but because of data governance gaps and lack of adoption strategy. Here are the five most common failure points and exactly how to address each one.",
+    date: "June 5, 2025", readingTime: "4 min read",
+    sections: [
+      { h: "1. Copilot is surfacing everything you over-shared", blocks: [
+        P("Copilot respects existing permissions exactly. That is the problem. Years of open SharePoint sites and organization-wide sharing links were tolerable when nobody searched them; a natural-language assistant makes them instantly discoverable."),
+        P("Fix the permissions before the licences. Run an oversharing report, close anonymous links, and restrict site access to the groups that genuinely need it."),
+      ]},
+      { h: "2. No sensitivity labels, so nothing is protected", blocks: [
+        P("Without labels there is no way to say that a document should be excluded from a summary or blocked from export. Labels are the only durable control surface Copilot honours."),
+        L(
+          "Define three or four labels, not fifteen.",
+          "Apply them automatically where you can infer the content type.",
+          "Enforce encryption on the top label so downstream copies stay protected.",
+        ),
+      ]},
+      { h: "3. Licences went to the wrong people", blocks: [
+        P("Executives are usually the worst pilot group: their work is sensitive, their calendars are impossible, and they rarely have time to learn a new habit. Start with knowledge workers who write and summarise all day."),
+      ]},
+      { h: "4. There is no habit attached to the licence", blocks: [
+        P("Copilot does not create value on installation. It creates value when a specific task moves from manual to assisted."),
+        L(
+          "Name three tasks per role that Copilot should take over this month.",
+          "Show the prompt, not the feature. People copy prompts; they ignore capability lists.",
+          "Measure the task, not the seat. Time-to-draft beats licence-activation counts.",
+        ),
+        N("The adoption trap", "Training sessions are events. Habits need a weekly reminder tied to work people already do — the stand-up, the report, the handover note."),
+      ]},
+      { h: "5. Nobody owns the outcome", blocks: [
+        P("A rollout with no named owner reverts to IT, and IT can only deliver licences. Assign an owner in the business who is accountable for the tasks Copilot is supposed to change, and give them the usage data monthly."),
+      ]},
+    ],
+  },
+  {
+    slug: "m365-tenant-health-check",
+    category: "M365 Best Practices",
+    title: "The M365 Tenant Health Check: What We Look For at NASA Scale",
+    summary: "After years of managing Microsoft 365 for one of the world's most security-sensitive organizations, I've developed a systematic audit methodology. This is what we check — and why each item matters.",
+    date: "May 22, 2025", readingTime: "4 min read",
+    sections: [
+      { h: "Health is a measurement, not an opinion", blocks: [
+        P("A tenant health check produces a list of findings with evidence and a severity, not a general impression. If two people run the same check a month apart they should be able to compare results directly."),
+      ]},
+      { h: "Identity and privileged access", blocks: [
+        L(
+          "Global Administrators: how many, and how many are permanent.",
+          "Break-glass accounts: exist, excluded from Conditional Access, credentials escrowed.",
+          "Legacy authentication: blocked, with report-only evidence that nothing broke.",
+          "MFA registration coverage, including service accounts and shared mailboxes.",
+        ),
+      ]},
+      { h: "Data and sharing", blocks: [
+        P("The findings that matter most are almost always about who can reach what, rather than about a misconfigured setting."),
+        L(
+          "Anonymous links older than 90 days.",
+          "Sites shared with the whole organization.",
+          "Guests with no sign-in activity in six months.",
+          "Sensitivity label coverage on the sites that hold regulated content.",
+        ),
+      ]},
+      { h: "Drift, not just state", blocks: [
+        P("A single snapshot tells you the tenant's condition today. Comparing snapshots tells you which direction it is moving, and that is the more useful signal."),
+        N("What we report", "Every finding carries four fields: what was found, where, why it matters, and the specific change that closes it. Anything without a remediation step is an observation, not a finding."),
+      ]},
+      { h: "Cadence", blocks: [
+        P("Monthly for the security-relevant checks, quarterly for licensing and adoption, and immediately after any migration or major tenant change. The point is the trend line, so keep the interval regular."),
+      ]},
+    ],
+  },
+  {
+    slug: "sharepoint-intranet-architecture",
+    category: "M365 Best Practices",
+    title: "SharePoint Intranet Architecture: The Blueprint That Actually Works",
+    summary: "Most SharePoint intranets fail because they were built without a coherent information architecture. Here's the planning framework I use for every modern intranet engagement — from hub structure to taxonomy design.",
+    date: "May 8, 2025", readingTime: "4 min read",
+    sections: [
+      { h: "Flat sites, connected by hubs", blocks: [
+        P("Modern SharePoint has no site hierarchy and trying to recreate one is the most common architectural mistake. Every site is flat; hubs provide navigation and shared branding across a family of them."),
+        L(
+          "One hub per audience or function, not per department org chart.",
+          "Sites join a hub; they are never nested inside one.",
+          "A site can move hubs later, so the first grouping does not have to be permanent.",
+        ),
+      ]},
+      { h: "Separate publishing from collaboration", blocks: [
+        P("News, policies and reference material behave differently from working documents. Mixing them means permissions fight each other and search returns drafts alongside approved content."),
+        P("Give published content its own communication sites with a small set of authors, and leave team sites for the work in progress."),
+      ]},
+      { h: "Taxonomy you can maintain", blocks: [
+        L(
+          "Start with fewer than ten managed metadata terms that describe audience and content type.",
+          "Use site columns so the same term drives filtering everywhere.",
+          "Resist per-department term sets; they fragment search immediately.",
+        ),
+        N("Navigation test", "A new joiner should reach any policy document in three clicks from the home page without using search. If they cannot, the hub structure is wrong, not the search configuration."),
+      ]},
+      { h: "Governance at provisioning time", blocks: [
+        P("Architecture survives only if new sites are created by a process that already knows the rules: which hub, which metadata, which permission groups, which retention label. Manual creation undoes the blueprint within months."),
+      ]},
+    ],
+  },
+  {
+    slug: "power-automate-approval-workflows",
+    category: "Power Platform How-Tos",
+    title: "Power Automate Approval Workflows: Build Once, Scale Forever",
+    summary: "Approval workflows are one of the highest-ROI automations in Power Automate. Learn the design patterns that keep workflows maintainable as your organization's processes evolve.",
+    date: "April 24, 2025", readingTime: "4 min read",
+    sections: [
+      { h: "One flow per pattern, not per process", blocks: [
+        P("Organizations end up with forty near-identical approval flows because each department asked for its own. The maintainable alternative is a single parameterised flow driven by a configuration list."),
+        L(
+          "A SharePoint or Dataverse list defines approvers, thresholds and escalation times.",
+          "The flow reads its behaviour from that list at runtime.",
+          "Adding a new approval process becomes a row, not a rebuild.",
+        ),
+      ]},
+      { h: "Design for the approver, not the builder", blocks: [
+        P("Approval requests are read on a phone between meetings. Put the decision-relevant facts in the first three lines, link to the full record, and never require the approver to open another system to understand what they are approving."),
+      ]},
+      { h: "Handle the unhappy paths explicitly", blocks: [
+        L(
+          "Approver has left the organization: resolve from the manager chain, not a hard-coded address.",
+          "No response within the SLA: reassign and notify, rather than silently waiting.",
+          "Rejection: capture the reason as structured data so reporting is possible.",
+          "Flow failure: alert a monitored channel, not the maker's own mailbox.",
+        ),
+        N("Maintainability", "Name every action for what it does in business terms. A flow full of Condition 3 and Apply to each 2 is unreadable to the person who inherits it."),
+      ]},
+      { h: "Instrument it from day one", blocks: [
+        P("Log every decision with a timestamp, the approver, and the elapsed time. Within a quarter you will know which step in the process is actually slow, which is the only basis for improving it."),
+      ]},
+    ],
+  },
+  {
+    slug: "dlp-sensitivity-labels",
+    category: "Governance & Compliance",
+    title: "DLP and Sensitivity Labels: The Governance Stack Every Organization Needs",
+    summary: "Data loss prevention and sensitivity labeling are the foundation of a secure Microsoft 365 environment — especially with Copilot in the picture. Here's how to build and govern them correctly.",
+    date: "April 10, 2025", readingTime: "4 min read",
+    sections: [
+      { h: "Labels describe, policies enforce", blocks: [
+        P("A sensitivity label states what a document is. A DLP policy states what may happen to it. Confusing the two produces either labels that do nothing or policies that block work for reasons nobody can explain."),
+      ]},
+      { h: "Build a label taxonomy people can apply", blocks: [
+        L(
+          "Public, Internal, Confidential, Restricted is enough for most organizations.",
+          "Each label needs a one-sentence definition a non-technical user can apply correctly.",
+          "Only the top labels carry encryption; over-encrypting breaks external collaboration and gets worked around.",
+        ),
+        N("Auto-labelling first", "Manual labelling coverage rarely passes 40 percent. Auto-labelling on content patterns and site defaults does the bulk of the work; manual application handles the exceptions."),
+      ]},
+      { h: "Roll DLP out in report-only mode", blocks: [
+        P("Every DLP policy should run in simulation long enough to see a full business cycle. The findings tell you which legitimate workflows would have broken, and those become the exclusions you write before enforcement."),
+        L(
+          "Simulate for at least four weeks.",
+          "Review matches with the business owner, not only with IT.",
+          "Enable policy tips before blocking, so users learn the rule before it stops them.",
+        ),
+      ]},
+      { h: "Why this matters more with Copilot", blocks: [
+        P("Copilot inherits permissions and honours labels. A tenant with sound labelling gets a useful assistant with guardrails; a tenant without it gets a very efficient way to surface documents that were never meant to circulate."),
+      ]},
+    ],
+  },
+  {
+    slug: "m365-migration-checklist",
+    category: "Digital Transformation",
+    title: "Microsoft 365 Migration Checklist: 30 Things to Do Before You Move",
+    summary: "M365 migrations fail when teams skip the discovery and planning phase. This checklist covers every critical item — from license mapping to identity readiness — that you should verify before migrating a single mailbox.",
+    date: "March 27, 2025", readingTime: "4 min read",
+    sections: [
+      { h: "Discovery before anything else", blocks: [
+        P("Migrations overrun because the source environment was larger or stranger than assumed. Inventory it properly and the schedule becomes predictable."),
+        L(
+          "Mailbox count and size distribution, including archives and shared mailboxes.",
+          "File shares: total volume, path depth, and unsupported characters.",
+          "Public folders, distribution lists, and mail-enabled security groups.",
+          "Line-of-business applications that send mail or read files directly.",
+        ),
+      ]},
+      { h: "Identity readiness", blocks: [
+        L(
+          "Directory synchronisation running clean, with duplicate and invalid attributes resolved.",
+          "UPN matching the primary SMTP address for every user.",
+          "Domains verified and DNS access confirmed, including who holds the registrar credentials.",
+          "MFA and Conditional Access designed before cutover, not after.",
+        ),
+        N("The attribute you will forget", "Proxy addresses. Legacy aliases that were never documented cause the majority of post-migration mail delivery failures."),
+      ]},
+      { h: "Licensing and cost", blocks: [
+        P("Map every user to a target licence before purchase, including the ones who only need a shared mailbox or a kiosk plan. Buying uniformly is the most common source of ongoing overspend."),
+      ]},
+      { h: "Cutover mechanics", blocks: [
+        L(
+          "A pilot group that includes at least one power user and one line-of-business application owner.",
+          "Rollback criteria written down and agreed before the window opens.",
+          "Communications scheduled for the week before, the day of, and the morning after.",
+          "A support rota for the first three business days, staffed above normal.",
+        ),
+      ]},
+      { h: "The first week after", blocks: [
+        P("Plan for it explicitly. Mail flow monitoring, a visible place to report problems, and a daily triage call for the first three days will do more for perceived success than any amount of pre-migration documentation."),
+      ]},
+    ],
+  },
+];
+
+const ORIGIN = "https://shanemccaw.com";
+const slugify = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+class Component extends DCLogic {
+  state = { slug: null, wide: true };
+
+  componentDidMount() {
+    let slug = null;
+    try {
+      slug = new URLSearchParams(window.location.search).get("slug");
+      if (!slug && window.location.hash.indexOf("slug=") > -1) slug = window.location.hash.split("slug=")[1];
+    } catch (e) {}
+    this._onResize = () => {
+      const wide = window.innerWidth >= 980;
+      if (wide !== this.state.wide) this.setState({ wide });
+    };
+    this.setState({ slug, wide: window.innerWidth >= 980 });
+    window.addEventListener("resize", this._onResize);
+  }
+  componentWillUnmount() { window.removeEventListener("resize", this._onResize); }
+
+  renderVals() {
+    const slug = this.state.slug || this.props.slug;
+    const base = ARTICLES.find((a) => a.slug === slug) || ARTICLES[0];
+    const url = ORIGIN + "/resources/" + base.slug;
+    const article = {
+      ...base,
+      linkedin: "https://www.linkedin.com/sharing/share-offsite/?url=" + encodeURIComponent(url),
+      x: "https://twitter.com/intent/tweet?text=" + encodeURIComponent(base.title) + "&url=" + encodeURIComponent(url),
+      sections: base.sections.map((s) => {
+        const id = slugify(s.h);
+        return {
+          h: s.h, id, anchor: "#" + id,
+          blocks: s.blocks.map((b) => ({ ...b, isP: b.k === "p", isList: b.k === "ul", isNote: b.k === "note" })),
+        };
+      }),
+    };
+    const others = ARTICLES.filter((a) => a.slug !== base.slug);
+    const sameCat = others.filter((a) => a.category === base.category);
+    const related = [...sameCat, ...others.filter((a) => a.category !== base.category)].slice(0, 3)
+      .map((a) => ({ ...a, href: "Marketing Article.dc.html?slug=" + a.slug }));
+    return {
+      article, related,
+      colTemplate: this.state.wide ? "210px minmax(0,1fr)" : "minmax(0,1fr)",
+      tocDisplay: this.state.wide ? "flex" : "none",
+    };
+  }
+}
+</script>
+</body>
+</html>
