@@ -67,12 +67,14 @@
  * attacker who does not control a tenant.
  *
  * ── Known gap, deliberately out of scope for #435 ─────────────────────────────
- * A successful payment marks the checkout session "paid" and audits it. It does
- * NOT yet run paid-order provisioning (contract, project, invoice, account-setup
- * email) — there is no such endpoint in this API server today: the
- * /api/portal/checkout/create-session route the legacy (unrouted) Checkout.tsx
- * calls does not exist, and the only provisioning pipeline that does exist is
- * the $0 one in portal-checkout-free.ts. Wiring paid provisioning is its own
+ * A successful payment marks the checkout session "paid", audits it, and (#4434)
+ * writes the base assessment's own `client_services` entitlement row via
+ * `recordBaseAssessmentClientService`. It does NOT yet run the rest of
+ * paid-order provisioning (contract, project, invoice) — there is no such
+ * endpoint in this API server today: the /api/portal/checkout/create-session
+ * route the legacy (unrouted) Checkout.tsx calls does not exist, and the only
+ * provisioning pipeline that does exist is the $0 one in
+ * portal-checkout-free.ts. Wiring the rest of paid provisioning is its own
  * piece of work; nothing here pretends it has happened.
  */
 
@@ -778,6 +780,55 @@ async function recordRescanClientService(
   }
 }
 
+/**
+ * Mirrors the base assessment purchase into `client_services` — the entitlement
+ * row every portal surface that reads "what does this customer own" (dashboard,
+ * offers, documents) actually checks. Same shape `recordRescanClientService`
+ * already uses for the #490 add-on, minus the subscription-specific columns:
+ * this is a one-time purchase, not a recurring one.
+ *
+ * Non-fatal: the money has moved and `checkout_sessions.status = "paid"` is
+ * already the record of truth by the time this runs. A missing local mirror is
+ * a gap to alert on, not a reason to fail the payment response the buyer is
+ * waiting on.
+ */
+async function recordBaseAssessmentClientService(order: ResolvedOrder): Promise<void> {
+  try {
+    const email = order.email.toLowerCase().trim();
+    const [user] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.email, email))
+      .limit(1);
+
+    if (!user) {
+      log.error(
+        { checkoutSessionId: order.sessionId, serviceId: order.serviceId },
+        "assessment-flow payment: no users row for the buyer — client_services row NOT written (consent-time Prospect provisioning must have failed)",
+      );
+      return;
+    }
+
+    await db.insert(clientServicesTable).values({
+      clientUserId: user.id,
+      serviceId: order.serviceId,
+      status: "active",
+      progress: 0,
+      startDate: new Date(),
+    });
+
+    log.info(
+      { checkoutSessionId: order.sessionId, serviceId: order.serviceId, clientUserId: user.id },
+      "assessment-flow payment: base assessment client_services row created",
+    );
+  } catch (err) {
+    log.error(
+      { err, checkoutSessionId: order.sessionId, serviceId: order.serviceId },
+      "assessment-flow payment: base assessment client_services mirror failed — the Stripe charge IS captured",
+    );
+  }
+}
+
 // ── POST /api/public/flow/payment-confirmed ────────────────────────────────────
 // The success callback stripe.js's confirmPayment resolves into. The client's
 // word is not evidence: the intent is re-read from Stripe and must be
@@ -857,6 +908,11 @@ router.post("/public/flow/payment-confirmed", async (req: Request, res: Response
         { checkoutSessionId: order.sessionId, paymentIntentId: intent.id, amountCents: intent.amount_received },
         "assessment-flow payment: checkout session marked paid",
       );
+
+      // #4434 — the base assessment's own entitlement row. Deliberately inside
+      // this "first confirm only" block: a replayed confirm must not double-
+      // insert, and the guard above already makes this run exactly once.
+      await recordBaseAssessmentClientService(order);
 
       // #460 — Thank You + Invoice, combined into one email per Shane's
       // confirmed scope. Fire-and-forget: a mail hiccup must never fail the
