@@ -3596,7 +3596,9 @@ export const wfRunsTable = pgTable("wf_runs", {
   errorMessage: text("error_message"),
   retriggeredFromRunId: integer("retriggered_from_run_id").references((): AnyPgColumn => wfRunsTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("wf_runs_retriggered_from_run_id_idx").on(t.retriggeredFromRunId),
+]);
 
 export type InsertWfRun = typeof wfRunsTable.$inferInsert;
 export type WfRun = typeof wfRunsTable.$inferSelect;
@@ -3609,7 +3611,9 @@ export const wfRunNodeLogsTable = pgTable("wf_run_node_logs", {
   message: text("message").notNull(),
   metadata: jsonb("metadata").$type<Record<string, unknown>>(),
   timestamp: timestamp("timestamp").notNull().defaultNow(),
-});
+}, (t) => [
+  index("wf_run_node_logs_run_id_idx").on(t.runId),
+]);
 
 export type InsertWfRunNodeLog = typeof wfRunNodeLogsTable.$inferInsert;
 export type WfRunNodeLog = typeof wfRunNodeLogsTable.$inferSelect;
@@ -3624,7 +3628,9 @@ export const wfRunNodeOutputsTable = pgTable("wf_run_node_outputs", {
   status: text("status", { enum: ["ok", "error", "skipped"] }).notNull().default("ok"),
   errorMessage: text("error_message"),
   timestamp: timestamp("timestamp").notNull().defaultNow(),
-});
+}, (t) => [
+  index("wf_run_node_outputs_run_id_idx").on(t.runId),
+]);
 
 export type InsertWfRunNodeOutput = typeof wfRunNodeOutputsTable.$inferInsert;
 export type WfRunNodeOutput = typeof wfRunNodeOutputsTable.$inferSelect;
@@ -3652,7 +3658,10 @@ export const wfTriggerEventsTable = pgTable("wf_trigger_events", {
   durationMs: integer("duration_ms"),
   payload: jsonb("payload").$type<Record<string, unknown>>(),
   errorMessage: text("error_message"),
-});
+}, (t) => [
+  index("wf_trigger_events_run_id_idx").on(t.runId),
+  index("wf_trigger_events_trigger_id_idx").on(t.triggerId),
+]);
 
 export type InsertWfTriggerEvent = typeof wfTriggerEventsTable.$inferInsert;
 export type WfTriggerEvent = typeof wfTriggerEventsTable.$inferSelect;
