@@ -77,7 +77,7 @@ import { getHostBase, signWriteConsentState } from "./consent.ts";
 import { credentialSchema, resolveActor } from "./public-free-scan-sow.ts";
 import { loadOrCreateEngagement, selectionFromRow, type FreeScanActor } from "../lib/free-scan-engagement.ts";
 import { resolveFreeScanWriteScopes, type FreeScanWriteScopeResult } from "../lib/free-scan-write-scopes.ts";
-import { resolveRemediationChecklist, isKnownCheckKey } from "../lib/remediation-checklist.ts";
+import { isKnownCheckKey } from "../lib/remediation-checklist.ts";
 import { buildAdminConsentUrl } from "../lib/graph.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
@@ -176,28 +176,30 @@ router.post("/public/free-scan/remediate/read", remediateLimiter, noStore, async
 
     const selection = selectionFromRow(row);
 
-    // The scope card is derived on every read rather than served from the
-    // snapshot, so a Prospect who has NOT yet decided always sees the current
-    // truth. Once a decision is recorded, the snapshot is what they were
-    // actually asked to approve and that is what is echoed back.
-    let scopeResult: FreeScanWriteScopeResult;
-    if (row.writeConsentDecision === "granted" || row.writeConsentDecision === "declined") {
-      const snapshot = row.writeConsentScopes as FreeScanWriteScopeResult | null;
-      scopeResult = snapshot ?? (await resolveFreeScanWriteScopes(actor.customerId, selection.phaseSlugs));
-    } else {
-      scopeResult = await resolveFreeScanWriteScopes(actor.customerId, selection.phaseSlugs);
-    }
+    // One resolution for the whole screen: the scope card AND the guide come
+    // off the same read of the same findings, so the two can never disagree
+    // about what this tenant's open items are.
+    const live = await resolveFreeScanWriteScopes(actor.customerId, selection.phaseSlugs);
 
-    // The guide is only computed once the gate is behind them — a Prospect
-    // still on the consent screen has no use for it and it is a real query.
-    const checklist = stage === "guide" ? await resolveRemediationChecklist(actor.customerId) : null;
+    // The CARD is served from the snapshot once a decision has been recorded —
+    // what the Prospect was actually asked to approve, not what a later scan
+    // would ask for. Before a decision, the live derivation is the truth.
+    const decided = row.writeConsentDecision === "granted" || row.writeConsentDecision === "declined";
+    const snapshot = decided ? (row.writeConsentScopes as FreeScanWriteScopeResult | null) : null;
+    const scopeResult = snapshot ?? live;
 
     res.json({
       stage,
       sowReference: row.sowReference,
       paymentPlan: row.paymentPlan,
       phaseSlugs: selection.phaseSlugs,
-      runId: scopeResult.runId,
+      // The money the done screen states, read back off the engagement's own
+      // captured figures — never recomputed here, so a catalog price edit after
+      // payment cannot restate what was actually charged.
+      chargedCents: row.chargedCents ?? 0,
+      agreedServicesCents: row.agreedServicesCents ?? 0,
+      runId: live.runId,
+      boughtPhases: live.boughtPhases,
       scopes: scopeResult.scopes,
       phasesWithoutWrite: scopeResult.phasesWithoutWrite,
       grantedBeyondScope: scopeResult.grantedBeyondScope,
@@ -213,7 +215,10 @@ router.post("/public/free-scan/remediate/read", remediateLimiter, noStore, async
         // offered at all rather than 503 after a click.
         available: !!process.env.MT_APP_WRITE_CLIENT_ID && !!tenant?.readGranted,
       },
-      checklist: checklist ? { runId: checklist.runId, items: checklist.items } : null,
+      // The guide only travels once the gate is behind them — a Prospect still
+      // on the consent screen has no use for it, and shipping their findings
+      // list to an undecided screen is more than that screen needs.
+      guide: stage === "guide" ? live.guide : null,
     });
   } catch (err) {
     log.error({ err, customerId: actor.customerId }, "free-scan remediate: read failed");

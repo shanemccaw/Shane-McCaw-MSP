@@ -1953,6 +1953,28 @@ export default function FreeScanReview() {
                         Shane reviews the signed scope and confirms the Phase 1 window directly — an email within one
                         business day, not a queue ticket.
                       </span>
+                      {/* #1375 — Remediate is the flow step after this one: the
+                          write-consent gate, then the real findings-driven guide. */}
+                      <a
+                        href="/scan/remediate"
+                        data-testid="freescan-review-continue-remediate"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 7,
+                          alignSelf: "flex-start",
+                          marginTop: 3,
+                          padding: "9px 16px",
+                          borderRadius: 9,
+                          fontSize: 12.5,
+                          fontWeight: 700,
+                          color: "#fff",
+                          background: "linear-gradient(90deg,#3b82f6,#8b5cf6)",
+                          textDecoration: "none",
+                        }}
+                      >
+                        Continue {iconArrowRight}
+                      </a>
                     </div>
                   ) : (
                     <>

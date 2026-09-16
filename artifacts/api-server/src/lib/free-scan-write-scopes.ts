@@ -49,7 +49,7 @@ import { db, servicesTable, configPacksTable, configPackTemplatesTable, baseline
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 
 import { FREE_SCAN_SOW_PHASES } from "./free-scan-sow.ts";
-import { resolveRemediationChecklist } from "./remediation-checklist.ts";
+import { resolveRemediationChecklist, type RemediationChecklistItem } from "./remediation-checklist.ts";
 import { buildCheckKeyPillarMap, pillarForCheckKey, type PillarSummaryKey } from "./pillar-summary-stats.ts";
 import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
 import {
@@ -105,9 +105,30 @@ export interface FreeScanPhaseWithoutWrite {
   reason: "no_open_findings" | "no_executable_fix";
 }
 
+/** One phase the Prospect actually bought, as the Remediate step needs to name it. */
+export interface FreeScanBoughtPhase {
+  slug: string;
+  /** The real `services.name` — never a label written into a component. */
+  name: string;
+  pillar: PillarSummaryKey;
+}
+
+/**
+ * One real, findings-derived remediation item, filed under the bought phase
+ * that covers it. `phaseSlug` is null for an open finding on a pillar the
+ * Prospect deferred (or on no pillar at all) — the item is still real and
+ * still theirs, it just is not something they have bought delivery of.
+ */
+export interface FreeScanGuideItem extends RemediationChecklistItem {
+  phaseSlug: string | null;
+  phaseName: string | null;
+}
+
 export interface FreeScanWriteScopeResult {
   /** `msp_diagnostic_runs.run_id` the findings came from, or null when the tenant has never scanned. */
   runId: string | null;
+  /** The bought phases, in the catalog delivery order the SOW prints them in. */
+  boughtPhases: FreeScanBoughtPhase[];
   /** Derived, deduped, ordered — the "Scopes requested" card. */
   scopes: FreeScanWriteScope[];
   /** Bought phases contributing no scope, each with its real reason. */
@@ -119,6 +140,14 @@ export interface FreeScanWriteScopeResult {
    * honest rather than implying a per-phase grant that does not exist.
    */
   grantedBeyondScope: string[];
+  /**
+   * The tenant's real open findings, each filed under its bought phase — the
+   * remediation guide itself. Carried on this result rather than resolved a
+   * second time by the caller: the scope derivation has already read exactly
+   * these findings, and two separate reads could disagree if a scan landed
+   * between them.
+   */
+  guide: FreeScanGuideItem[];
 }
 
 /** `services.slug` → `services.name` for the six real phase rows. */
@@ -167,7 +196,14 @@ export async function resolveFreeScanWriteScopes(
   const names = await phaseNamesBySlug(boughtPhases.map((p) => p.slug));
 
   if (boughtPhases.length === 0) {
-    return { runId: null, scopes: [], phasesWithoutWrite: [], grantedBeyondScope: [...requestable].sort() };
+    return {
+      runId: null,
+      boughtPhases: [],
+      scopes: [],
+      phasesWithoutWrite: [],
+      grantedBeyondScope: [...requestable].sort(),
+      guide: [],
+    };
   }
 
   const [{ runId, items }, pillarOf] = await Promise.all([
@@ -180,11 +216,20 @@ export async function resolveFreeScanWriteScopes(
     boughtPhases.map((p) => [p.pillar, p]),
   );
   const checkKeysByPhase = new Map<string, Set<string>>(boughtPhases.map((p) => [p.slug, new Set<string>()]));
+  const guide: FreeScanGuideItem[] = [];
   for (const item of items) {
     const pillar = pillarOf(item.checkKey);
-    if (!pillar) continue; // unclaimed check — attaches to no card and to no phase
-    const phase = phaseByPillar.get(pillar);
-    if (!phase) continue; // a pillar whose phase the Prospect deferred
+    // An unclaimed check attaches to no pillar card and so to no phase; a
+    // claimed one whose phase was deferred is real but not bought. Both stay
+    // in the guide with a null phase rather than being dropped — they are
+    // this tenant's real open findings either way.
+    const phase = pillar ? phaseByPillar.get(pillar) : undefined;
+    guide.push({
+      ...item,
+      phaseSlug: phase?.slug ?? null,
+      phaseName: phase ? names.get(phase.slug) ?? phase.pillarLabel : null,
+    });
+    if (!phase) continue;
     checkKeysByPhase.get(phase.slug)!.add(item.checkKey);
   }
 
@@ -319,5 +364,12 @@ export async function resolveFreeScanWriteScopes(
     "free-scan write scopes derived from paid phases and real findings",
   );
 
-  return { runId, scopes, phasesWithoutWrite, grantedBeyondScope };
+  return {
+    runId,
+    boughtPhases: boughtPhases.map((p) => ({ slug: p.slug, name: names.get(p.slug) ?? p.pillarLabel, pillar: p.pillar })),
+    scopes,
+    phasesWithoutWrite,
+    grantedBeyondScope,
+    guide,
+  };
 }
