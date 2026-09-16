@@ -200,6 +200,47 @@ export function assessDivergence(root, targetRef) {
   return { lossless, basis, localCommits, notUpstream, mergeBase, mergeCount };
 }
 
+/**
+ * Git #4330: is the SERVING checkout's HEAD a real ancestor of origin/main? Read-only,
+ * no fetch (the serving checkout's HEAD only ever advances TO origin/main, so a stale
+ * origin/main ref can't manufacture a false divergence -- only a local-only commit can).
+ *
+ * Per-commit liveness (serving-checkout.mjs) can't see this on its own: a checkout kept
+ * current by `git pull` merges contains every pushed commit -- so each one reads "live" --
+ * while its merge commits and unpushed artifact commits make every future ff-only refresh
+ * skip. That state sat undetected for 11 local commits before #4330.
+ */
+export function assessServingDivergence(config) {
+  const root = config.servingRoot || config.mainRepoRoot;
+  const originRef = "origin/main";
+  const head = revParse(root, "HEAD");
+  const target = revParse(root, originRef);
+  if (!head || !target) {
+    return { checked: false, diverged: false, root, head, target, reason: `could not resolve ${head ? originRef : "HEAD"} in ${root} -- divergence not checked` };
+  }
+  if (isAncestor(root, head, target)) {
+    return { checked: true, diverged: false, root, head, target };
+  }
+  const div = assessDivergence(root, originRef);
+  const commits = div.lossless ? div.localCommits : div.notUpstream;
+  return {
+    checked: true,
+    diverged: true,
+    root,
+    head,
+    target,
+    lossless: div.lossless,
+    localOnlyCommits: div.localCommits.map((c) => c.sha),
+    reason:
+      `serving checkout ${root} (HEAD ${shortSha(head)}) is not an ancestor of origin/main (${shortSha(target)}) -- ` +
+      `${div.localCommits.length} local-only commit(s), so every fast-forward refresh skips and nothing pushed reaches the dev ports. ` +
+      (div.lossless
+        ? `Their content is already on origin/main (${div.basis}); the next refresh reconciles with reset --keep unless an uncommitted change blocks it: `
+        : `${div.notUpstream.length} carry content origin/main lacks -- push or drop them in ${root}: `) +
+      listCommits(commits),
+  };
+}
+
 /** Read a dev-all per-service meta ({pid,status,...}) from the shared log dir. */
 function readServiceMeta(config, name) {
   try {

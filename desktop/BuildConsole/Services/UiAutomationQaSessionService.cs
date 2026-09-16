@@ -259,8 +259,16 @@ namespace BuildConsole.Services
                     ActivityLog.Log(Channel, $"Slow automated artifact write: {ioSw.ElapsedMilliseconds}ms for session {context.SessionId}");
                 }
 
-                // 7. Commit and push to Git if enabled
-                if (commitToGit)
+                // 7. Commit and push to Git if enabled. Commit-without-push is never done (Git #4330):
+                // repoRoot is the shared checkout serving the dev ports, and a local-only commit there
+                // makes every dev-server fast-forward skip until someone removes it by hand. A persisted
+                // settings.json "AutomationQaAutoPushEnabled": false from before #4122 kept 6 of these
+                // stranded — so with push off the artifacts stay on disk, uncommitted and unstaged.
+                if (commitToGit && !pushToRemote)
+                {
+                    ActivityLog.Log(Channel, $"Automated QA session {context.SessionId}: artifacts written to Bugs/{cleanProduct}/{context.SessionId}/automation/ but NOT committed — auto-push is off, and a commit that isn't pushed would diverge the shared checkout from origin/main (Git #4330). Turn on AutomationQaAutoPushEnabled to publish them.");
+                }
+                else if (commitToGit)
                 {
                     string shortSummary = !string.IsNullOrWhiteSpace(context.ShortSummary)
                         ? context.ShortSummary
@@ -281,7 +289,8 @@ namespace BuildConsole.Services
                     if (stageOk)
                     {
                         var gitCommitSw = Stopwatch.StartNew();
-                        var (commitOk, commitOut, commitErr) = await RunGitCommandWithOutputAsync(repoRoot, $"commit -m \"{commitMsg.Replace("\"", "\\\"")}\"");
+                        // Pathspec-scoped so nothing else sitting in the shared checkout's index is swept in.
+                        var (commitOk, commitOut, commitErr) = await RunGitCommandWithOutputAsync(repoRoot, $"commit -m \"{commitMsg.Replace("\"", "\\\"")}\" -- \"{relAutomationPath}\"");
                         gitCommitSw.Stop();
                         if (gitCommitSw.ElapsedMilliseconds > 1000)
                         {
@@ -290,40 +299,34 @@ namespace BuildConsole.Services
 
                         if (commitOk)
                         {
-                            if (pushToRemote)
+                            string branch = await GetGitBranchAsync(repoRoot);
+                            var gitPushSw = Stopwatch.StartNew();
+                            var (pushOk, pushErr) = await PushArtifactCommitWithRebaseAsync(repoRoot, branch, context.SessionId, relAutomationPath);
+                            gitPushSw.Stop();
+                            if (gitPushSw.ElapsedMilliseconds > 1000)
                             {
-                                string branch = await GetGitBranchAsync(repoRoot);
-                                var gitPushSw = Stopwatch.StartNew();
-                                var (pushOk, pushErr) = await PushArtifactCommitWithRebaseAsync(repoRoot, branch, context.SessionId);
-                                gitPushSw.Stop();
-                                if (gitPushSw.ElapsedMilliseconds > 1000)
-                                {
-                                    ActivityLog.Log(Channel, $"Slow git push (fetch+rebase+push) for automation: {gitPushSw.ElapsedMilliseconds}ms");
-                                }
-
-                                if (pushOk)
-                                {
-                                    var (hashOk, hash, _) = await RunGitCommandWithOutputAsync(repoRoot, "rev-parse --short HEAD");
-                                    result.CommitHash = hashOk ? hash.Trim() : "committed";
-                                }
-                                else
-                                {
-                                    // PushArtifactCommitWithRebaseAsync has already unwound the local commit
-                                    // (git reset --keep origin/<branch>) on every failure path so the shared
-                                    // checkout never diverges from origin (Git #4122). No commit landed, so
-                                    // CommitHash stays unset — the artifact files remain on disk uncommitted
-                                    // for the next successful run to pick up.
-                                    result.Error = pushErr;
-                                }
+                                ActivityLog.Log(Channel, $"Slow git push (fetch+rebase+push) for automation: {gitPushSw.ElapsedMilliseconds}ms");
                             }
-                            else
+
+                            if (pushOk)
                             {
                                 var (hashOk, hash, _) = await RunGitCommandWithOutputAsync(repoRoot, "rev-parse --short HEAD");
                                 result.CommitHash = hashOk ? hash.Trim() : "committed";
                             }
+                            else
+                            {
+                                // PushArtifactCommitWithRebaseAsync has already unwound the local commit
+                                // (git reset --soft HEAD~1 + unstage) on every failure path so the shared
+                                // checkout never diverges from origin (Git #4122/#4330). No commit landed, so
+                                // CommitHash stays unset — the artifact files remain on disk, untracked.
+                                result.Error = pushErr;
+                            }
                         }
                         else
                         {
+                            // Don't leave the artifacts staged in the shared index, where the next
+                            // unrelated commit made in this checkout would sweep them in.
+                            await RunGitCommandAsync(repoRoot, $"reset -q -- \"{relAutomationPath}\"");
                             ActivityLog.Log(Channel, $"Git commit warning: {commitErr}");
                         }
                     }
@@ -653,11 +656,18 @@ namespace BuildConsole.Services
         /// stranded as a local-only commit on the shared main checkout (Git #4122). Each attempt fetches,
         /// rebases the single artifact commit onto origin's current tip, then pushes — so a concurrent agent
         /// moving main underneath this run is a normal retry, not a silent divergence. If every attempt is
-        /// exhausted (or the rebase itself conflicts), the local branch is unwound back to origin's real tip
-        /// via 'git reset --keep', which preserves the artifact files as uncommitted working-tree changes
-        /// instead of losing them — only the commit itself is undone, so the checkout can never diverge.
+        /// exhausted (or the rebase itself conflicts), only the artifact commit is unwound — 'git reset --soft
+        /// HEAD~1', guarded so HEAD must be a commit touching nothing outside <paramref name="relArtifactPath"/>.
+        /// Git #4330: this used to be 'git reset --keep origin/&lt;branch&gt;', which (a) DELETED the artifact
+        /// files from disk despite this comment promising they survived — --keep rewrites every file that
+        /// differs between HEAD and the target — and (b) silently dropped any other unpushed local commit off
+        /// the branch. --soft plus unstaging just that path keeps the files on disk, untracked, and leaves
+        /// anything else staged in the shared checkout alone. Shared with
+        /// <see cref="VisualTestTrackerSessionSyncService.StageCommitPushAsync"/>, which used to push once with
+        /// no fetch/rebase and leave a rejected commit behind ("commit is safely local!") — that is how the
+        /// manual "QA Session … – Marketing" commit stranded on the serving checkout.
         /// </summary>
-        private static async Task<(bool success, string? error)> PushArtifactCommitWithRebaseAsync(string repoRoot, string branch, string sessionId)
+        internal static async Task<(bool success, string? error)> PushArtifactCommitWithRebaseAsync(string repoRoot, string branch, string sessionId, string relArtifactPath)
         {
             const int maxAttempts = 3;
             string? lastError = null;
@@ -694,26 +704,50 @@ namespace BuildConsole.Services
             }
 
             // Every attempt to land the commit on origin failed. Never leave it stranded as a
-            // local-only commit on the shared checkout — unwind the branch pointer back to
-            // origin's real tip. A best-effort final fetch first, so the reset targets the
-            // freshest origin/<branch> we can reach.
+            // local-only commit on the shared checkout. A best-effort final fetch first: a push that
+            // timed out client-side can still have landed, and unwinding a commit origin already has
+            // would leave its files untracked exactly where the next fast-forward needs to write them.
             var (finalFetchOk, finalFetchErr) = await RunGitCommandAsync(repoRoot, $"fetch origin {branch}");
             if (!finalFetchOk)
             {
                 ActivityLog.Log(Channel, $"Automated QA session {sessionId}: final fetch before un-strand reset failed: {finalFetchErr}. Falling back to the last known origin/{branch}.");
             }
-
-            var (resetOk, _, resetErr) = await RunGitCommandWithOutputAsync(repoRoot, $"reset --keep origin/{branch}");
-            if (!resetOk)
+            var (landedOk, _, _) = await RunGitCommandWithOutputAsync(repoRoot, $"merge-base --is-ancestor HEAD origin/{branch}");
+            if (landedOk)
             {
-                // Even the recovery reset failed — this is the one case genuinely worth failing loudly
-                // for, since a local-only commit may still be sitting on the shared checkout.
-                string failMsg = $"push failed after {maxAttempts} attempt(s) ({lastError}) AND the recovery 'git reset --keep origin/{branch}' also failed ({resetErr}) — a local-only commit may remain stranded on the shared checkout; manual intervention required.";
+                ActivityLog.Log(Channel, $"Automated QA session {sessionId}: push reported failure ({lastError}) but HEAD is already on origin/{branch} — it landed; nothing to unwind.");
+                return (true, null);
+            }
+
+            // Guard: only unwind HEAD if it really is the artifact commit — one touching nothing outside
+            // relArtifactPath. Anything else is real work and is never reset here.
+            string prefix = relArtifactPath.Replace('\\', '/').TrimEnd('/') + "/";
+            var (treeOk, headPaths, treeErr) = await RunGitCommandWithOutputAsync(repoRoot, "diff-tree --no-commit-id -r --name-only HEAD");
+            var paths = treeOk ? headPaths.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries) : Array.Empty<string>();
+            if (!treeOk || paths.Length == 0 || paths.Any(f => !f.Trim().StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+            {
+                string failMsg = $"push failed after {maxAttempts} attempt(s) ({lastError}), and HEAD is not recognisably the artifact commit for {prefix} ({(treeOk ? "it touches other paths" : treeErr)}) — left untouched rather than risk resetting real work; a local-only commit may remain on the shared checkout (Git #4330).";
                 ActivityLog.Log(Channel, $"Automated QA session {sessionId}: {failMsg}");
                 return (false, failMsg);
             }
 
-            ActivityLog.Log(Channel, $"Automated QA session {sessionId}: push failed after {maxAttempts} attempt(s) ({lastError}). Unwound the local commit via 'git reset --keep origin/{branch}' so the shared checkout stays on origin's HEAD; artifact files remain on disk as uncommitted changes for the next successful run to pick up.");
+            // --soft then unstage only our path: a plain --mixed would also unstage anything someone
+            // else has staged in this shared checkout.
+            var (resetOk, _, resetErr) = await RunGitCommandWithOutputAsync(repoRoot, "reset --soft -q HEAD~1");
+            if (resetOk)
+            {
+                await RunGitCommandAsync(repoRoot, $"reset -q -- \"{prefix}\"");
+            }
+            if (!resetOk)
+            {
+                // Even the recovery reset failed — this is the one case genuinely worth failing loudly
+                // for, since a local-only commit may still be sitting on the shared checkout.
+                string failMsg = $"push failed after {maxAttempts} attempt(s) ({lastError}) AND the recovery 'git reset --soft HEAD~1' also failed ({resetErr}) — a local-only commit may remain stranded on the shared checkout; manual intervention required.";
+                ActivityLog.Log(Channel, $"Automated QA session {sessionId}: {failMsg}");
+                return (false, failMsg);
+            }
+
+            ActivityLog.Log(Channel, $"Automated QA session {sessionId}: push failed after {maxAttempts} attempt(s) ({lastError}). Unwound only the artifact commit via 'git reset --soft HEAD~1' + unstage so the shared checkout does not diverge from origin/{branch}; the files under {prefix} remain on disk, untracked.");
             return (false, lastError);
         }
     }

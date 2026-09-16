@@ -800,7 +800,7 @@ namespace BuildConsole
                     if (syncRes.Success)
                     {
                         string commitPart = !string.IsNullOrEmpty(syncRes.CommitHash) ? $" ({syncRes.CommitHash})" : "";
-                        string pushPart = syncRes.PushedToRemote ? " • Pushed to remote" : "";
+                        string pushPart = syncRes.PushedToRemote ? " • Pushed to remote" : (!string.IsNullOrEmpty(syncRes.PushOutput) ? $" • {syncRes.PushOutput}" : "");
                         ToastEngine.Success("Session Synced", $"✓ Saved to /Bugs/{syncRes.ProductName}/{syncRes.SessionId}/ and synced to Git{commitPart}{pushPart}.");
                         TestModeComposerPanel.ShowToast($"Synced to /Bugs/{syncRes.ProductName}/{syncRes.SessionId}/");
 

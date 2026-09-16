@@ -166,7 +166,7 @@ namespace BuildConsole
                 // Sync to Git
                 StatusMessageText.Text = ChkPushToGit.IsChecked == true
                     ? "Writing artifacts, committing, and pushing to remote Git repository..."
-                    : "Writing artifacts and committing to local Git repository...";
+                    : "Writing artifacts to disk (not committed — push is off)...";
 
                 bool push = ChkPushToGit.IsChecked == true;
                 var res = await VisualTestTrackerSessionSyncService.ExecuteGitSyncAsync(_context, _repoRoot, pushToRemote: push);
@@ -178,7 +178,8 @@ namespace BuildConsole
                     SyncProgressBar.Visibility = Visibility.Collapsed;
 
                     string commitPart = !string.IsNullOrEmpty(res.CommitHash) ? $" (Commit: {res.CommitHash})" : "";
-                    string pushPart = res.PushedToRemote ? " • Pushed to remote." : (push ? " • Committed locally (push skipped/offline)." : "");
+                    // Git #4330: a commit is only ever kept if it was pushed, so an unpushed sync explains itself.
+                    string pushPart = res.PushedToRemote ? " • Pushed to remote." : (!string.IsNullOrEmpty(res.PushOutput) ? $" • {res.PushOutput}" : "");
 
                     string bugsFolder = Directory.Exists(Path.Combine(_repoRoot, "Bug")) && !Directory.Exists(Path.Combine(_repoRoot, "Bugs")) ? "Bug" : "Bugs";
                     StatusMessageText.Text = $"✓ Session saved and synced to Git!{commitPart}{pushPart}\nPath: /{bugsFolder}/{res.ProductName}/{res.SessionId}/";

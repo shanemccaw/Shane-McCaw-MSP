@@ -45,7 +45,8 @@ async function main() {
   process.env.DEV_SERVER_WORKTREE = path.join(tmp, "dev-server"); // mirror, never created
 
   const sc = await import("./serving-checkout.mjs");
-  const { assessDivergence, fastForwardMainCheckout } = await import("./refresh-main-server.mjs");
+  const { assessDivergence, fastForwardMainCheckout, assessServingDivergence } = await import("./refresh-main-server.mjs");
+  const { exitCodeFor } = await import("./request-restart.mjs");
   const { loadConfig } = await import("./config.mjs");
 
   try {
@@ -151,6 +152,13 @@ async function main() {
     let ff = fastForwardMainCheckout(config);
     ok(!ff.pulled && ff.reason.includes("Automated QA Session s1") && git(serving, ["rev-parse", "HEAD"]) === qa, "ff: skipped, reason names the local-only commit, HEAD untouched");
 
+    // Git #4330: the divergence itself is a request-restart FAILURE (exit 4), not a quiet NOT LIVE note
+    let sd = assessServingDivergence(config);
+    ok(sd.checked && sd.diverged && !sd.lossless && sd.localOnlyCommits.includes(qa) && sd.reason.includes("Automated QA Session s1"), "#4330: serving HEAD not an ancestor of origin/main -> diverged, names the local-only commit");
+    ok(exitCodeFor({ landed: true, live: true, servingDivergence: sd }) === 4, "#4330: diverged beats a live commit -> exit 4");
+    ok(exitCodeFor({ landed: true, live: null, buildSet: "s", servingDivergence: sd }) === 4, "#4330: diverged fails a deferred build-set member too -> exit 4");
+    ok(exitCodeFor({ landed: false, servingDivergence: sd }) === 1, "#4330: not merged still exits 1");
+
     // the same commit gets published upstream via cherry-pick (different sha)
     git(side, ["pull", "-q", "--rebase", "origin", "main"]);
     git(side, ["fetch", "-q", serving, qa]);
@@ -164,6 +172,10 @@ async function main() {
     ff = fastForwardMainCheckout(config);
     const originHead = git(serving, ["rev-parse", "origin/main"]);
     ok(ff.pulled && ff.reconciled && git(serving, ["rev-parse", "HEAD"]) === originHead, "ff: reconciled to origin/main with reset --keep");
+    sd = assessServingDivergence(config);
+    ok(sd.checked && !sd.diverged, "#4330: after reconcile the serving HEAD is an ancestor of origin/main -> not diverged");
+    ok(exitCodeFor({ landed: true, live: true, servingDivergence: sd }) === 0 && exitCodeFor({ landed: true, live: false, servingDivergence: sd }) === 3, "#4330: not diverged -> 0 live / 3 not live, unchanged");
+    ok(!assessServingDivergence({ servingRoot: tmp }).checked, "#4330: a root with no origin/main is reported unchecked, never diverged");
     ok(readFileSync(path.join(serving, "docs", "note.md"), "utf8") === "local edit\n", "ff: unrelated uncommitted change carried over, not discarded");
     ok(readFileSync(path.join(serving, "Bugs/Portal/s1/automation/report.json"), "utf8") === "{}\n", "ff: the QA artifact content is still present (now via origin/main)");
 

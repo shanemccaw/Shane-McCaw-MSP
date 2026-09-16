@@ -203,9 +203,9 @@ namespace BuildConsole.Services
             {
                 throw new InvalidOperationException(pushResult.Error ?? "git stage/commit failed");
             }
-            if (!pushResult.PushedToRemote)
+            if (!pushResult.PushedToRemote && !string.IsNullOrEmpty(pushResult.PushOutput))
             {
-                ActivityLog.Log(VisualTestTrackerStore.Channel, $"ReExport: committed {relDir} ({pushResult.CommitHash}) but push did not complete: {pushResult.PushOutput}");
+                ActivityLog.Log(VisualTestTrackerStore.Channel, $"ReExport: {relDir} not published: {pushResult.PushOutput}");
             }
         }
 

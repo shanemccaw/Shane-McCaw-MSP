@@ -18,6 +18,12 @@
 //   3  merged into the C:\dev-server mirror but NOT live where traffic is served --
 //      the output names why. Never report a change as "verified via live curl"
 //      on exit 3.
+//   4  (Git #4330) the checkout serving the dev ports has DIVERGED from origin/main --
+//      its HEAD is not an ancestor of origin/main, so every fast-forward refresh
+//      skips and no pushed commit can go live there. Checked on every call, whatever
+//      the merge outcome, and takes precedence over 3/0: even a commit that is
+//      currently in the serving HEAD (pulled in by a merge) is on a checkout that
+//      can no longer advance. Exit 1 still wins when the commit didn't merge.
 //   2  crashed
 //
 // The coalescing contract (matches how CI batches commits landing mid-build):
@@ -48,7 +54,7 @@ import {
   cleanup,
 } from "./queue.mjs";
 import { runCycle, runSetMemberCycle } from "./coordinator.mjs";
-import { refreshMainServer } from "./refresh-main-server.mjs";
+import { refreshMainServer, assessServingDivergence } from "./refresh-main-server.mjs";
 import { verifyServingCheckout, describeVerification } from "./serving-checkout.mjs";
 import { existsSync } from "node:fs";
 
@@ -104,9 +110,22 @@ function makeRestart(config) {
  * checkout that never received the commit. `live` answers the real question.
  */
 export async function requestRestart(opts = {}) {
-  const res = await mergeAndRestart(opts);
-  if (!res.landed) return res;
   const config = loadConfig({ cwd: opts.worktree || process.cwd() });
+  const res = await verifyLive(config, await mergeAndRestart(opts));
+  // Git #4330: checked on every path (deferred set members, joins, fake restarts
+  // included) -- a diverged serving checkout blocks every build, not just this one.
+  return { ...res, servingDivergence: assessServingDivergence(config) };
+}
+
+/** Process exit code for a requestRestart result -- see the table at the top. */
+export function exitCodeFor(res) {
+  if (!res.landed) return 1;
+  if (res.servingDivergence?.diverged) return 4;
+  return res.live === false ? 3 : 0;
+}
+
+async function verifyLive(config, res) {
+  if (!res.landed) return res;
   if (res.buildSet && !res.restarted) {
     return { ...res, live: null, liveNote: "restart deferred until the whole build set completes -- serving checkout not verified yet" };
   }
@@ -327,8 +346,11 @@ if (isMain) {
         } else if (res.landed && res.live === true) {
           console.log(`[dev-server] ${describeVerification(res.liveVerification)}`);
         }
+        if (res.servingDivergence?.diverged) {
+          console.error(`[dev-server] DIVERGED  ${res.servingDivergence.reason} -- nothing is verified live until this is resolved (exit 4).`);
+        }
       }
-      process.exit(!res.landed ? 1 : res.live === false ? 3 : 0);
+      process.exit(exitCodeFor(res));
     })
     .catch((err) => {
       console.error(`[dev-server] ERROR ${err.stack || err}`);

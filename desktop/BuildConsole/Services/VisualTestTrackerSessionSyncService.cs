@@ -706,6 +706,19 @@ namespace BuildConsole.Services
         {
             var result = new GitStageCommitPushResult { CommitMessage = commitMessage };
 
+            // Git #4330: repoRoot is the shared checkout serving the dev ports. A commit made here
+            // and not pushed makes every dev-server fast-forward skip — the manual "QA Session … –
+            // Marketing" commit sat stranded exactly that way. So no push means no commit (and no
+            // staging either, which the next unrelated commit in this checkout would sweep in).
+            if (!pushToRemote)
+            {
+                result.Success = true;
+                result.CommitMessage = "";
+                result.PushOutput = "Not committed: push is off, and a commit that isn't pushed would diverge the shared checkout from origin/main (Git #4330). Files are saved on disk.";
+                ActivityLog.Log("visual-test-tracker", $"{relDir}: {result.PushOutput}");
+                return result;
+            }
+
             var addSw = Stopwatch.StartNew();
             var addRes = await RunGitAsync(repoRoot, $"add \"{relDir}\"");
             addSw.Stop();
@@ -725,7 +738,8 @@ namespace BuildConsole.Services
                 ? string.Join(" ", lines.Select(l => $"-m \"{l.Replace("\"", "\\\"")}\""))
                 : $"-m \"{relDir}\"";
             var commitSw = Stopwatch.StartNew();
-            var commitRes = await RunGitAsync(repoRoot, $"commit {mArgs}");
+            // Pathspec-scoped so nothing else sitting in the shared checkout's index is swept in.
+            var commitRes = await RunGitAsync(repoRoot, $"commit {mArgs} -- \"{relDir}\"");
             commitSw.Stop();
             if (commitSw.ElapsedMilliseconds > 1000)
             {
@@ -733,56 +747,50 @@ namespace BuildConsole.Services
             }
             if (commitRes.ExitCode != 0)
             {
-                if (commitRes.StdOut.Contains("nothing to commit") || commitRes.StdErr.Contains("nothing to commit"))
+                // With a pathspec, git reports "nothing added to commit" rather than "nothing to commit".
+                string commitOut = commitRes.StdOut + "\n" + commitRes.StdErr;
+                if (commitOut.Contains("nothing to commit") || commitOut.Contains("nothing added to commit")
+                    || commitOut.Contains("no changes added to commit"))
                 {
+                    // No commit of ours exists, so there is nothing to push — pushing anyway would
+                    // publish whatever unrelated local commits this checkout happens to carry.
                     result.CommitMessage = "Already committed.";
-                }
-                else
-                {
-                    result.Success = false;
-                    result.Error = $"git commit failed: {commitRes.StdErr}";
+                    result.Success = true;
                     return result;
                 }
+                await RunGitAsync(repoRoot, $"reset -q -- \"{relDir}\"");
+                result.Success = false;
+                result.Error = $"git commit failed: {commitRes.StdErr}";
+                return result;
             }
 
-            var revRes = await RunGitAsync(repoRoot, "rev-parse --short HEAD");
-            if (revRes.ExitCode == 0)
+            // Fetch + rebase onto origin + push with retries, and on final failure unwind just this
+            // commit (files kept on disk) — the same Git #4122/#4330 plumbing the automated QA path
+            // uses. The old single push-then-"commit is safely local!" is what stranded commits.
+            var pushSw = Stopwatch.StartNew();
+            var branchRes = await RunGitAsync(repoRoot, "rev-parse --abbrev-ref HEAD");
+            string currentBranch = branchRes.ExitCode == 0 ? branchRes.StdOut.Trim() : "main";
+            var (pushOk, pushErr) = await UiAutomationQaSessionService.PushArtifactCommitWithRebaseAsync(repoRoot, currentBranch, relDir, relDir);
+            pushSw.Stop();
+            if (pushSw.ElapsedMilliseconds > 1000)
             {
-                result.CommitHash = revRes.StdOut.Trim();
+                ActivityLog.Log("visual-test-tracker", $"Slow git push (fetch+rebase+push): {pushSw.ElapsedMilliseconds}ms");
             }
 
-            if (pushToRemote)
+            if (pushOk)
             {
-                var pushSw = Stopwatch.StartNew();
-                var branchRes = await RunGitAsync(repoRoot, "rev-parse --abbrev-ref HEAD");
-                string currentBranch = branchRes.ExitCode == 0 ? branchRes.StdOut.Trim() : "main";
-
-                var pushRes = await RunGitAsync(repoRoot, $"push origin {currentBranch}", timeoutMs: 30000);
-                if (pushRes.ExitCode == 0)
+                var revRes = await RunGitAsync(repoRoot, "rev-parse --short HEAD");
+                if (revRes.ExitCode == 0)
                 {
-                    result.PushedToRemote = true;
-                    result.PushOutput = pushRes.StdOut.Trim();
+                    result.CommitHash = revRes.StdOut.Trim();
                 }
-                else
-                {
-                    var plainPush = await RunGitAsync(repoRoot, "push", timeoutMs: 30000);
-                    if (plainPush.ExitCode == 0)
-                    {
-                        result.PushedToRemote = true;
-                        result.PushOutput = plainPush.StdOut.Trim();
-                    }
-                    else
-                    {
-                        result.PushedToRemote = false;
-                        result.PushOutput = !string.IsNullOrWhiteSpace(pushRes.StdErr) ? pushRes.StdErr.Trim() : plainPush.StdErr.Trim();
-                        // Note: We do NOT fail the entire operation if push fails (e.g. offline or auth); commit is safely local!
-                    }
-                }
-                pushSw.Stop();
-                if (pushSw.ElapsedMilliseconds > 1000)
-                {
-                    ActivityLog.Log("visual-test-tracker", $"Slow git push: {pushSw.ElapsedMilliseconds}ms");
-                }
+                result.PushedToRemote = true;
+            }
+            else
+            {
+                // Not a failed save: the files are on disk. But no commit exists any more, so none is reported.
+                result.PushedToRemote = false;
+                result.PushOutput = $"Not committed: push failed, so the commit was undone to keep the shared checkout on origin/main (Git #4330). Files are saved on disk. {pushErr}";
             }
 
             result.Success = true;
