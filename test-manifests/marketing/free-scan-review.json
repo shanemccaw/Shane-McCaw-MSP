@@ -1,0 +1,258 @@
+{
+  "feature": "Marketing Free Scan Review step (/scan/review) — Git #1374, Phase of Feature #1352. The Statement of Work generated from a Free Scan Prospect's own scan: eight numbered sections, a delivery-timeline Gantt, six phase-breakdown cards and a right rail carrying the scope selector, the payment-plan choice and the e-signature capture. Every figure is served by the real /api/public/free-scan/sow/* pair (routes/public-free-scan-sow.ts -> lib/free-scan-sow.ts), computed from the tenant's real buildPillarSummary output and the six real category='project' catalog rows. Nothing on the page is a fixture and no price is written into the .tsx.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "b9449cb0c",
+  "notes": [
+    "SCOPE OF THIS MANIFEST — what is deterministically assertable without a live consented tenant:",
+    "",
+    "  1. The identity gates on all five /api/public/free-scan/sow/* routes (apiTests). Every one of",
+    "     them is unauthenticated on purpose (a Free Scan Prospect is never issued a JWT, #656) and",
+    "     resolves the tenant only from a live checkout sessionId or an emailed fsr_ return token.",
+    "     These assert the real refusal codes for a missing credential, a malformed sessionId, a",
+    "     well-formed-but-unknown sessionId, and a bogus return token — the same guard shape",
+    "     free-scan-page.json already locks for #1358/#1359's own routes.",
+    "",
+    "  2. That the Review page renders its flow strip with Review as the CURRENT step and",
+    "     Consent/Scan/Results already ticked (uiSteps). This is the #1374 scope item 6 assertion and",
+    "     it holds with no credential at all, because the strip renders above the document.",
+    "",
+    "  3. That a visitor with no free-scan session gets the honest 'we lost track of your scan' state",
+    "     rather than an empty document or a crash.",
+    "",
+    "WHAT IS NOT ASSERTED HERE, and why:",
+    "",
+    "  The document body itself (phase fees, finding counts, the 41 -> N projection, the Gantt) needs a",
+    "  real consented tenant with a completed scan, which this environment cannot mint from a browser —",
+    "  the consent grant happens in a popup on Microsoft's own domain. That half is covered instead by",
+    "  artifacts/api-server/src/lib/free-scan-sow.live-db.test.ts, which seeds a scratch Prospect with a",
+    "  real diagnostic run and real findings and asserts the whole computed document against live",
+    "  Postgres (six phases really are catalog rows; the total really is the sum of their real fees;",
+    "  deferring a phase really drops its fee, its findings and its Gantt bar and shortens the critical",
+    "  path; a signed row cannot carry a partial signature block; a signed document is served from its",
+    "  own snapshot rather than recomputed). Faking a consented session here to reach the document would",
+    "  be coverage of a fixture, not of the product.",
+    "",
+    "  Stripe's own Payment Element is likewise not driven here — it is a cross-origin iframe, and the",
+    "  charge path it fronts is the same metadata-bound intent/confirm handshake",
+    "  public-purchase-payment.ts already uses."
+  ],
+  "apiTests": [
+    {
+      "name": "SOW READ GUARD (Git #1374) — no sessionId at all is refused 400 session_invalid",
+      "sessionTag": "1374-sow-review",
+      "method": "GET",
+      "path": "/api/public/free-scan/sow",
+      "expect": {
+        "status": 400,
+        "jsonPath": "$.error",
+        "value": "session_invalid"
+      }
+    },
+    {
+      "name": "SOW READ GUARD (Git #1374) — a malformed sessionId is refused 400 session_invalid",
+      "sessionTag": "1374-sow-review",
+      "method": "GET",
+      "path": "/api/public/free-scan/sow?sessionId=nope",
+      "expect": {
+        "status": 400,
+        "jsonPath": "$.error",
+        "value": "session_invalid"
+      }
+    },
+    {
+      "name": "SOW READ GUARD (Git #1374) — a well-formed but non-existent sessionId is refused 404 session_expired",
+      "sessionTag": "1374-sow-review",
+      "method": "GET",
+      "path": "/api/public/free-scan/sow?sessionId=00000000-0000-4000-8000-000000000000",
+      "expect": {
+        "status": 404,
+        "jsonPath": "$.error",
+        "value": "session_expired"
+      }
+    },
+    {
+      "name": "SOW READ GUARD (Git #1374) — the return-link door refuses a non-fsr token 401 link_invalid",
+      "sessionTag": "1374-sow-review",
+      "method": "POST",
+      "path": "/api/public/free-scan/sow/read",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "returnToken": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" },
+      "expect": {
+        "status": 401,
+        "jsonPath": "$.error",
+        "value": "link_invalid"
+      }
+    },
+    {
+      "name": "SOW READ GUARD (Git #1374) — a body carrying neither credential is refused 400 credential_required",
+      "sessionTag": "1374-sow-review",
+      "method": "POST",
+      "path": "/api/public/free-scan/sow/read",
+      "headers": { "Content-Type": "application/json" },
+      "body": {},
+      "expect": {
+        "status": 400,
+        "jsonPath": "$.error",
+        "value": "credential_required"
+      }
+    },
+    {
+      "name": "SCOPE WRITE GUARD (Git #1374) — a scope change with no credential is refused 400 scope_invalid",
+      "sessionTag": "1374-sow-review",
+      "method": "PUT",
+      "path": "/api/public/free-scan/sow/scope",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "phaseSlugs": [], "addons": [], "paymentPlan": "full" },
+      "expect": {
+        "status": 400,
+        "jsonPath": "$.error",
+        "value": "scope_invalid"
+      }
+    },
+    {
+      "name": "SCOPE WRITE GUARD (Git #1374) — an unknown sessionId cannot write scope (404 session_expired)",
+      "sessionTag": "1374-sow-review",
+      "method": "PUT",
+      "path": "/api/public/free-scan/sow/scope",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "sessionId": "00000000-0000-4000-8000-000000000000",
+        "phaseSlugs": ["identity-access-hardening"],
+        "addons": [],
+        "paymentPlan": "phased"
+      },
+      "expect": {
+        "status": 404,
+        "jsonPath": "$.error",
+        "value": "session_expired"
+      }
+    },
+    {
+      "name": "SIGNATURE GUARD (Git #1374) — a signature without the agreement checkbox is refused 400 signature_invalid",
+      "sessionTag": "1374-sow-review",
+      "method": "POST",
+      "path": "/api/public/free-scan/sow/sign",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "sessionId": "00000000-0000-4000-8000-000000000000",
+        "signerName": "Dana Okonkwo",
+        "signerRole": "IT Director",
+        "signatureData": "data:image/png;base64,iVBORw0KGgo=",
+        "agreed": false
+      },
+      "expect": {
+        "status": 400,
+        "jsonPath": "$.error",
+        "value": "signature_invalid"
+      }
+    },
+    {
+      "name": "SIGNATURE GUARD (Git #1374) — a signature with no signer role is refused 400 signature_invalid",
+      "sessionTag": "1374-sow-review",
+      "method": "POST",
+      "path": "/api/public/free-scan/sow/sign",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "sessionId": "00000000-0000-4000-8000-000000000000",
+        "signerName": "Dana Okonkwo",
+        "signatureData": "data:image/png;base64,iVBORw0KGgo=",
+        "agreed": true
+      },
+      "expect": {
+        "status": 400,
+        "jsonPath": "$.error",
+        "value": "signature_invalid"
+      }
+    },
+    {
+      "name": "PAYMENT GUARD (Git #1374) — a payment intent with no credential is refused 400 credential_required",
+      "sessionTag": "1374-sow-review",
+      "method": "POST",
+      "path": "/api/public/free-scan/sow/payment-intent",
+      "headers": { "Content-Type": "application/json" },
+      "body": {},
+      "expect": {
+        "status": 400,
+        "jsonPath": "$.error",
+        "value": "credential_required"
+      }
+    },
+    {
+      "name": "PAYMENT GUARD (Git #1374) — an unknown session cannot mint an intent (404 session_expired, never a charge)",
+      "sessionTag": "1374-sow-review",
+      "method": "POST",
+      "path": "/api/public/free-scan/sow/payment-intent",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "sessionId": "00000000-0000-4000-8000-000000000000" },
+      "expect": {
+        "status": 404,
+        "jsonPath": "$.error",
+        "value": "session_expired"
+      }
+    },
+    {
+      "name": "PAYMENT CONFIRM GUARD (Git #1374) — a confirm callback with no paymentIntentId is refused 400",
+      "sessionTag": "1374-sow-review",
+      "method": "POST",
+      "path": "/api/public/free-scan/sow/payment-confirmed",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "sessionId": "00000000-0000-4000-8000-000000000000" },
+      "expect": {
+        "status": 400,
+        "jsonPath": "$.error",
+        "value": "paymentIntentId is required"
+      }
+    }
+  ],
+  "uiSteps": [
+    { "action": "goto", "target": "/scan/review", "sessionTag": "1374-sow-review" },
+    {
+      "action": "expect",
+      "selector": "[data-testid='freescan-flow-strip']",
+      "state": "visible",
+      "sessionTag": "1374-sow-review"
+    },
+    {
+      "action": "expect",
+      "selector": "[data-testid='freescan-flow-step-consent']",
+      "state": "visible",
+      "sessionTag": "1374-sow-review"
+    },
+    {
+      "action": "expect",
+      "selector": "[data-testid='freescan-flow-step-scan']",
+      "state": "visible",
+      "sessionTag": "1374-sow-review"
+    },
+    {
+      "action": "expect",
+      "selector": "[data-testid='freescan-flow-step-results']",
+      "state": "visible",
+      "sessionTag": "1374-sow-review"
+    },
+    {
+      "action": "expect",
+      "selector": "[data-testid='freescan-flow-step-review'][data-state='now']",
+      "state": "visible",
+      "sessionTag": "1374-sow-review"
+    },
+    {
+      "action": "expect",
+      "selector": "[data-testid='freescan-flow-step-remediate'][data-state='next']",
+      "state": "visible",
+      "sessionTag": "1374-sow-review"
+    },
+    {
+      "action": "expect",
+      "selector": "[data-testid='freescan-flow-step-consent'][data-state='done']",
+      "state": "visible",
+      "sessionTag": "1374-sow-review"
+    },
+    {
+      "action": "expect",
+      "selector": "body",
+      "textContains": "We lost track of your scan",
+      "sessionTag": "1374-sow-review"
+    }
+  ]
+}

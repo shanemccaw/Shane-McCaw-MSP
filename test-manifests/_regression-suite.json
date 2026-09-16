@@ -34,6 +34,7 @@
     "marketing/quick-start-page.json",
     "marketing/pricing-page.json",
     "marketing/free-scan-page.json",
+    "marketing/free-scan-review.json",
     "marketing/buy-page.json",
     "marketing/read-consent-flow.json",
     "marketing/purchase-portal-handoff.json",
