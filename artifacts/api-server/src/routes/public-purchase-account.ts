@@ -21,6 +21,9 @@
  *   POST /api/public/purchase/mfa/passkey/verify-registration
  *   POST /api/public/purchase/portal-handoff             (#1313, Phase 4) mint a
  *        fresh single-use auto-login token at the COMPLETED account stage
+ *   /api/public/purchase/pre-consent/*                    (#4374) the same code
+ *        and MFA steps behind a BEFORE-consent gate, creating a `*Pending`
+ *        account — see the section at the bottom of this file
  *
  * All are unauthenticated and keyed on the checkout-session UUID — the same
  * bearer the payment routes already trust — and every one of them re-enforces
@@ -92,6 +95,10 @@ import {
   resolveProductCategory,
   maskEmail,
   type PaidPurchaseSession,
+  resolvePreConsentPurchaseSession,
+  createPreConsentAccount,
+  resolvePreConsentAccountUser,
+  type PreConsentPurchaseSession,
 } from "../lib/purchase-account-flow.ts";
 import { getActiveMfaMethods, getRpId, getRpOrigin, encryptTotp } from "./mfa.ts";
 import { ensureMonitoringScanKickoff } from "../lib/monitoring-onboarding-scan.ts";
@@ -170,6 +177,34 @@ async function requirePaidSession(rawSessionId: unknown, res: Response): Promise
   return resolved.session;
 }
 
+/** resolvePreConsentPurchaseSession (#4374), with the rejection written straight to the response. */
+async function requirePreConsentSession(rawSessionId: unknown, res: Response): Promise<PreConsentPurchaseSession | null> {
+  const resolved = await resolvePreConsentPurchaseSession(rawSessionId);
+  if (!resolved.ok) {
+    res.status(resolved.status).json({ error: resolved.error });
+    return null;
+  }
+  return resolved.session;
+}
+
+/**
+ * The ordering gate a shared handler runs before anything else. The paid door
+ * and the pre-consent door (#4374) mount the SAME handler bodies below behind
+ * different gates — one implementation of the code, password and MFA steps,
+ * two front doors.
+ */
+type SessionGate = (rawSessionId: unknown, res: Response) => Promise<PaidPurchaseSession | null>;
+
+/**
+ * Extra audit metadata a door stamps on the rows its shared handlers write.
+ * Empty for the paid door, so its audit rows are exactly what they were before
+ * #4374; `{ door: "pre_consent" }` for the pre-consent door.
+ */
+type DoorAuditMeta = Record<string, string>;
+
+const PAID_DOOR: DoorAuditMeta = {};
+const PRE_CONSENT_DOOR: DoorAuditMeta = { door: "pre_consent" };
+
 // ── POST /api/public/purchase/send-verification-code ──────────────────────────
 //
 // Issues a fresh six-digit code and mails it. Transport is Exchange Online /
@@ -181,14 +216,14 @@ async function requirePaidSession(rawSessionId: unknown, res: Response): Promise
 
 const sendCodeSchema = z.object({ sessionId: z.string() });
 
-router.post("/public/purchase/send-verification-code", sendCodeLimiter, async (req: Request, res: Response) => {
+const sendVerificationCodeHandler = (gate: SessionGate, door: DoorAuditMeta) => async (req: Request, res: Response) => {
   const parsed = sendCodeSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "sessionId is required" });
     return;
   }
 
-  const session = await requirePaidSession(parsed.data.sessionId, res);
+  const session = await gate(parsed.data.sessionId, res);
   if (!session) return;
 
   if (!session.email.trim()) {
@@ -242,10 +277,10 @@ router.post("/public/purchase/send-verification-code", sendCodeLimiter, async (r
     entityType: "checkout_session",
     entityId: session.id,
     // The code itself is never logged or audited — only that one was issued.
-    metadata: { expiresAt, productSlug: session.productSlug },
+    metadata: { expiresAt, productSlug: session.productSlug, ...door },
   });
 
-  log.info({ sessionId: session.id, productSlug: session.productSlug }, "purchase verification: six-digit code issued and emailed");
+  log.info({ sessionId: session.id, productSlug: session.productSlug, ...door }, "purchase verification: six-digit code issued and emailed");
 
   // Git #1380 — LOCAL DEV ONLY. Normally the code is never logged, audited or
   // returned (only its bcrypt hash is stored) — that invariant is preserved for
@@ -264,7 +299,9 @@ router.post("/public/purchase/send-verification-code", sendCodeLimiter, async (r
   }
 
   res.json({ ok: true, expiresAt: expiresAt.toISOString(), email: maskEmail(email) });
-});
+};
+
+router.post("/public/purchase/send-verification-code", sendCodeLimiter, sendVerificationCodeHandler(requirePaidSession, PAID_DOOR));
 
 // ── POST /api/public/purchase/verify-code ─────────────────────────────────────
 
@@ -273,14 +310,14 @@ const verifyCodeSchema = z.object({
   code: z.string().trim().regex(/^\d{6}$/, "Enter the six-digit code from your email"),
 });
 
-router.post("/public/purchase/verify-code", verifyCodeLimiter, async (req: Request, res: Response) => {
+const verifyCodeHandler = (gate: SessionGate, door: DoorAuditMeta) => async (req: Request, res: Response) => {
   const parsed = verifyCodeSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.errors[0]?.message ?? "Invalid request" });
     return;
   }
 
-  const session = await requirePaidSession(parsed.data.sessionId, res);
+  const session = await gate(parsed.data.sessionId, res);
   if (!session) return;
 
   const result = await checkVerificationCode(session.id, parsed.data.code);
@@ -313,12 +350,14 @@ router.post("/public/purchase/verify-code", verifyCodeLimiter, async (req: Reque
     actionType: "purchase_flow_email_verified",
     entityType: "checkout_session",
     entityId: session.id,
-    metadata: { attempts: result.attempts },
+    metadata: { attempts: result.attempts, ...door },
   });
 
-  log.info({ sessionId: session.id }, "purchase verification: email address proven");
+  log.info({ sessionId: session.id, ...door }, "purchase verification: email address proven");
   res.json({ ok: true });
-});
+};
+
+router.post("/public/purchase/verify-code", verifyCodeLimiter, verifyCodeHandler(requirePaidSession, PAID_DOOR));
 
 // ── POST /api/public/purchase/set-password ────────────────────────────────────
 //
@@ -545,6 +584,30 @@ interface MfaEligibleAccount {
   session: PaidPurchaseSession;
   userId: number;
   email: string;
+  /** The door this enrollment came through — stamped onto its audit row. */
+  door: DoorAuditMeta;
+}
+
+/**
+ * The eligibility gate an MFA handler runs. Each door supplies its own; the
+ * handler bodies (and so the crypto and storage, which are mfa.ts's) are shared.
+ */
+type MfaAccountGate = (rawSessionId: unknown, res: Response) => Promise<MfaEligibleAccount | null>;
+
+/**
+ * The one check both doors end with: ZERO active MFA methods. An account's MFA
+ * is never enrollable or replaceable through a checkout session — the portal's
+ * authenticated MFA management is the door for changes.
+ */
+async function refuseIfMfaEnrolled(sessionId: string, userId: number, res: Response): Promise<boolean> {
+  const methods = await getActiveMfaMethods(userId);
+  if (methods.length === 0) return false;
+  log.warn(
+    { sessionId, userId },
+    "purchase MFA: REFUSED — account already has active MFA; portal sign-in is the door for changes",
+  );
+  res.status(409).json({ error: "mfa_already_enrolled" });
+  return true;
 }
 
 /**
@@ -579,33 +642,53 @@ async function resolveMfaEligibleAccount(rawSessionId: unknown, res: Response): 
     return null;
   }
 
-  const methods = await getActiveMfaMethods(user.id);
-  if (methods.length > 0) {
-    // An existing account's MFA is never enrollable or replaceable through a
-    // checkout session — the portal's authenticated MFA management is the door.
-    log.warn(
-      { sessionId: session.id, userId: user.id },
-      "purchase MFA: REFUSED — account already has active MFA; portal sign-in is the door for changes",
-    );
-    res.status(409).json({ error: "mfa_already_enrolled" });
+  // An existing account's MFA is never enrollable or replaceable through a
+  // checkout session — the portal's authenticated MFA management is the door.
+  if (await refuseIfMfaEnrolled(session.id, user.id, res)) return null;
+
+  return { session, userId: user.id, email, door: PAID_DOOR };
+}
+
+/**
+ * #4374 — the pre-consent door's MFA gate. Stricter than the paid door's on
+ * WHICH account: not "the account at the verified address" but "the account
+ * THIS session created" (resolvePreConsentAccountUser keys on accountUserId),
+ * still at its `*Pending` rung, password set, zero active methods. The session
+ * itself must still be before consent (resolvePreConsentPurchaseSession).
+ */
+async function resolvePreConsentMfaEligibleAccount(rawSessionId: unknown, res: Response): Promise<MfaEligibleAccount | null> {
+  const session = await requirePreConsentSession(rawSessionId, res);
+  if (!session) return null;
+
+  const account = await resolvePreConsentAccountUser(session);
+  if (account.outcome !== "ok") {
+    res.status(409).json({ error: account.outcome });
+    return null;
+  }
+  if (!account.passwordSet) {
+    // provisionPendingAccount never inserts without a hash; a cleared password
+    // since then means this is no longer the account the flow created.
+    res.status(409).json({ error: "password_not_set" });
     return null;
   }
 
-  return { session, userId: user.id, email };
+  if (await refuseIfMfaEnrolled(session.id, account.userId, res)) return null;
+
+  return { session, userId: account.userId, email: account.email, door: PRE_CONSENT_DOOR };
 }
 
 const mfaSessionSchema = z.object({ sessionId: z.string() });
 
 // ── POST /api/public/purchase/mfa/totp/setup ──────────────────────────────────
 
-router.post("/public/purchase/mfa/totp/setup", mfaEnrollLimiter, async (req: Request, res: Response) => {
+const totpSetupHandler = (resolveAccount: MfaAccountGate) => async (req: Request, res: Response) => {
   const parsed = mfaSessionSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "sessionId is required" });
     return;
   }
 
-  const eligible = await resolveMfaEligibleAccount(parsed.data.sessionId, res);
+  const eligible = await resolveAccount(parsed.data.sessionId, res);
   if (!eligible) return;
 
   const secret = generateSecret();
@@ -617,7 +700,9 @@ router.post("/public/purchase/mfa/totp/setup", mfaEnrollLimiter, async (req: Req
   // Same contract as mfa.ts's setup: nothing stored yet — the secret only
   // becomes an enrollment once verify-setup proves the authenticator has it.
   res.json({ secret, otpauth, qrDataUrl });
-});
+};
+
+router.post("/public/purchase/mfa/totp/setup", mfaEnrollLimiter, totpSetupHandler(resolveMfaEligibleAccount));
 
 // ── POST /api/public/purchase/mfa/totp/verify-setup ───────────────────────────
 
@@ -627,14 +712,14 @@ const totpVerifySchema = z.object({
   code: z.string().min(1),
 });
 
-router.post("/public/purchase/mfa/totp/verify-setup", mfaEnrollLimiter, async (req: Request, res: Response) => {
+const totpVerifySetupHandler = (resolveAccount: MfaAccountGate) => async (req: Request, res: Response) => {
   const parsed = totpVerifySchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "sessionId, secret and code are required" });
     return;
   }
 
-  const eligible = await resolveMfaEligibleAccount(parsed.data.sessionId, res);
+  const eligible = await resolveAccount(parsed.data.sessionId, res);
   if (!eligible) return;
 
   const result = verifySync({ token: parsed.data.code.replace(/\s/g, ""), secret: parsed.data.secret, epochTolerance: 30 });
@@ -663,23 +748,25 @@ router.post("/public/purchase/mfa/totp/verify-setup", mfaEnrollLimiter, async (r
     actionType: "purchase_flow_mfa_enrolled",
     entityType: "user",
     entityId: String(eligible.userId),
-    metadata: { checkoutSessionId: eligible.session.id, method: "totp" },
+    metadata: { checkoutSessionId: eligible.session.id, method: "totp", ...eligible.door },
   });
 
-  log.info({ sessionId: eligible.session.id, userId: eligible.userId }, "purchase MFA: TOTP enrolled inline");
+  log.info({ sessionId: eligible.session.id, userId: eligible.userId, ...eligible.door }, "purchase MFA: TOTP enrolled inline");
   res.json({ ok: true });
-});
+};
+
+router.post("/public/purchase/mfa/totp/verify-setup", mfaEnrollLimiter, totpVerifySetupHandler(resolveMfaEligibleAccount));
 
 // ── POST /api/public/purchase/mfa/passkey/registration-options ────────────────
 
-router.post("/public/purchase/mfa/passkey/registration-options", mfaEnrollLimiter, async (req: Request, res: Response) => {
+const passkeyRegistrationOptionsHandler = (resolveAccount: MfaAccountGate) => async (req: Request, res: Response) => {
   const parsed = mfaSessionSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "sessionId is required" });
     return;
   }
 
-  const eligible = await resolveMfaEligibleAccount(parsed.data.sessionId, res);
+  const eligible = await resolveAccount(parsed.data.sessionId, res);
   if (!eligible) return;
 
   const { generateRegistrationOptions } = await import("@simplewebauthn/server");
@@ -716,7 +803,13 @@ router.post("/public/purchase/mfa/passkey/registration-options", mfaEnrollLimite
   });
 
   res.json(options);
-});
+};
+
+router.post(
+  "/public/purchase/mfa/passkey/registration-options",
+  mfaEnrollLimiter,
+  passkeyRegistrationOptionsHandler(resolveMfaEligibleAccount),
+);
 
 // ── POST /api/public/purchase/mfa/passkey/verify-registration ─────────────────
 
@@ -749,14 +842,14 @@ function buildExpectedOrigins(req: Request): string[] {
   return [...origins];
 }
 
-router.post("/public/purchase/mfa/passkey/verify-registration", mfaEnrollLimiter, async (req: Request, res: Response) => {
+const passkeyVerifyRegistrationHandler = (resolveAccount: MfaAccountGate) => async (req: Request, res: Response) => {
   const parsed = passkeyVerifySchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "sessionId and response are required" });
     return;
   }
 
-  const eligible = await resolveMfaEligibleAccount(parsed.data.sessionId, res);
+  const eligible = await resolveAccount(parsed.data.sessionId, res);
   if (!eligible) return;
 
   const [challengeRow] = await db
@@ -824,15 +917,209 @@ router.post("/public/purchase/mfa/passkey/verify-registration", mfaEnrollLimiter
       actionType: "purchase_flow_mfa_enrolled",
       entityType: "user",
       entityId: String(eligible.userId),
-      metadata: { checkoutSessionId: eligible.session.id, method: "passkey" },
+      metadata: { checkoutSessionId: eligible.session.id, method: "passkey", ...eligible.door },
     });
 
-    log.info({ sessionId: eligible.session.id, userId: eligible.userId }, "purchase MFA: passkey enrolled inline");
+    log.info({ sessionId: eligible.session.id, userId: eligible.userId, ...eligible.door }, "purchase MFA: passkey enrolled inline");
     res.json({ ok: true });
   } catch (err) {
     log.error({ err, sessionId: eligible.session.id }, "purchase MFA: passkey registration error");
     res.status(400).json({ error: "Registration failed" });
   }
+};
+
+router.post(
+  "/public/purchase/mfa/passkey/verify-registration",
+  mfaEnrollLimiter,
+  passkeyVerifyRegistrationHandler(resolveMfaEligibleAccount),
+);
+
+// ══ #4374 — the pre-consent account door ═══════════════════════════════════════
+//
+// Issue 4 of Feature #4370: a REAL password + MFA account, created before any
+// tenant or M365 consent exists, for the account-first checkout order (#4376 —
+// account -> consent -> pay). Same code / MFA handlers as the paid door above,
+// mounted behind resolvePreConsentPurchaseSession instead of the paid gate,
+// with account creation going through provisionPendingAccount (insert-only,
+// password set, the product's `*Pending` rung, no tenant) instead of
+// attachPasswordToAccount:
+//
+//   POST /api/public/purchase/pre-consent/send-verification-code
+//   POST /api/public/purchase/pre-consent/verify-code
+//   POST /api/public/purchase/pre-consent/create-account
+//   GET  /api/public/purchase/pre-consent/account-status
+//   POST /api/public/purchase/pre-consent/mfa/totp/setup
+//   POST /api/public/purchase/pre-consent/mfa/totp/verify-setup
+//   POST /api/public/purchase/pre-consent/mfa/passkey/registration-options
+//   POST /api/public/purchase/pre-consent/mfa/passkey/verify-registration
+//
+// The account is a real one from the moment create-account returns: POST
+// /api/auth/login works with the password (and challenges for MFA once
+// enrolled), and the pending-purchase gate (#4375) confines that session to
+// /auth/* and /public/* — which includes the MFA enrollment routes, so an
+// account whose tab closed between password and MFA can still sign in and
+// enroll. When consent later lands on this session, the consent callback's
+// provisionProspectAccount finds the row by email and ensureClientMspUser swaps
+// `*Pending` -> `*Consented` atomically with the tenant link (#4373) — nothing
+// here touches that path.
+//
+// No portal handoff is minted here. /auth/signup-exchange issues a session with
+// no MFA challenge, and nothing about a pre-consent account needs one: the
+// buyer is still on the checkout page, and the paid door's portal-handoff
+// already honours accountUserId recorded here once the session is paid.
+//
+// Separate limiter instances from the paid door's, same budgets: this door has
+// no payment in front of it, so its abuse must not be able to exhaust a paying
+// buyer's budget.
+
+const preConsentSendCodeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: isDev ? 100 : 6,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Too many verification emails requested. Please wait a few minutes and try again." },
 });
+
+const preConsentVerifyCodeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: isDev ? 200 : 20,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Too many attempts. Please wait a few minutes and try again." },
+});
+
+const preConsentCreateAccountLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: isDev ? 100 : 10,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Too many attempts. Please wait a few minutes and try again." },
+});
+
+const preConsentMfaEnrollLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: isDev ? 200 : 20,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Too many MFA attempts. Please try again later." },
+});
+
+const preConsentStatusLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: isDev ? 600 : 60,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please wait a few minutes and try again." },
+});
+
+router.post(
+  "/public/purchase/pre-consent/send-verification-code",
+  preConsentSendCodeLimiter,
+  sendVerificationCodeHandler(requirePreConsentSession, PRE_CONSENT_DOOR),
+);
+
+router.post(
+  "/public/purchase/pre-consent/verify-code",
+  preConsentVerifyCodeLimiter,
+  verifyCodeHandler(requirePreConsentSession, PRE_CONSENT_DOOR),
+);
+
+// ── POST /api/public/purchase/pre-consent/create-account ──────────────────────
+//
+// Proven mailbox -> bcrypt(12) -> a new users row at the product's `*Pending`
+// rung with the password set. Same password rule as set-password.
+
+router.post("/public/purchase/pre-consent/create-account", preConsentCreateAccountLimiter, async (req: Request, res: Response) => {
+  const parsed = setPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0]?.message ?? "Invalid request" });
+    return;
+  }
+
+  const session = await requirePreConsentSession(parsed.data.sessionId, res);
+  if (!session) return;
+
+  const result = await createPreConsentAccount(session, parsed.data.password);
+
+  switch (result.outcome) {
+    case "email_not_verified":
+      res.status(409).json({ error: "email_not_verified" });
+      return;
+    case "account_exists":
+      // Any account already at this address — never modified through a
+      // checkout session. Sign in, or recover via /auth/forgot-password.
+      res.status(409).json({ error: "already_has_account", portalUrl: getMspPortalLandingUrl() });
+      return;
+    case "already_created":
+      res.json({ ok: true, alreadyCreated: true });
+      return;
+    case "ok":
+      break;
+  }
+
+  await createAuditLog({
+    actorUserId: result.userId,
+    actorName: "public:purchase-flow",
+    actorRole: "client",
+    actionType: "purchase_flow_pre_consent_account_created",
+    entityType: "user",
+    entityId: String(result.userId),
+    metadata: { checkoutSessionId: session.id, productSlug: session.productSlug, mspRole: result.role },
+  });
+
+  log.info(
+    { sessionId: session.id, userId: result.userId, mspRole: result.role, productSlug: session.productSlug },
+    "pre-consent account: real password-bearing account created before consent",
+  );
+  res.json({ ok: true, alreadyCreated: false });
+});
+
+// ── GET /api/public/purchase/pre-consent/account-status ───────────────────────
+//
+// Where this session's pre-consent account honestly stands, so a refreshed
+// Buy.tsx tab lands on the right stage. Reads only the account THIS session
+// created — an existing account at the same address is not reported on.
+
+router.get("/public/purchase/pre-consent/account-status", preConsentStatusLimiter, async (req: Request, res: Response) => {
+  const session = await requirePreConsentSession(req.query.sessionId, res);
+  if (!session) return;
+
+  const account = await resolvePreConsentAccountUser(session);
+  const accountCreated = account.outcome === "ok";
+  const mfaEnrolled = accountCreated ? (await getActiveMfaMethods(account.userId)).length > 0 : false;
+
+  res.json({
+    productSlug: session.productSlug,
+    productCategory: session.productCategory,
+    email: maskEmail(session.email.trim().toLowerCase()),
+    emailVerified: account.outcome !== "email_not_verified",
+    accountCreated,
+    mfaEnrolled,
+  });
+});
+
+router.post(
+  "/public/purchase/pre-consent/mfa/totp/setup",
+  preConsentMfaEnrollLimiter,
+  totpSetupHandler(resolvePreConsentMfaEligibleAccount),
+);
+
+router.post(
+  "/public/purchase/pre-consent/mfa/totp/verify-setup",
+  preConsentMfaEnrollLimiter,
+  totpVerifySetupHandler(resolvePreConsentMfaEligibleAccount),
+);
+
+router.post(
+  "/public/purchase/pre-consent/mfa/passkey/registration-options",
+  preConsentMfaEnrollLimiter,
+  passkeyRegistrationOptionsHandler(resolvePreConsentMfaEligibleAccount),
+);
+
+router.post(
+  "/public/purchase/pre-consent/mfa/passkey/verify-registration",
+  preConsentMfaEnrollLimiter,
+  passkeyVerifyRegistrationHandler(resolvePreConsentMfaEligibleAccount),
+);
 
 export default router;

@@ -537,6 +537,106 @@ export async function provisionProspectAccount(opts: {
 }
 
 /**
+ * bcrypt's own modular-crypt prefix (`$2a$`/`$2b$`/`$2y$` + two-digit cost).
+ * provisionPendingAccount refuses anything else, so a caller can never store a
+ * plaintext password by passing it where the hash belongs.
+ */
+const BCRYPT_HASH_RE = /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/;
+
+export type PendingAccountProvisionResult =
+  | { outcome: "created"; userId: number }
+  | { outcome: "account_exists"; userId: number; hasPassword: boolean };
+
+/**
+ * #4374 (issue 4 of #4370) — the pre-consent account door: insert a REAL,
+ * password-bearing `users` row directly in a product's `*Pending` rung, before
+ * any tenant or M365 consent exists. Same family as ensureClientAccount /
+ * provisionProspectAccount, but a different door with a different contract:
+ *
+ *   - `passwordHash` is SET on insert, never NULL. The caller hashes (the same
+ *     bcrypt(12) auth.ts / attachPasswordToAccount use); this function refuses
+ *     anything that is not a bcrypt hash, so plaintext can never land in the
+ *     column by mistake.
+ *   - `mspRole` is the `*Pending` rung, with NO tenant_id / mspId —
+ *     users_role_scope_check admits exactly that (#3971, #4372). There is no
+ *     tenant resolution here at all: that is the consent callback's job, and
+ *     when it runs, provisionProspectAccount finds this row by email and
+ *     ensureClientMspUser swaps it to its `*Consented` rung in the same UPDATE
+ *     that links the tenant (#3973/#4373).
+ *   - INSERT-ONLY. An email that already has a users row — with or without a
+ *     password, at any role — is never modified here (`account_exists`). Unlike
+ *     provisionProspectAccount's idempotent upsert, which is safe because it
+ *     never touches credentials, this door writes a credential and a role, so
+ *     re-pointing an existing account through it would let a checkout session
+ *     set a password on (or narrow the role of) an account it did not create.
+ *     /auth/forgot-password is the credential-recovery door; sign-in is the
+ *     door for anyone who already has one. Race-safe: the users.email UNIQUE
+ *     constraint arbitrates two concurrent calls, and the loser reads the
+ *     winner's row as `account_exists`.
+ *
+ * MFA is not taken here: enrollment is the existing #1310 purchase-session
+ * mechanism (public-purchase-account.ts's TOTP/passkey handlers over mfa.ts's
+ * one real implementation), which needs this row to exist first — a passkey
+ * registration is bound to a users.id. The pre-consent routes run that same
+ * enrollment immediately after this insert, gated to the account this session
+ * created.
+ *
+ * Does not touch provisionProspectAccount or the consent callback (#4374's
+ * scope), and it converts the funnel-entry lead the same way that path does:
+ * a real account now exists for that email.
+ */
+export async function provisionPendingAccount(opts: {
+  email: string;
+  passwordHash: string;
+  fullName?: string | null;
+  company?: string | null;
+  role: PendingProspectRole;
+}): Promise<PendingAccountProvisionResult> {
+  const email = opts.email?.toLowerCase().trim();
+  if (!email) throw new Error("provisionPendingAccount: email is required");
+  if (!BCRYPT_HASH_RE.test(opts.passwordHash)) {
+    throw new Error("provisionPendingAccount: passwordHash must be a bcrypt hash — hash before calling");
+  }
+  if (!isPendingProspectRole(opts.role)) {
+    // A tenant-scoped role inserted with no tenant would be the #3950
+    // users_role_scope_check violation; refuse before the database has to.
+    throw new Error(`provisionPendingAccount: ${String(opts.role)} is not a *Pending rung`);
+  }
+
+  const [created] = await db
+    .insert(usersTable)
+    .values({
+      email,
+      role: "client",
+      name: opts.fullName?.trim() || undefined,
+      company: opts.company?.trim() || undefined,
+      passwordHash: opts.passwordHash,
+      mspRole: opts.role,
+    })
+    .onConflictDoNothing({ target: usersTable.email })
+    .returning({ id: usersTable.id });
+
+  if (!created) {
+    const [existing] = await db
+      .select({ id: usersTable.id, passwordHash: usersTable.passwordHash })
+      .from(usersTable)
+      .where(eq(usersTable.email, email))
+      .limit(1);
+    if (!existing) {
+      // The conflict arbiter said the email exists; a read that cannot find it
+      // means the row was deleted in between. Never report a phantom account.
+      throw new Error("provisionPendingAccount: insert conflicted but no existing row was found");
+    }
+    return { outcome: "account_exists", userId: existing.id, hasPassword: Boolean(existing.passwordHash) };
+  }
+
+  void convertLeadForClient(created.id, email, opts.fullName ?? undefined);
+
+  log.info({ userId: created.id, mspRole: opts.role }, "provisionPendingAccount: pre-consent account created");
+  return { outcome: "created", userId: created.id };
+}
+
+/**
  * The pre-payment rungs a confirmed payment lifts to `Customer`. `Free` is the
  * assessment-funnel Prospect (#3590 folded the old "Assessment" tier into it).
  * `MonitoringConsented` / `PackConsented` are transient post-consent,

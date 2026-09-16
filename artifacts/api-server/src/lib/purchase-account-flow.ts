@@ -57,6 +57,25 @@
  * provisionIfMissing option: the purchase path provisions through the SAME
  * proven provisionProspectAccount used at consent time (idempotent, tenant-
  * linking, lead-converting), never an improvised second account-creation door.
+ *
+ * #4374 (issue 4 of #4370) — the PRE-CONSENT door, for the account-first
+ * checkout order (#4376: account -> consent -> pay). Same operations, a
+ * different ordering gate, and a different provisioning call:
+ *
+ *   resolvePreConsentPurchaseSession — unexpired, still `pending`, no tenant,
+ *                                      and a product with a `*Pending` rung
+ *   createPreConsentAccount          — verified mailbox -> bcrypt(12) ->
+ *                                      provisionPendingAccount (insert-only,
+ *                                      password set, `*Pending` rung)
+ *   resolvePreConsentAccountUser     — the account THIS session created, for
+ *                                      the MFA-enrollment and status steps
+ *
+ * issueVerificationCode / checkVerificationCode / getVerifiedEmail are shared
+ * with the paid door unchanged — they never read the session's status. Every
+ * security property listed above still holds on this door except the one it
+ * exists to relax (`paid`); in its place the session must be demonstrably
+ * BEFORE consent, so this door can never mint a password onto a session whose
+ * tenant is already linked.
  */
 
 import bcrypt from "bcryptjs";
@@ -69,7 +88,15 @@ import {
   servicesTable,
 } from "@workspace/db";
 import { and, desc, eq, gte, isNotNull, isNull } from "drizzle-orm";
-import { provisionProspectAccount, resolveProspectRole, promoteMspUserToCustomer } from "./direct-tenant-provisioning.ts";
+import {
+  provisionProspectAccount,
+  provisionPendingAccount,
+  resolveProspectRole,
+  promoteMspUserToCustomer,
+  pendingRoleForCategory,
+  isPendingProspectRole,
+  type PendingProspectRole,
+} from "./direct-tenant-provisioning.ts";
 import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "auth" });
@@ -81,6 +108,13 @@ export const CODE_TTL_MS = 15 * 60 * 1000;
 /** Six digits is a 1-in-a-million guess — only safe with a hard cap on tries. */
 export const MAX_CODE_ATTEMPTS = 5;
 
+/**
+ * A checkout session as the account-creation operations see it. Despite the
+ * name, the shape carries no payment fact: which sessions may reach those
+ * operations is decided by the resolver that produced it —
+ * resolvePaidPurchaseSession (#1310) or resolvePreConsentPurchaseSession
+ * (#4374, which returns this shape extended).
+ */
 export interface PaidPurchaseSession {
   id: string;
   productSlug: string;
@@ -455,6 +489,230 @@ export async function resolvePortalHandoffUser(session: PaidPurchaseSession): Pr
   if (!user.passwordHash) return { outcome: "password_not_set" };
 
   return { outcome: "ok", userId: user.id };
+}
+
+// ── #4374 — the pre-consent door ─────────────────────────────────────────────
+
+/**
+ * The catalog categories that have a `*Pending` / `*Consented` rung pair
+ * (#4370) and therefore a real pre-consent account state to create. Anything
+ * else — the assessment funnel, an uncatalogued slug, a NULL category — is
+ * refused rather than defaulted: pendingRoleForCategory's RetainerPending
+ * fallback exists for the consent callback's defence-in-depth, not as a reason
+ * to create a password-bearing account for a product with no pending state.
+ */
+export const PRE_CONSENT_ACCOUNT_CATEGORIES: readonly string[] = Object.freeze([
+  "monitoring",
+  "config_pack",
+  "retainer",
+]);
+
+export interface PreConsentPurchaseSession extends PaidPurchaseSession {
+  /** `services.category` — one of PRE_CONSENT_ACCOUNT_CATEGORIES. */
+  productCategory: string;
+  /** The rung an account created through this session is inserted at. */
+  pendingRole: PendingProspectRole;
+}
+
+export type PreConsentSessionResolution =
+  | { ok: true; session: PreConsentPurchaseSession }
+  | {
+      ok: false;
+      status: 400 | 404 | 409;
+      error:
+        | "session_invalid"
+        | "session_expired"
+        | "already_paid"
+        | "consent_already_granted"
+        | "product_not_eligible";
+    };
+
+/**
+ * The ordering gate for the pre-consent door: unexpired, still `pending`, no
+ * tenant attached, and a product with a `*Pending` rung. The mirror image of
+ * resolvePaidPurchaseSession — that door refuses anything before payment, this
+ * one refuses anything at or after consent:
+ *
+ *   - `paid`       -> already_paid: the post-payment door (#1310) owns that
+ *                     session's account stage.
+ *   - `consented`, or any tenant_id recorded -> consent_already_granted: a
+ *                     tenant is (being) linked, and a `*Pending` account must
+ *                     never be created alongside it — that is exactly the
+ *                     state users_role_scope_check and the #3973 swap exist to
+ *                     rule out.
+ *   - `expired`    -> session_expired, same as a lapsed expires_at.
+ */
+export async function resolvePreConsentPurchaseSession(rawSessionId: unknown): Promise<PreConsentSessionResolution> {
+  const sessionId = typeof rawSessionId === "string" ? rawSessionId : "";
+  if (!UUID_RE.test(sessionId)) {
+    return { ok: false, status: 400, error: "session_invalid" };
+  }
+
+  const [row] = await db
+    .select({
+      id: checkoutSessionsTable.id,
+      productSlug: checkoutSessionsTable.productSlug,
+      status: checkoutSessionsTable.status,
+      email: checkoutSessionsTable.email,
+      fullName: checkoutSessionsTable.fullName,
+      company: checkoutSessionsTable.company,
+      industry: checkoutSessionsTable.industry,
+      tenantId: checkoutSessionsTable.tenantId,
+      accountUserId: checkoutSessionsTable.accountUserId,
+      category: servicesTable.category,
+    })
+    .from(checkoutSessionsTable)
+    .leftJoin(servicesTable, eq(servicesTable.slug, checkoutSessionsTable.productSlug))
+    .where(
+      and(
+        eq(checkoutSessionsTable.id, sessionId),
+        gte(checkoutSessionsTable.expiresAt, new Date()),
+      ),
+    )
+    .limit(1);
+
+  if (!row || row.status === "expired") {
+    return { ok: false, status: 404, error: "session_expired" };
+  }
+  if (row.status === "paid") {
+    return { ok: false, status: 409, error: "already_paid" };
+  }
+  if (row.status !== "pending" || row.tenantId?.trim()) {
+    return { ok: false, status: 409, error: "consent_already_granted" };
+  }
+  if (!row.category || !PRE_CONSENT_ACCOUNT_CATEGORIES.includes(row.category)) {
+    return { ok: false, status: 409, error: "product_not_eligible" };
+  }
+
+  return {
+    ok: true,
+    session: {
+      id: row.id,
+      productSlug: row.productSlug,
+      email: row.email,
+      fullName: row.fullName,
+      company: row.company,
+      industry: row.industry,
+      tenantId: row.tenantId,
+      accountUserId: row.accountUserId,
+      productCategory: row.category,
+      pendingRole: pendingRoleForCategory(row.category),
+    },
+  };
+}
+
+export type CreatePreConsentAccountResult =
+  | { outcome: "email_not_verified" }
+  | { outcome: "already_created"; userId: number }
+  | { outcome: "account_exists"; hasPassword: boolean }
+  | { outcome: "ok"; userId: number; role: PendingProspectRole };
+
+/**
+ * Create the buyer's real account before consent: proven mailbox, then the
+ * platform's one password hash (bcrypt, cost 12 — auth.ts and
+ * attachPasswordToAccount use exactly this), then provisionPendingAccount's
+ * insert-only `*Pending` row.
+ *
+ *   - `already_created` — this session already created an account for this
+ *     address (a double-submit, a back button, a refreshed tab). Nothing is
+ *     re-written, the password in this request is ignored, and the flow simply
+ *     moves on to MFA — the same no-op-not-failure doctrine verify-code applies
+ *     to an already-verified code.
+ *   - `account_exists` — any OTHER account already holds this address. Never
+ *     modified here; the buyer signs in (or recovers via /auth/forgot-password).
+ *     The userId is deliberately not returned to the caller: this outcome is
+ *     reachable before payment by anyone who can read the mailbox's code, and
+ *     an internal id is no business of theirs.
+ *
+ * On `ok` the session records accountUserId — the same durable "created
+ * through THIS session" fact the paid door's portal handoff gates on, so a
+ * buyer who creates their account here and pays later is handoff-eligible for
+ * the account they made, and for no other.
+ */
+export async function createPreConsentAccount(
+  session: PreConsentPurchaseSession,
+  password: string,
+): Promise<CreatePreConsentAccountResult> {
+  const email = await getVerifiedEmail(session);
+  if (!email) return { outcome: "email_not_verified" };
+
+  if (session.accountUserId != null) {
+    const [own] = await db
+      .select({ id: usersTable.id, email: usersTable.email })
+      .from(usersTable)
+      .where(eq(usersTable.id, session.accountUserId))
+      .limit(1);
+    if (own && own.email === email) return { outcome: "already_created", userId: own.id };
+  }
+
+  const passwordHash = await bcrypt.hash(password, 12);
+  const result = await provisionPendingAccount({
+    email,
+    passwordHash,
+    fullName: session.fullName,
+    company: session.company,
+    role: session.pendingRole,
+  });
+
+  if (result.outcome === "account_exists") {
+    log.info(
+      { sessionId: session.id, hasPassword: result.hasPassword },
+      "pre-consent account: address already has an account — sign-in required, nothing modified",
+    );
+    return { outcome: "account_exists", hasPassword: result.hasPassword };
+  }
+
+  await db
+    .update(checkoutSessionsTable)
+    .set({ accountUserId: result.userId, updatedAt: new Date() })
+    .where(eq(checkoutSessionsTable.id, session.id));
+
+  return { outcome: "ok", userId: result.userId, role: session.pendingRole };
+}
+
+export type PreConsentAccountUser =
+  | { outcome: "email_not_verified" }
+  | { outcome: "account_not_created" }
+  | { outcome: "account_missing" }
+  | { outcome: "email_mismatch" }
+  | { outcome: "not_pending" }
+  | { outcome: "ok"; userId: number; email: string; passwordSet: boolean };
+
+/**
+ * The account a pre-consent session may continue to act on (MFA enrollment,
+ * status): only the one it created (accountUserId), only while the mailbox is
+ * still proven and still that account's address, and only while the account is
+ * still at a `*Pending` rung. Keyed on accountUserId rather than an email
+ * lookup, so an existing account at the same address — which createPreConsentAccount
+ * refused to touch — can never have MFA enrolled onto it through this door.
+ */
+export async function resolvePreConsentAccountUser(session: PreConsentPurchaseSession): Promise<PreConsentAccountUser> {
+  const email = await getVerifiedEmail(session);
+  if (!email) return { outcome: "email_not_verified" };
+  if (session.accountUserId == null) return { outcome: "account_not_created" };
+
+  const [user] = await db
+    .select({
+      id: usersTable.id,
+      email: usersTable.email,
+      passwordHash: usersTable.passwordHash,
+      mspRole: usersTable.mspRole,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, session.accountUserId))
+    .limit(1);
+
+  if (!user) return { outcome: "account_missing" };
+  if (user.email !== email) {
+    log.warn(
+      { sessionId: session.id, userId: user.id },
+      "pre-consent account: REFUSED — the created account no longer carries the session's verified address",
+    );
+    return { outcome: "email_mismatch" };
+  }
+  if (!isPendingProspectRole(user.mspRole)) return { outcome: "not_pending" };
+
+  return { outcome: "ok", userId: user.id, email, passwordSet: Boolean(user.passwordHash) };
 }
 
 /**
