@@ -296,7 +296,10 @@ namespace BuildConsole.Controls
         /// an item currently in `needsAttention` can later verify and move into `landed` on a
         /// future render, and if it had been marked sent here it must NOT read as already-sent to
         /// the ✈ button once that happens. Same shape, same in-memory-only/not-persisted-across-
-        /// restart reasoning as the dict above.</summary>
+        /// restart reasoning as the dict above. Git #4412 reuses this same dict/key-shape for the
+        /// Epic-group aggregate indicator (keyed by the same per-build-set key), rather than
+        /// inventing a second, differently-shaped mechanism for what is the same real concept one
+        /// level up.</summary>
         private readonly Dictionary<string, HashSet<int>> _sentNeedsAttentionByBuildSet = new(StringComparer.OrdinalIgnoreCase);
         /// <summary>Git #3616 — the real, per-issue answer to "does this Verifying item's own
         /// build-journal bookend actually check out as a genuine, git-verified DONE on
@@ -4059,10 +4062,17 @@ namespace BuildConsole.Controls
         /// already checked out via <see cref="DoneBookendVerifier"/> (the send button offers
         /// exactly what's real to report "landed"); <paramref name="needsAttentionByBuildSet"/>
         /// carries the rest — still Verifying, no verified bookend yet — surfaced as a distinct,
-        /// honestly-labeled "⚠ needs attention" pill instead of being silently folded into the
+        /// honestly-labeled "⚠ needs attention" indicator instead of being silently folded into the
         /// landed count or silently dropped. The header renders whenever either total is
         /// non-zero, so a group with only needs-attention items (no verified landed items yet)
-        /// still shows that pill rather than disappearing.</summary>
+        /// still shows that indicator rather than disappearing.
+        ///
+        /// Git #4412 — the same real feature #4411 built one level down (<see cref="BuildRollupRow"/>'s
+        /// own ❓ needs-attention button): this indicator is itself clickable, sending its real,
+        /// current aggregate needs-attention issue numbers to the active chat. Filters out items
+        /// already sent via THIS indicator (<see cref="_sentNeedsAttentionByBuildSet"/> — the same
+        /// dict #4411's per-row button uses, since this is the same real concept aggregated), so a
+        /// sent item stops reappearing here, mirroring the ✈ button's own already-sent handling.</summary>
         private UIElement BuildEpicGroupHeader(BuildSetEpicGroupKey key, Dictionary<string, List<int>> unsentByBuildSet, Dictionary<string, List<int>> needsAttentionByBuildSet)
         {
             var headerText = new TextBlock
@@ -4074,8 +4084,19 @@ namespace BuildConsole.Controls
                 VerticalAlignment = VerticalAlignment.Center,
             };
 
+            // Git #4412 — the aggregate needs-attention items not already sent via this same
+            // indicator (own tracking dict, separate from the ✈ button's landed-sent dict — see
+            // _sentNeedsAttentionByBuildSet's own doc comment for why).
+            var needsAttentionUnsentByBuildSet = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in needsAttentionByBuildSet)
+            {
+                var alreadySent = _sentNeedsAttentionByBuildSet.TryGetValue(kv.Key, out var sentSet) ? sentSet : null;
+                var fresh = alreadySent == null ? kv.Value : kv.Value.Where(n => !alreadySent.Contains(n)).ToList();
+                if (fresh.Count > 0) needsAttentionUnsentByBuildSet[kv.Key] = fresh;
+            }
+
             int totalUnsent = unsentByBuildSet.Sum(kv => kv.Value.Count);
-            int totalNeedsAttention = needsAttentionByBuildSet.Sum(kv => kv.Value.Count);
+            int totalNeedsAttention = needsAttentionUnsentByBuildSet.Sum(kv => kv.Value.Count);
             // Git #3866 — the lock toggle renders only for a real, single-epic header (never
             // "(mixed Epics)"/"No Epic"), independent of whether there's anything to send/flag.
             bool showLockButton = key.EpicNumber.HasValue;
@@ -4123,18 +4144,28 @@ namespace BuildConsole.Controls
                 badgeRow.Children.Add(sendButton);
             }
 
+            // Git #4412 — same real feature as #4411's per-row ❓ button, one level up: a real
+            // clickable button, styled/positioned like the ✈ sendButton above, replacing the
+            // formerly-static "⚠ N needs attention" text. Absent (not disabled) when there's
+            // nothing new to send, mirroring the ✈ button's own absent-when-empty convention.
+            Button? needsAttentionButton = null;
             if (totalNeedsAttention > 0)
             {
-                var allNeedsAttentionNumbers = needsAttentionByBuildSet.Values.SelectMany(v => v).OrderBy(n => n).ToList();
-                badgeRow.Children.Add(new TextBlock
+                var allNeedsAttentionNumbers = needsAttentionUnsentByBuildSet.Values.SelectMany(v => v).OrderBy(n => n).ToList();
+                needsAttentionButton = new Button
                 {
-                    Text = $"⚠ {totalNeedsAttention} needs attention",
+                    Content = $"❓ {totalNeedsAttention} needs attention",
                     FontSize = 10,
+                    Padding = new Thickness(5, 1, 5, 2),
                     Margin = new Thickness(8, 0, 0, 0),
                     VerticalAlignment = VerticalAlignment.Center,
+                    Cursor = Cursors.Hand,
+                    Background = Brushes.Transparent,
+                    BorderThickness = new Thickness(0),
                     Foreground = (Brush)Application.Current.FindResource("StatusWarningBrush"),
-                    ToolTip = $"Verifying, but no verified DONE bookend yet — not reported as landed: {string.Join(", ", allNeedsAttentionNumbers.Select(FormatIssueRef))}"
-                });
+                    ToolTip = $"Send these {totalNeedsAttention} needs-attention issue(s) across all {needsAttentionUnsentByBuildSet.Count} build set(s) under \"{key.Label}\" to the active chat — Verifying, but no verified DONE bookend yet: {string.Join(", ", allNeedsAttentionNumbers.Select(FormatIssueRef))}"
+                };
+                badgeRow.Children.Add(needsAttentionButton);
             }
 
             // Git #3866 — 🔒/🔓 lock toggle: marks every real build-set name currently resolving
@@ -4239,6 +4270,55 @@ namespace BuildConsole.Controls
                         // Same deferred-rebuild pattern as the per-set button: let Shane see the
                         // outcome message before RenderBuildSetRollup rebuilds this header out from
                         // under statusText.
+                        var hideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+                        hideTimer.Tick += (ts, te) =>
+                        {
+                            hideTimer.Stop();
+                            if (justSent) RenderBuildSetRollup(_lastItems);
+                            else statusText.Visibility = Visibility.Collapsed;
+                        };
+                        hideTimer.Start();
+                    }));
+                };
+            }
+
+            if (needsAttentionButton != null)
+            {
+                needsAttentionButton.Click += (s, e) =>
+                {
+                    // Git #4412 — snapshot at click time, same discipline as the ✈ button's own
+                    // snapshot, so a re-render mid-flight can't change what this send marks sent.
+                    var snapshot = needsAttentionUnsentByBuildSet.ToDictionary(kv => kv.Key, kv => kv.Value.ToList(), StringComparer.OrdinalIgnoreCase);
+                    var allNumbers = snapshot.Values.SelectMany(v => v).OrderBy(n => n).ToList();
+                    if (allNumbers.Count == 0) return;
+
+                    // Git #4411/#4412 — same message wording as the per-row ❓ button, for consistency.
+                    string text = "Please check — no verified DONE bookend yet:\n" +
+                        string.Join("\n", allNumbers.Select(n => $"Git {FormatIssueRef(n)} — needs attention (no verified bookend yet)"));
+                    ActivityLog.Log("build-queue.rollup-needs-attention-send-to-chat", $"epic-aggregate-needs-attention-clicked: {key.Label}, {allNumbers.Count} needs-attention item(s) across {snapshot.Count} build set(s)");
+                    SendBuildSetVerifyingRequested?.Invoke(this, new SendBuildSetVerifyingEventArgs(key.Label, text, (msg, isError) =>
+                    {
+                        bool justSent = false;
+                        if (!isError)
+                        {
+                            // Git #4412 — mark sent in this indicator's own separate tracking dict,
+                            // never _sentVerifyingByBuildSet (see that dict's own doc comment for why).
+                            foreach (var kv in snapshot)
+                            {
+                                if (!_sentNeedsAttentionByBuildSet.TryGetValue(kv.Key, out var sent))
+                                {
+                                    sent = new HashSet<int>();
+                                    _sentNeedsAttentionByBuildSet[kv.Key] = sent;
+                                }
+                                foreach (var n in kv.Value) sent.Add(n);
+                            }
+                            justSent = true;
+                        }
+                        statusText.Text = msg;
+                        statusText.Foreground = isError
+                            ? (Brush)Application.Current.FindResource("StatusErrorBrush")
+                            : (Brush)Application.Current.FindResource("StatusSuccessBrush");
+                        statusText.Visibility = Visibility.Visible;
                         var hideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
                         hideTimer.Tick += (ts, te) =>
                         {
@@ -4431,7 +4511,17 @@ namespace BuildConsole.Controls
                 }
 
                 bool epicIsLocked = epicGroup.Key.EpicNumber.HasValue && Services.EpicPriorityStore.IsLocked(epicGroup.Key.EpicNumber.Value);
-                var headerKey = new RollupEpicHeaderKey(epicGroup.Key, RollupSignature(unsentByBuildSet), RollupSignature(needsAttentionByBuildSet), epicIsLocked);
+                // Git #4412 — the ❓ aggregate button's own sent-tracking, separate from the ✈
+                // button's landed-signature above, so a needs-attention send changes this header's
+                // pool key (and thus actually rebuilds) without affecting the ✈ button's own
+                // eligibility/signature. Mirrors #4411's NeedsAttentionSentSignature on RollupRowKey.
+                var sentNeedsAttentionByBuildSet = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+                foreach (var key in epicGroup)
+                {
+                    if (_sentNeedsAttentionByBuildSet.TryGetValue(key, out var sent) && sent.Count > 0)
+                        sentNeedsAttentionByBuildSet[key] = sent.ToList();
+                }
+                var headerKey = new RollupEpicHeaderKey(epicGroup.Key, RollupSignature(unsentByBuildSet), RollupSignature(needsAttentionByBuildSet), epicIsLocked, RollupSignature(sentNeedsAttentionByBuildSet));
                 var header = _rollupCards.Acquire(("epicHeader", epicGroup.Key), headerKey,
                     () => BuildEpicGroupHeader(epicGroup.Key, unsentByBuildSet, needsAttentionByBuildSet), out _);
                 desired.Add(header);
@@ -4480,7 +4570,7 @@ namespace BuildConsole.Controls
         /// group key itself: the two send-eligibility buckets, order-independent-safe because
         /// both are keyed dictionaries whose (buildSet, sorted-issue-list) pairs are joined in a
         /// stable order below.</summary>
-        private sealed record RollupEpicHeaderKey(BuildSetEpicGroupKey Group, string UnsentSignature, string NeedsAttentionSignature, bool IsLocked);
+        private sealed record RollupEpicHeaderKey(BuildSetEpicGroupKey Group, string UnsentSignature, string NeedsAttentionSignature, bool IsLocked, string NeedsAttentionSentSignature);
 
         /// <summary>Git #3834 — everything <see cref="BuildRollupRow"/> draws for one build set:
         /// its three bucketed issue-number lists, the selected/expanded UI state
