@@ -9541,6 +9541,98 @@ export type EvidenceAttachment = typeof evidenceAttachmentsTable.$inferSelect;
 export type InsertEvidenceAttachment = typeof evidenceAttachmentsTable.$inferInsert;
 
 /**
+ * #4353 — the real SHARED Evidence object.
+ *
+ * Deliberately distinct from `evidence_attachments` above (#3503): that is a
+ * narrow, 1:1 screenshot store bolted onto exactly two source records (a
+ * `remediation_tracker_steps` step or a `cr_executions` change execution),
+ * with a `(source, sourceRefId)` pair pinned to one record. This is the
+ * GENERAL object the three specs raised the same night (#4345 POA&M/milestone,
+ * #4349 Documents "mark as evidence", #4350 SOW/Assessment finding/gap/risk)
+ * all attach to, so they reuse ONE real object rather than building three.
+ *
+ * The genuinely-shared part is `evidence_links` below: one `evidence` row can
+ * be linked to MANY object types with no schema change per new consumer
+ * (polymorphic-by-explicit-type). An evidence row is either an uploaded file
+ * (`kind = "file"`, bytes stored under `UPLOADS_DIR/evidence` exactly like
+ * `evidence_attachments`, `file_ref` holds the server-relative path) or an
+ * external link (`kind = "link"`, `file_ref` holds the URL).
+ */
+export const EVIDENCE_KINDS = ["file", "link"] as const;
+export type EvidenceKind = typeof EVIDENCE_KINDS[number];
+
+/**
+ * The object types an evidence row can be linked to. Exactly the set the three
+ * consuming specs named — extend this array (not the schema) to add a consumer.
+ */
+export const EVIDENCE_LINK_TYPES = [
+  "milestone",
+  "document",
+  "finding",
+  "gap",
+  "risk",
+  "kanban_card",
+  "poam",
+] as const;
+export type EvidenceLinkType = typeof EVIDENCE_LINK_TYPES[number];
+
+export const evidenceTable = pgTable("evidence", {
+  id: serial("id").primaryKey(),
+  /** Owning MSP — every evidence row is created through an MSP-operator-scoped route. */
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  /** tenants.id the evidence belongs to, when known — matches evidence_attachments.customer_id (no FK, same MSP-child convention). NULL for MSP-level evidence not yet tied to a customer. */
+  customerId: integer("customer_id"),
+  /** `file` = uploaded file under UPLOADS_DIR/evidence; `link` = external URL. */
+  kind: text("kind", { enum: EVIDENCE_KINDS }).notNull(),
+  /** For kind `file`: server-relative storage path under UPLOADS_DIR/evidence (never a client-supplied path). For kind `link`: the external URL. */
+  fileRef: text("file_ref").notNull(),
+  /** Original uploaded filename, for display. NULL for a link. */
+  originalFilename: text("original_filename"),
+  /** MIME type for an uploaded file. NULL for a link. */
+  contentType: text("content_type"),
+  /** File size in bytes for an uploaded file. NULL for a link. */
+  fileSizeBytes: integer("file_size_bytes"),
+  /** Free-text description of what this evidence is / shows. */
+  description: text("description"),
+  /** users.id of whoever added it. NULL for a row written by automation. */
+  uploadedByUserId: integer("uploaded_by_user_id"),
+  /** The uploader's wire person id ("u<userId>"), matching evidence_attachments' convention. */
+  uploadedByPersonId: text("uploaded_by_person_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("evidence_msp_customer_idx").on(t.mspId, t.customerId),
+]);
+
+export type Evidence = typeof evidenceTable.$inferSelect;
+export type InsertEvidence = typeof evidenceTable.$inferInsert;
+
+/**
+ * The polymorphic-by-explicit-type join table that makes Evidence genuinely
+ * shared: one `evidence` row can hang off multiple real object types at once.
+ * `linked_id` is TEXT because linked objects key differently — POA&M ids and
+ * remediation step ids are strings, kanban cards / documents are ints — so the
+ * id is stored stringified. No FK to the target for the same reason
+ * `evidence_attachments.source_ref_id` carries none: the target lives in one of
+ * seven different tables. The FK to `evidence` IS real and cascades, so
+ * deleting an evidence row removes its links.
+ */
+export const evidenceLinksTable = pgTable("evidence_links", {
+  id: serial("id").primaryKey(),
+  evidenceId: integer("evidence_id").notNull().references(() => evidenceTable.id, { onDelete: "cascade" }),
+  linkedType: text("linked_type", { enum: EVIDENCE_LINK_TYPES }).notNull(),
+  linkedId: text("linked_id").notNull(),
+  /** users.id of whoever created the link. NULL for automation. */
+  linkedByUserId: integer("linked_by_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("evidence_links_unique_idx").on(t.evidenceId, t.linkedType, t.linkedId),
+  index("evidence_links_target_idx").on(t.linkedType, t.linkedId),
+]);
+
+export type EvidenceLink = typeof evidenceLinksTable.$inferSelect;
+export type InsertEvidenceLink = typeof evidenceLinksTable.$inferInsert;
+
+/**
  * #1793 — the app-only PowerShell capability survey.
  *
  * The platform has always known which cmdlets it CHOSE to wire into
