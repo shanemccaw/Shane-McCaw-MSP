@@ -55,6 +55,36 @@ its own. The script injects synthetic edges for these (`UNCONSTRAINED_FK_SHAPED_
 script) so they're still scoped correctly. If #4399 is ever fixed (the constraints added), the
 manual entries become redundant but harmless — remove them once confirmed.
 
+## `reset-rbac-test-accounts.mjs` — wipe/recreate the RBAC-ladder login-test accounts (Git #4396)
+
+Reusable, self-service version of #3911's one-off RBAC-ladder test-account reset — run it
+yourself whenever a tenant reset (#4272-style) or an RBAC role-catalog change breaks your
+saved browser autofill profiles for `shanemccaw+<role>@outlook.com`, instead of needing an
+agent dispatch.
+
+```
+node scripts/db/reset-rbac-test-accounts.mjs --dry-run   # BEGIN...ROLLBACK -- prints the plan, changes nothing
+node scripts/db/reset-rbac-test-accounts.mjs              # real run -- wipes + recreates, prints creds once
+```
+
+**What it does:** deletes only the `shanemccaw+<tag>@outlook.com` accounts it itself owns (a
+fixed tag list — never a blanket "everything under this tenant" delete, since a real customer
+signup can share the same tenant row), then recreates one fresh account per real,
+currently-live RBAC role — the 12-rung `LEGACY_ROLE_ORDER` ladder, the customer-side
+`customer-admin`/`billing` roles, and the `cap.team.manage`/`cap.changes.approve`/
+`cap.purchases.approve` capability roles. `shane@shanemccaw.com` is excluded by literal email
+match, never by role/tenant filtering alone. Real CSPRNG passwords, bcrypt-hashed at cost 12
+in the DB — plaintext is only ever printed once on stdout for you to paste into BuildConsole's
+`settings.json` (`TestEnvironmentVariables`).
+
+**Honest, not fabricated, when real state is missing:** any rung whose `users_role_scope_check`
+needs a real `tenant_id` (Free, Customer, RetainerConsented, MonitoringConsented,
+PackConsented, and the four Customer-tier capability roles) is skipped and reported — never
+given a fake tenant row — if no live mccawsoft2 `tenants` row exists (see #4318, the real
+live M365 admin-consent + Stripe walkthrough gate). Likewise `customer-admin`/`billing` are
+skipped if the `customer_roles` platform-default catalog doesn't actually carry that row right
+now (see #4400 — the catalog was severely wiped by #4272's reset and needs its own repair).
+
 ## `find-tenant-scoped-tables.mjs` — live FK-reachability report (Git #4313)
 
 Reports, from real `information_schema` FK edges, every table transitively reachable from a
