@@ -5027,12 +5027,22 @@ export const mspChangeRequestsTable = pgTable("msp_change_requests", {
   /**
    * #1498 — set only when this CR was raised by executing a pre-approved
    * standard change catalog item, rather than the wizard or Microsoft routing.
-   * Forward reference: `changeCatalogItemsTable` is declared later in this
-   * file. `set null` on delete rather than `cascade` — a catalog item is never
-   * hard-deleted (only revoked), but if it ever were, the CRs it already
-   * produced are a real historical record and must not disappear with it.
+   *
+   * #4312 — this column is also written by Launch Control executions
+   * (`raiseChangeRequestForLaunchControlExecution`) with the origin
+   * `write_action_catalog.id`, a DIFFERENT table from `change_catalog_items`.
+   * No single FK can enforce both origins on the same column, so the real FK
+   * (`msp_change_requests_catalog_item_id_fkey` → `change_catalog_items(id)`)
+   * was dropped in
+   * `lib/db/migrations/manual/2026-09-16-drop-catalog-item-id-fk-4312.sql` —
+   * this column is now an unenforced pointer whose target table is
+   * determined by which write path raised the row (there is no third source,
+   * so the two are never ambiguous in practice). MyArchitect's Replay-last-run
+   * filter (`ChangeRequestReplayService.GetLastRunAsync`, #3459) matches this
+   * value straight back against the `write_action_catalog.id` it sent as
+   * `catalogActionId` on execute.
    */
-  catalogItemId: integer("catalog_item_id").references((): AnyPgColumn => changeCatalogItemsTable.id, { onDelete: "set null" }),
+  catalogItemId: integer("catalog_item_id"),
 
   /**
    * #1499 — set only when this CR is the INVERSE ROLLBACK of another CR. A

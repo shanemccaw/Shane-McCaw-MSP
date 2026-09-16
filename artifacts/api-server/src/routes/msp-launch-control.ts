@@ -542,6 +542,7 @@ router.post(
         tenantName: customer.name,
         primaryDomain: customer.domain ?? "",
         catalogRow: {
+          id: catalogRow.id,
           domain: catalogRow.domain,
           actionName: catalogRow.actionName,
           surface: catalogRow.surface,

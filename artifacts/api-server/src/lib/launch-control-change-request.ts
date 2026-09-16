@@ -100,7 +100,7 @@ export interface RaiseLaunchControlChangeRequestInput {
   readonly tenantId: string;
   readonly tenantName: string;
   readonly primaryDomain: string;
-  readonly catalogRow: Pick<WriteActionCatalog, "domain" | "actionName" | "surface" | "safeOrGated">;
+  readonly catalogRow: Pick<WriteActionCatalog, "id" | "domain" | "actionName" | "surface" | "safeOrGated">;
   readonly templateId: string;
   /** The real payload about to be sent to Graph — variables + customerId, verbatim. */
   readonly proposedPayload: Record<string, unknown>;
@@ -142,6 +142,10 @@ export async function raiseChangeRequestForLaunchControlExecution(
       changeClass: "standard",
       riskLevel,
       category: categoryForWriteActionDomain(input.catalogRow.domain),
+      // #4312 — `write_action_catalog.id`, the source the Console's
+      // "Replay last run" filter matches back against (see the column's own
+      // schema comment for why the FK to change_catalog_items was dropped).
+      catalogItemId: input.catalogRow.id,
       targetResource: `Write action: ${input.catalogRow.actionName} (${input.catalogRow.surface})`,
       psaTicketId: "No ticket reference",
       requestedBy: input.requestedBy,

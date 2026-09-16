@@ -42,7 +42,7 @@ describe("launch-control-change-request — raising the CR a Launch Control exec
       tenantId: TENANT_ID,
       tenantName: "VERIFY Tenant (#3541)",
       primaryDomain: "verify-3541.example.test",
-      catalogRow: { domain: "Conditional Access", actionName: "Create CA policy", surface: "Entra ID", safeOrGated: "gated" },
+      catalogRow: { id: 95, domain: "Conditional Access", actionName: "Create CA policy", surface: "Entra ID", safeOrGated: "gated" },
       templateId: "quickstart-v1.create-ca-baseline-policy",
       proposedPayload: { customerId: 999, policyName: "Block legacy auth" },
       requestedBy: "operator@example.test",
@@ -61,6 +61,7 @@ describe("launch-control-change-request — raising the CR a Launch Control exec
     expect(row!.implementer).toBe("msp");
     expect(row!.status).toBe("pending_approval");
     expect(row!.proposedPayload).toEqual({ customerId: 999, policyName: "Block legacy auth" });
+    expect(row!.catalogItemId).toBe(95); // #4312 — the write_action_catalog id passed through
 
     // Standard change class => 0 required approval stages => one real,
     // already-`approved` inherited row, per materializeApprovalsForChange.
@@ -76,7 +77,7 @@ describe("launch-control-change-request — raising the CR a Launch Control exec
       tenantId: TENANT_ID,
       tenantName: "VERIFY Tenant (#3541)",
       primaryDomain: "verify-3541.example.test",
-      catalogRow: { domain: "Auth/MFA", actionName: "Revoke all sign-in sessions", surface: "Entra ID", safeOrGated: "safe" },
+      catalogRow: { id: 96, domain: "Auth/MFA", actionName: "Revoke all sign-in sessions", surface: "Entra ID", safeOrGated: "safe" },
       templateId: "microrem.revoke-sign-in-sessions",
       proposedPayload: { customerId: 999, userId: "u-1" },
       requestedBy: "operator@example.test",
@@ -96,7 +97,7 @@ describe("launch-control-change-request — raising the CR a Launch Control exec
       tenantId: TENANT_ID,
       tenantName: "VERIFY Tenant (#3541)",
       primaryDomain: "verify-3541.example.test",
-      catalogRow: { domain: "Groups", actionName: "Add/remove member", surface: "Entra ID", safeOrGated: "safe" },
+      catalogRow: { id: 97, domain: "Groups", actionName: "Add/remove member", surface: "Entra ID", safeOrGated: "safe" },
       templateId: "action.add-group-member",
       proposedPayload: { customerId: 999, groupId: "g-1", memberId: "m-1" },
       requestedBy: "operator@example.test",
@@ -125,7 +126,7 @@ describe("launch-control-change-request — raising the CR a Launch Control exec
       tenantId: TENANT_ID,
       tenantName: "VERIFY Tenant (#3541)",
       primaryDomain: "verify-3541.example.test",
-      catalogRow: { domain: "Licensing", actionName: "Direct assign license", surface: "Entra ID", safeOrGated: "safe" },
+      catalogRow: { id: 98, domain: "Licensing", actionName: "Direct assign license", surface: "Entra ID", safeOrGated: "safe" },
       templateId: "action.assign-single-license",
       proposedPayload: { customerId: 999, skuId: "sku-1" },
       requestedBy: "operator@example.test",
