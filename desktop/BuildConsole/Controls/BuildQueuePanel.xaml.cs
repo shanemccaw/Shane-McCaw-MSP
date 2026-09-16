@@ -291,6 +291,13 @@ namespace BuildConsole.Controls
         /// a restart (e.g. a set renamed/reused between sessions). Keyed by the normalized build
         /// set key (case-insensitive, matching <see cref="_expandedRollupSets"/>).</summary>
         private readonly Dictionary<string, HashSet<int>> _sentVerifyingByBuildSet = new(StringComparer.OrdinalIgnoreCase);
+        /// <summary>Git #4411 — the ❓ needs-attention button's own "already sent" tracking, kept
+        /// deliberately separate from <see cref="_sentVerifyingByBuildSet"/> (the ✈ button's dict):
+        /// an item currently in `needsAttention` can later verify and move into `landed` on a
+        /// future render, and if it had been marked sent here it must NOT read as already-sent to
+        /// the ✈ button once that happens. Same shape, same in-memory-only/not-persisted-across-
+        /// restart reasoning as the dict above.</summary>
+        private readonly Dictionary<string, HashSet<int>> _sentNeedsAttentionByBuildSet = new(StringComparer.OrdinalIgnoreCase);
         /// <summary>Git #3616 — the real, per-issue answer to "does this Verifying item's own
         /// build-journal bookend actually check out as a genuine, git-verified DONE on
         /// origin/main" (<see cref="DoneBookendVerifier.GetSatisfiedAsync"/>), refreshed
@@ -4449,7 +4456,12 @@ namespace BuildConsole.Controls
                         isExpanded,
                         string.Join(";", counts.members.OrderBy(m => m.Id).Select(m => $"{m.Id}|{m.OriginatingChatId}|{m.ChatUrl}")),
                         unsentByBuildSet.TryGetValue(key, out var landedForKey) ? string.Join(",", landedForKey.OrderBy(n => n)) : "",
-                        needsAttentionByBuildSet.TryGetValue(key, out var needsAttentionForKey) ? string.Join(",", needsAttentionForKey.OrderBy(n => n)) : "");
+                        needsAttentionByBuildSet.TryGetValue(key, out var needsAttentionForKey) ? string.Join(",", needsAttentionForKey.OrderBy(n => n)) : "",
+                        // Git #4411 — the ❓ button's own sent-tracking, separate from the ✈
+                        // button's landed-signature above, so a needs-attention send changes this
+                        // row's pool key (and thus actually rebuilds) without affecting the ✈
+                        // button's own eligibility/signature.
+                        _sentNeedsAttentionByBuildSet.TryGetValue(key, out var sentNeedsAttentionForKey) ? string.Join(",", sentNeedsAttentionForKey.OrderBy(n => n)) : "");
                     var row = _rollupCards.Acquire(("row", key), rowKey, () =>
                     {
                         var r = BuildRollupRow(key, counts.upNext, counts.running, counts.verifying, counts.members);
@@ -4478,7 +4490,7 @@ namespace BuildConsole.Controls
         /// reads those off the row's closure-captured <c>members</c> list, and the row's own
         /// landed/needs-attention split (Git #3616/#1932) so a send or a bookend-satisfaction flip
         /// — neither of which changes Verifying itself — still forces this row to rebuild.</summary>
-        private sealed record RollupRowKey(string UpNext, string Running, string Verifying, bool IsSelected, bool IsExpanded, string MembersSignature, string LandedSignature, string NeedsAttentionSignature);
+        private sealed record RollupRowKey(string UpNext, string Running, string Verifying, bool IsSelected, bool IsExpanded, string MembersSignature, string LandedSignature, string NeedsAttentionSignature, string NeedsAttentionSentSignature);
 
         /// <summary>Git #3834 — a stable, order-independent join of a buildSet→issue-numbers
         /// dictionary, for use inside a pool key record above.</summary>
@@ -4650,22 +4662,38 @@ namespace BuildConsole.Controls
                 badgeRow.Children.Add(sendButton);
             }
 
-            // Git #3616 — a distinct, honestly-labeled "needs attention" pill for Verifying items
-            // whose bookend hasn't checked out yet. Always visible when non-empty, independent of
-            // whether the send button is also showing, so Shane sees these exist even if he never
-            // clicks send.
-            if (needsAttention.Count > 0)
+            // Git #4411 — the needs-attention items this build set hasn't already sent via THIS
+            // button. Deliberately its own dict (_sentNeedsAttentionByBuildSet), not
+            // _sentVerifyingByBuildSet — an item sent here can still later verify and become real
+            // ✈ "landed" work, and must not read as already-sent to that button when it does.
+            var alreadySentNeedsAttention = _sentNeedsAttentionByBuildSet.TryGetValue(buildSetKey, out var sentNeedsAttentionSet) ? sentNeedsAttentionSet : null;
+            var needsAttentionUnsent = alreadySentNeedsAttention == null
+                ? needsAttention
+                : needsAttention.Where(n => !alreadySentNeedsAttention.Contains(n)).ToList();
+
+            // Git #3616/#4411 — a distinct, honestly-labeled, now-clickable "needs attention"
+            // button for Verifying items whose bookend hasn't checked out yet. Styled/positioned
+            // like the ✈ sendButton above, but with a ❓ glyph — visually distinct so it reads as
+            // "go check these" rather than "these landed" — and its own message wording/pipeline.
+            // Absent (not disabled) when there's nothing new to send, mirroring the ✈ button's own
+            // absent-when-empty convention.
+            Button? needsAttentionButton = null;
+            if (needsAttentionUnsent.Count > 0)
             {
-                var needsAttentionPill = new TextBlock
+                needsAttentionButton = new Button
                 {
-                    Text = $"⚠ {needsAttention.Count}",
-                    FontSize = 10,
+                    Content = $"❓ {needsAttentionUnsent.Count}",
+                    FontSize = 12,
+                    Padding = new Thickness(5, 1, 5, 2),
                     Margin = new Thickness(6, 0, 0, 0),
                     VerticalAlignment = VerticalAlignment.Center,
+                    Cursor = Cursors.Hand,
+                    Background = Brushes.Transparent,
+                    BorderThickness = new Thickness(0),
                     Foreground = (Brush)Application.Current.FindResource("StatusWarningBrush"),
-                    ToolTip = $"{needsAttention.Count} Verifying item(s) with no verified DONE bookend yet — not reported as landed: {string.Join(", ", needsAttention.Select(FormatIssueRef))}"
+                    ToolTip = $"Send {buildSetKey}'s {needsAttentionUnsent.Count} Verifying item(s) with no verified DONE bookend yet to the active chat: {string.Join(", ", needsAttentionUnsent.Select(FormatIssueRef))}"
                 };
-                badgeRow.Children.Add(needsAttentionPill);
+                badgeRow.Children.Add(needsAttentionButton);
             }
 
             var chevron = new ToggleButton
@@ -4754,6 +4782,54 @@ namespace BuildConsole.Controls
                         // message, since the button's own success/fail feedback is the point.
                         // Defer the rebuild — which is what actually makes the button disappear —
                         // to the same timer that hides the status text, so he sees "Sent" first.
+                        var hideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+                        hideTimer.Tick += (ts, te) =>
+                        {
+                            hideTimer.Stop();
+                            if (justSent) RenderBuildSetRollup(_lastItems);
+                            else { statusText.Visibility = Visibility.Collapsed; }
+                        };
+                        hideTimer.Start();
+                    }));
+                };
+            }
+
+            if (needsAttentionButton != null)
+            {
+                needsAttentionButton.Click += (s, e) =>
+                {
+                    // Git #4411 — the row rebuilds (KeyedCardPool.Acquire, keyed on RollupRowKey)
+                    // on every real render, so `needsAttentionUnsent` here is always this closure's
+                    // own live snapshot from the render that built this exact button — never a
+                    // stale one carried over from an earlier click.
+                    var toSend = needsAttentionUnsent;
+                    if (toSend.Count == 0) return;
+
+                    string text = "Please check — no verified DONE bookend yet:\n" +
+                        string.Join("\n", toSend.Select(n => $"Git {FormatIssueRef(n)} — needs attention (no verified bookend yet)"));
+                    ActivityLog.Log("build-queue.rollup-needs-attention-send-to-chat", $"needs-attention-clicked: {buildSetKey}, {toSend.Count} item(s)");
+                    SendBuildSetVerifyingRequested?.Invoke(this, new SendBuildSetVerifyingEventArgs(buildSetKey, text, (msg, isError) =>
+                    {
+                        bool justSent = false;
+                        if (!isError)
+                        {
+                            // Git #4411 — marks sent ONLY in _sentNeedsAttentionByBuildSet, never
+                            // _sentVerifyingByBuildSet, per the design constraint above.
+                            if (!_sentNeedsAttentionByBuildSet.TryGetValue(buildSetKey, out var sent))
+                            {
+                                sent = new HashSet<int>();
+                                _sentNeedsAttentionByBuildSet[buildSetKey] = sent;
+                            }
+                            foreach (var n in toSend) sent.Add(n);
+                            justSent = true;
+                        }
+                        statusText.Text = msg;
+                        statusText.Foreground = isError
+                            ? (Brush)Application.Current.FindResource("StatusErrorBrush")
+                            : (Brush)Application.Current.FindResource("StatusSuccessBrush");
+                        statusText.Visibility = Visibility.Visible;
+                        // Same deferred-rebuild reasoning as the ✈ button above: don't destroy
+                        // statusText (and this outcome message) by rebuilding immediately.
                         var hideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
                         hideTimer.Tick += (ts, te) =>
                         {
