@@ -1574,9 +1574,11 @@ export default function Buy() {
 
   const head = isMon
     ? {
+        // #4381 — Account-first (#4376/#4377): the account now comes before
+        // Connect, so the head copy no longer claims Connect is the opener.
         eyebrow: "Tenant monitoring",
-        title: "Connect first, then buy the tier that fits.",
-        body: "Monitoring runs on a connected tenant, so the read-only connection comes before the card. Nothing is charged until you approve the payment.",
+        title: "Create your account, then connect and pick a tier.",
+        body: "Monitoring runs on a connected tenant, so we set up your account first, then the read-only connection, then the card. Nothing is charged until you approve the payment.",
       }
     : isRet
       ? {
