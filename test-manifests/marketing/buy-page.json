@@ -50,9 +50,33 @@
       "headers": { "Content-Type": "application/json" },
       "body": { "sessionId": "00000000-0000-4000-8000-000000004378", "productSlug": "entra-id-quickstart-v1" },
       "expect": { "status": 404, "jsonPath": "$.error", "value": "session_expired" }
+    },
+    {
+      "sessionTag": "4377-account-first",
+      "name": "Git #4377 GUARD — resume without a Bearer token: 401, nothing read or renewed",
+      "method": "GET",
+      "path": "/api/public/purchase/resume",
+      "expect": { "status": 401 }
+    },
+    {
+      "sessionTag": "4377-account-first",
+      "name": "Git #4377 GUARD — monitoring-selection with an unknown (valid-shape) session: 404 session_expired, nothing moved",
+      "method": "POST",
+      "path": "/api/public/purchase/monitoring-selection",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "sessionId": "00000000-0000-4000-8000-000000004377", "productSlug": "monitoring-growth-smb", "seats": 250 },
+      "expect": { "status": 404, "jsonPath": "$.error", "value": "session_expired" }
     }
   ],
   "notes": [
+    "Git #4377 (sessionTag 4377-account-first): Monitoring runs account -> read consent -> tier & pay -> portal, with the",
+    "same identity step and pre-consent door as Packs (#4378). The consent URL is refused server-side (409",
+    "account_required) until the session's account has a password and MFA. Tier/seats move on the session in place",
+    "(POST /api/public/purchase/monitoring-selection; seats lock once connected). A returning buyer signs in on /buy",
+    "(real /auth/login + MFA challenge) and GET /api/public/purchase/resume returns their own session. The sign-in,",
+    "consent and resume path needs a real TOTP and a Microsoft consent this harness cannot drive; it is covered by",
+    "artifacts/api-server/src/routes/account-first-purchase.live-db.test.ts. The old MON1-MON3 (#1317) connect-first",
+    "assertions described an order that no longer exists and were replaced.",
     "Git #4378 (sessionTag 4378-account-first): Packs run account -> read consent -> packs/pay. /buy?product=pack",
     "opens on the account step (data-stage='identity'): name/email/company mint the checkout session, then",
     "#4374's pre-consent door (/api/public/purchase/pre-consent/*) proves the mailbox, creates the PackPending",
@@ -125,17 +149,18 @@
     "is PENDING for that reason; the code itself is verified green locally as noted above."
   ],
   "uiSteps": [
-    { "sessionTag": "1317-integration", "name": "MON1 (Git #1317) — monitoring still gates payment behind the tenant connection.", "action": "goto", "target": "/buy?product=monitoring&seats=250" },
-    { "sessionTag": "1317-integration", "action": "expect", "selector": "[data-testid='buy-page']", "state": "visible" },
-    { "sessionTag": "1317-integration", "action": "expect", "selector": "[data-testid='buy-heading']", "state": "visible", "textContains": "Connect first" },
-    { "sessionTag": "1317-integration", "action": "expect", "selector": "[data-testid='buy-connect-grant']", "state": "visible" },
-    { "sessionTag": "1317-integration", "action": "expect", "selector": "[data-testid='buy-pay']", "state": "visible", "textContains": "Connect your tenant to continue" },
-    { "sessionTag": "1317-integration", "name": "MON2 (Git #1317) — contact fields are now VISIBLE pre-connect: the real consent URL is minted against a session created from them (#1311), so identity comes before the connection. The pay CTA above stays blocked.", "action": "expect", "selector": "[data-testid='buy-payment-fields']", "state": "visible" },
+    { "sessionTag": "4377-account-first", "name": "MON1 (Git #4377) — Monitoring is account-first: /buy?product=monitoring opens on the account step. Account comes before read consent, tier and payment.", "action": "goto", "target": "/buy?product=monitoring&seats=250" },
+    { "sessionTag": "4377-account-first", "action": "expect", "selector": "[data-testid='buy-page'][data-stage='identity']", "state": "visible" },
+    { "sessionTag": "4377-account-first", "action": "expect", "selector": "[data-testid='buy-account']", "state": "visible", "textContains": "Start with your account" },
+    { "sessionTag": "4377-account-first", "action": "expect", "selector": "[data-testid='buy-steprail']", "state": "visible", "textContains": "Tier & pay" },
+    { "sessionTag": "4377-account-first", "name": "MON2 (Git #4377) — no read-consent card and no pay button before the account exists; a returning buyer is offered sign-in instead.", "action": "expect", "selector": "[data-testid='buy-connect']", "state": "absent" },
+    { "sessionTag": "4377-account-first", "action": "expect", "selector": "[data-testid='buy-pay']", "state": "absent" },
+    { "sessionTag": "4377-account-first", "action": "expect", "selector": "[data-testid='buy-resume-open']", "state": "visible", "textContains": "Sign in to resume" },
 
-    { "sessionTag": "1317-integration", "name": "MON3 (Git #1317) — ?scanned=1 no longer fabricates a connection: a free-scan arrival carries no session-linked consent, so the REQUIRED connect card still shows and no fake 1,240-seat 'tenant-reported' price exists anywhere.", "action": "goto", "target": "/buy?product=monitoring&scanned=1" },
-    { "sessionTag": "1317-integration", "action": "expect", "selector": "[data-testid='buy-connect']", "state": "visible" },
-    { "sessionTag": "1317-integration", "action": "expect", "selector": "[data-testid='buy-connected']", "state": "absent" },
-    { "sessionTag": "1317-integration", "action": "expect", "selector": "[data-testid='buy-estimate']", "state": "visible" },
+    { "sessionTag": "4377-account-first", "name": "MON3 (Git #4377) — ?resume=1 (the portal resume stub's link, #4379) opens the sign-in-to-resume panel in place of the identity step.", "action": "goto", "target": "/buy?product=monitoring&resume=1" },
+    { "sessionTag": "4377-account-first", "action": "expect", "selector": "[data-testid='buy-resume']", "state": "visible", "textContains": "Sign in to resume your purchase" },
+    { "sessionTag": "4377-account-first", "action": "expect", "selector": "[data-testid='buy-resume-email']", "state": "visible" },
+    { "sessionTag": "4377-account-first", "action": "expect", "selector": "[data-testid='buy-account']", "state": "absent" },
 
     { "sessionTag": "1379-retainer-slug-fix", "name": "RET1 (Git #1379) — real slug ?tier=architect-essentials-retainer (what Retainers.tsx actually sends via tier.slug, NOT the old short 'essentials' key) lands on Essentials, not the Advisory fallback.", "action": "goto", "target": "/buy?product=retainer&tier=architect-essentials-retainer" },
     { "action": "expect", "selector": "[data-testid='buy-heading']", "state": "visible", "textContains": "Pick your hours" },

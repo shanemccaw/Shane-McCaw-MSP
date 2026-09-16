@@ -22,6 +22,7 @@ import { useQuickStartPackAvailability } from "../../hooks/useQuickStartPackAvai
 import { useServices, type PublicService } from "../../hooks/useServices";
 import { useBuyPackLive, liveStepOutcome, BUY_SESSION_STORAGE_KEY } from "../../hooks/useBuyPackLive";
 import { StripePaymentElement } from "../../components/StripePaymentElement";
+import { BuyResumeSignIn, type ResumedPurchase } from "../components/BuyResumeSignIn";
 import { logger } from "../../lib/logger";
 
 const log = logger.child({ channel: "billing" });
@@ -89,7 +90,8 @@ type Product = "monitoring" | "retainer" | "pack";
 // password, MFA through #4374's pre-consent door) BEFORE read consent and
 // payment, instead of the paid door's account creation after payment.
 // Everything from write access onward is unchanged for them.
-const ACCOUNT_FIRST_PRODUCTS: readonly Product[] = ["pack"];
+// #4377 — Monitoring joins: account → consent → tier & pay → portal.
+const ACCOUNT_FIRST_PRODUCTS: readonly Product[] = ["monitoring", "pack"];
 type Stage =
   | "identity"
   | "buy"
@@ -161,6 +163,12 @@ interface State {
    *  enrolled. From here the session is the buyer's and is never dropped —
    *  checkout-session refuses a new one for an address that has an account. */
   accountDone: boolean;
+  /** #4377 — the "sign in to resume" panel is open in place of the identity
+   *  step (?resume=1 opens it on arrival, e.g. from the portal's resume stub). */
+  resumeOpen: boolean;
+  /** #4377 — a resumed session's productSlug, mapped back onto the on-screen
+   *  tier/pack once the live catalogue has loaded; null otherwise. */
+  resumeSlug: string | null;
   writeGranted: boolean;
   writeDeclined: boolean;
   writeError: string | null;
@@ -231,6 +239,8 @@ function initialState(): State {
     acctBusy: false,
     acctNotice: null,
     accountDone: false,
+    resumeOpen: ACCOUNT_FIRST_PRODUCTS.includes(product) && qs("resume") === "1",
+    resumeSlug: null,
     writeGranted: false,
     writeDeclined: false,
     writeError: null,
@@ -426,6 +436,23 @@ export default function Buy() {
     });
   }, [isPack, catalogLoading, availablePackKeys]);
 
+  // #4377 — a resumed session names its product by catalog slug; put the
+  // matching tier (Monitoring: packageKey core:<tier>) or pack back on screen
+  // once the live catalogue is in. An unmatched slug leaves the selection as is.
+  useEffect(() => {
+    if (!st.resumeSlug || catalogServices.length === 0) return;
+    const svc = catalogServices.find((s) => s.slug === st.resumeSlug);
+    const packageKey = (svc?.typeAttributes as { packageKey?: string } | null)?.packageKey;
+    const tierKey = packageKey?.startsWith("core:") ? packageKey.slice("core:".length) : null;
+    const pack = svc ? PACKS.find((p) => p.name === svc.name) : undefined;
+    set((s) => ({
+      resumeSlug: null,
+      ...(s.product === "monitoring" && tierKey && MON_TIERS.some((t) => t.key === tierKey) ? { choice: tierKey } : {}),
+      ...(s.product === "pack" && pack ? { packSel: { [pack.key]: true } } : {}),
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [st.resumeSlug, catalogServices]);
+
   // ── Derived model (ported from the design's helpers) ──────────────────────────
   const monSel = MON_TIERS.find((t) => t.key === st.choice) || MON_TIERS[1];
   const retSel = RET_TIERS.find((t) => t.key === st.choice) || RET_TIERS[0];
@@ -569,11 +596,15 @@ export default function Buy() {
     const data = (await res.json().catch(() => ({}))) as { sessionId?: string; error?: string };
     if (!res.ok || !data.sessionId) {
       log.warn({ status: res.status, error: data.error }, "purchase checkout session creation failed");
-      throw new Error(
+      const refusal = new Error(
         data.error === "already_has_account"
-          ? "An account already exists for this email. Sign in to the Portal to buy from there."
+          ? accountFirst
+            ? "An account already exists for this email. If you started this purchase before, sign in to resume it."
+            : "An account already exists for this email. Sign in to the Portal to buy from there."
           : data.error ?? "Could not start checkout. Please check your details and try again.",
       );
+      refusal.name = data.error ?? "checkout_session_failed";
+      throw refusal;
     }
     try {
       window.localStorage.setItem(BUY_SESSION_STORAGE_KEY, data.sessionId);
@@ -672,6 +703,9 @@ export default function Buy() {
     set({ stage: "connecting", payingError: null });
     try {
       const sessionId = await ensureSession();
+      // #4377 — the seat count locks at connect: write the on-screen tier and
+      // seats onto the buyer's session first.
+      if (isMon && accountFirst) await syncMonitoringSelection(sessionId);
       const urlRes = await fetch(`/api/public/flow/read-consent-url?sessionId=${encodeURIComponent(sessionId)}`);
       const urlData = (await urlRes.json().catch(() => ({}))) as { url?: string; error?: string };
       if (!urlRes.ok || !urlData.url) {
@@ -771,8 +805,71 @@ export default function Buy() {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not start your account. Please try again.";
       authLog.warn({ err: message }, "account-first purchase: account step could not start");
-      set({ acctBusy: false, acctNotice: { kind: "error", text: message } });
+      // #4377 — an address that already has an account is a returning buyer:
+      // open the sign-in-to-resume panel rather than a dead end.
+      const returning = err instanceof Error && err.name === "already_has_account";
+      set({ acctBusy: false, acctNotice: { kind: "error", text: message }, ...(returning ? { resumeOpen: true } : {}) });
     }
+  };
+
+  // #4377 — Monitoring's tier and seats live on the session row. Once the
+  // account is bound to the session it is kept rather than re-minted, so the
+  // on-screen selection is written onto it in place: before consent (where the
+  // seat count locks, server-side) and again before pricing.
+  const syncMonitoringSelection = async (sessionId: string) => {
+    const productSlug = resolveMonitoringSlug(catalogServices, monSel.key, seats);
+    if (!productSlug) {
+      throw new Error("This option isn't available to purchase right now. Please choose another.");
+    }
+    const res = await fetch("/api/public/purchase/monitoring-selection", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, productSlug, seats }),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+      log.warn({ status: res.status, error: err.error, sessionId }, "monitoring selection update refused");
+      throw new Error(
+        err.error === "seat_band_mismatch"
+          ? err.message || "Your seat count doesn't match this tier."
+          : err.error === "seats_locked"
+            ? "Your seat count is locked to the tenant you connected. Choose a tier at that count."
+            : "Could not update your selection. Please try again.",
+      );
+    }
+  };
+
+  // #4377 — the buyer signed back in (BuyResumeSignIn) and the server handed
+  // back the checkout session their account owns. Land on the real next step:
+  // MFA enrollment if they left before it, the post-payment stage if already
+  // paid, otherwise the buying screen with the connection as it really stands.
+  const applyResumed = (p: ResumedPurchase) => {
+    const product: Product = p.productCategory === "config_pack" ? "pack" : "monitoring";
+    try {
+      window.localStorage.setItem(BUY_SESSION_STORAGE_KEY, p.sessionId);
+    } catch {
+      /* storage unavailable — state alone still works */
+    }
+    set({
+      product,
+      sessionId: p.sessionId,
+      email: p.email,
+      fullName: p.fullName,
+      company: p.company ?? "",
+      seatInput: String(p.seats),
+      seatEdited: true,
+      connected: p.tenantConnected,
+      scanSkipped: false,
+      resumeOpen: false,
+      resumeSlug: p.productSlug,
+      accountDone: p.mfaEnrolled,
+      acctBusy: false,
+      acctNotice: null,
+      payingError: null,
+      mfaSetup: null,
+      stage: !p.mfaEnrolled ? "mfa" : p.status === "paid" ? postAccountStage(product) : "buy",
+    });
+    if (!p.mfaEnrolled) void loadTotpSetup(p.sessionId);
   };
 
   // Real Stripe confirm callback (#1307's payment-confirmed), shared by the
@@ -857,6 +954,10 @@ export default function Buy() {
       // step on a placeholder pack, and a pack session's own slug is always
       // part of what is charged — move it onto the buyer's real first pack
       // before pricing, so a pack they deselected is never billed.
+      // #4377 — Monitoring: the tier chosen after connecting is priced from
+      // the session row, so write it there before the intent is created.
+      if (isMon && accountFirst) await syncMonitoringSelection(sessionId);
+
       if (isPack && accountFirst) {
         const anchorSlug = resolvePackSlug(catalogServices, PACKS_BY_KEY[packKeys[0]]?.name ?? "");
         if (!anchorSlug) {
@@ -1377,12 +1478,25 @@ export default function Buy() {
 
   // ── Step rail ─────────────────────────────────────────────────────────────────
   const stepLabels = isMon
-    ? ["Connect", "Tier", "Pay", "Create account", "Portal"]
+    ? // #4377 — account → read consent → tier & pay → portal.
+      ["Create account", "Connect", "Tier & pay", "Portal"]
     : isPack
       ? // #4378 — account → read consent → packs/pay; from write access on unchanged.
         ["Create account", "Connect", "Pack & pay", "Write access", "Scan", "Approve", "Record"]
       : ["Tier", "Pay", "Create account", "Portal"];
-  const acctIdx = isMon ? 3 : 2;
+  const acctIdx = 2;
+  const monStageIdx: Record<string, number> = {
+    identity: 0,
+    code: 0,
+    verifying: 0,
+    password: 0,
+    mfa: 0,
+    logging: 0,
+    buy: st.connected ? 2 : 1,
+    connecting: 1,
+    paying: 2,
+    done: 3,
+  };
   const packStageIdx: Record<string, number> = {
     identity: 0,
     code: 0,
@@ -1404,22 +1518,22 @@ export default function Buy() {
   const accountStages: Stage[] = ["identity", "code", "verifying", "password", "mfa", "logging"];
   const at = isPack
     ? packStageIdx[st.stage] ?? 0
-    : st.stage === "done"
-      ? stepLabels.length - 1
-      : st.stage === "write" || st.stage === "granting"
-        ? acctIdx + 1
-        : accountStages.includes(st.stage)
-          ? acctIdx
-          : isMon
-            ? st.connected
-              ? 2
-              : 0
+    : isMon
+      ? monStageIdx[st.stage] ?? 0
+      : st.stage === "done"
+        ? stepLabels.length - 1
+        : st.stage === "write" || st.stage === "granting"
+          ? acctIdx + 1
+          : accountStages.includes(st.stage)
+            ? acctIdx
             : 1;
 
   // ── show flags ──────────────────────────────────────────────────────────────
   const show = {
     buying: st.stage === "buy" || st.stage === "connecting" || st.stage === "paying",
-    account: accountStages.includes(st.stage),
+    // #4377 — the resume panel replaces the identity step while it is open.
+    account: accountStages.includes(st.stage) && !(st.stage === "identity" && st.resumeOpen),
+    resume: accountFirst && st.stage === "identity",
     writeConsent: st.stage === "write" || st.stage === "granting",
     done: st.stage === "done",
     // "paying" is deliberately excluded: the buyer interacts with the real
@@ -3192,6 +3306,57 @@ export default function Buy() {
               {acct.foot}
             </span>
           </div>
+        </div>
+      )}
+
+      {/* ── Resume a purchase (#4377) ────────────────────────────────────────────── */}
+      {show.resume && (
+        <div
+          style={{
+            // Tucked up into the account panel's bottom padding when closed —
+            // positioned so it paints (and takes clicks) above that padding.
+            position: "relative",
+            zIndex: 1,
+            maxWidth: "520px",
+            margin: st.resumeOpen ? "0 auto" : "-70px auto 0",
+            padding: st.resumeOpen ? "48px 32px 90px" : "0 32px 90px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "14px",
+          }}
+        >
+          {st.resumeOpen ? (
+            <>
+              {st.acctNotice && (
+                <p style={{ margin: 0, fontSize: "12.5px", lineHeight: 1.55, color: "#f87171" }}>{st.acctNotice.text}</p>
+              )}
+              <BuyResumeSignIn
+                defaultEmail={st.email.trim()}
+                inputStyle={inputStyle}
+                buttonBackground={gradientBtn}
+                onResumed={applyResumed}
+                onCancel={() => set({ resumeOpen: false, acctNotice: null })}
+              />
+            </>
+          ) : (
+            <button
+              data-testid="buy-resume-open"
+              onClick={() => set({ resumeOpen: true, acctNotice: null })}
+              style={{
+                padding: 0,
+                border: 0,
+                background: "none",
+                fontFamily: "inherit",
+                fontSize: "12.5px",
+                fontWeight: 600,
+                color: "#60a5fa",
+                cursor: "pointer",
+                textAlign: "center",
+              }}
+            >
+              Already started a purchase? Sign in to resume it.
+            </button>
+          )}
         </div>
       )}
 
