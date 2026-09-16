@@ -102,6 +102,7 @@ import {
 } from "../lib/purchase-account-flow.ts";
 import { getActiveMfaMethods, getRpId, getRpOrigin, encryptTotp } from "./mfa.ts";
 import { ensureMonitoringScanKickoff } from "../lib/monitoring-onboarding-scan.ts";
+import { ensureMonitoringEntitlement } from "../lib/monitoring-entitlement-provisioning.ts";
 
 const log = logger.child({ channel: "auth" });
 
@@ -430,6 +431,15 @@ router.post("/public/purchase/set-password", setPasswordLimiter, async (req: Req
     log.error({ err, sessionId: session.id }, "purchase set-password: monitoring scan kickoff threw (non-fatal)");
   });
 
+  // Git #4403 — a legacy pay-then-account buyer has no accountUserId when
+  // payment-confirmed runs, so its Monitoring entitlement (the client_services
+  // row the Portal tier gate reads) is provisioned here instead. Awaited so the
+  // row exists before the handoff token below lands the buyer in the portal.
+  // Idempotent per session; a no-op for non-monitoring products.
+  await ensureMonitoringEntitlement({ ...session, accountUserId: result.userId }).catch((err) => {
+    log.error({ err, sessionId: session.id }, "purchase set-password: monitoring entitlement provisioning FAILED (portal-handoff will retry)");
+  });
+
   // Same single-use, short-lived auto-login handoff the assessment flow mints
   // (Git #636): the portal's own boot effect trades it for a real session the
   // instant that tab lands. Phase 4 of #1309 builds the /buy handoff on this.
@@ -539,6 +549,14 @@ router.post("/public/purchase/portal-handoff", handoffLimiter, async (req: Reque
     res.status(409).json({ error: eligibility.outcome });
     return;
   }
+
+  // Git #4403 — last backstop before the buyer lands in the portal: if the
+  // payment-confirmed / set-password provisioning of the Monitoring entitlement
+  // failed transiently, re-run it now. Idempotent per session (unique
+  // (checkout_session_id, service_id)), a no-op for non-monitoring products.
+  await ensureMonitoringEntitlement({ ...session, accountUserId: eligibility.userId }).catch((err) => {
+    log.error({ err, sessionId: session.id }, "portal handoff: monitoring entitlement provisioning FAILED (non-fatal)");
+  });
 
   // Same single-use, short-lived shape set-password mints (and #636 before it):
   // 32 CSPRNG bytes, 2-minute TTL, consumed atomically by /auth/signup-exchange.

@@ -82,6 +82,9 @@
  * Packs are genuinely one-time and never ask. Subscription creation itself is
  * fulfilment/provisioning work, deliberately out of scope here — same "known
  * gap, nothing here pretends it has happened" stance as the #435 file header.
+ * The Monitoring ENTITLEMENT is not: since #4403 a paid confirm provisions the
+ * client_services row the Portal's tier gate reads
+ * (lib/monitoring-entitlement-provisioning.ts), idempotently per session.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -103,6 +106,7 @@ import { markAssessmentLeadPurchased } from "../lib/crm-pipeline.ts";
 import { ensureFlowStripeCustomer } from "../lib/assessment-flow-rescan-addon.ts";
 import { promoteAccountFirstBuyerOnPayment, resolvePaidPurchaseSession } from "../lib/purchase-account-flow.ts";
 import { ensureMonitoringScanKickoff } from "../lib/monitoring-onboarding-scan.ts";
+import { ensureMonitoringEntitlement } from "../lib/monitoring-entitlement-provisioning.ts";
 
 const log = logger.child({ channel: "billing" });
 
@@ -710,9 +714,40 @@ router.post("/public/purchase/payment-confirmed", async (req: Request, res: Resp
     // for every non-monitoring purchase and for a legacy pay-then-account
     // session, whose accountUserId isn't recorded until set-password runs,
     // after this point.
+    const resolved = await resolvePaidPurchaseSession(order.sessionId).catch((err) => {
+      log.error({ err, checkoutSessionId: order.sessionId }, "purchase payment: paid session re-read failed (non-fatal)");
+      return null;
+    });
+
+    // Git #4403 — the entitlement the buyer paid for. Before this, nothing wrote
+    // the client_services row the Portal's tier gate reads (#4402's traced
+    // contract), so every tier-gated module answered 402 after a real Monitoring
+    // purchase. Runs on a replayed confirm too: the (checkout_session_id,
+    // service_id) unique index makes a repeat a no-op, never a second row.
+    // Monitoring-only; a legacy pay-then-account session has no accountUserId
+    // yet and is provisioned by set-password instead. Non-fatal to the response
+    // (the money has moved and the buyer's next step must not break) but loud —
+    // set-password and portal-handoff re-run it before the buyer reaches the
+    // portal, so a transient failure here self-heals.
+    if (resolved?.ok) {
+      try {
+        const entitlement = await ensureMonitoringEntitlement(resolved.session);
+        if (entitlement.reason === "provisioned") {
+          log.info(
+            { checkoutSessionId: order.sessionId, paymentIntentId: intent.id, clientServiceId: entitlement.clientServiceId },
+            "purchase payment: monitoring entitlement provisioned",
+          );
+        }
+      } catch (err) {
+        log.error(
+          { err, checkoutSessionId: order.sessionId, paymentIntentId: intent.id },
+          "purchase payment: monitoring entitlement provisioning FAILED — buyer is paid but not entitled until a backstop re-runs it",
+        );
+      }
+    }
+
     try {
-      const resolved = await resolvePaidPurchaseSession(order.sessionId);
-      if (resolved.ok && resolved.session.accountUserId != null) {
+      if (resolved?.ok && resolved.session.accountUserId != null) {
         const kickoff = await ensureMonitoringScanKickoff(resolved.session);
         if (kickoff.fired) {
           log.info(
