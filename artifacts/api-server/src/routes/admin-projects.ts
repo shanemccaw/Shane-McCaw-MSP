@@ -4,6 +4,7 @@ import {
   db,
   projectsTable,
   usersTable,
+  tenantsTable,
   contractsTable,
   invoicesTable,
   reportsTable,
@@ -268,6 +269,34 @@ router.get("/admin/projects/:id", requireCapability("ladder.msp-operator"), asyn
   });
 
   res.json(project);
+});
+
+// ── Real create-project client picker (Git #4366) ────────────────────────────
+// The Kanban "Create Project" form needs a real clientUserId to POST /admin/projects
+// with (see below) — MyArchitect's Tenant model carries no clientUserId of its own
+// (#4303's own note), so this resolves the real candidate users for a tenant the
+// same way admin-active-directory.ts's Customer Object pane does, just scoped to
+// this file's own MSP-ownership model instead of requireAdmin.
+router.get("/admin/projects/client-users", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
+  const customerId = parseInt(String(req.query.customerId ?? ""), 10);
+  if (isNaN(customerId)) { res.status(400).json({ error: "customerId is required" }); return; }
+
+  const scope = await requireProjectScope(req, res);
+  if (!scope) return;
+
+  if (scope.mspId !== null) {
+    const [tenant] = await db.select({ id: tenantsTable.id }).from(tenantsTable)
+      .where(and(eq(tenantsTable.id, customerId), eq(tenantsTable.mspId, scope.mspId)));
+    if (!tenant) { res.status(404).json({ error: "Customer not found" }); return; }
+  }
+
+  const users = await db
+    .select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
+    .from(usersTable)
+    .where(eq(usersTable.tenantId, customerId))
+    .orderBy(asc(usersTable.name));
+
+  res.json(users);
 });
 
 router.post("/admin/projects", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
