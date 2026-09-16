@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import { Nav } from "../components/Nav";
 import { FreeScanReturnLinkRequest } from "../components/FreeScanReturnLinkRequest";
+import { FreeScanFlowStrip } from "../components/FreeScanFlowStrip";
 import { Footer } from "../components/Footer";
 import { useSignalCheckCount } from "../../hooks/useSignalCheckCount";
 import { useCatalog, type MonitoringTier } from "../../hooks/useCatalog";
@@ -437,6 +438,9 @@ function flattenFindings(pillars: RealPillarCard[]): DisplayFinding[] {
 // or a Referer — exchanged only for POST /api/public/free-scan/return-link/results, which serves the
 // SAME locked payload as the live flow's GET /api/public/free-scan/results. It is not a login.
 const RETURN_TOKEN_STORAGE_KEY = "freeScanReturnToken";
+// Git #1374 — where the live flow's checkout sessionId is parked so the Review step, which is its
+// own page, can resolve the same identity after a navigation. Shared with FreeScanReview.tsx.
+export const FREE_SCAN_SESSION_STORAGE_KEY = "freeScanSessionId";
 type ReturnLinkProblem = "no_token" | "link_invalid" | "link_expired" | "link_not_applicable";
 const RETURN_LINK_PROBLEM_MESSAGE: Record<ReturnLinkProblem, string> = {
   no_token: "Open the link from the email we sent when you ran your free scan, or we can send you a new one.",
@@ -786,96 +790,13 @@ function ScannerWheel({ r }: { r: WheelVals }) {
 }
 
 // ── The consent breadcrumb shown once the scan begins ────────────────────────
+// The strip itself lives in marketing/components/FreeScanFlowStrip.tsx (Git #1374), so the
+// Review step renders the SAME strip rather than a second copy that could drift from it.
 function ConsentBreadcrumb({ phase }: { phase: Phase }) {
-  const labels = ["Consent", "Scan", "Results", "Review", "Remediate"];
   // Consent is the current step through both the disclosure screen and the granting interstitial;
   // Scan is current once the wheel is running; Results once findings are shown.
   const at = phase === "results" ? 2 : phase === "consent" || phase === "granting" ? 0 : 1;
-  return (
-    <div
-      style={{
-        borderBottom: "1px solid rgba(30,41,59,.9)",
-        background: "rgba(2,6,23,.92)",
-        padding: "12px 32px",
-        display: "flex",
-        alignItems: "center",
-        gap: 26,
-        flexWrap: "wrap",
-      }}
-    >
-      <Link
-        href="/"
-        style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0, color: "inherit", textDecoration: "none" }}
-      >
-        <span
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 9,
-            background: "linear-gradient(135deg,#3b82f6,#8b5cf6)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 12.5,
-            fontWeight: 800,
-            color: "#fff",
-          }}
-        >
-          SM
-        </span>
-        <span style={{ fontSize: 14, fontWeight: 700, color: "#f8fafc", whiteSpace: "nowrap" }}>Shane McCaw</span>
-      </Link>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
-        {labels.map((label, i) => {
-          const state = i < at ? "done" : i === at ? "now" : "next";
-          return (
-            <span key={label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span
-                style={{
-                  width: 18,
-                  height: 18,
-                  borderRadius: 999,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 9,
-                  fontWeight: 700,
-                  flexShrink: 0,
-                  ...(state === "done"
-                    ? { color: "#34d399", background: "rgba(52,211,153,.12)", border: "1px solid rgba(52,211,153,.3)" }
-                    : state === "now"
-                    ? { color: "#fff", background: "linear-gradient(90deg,#3b82f6,#8b5cf6)" }
-                    : { color: "#64748b", background: "rgba(255,255,255,.05)", border: "1px solid rgba(71,85,105,.35)" }),
-                }}
-              >
-                {state === "done" ? (
-                  <svg viewBox="0 0 24 24" width={10} height={10} fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round">
-                    <path d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : (
-                  i + 1
-                )}
-              </span>
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  whiteSpace: "nowrap",
-                  letterSpacing: ".02em",
-                  color: state === "next" ? "#475569" : state === "now" ? "#f8fafc" : "#94a3b8",
-                }}
-              >
-                {label}
-              </span>
-              <span style={{ fontSize: 11, color: "#334155", margin: "0 2px", display: i === 4 ? "none" : "inline" }}>
-                →
-              </span>
-            </span>
-          );
-        })}
-      </div>
-    </div>
-  );
+  return <FreeScanFlowStrip at={at} />;
 }
 
 // A shared "what the six areas mean" strip, used on both the start and results screens.
@@ -1307,6 +1228,16 @@ function FreeScanPage({ returnMode }: { returnMode: boolean }) {
         // Git #1358: the real results read resolves identity from this sessionId server-side —
         // stash it now so it survives past this closure into the results phase.
         sessionIdRef.current = sessionId;
+        // Git #1374: the Review step (/scan/review) is a separate page and resolves the same
+        // identity the same way, so the sessionId has to survive the navigation. sessionStorage,
+        // not the URL — the Review link stays clean and the id stays out of access logs and
+        // Referer headers, the same reasoning #1359 applies to its own return token.
+        try {
+          sessionStorage.setItem(FREE_SCAN_SESSION_STORAGE_KEY, sessionId);
+        } catch {
+          // A browser with storage blocked still completes the scan; the Review step then asks
+          // for the emailed return link instead of silently failing.
+        }
         const urlRes = await fetch(`/api/public/flow/read-consent-url?sessionId=${encodeURIComponent(sessionId)}`);
         const urlData = (await urlRes.json().catch(() => ({}))) as { url?: string };
         if (!urlRes.ok || !urlData.url) {
@@ -2536,8 +2467,12 @@ function FreeScanPage({ returnMode }: { returnMode: boolean }) {
                       <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.55, marginBottom: 16 }}>
                         {quoteBasis ?? "Priced by the seats connected once you start monitoring."}
                       </div>
+                      {/* Git #1374 — the real next step in this flow: the Statement of Work
+                          generated from THIS scan, scoped phase by phase. The monitoring quote
+                          below it is the recurring product, not the remediation engagement. */}
                       <Link
-                        href={CHECKOUT_HREF}
+                        href="/scan/review"
+                        data-testid="freescan-review-cta"
                         style={{
                           display: "block",
                           textAlign: "center",
@@ -2547,6 +2482,24 @@ function FreeScanPage({ returnMode }: { returnMode: boolean }) {
                           fontWeight: 700,
                           color: "#fff",
                           background: "linear-gradient(90deg,#3b82f6,#8b5cf6)",
+                          textDecoration: "none",
+                        }}
+                      >
+                        See your statement of work
+                      </Link>
+                      <Link
+                        href={CHECKOUT_HREF}
+                        style={{
+                          display: "block",
+                          textAlign: "center",
+                          marginTop: 9,
+                          padding: 11,
+                          borderRadius: 10,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          color: "#cbd5e1",
+                          border: "1px solid rgba(71,85,105,.7)",
+                          background: "rgba(2,6,23,.5)",
                           textDecoration: "none",
                         }}
                       >

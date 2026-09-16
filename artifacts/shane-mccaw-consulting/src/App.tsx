@@ -11,6 +11,7 @@ import { trackPageview } from "./lib/analytics";
 // routed (unbundled), pending a later cleanup pass.
 import Home from "./marketing/pages/Home";
 import FreeScan, { FreeScanReturn } from "./marketing/pages/FreeScan";
+import FreeScanReview from "./marketing/pages/FreeScanReview";
 import SolutionsIndex from "./marketing/pages/SolutionsIndex";
 import Monitoring from "./marketing/pages/Monitoring";
 import QuickStart from "./marketing/pages/QuickStart";
@@ -90,6 +91,9 @@ export default function App() {
         <Route path="/" component={Home} />
         {/* Children form, not component=: keeps this token-bearing return page (#1359) out of the generated sitemap. */}
         <Route path="/scan/results" children={() => <FreeScanReturn />} />
+        {/* Same reasoning (#1374): the Review step is reachable only with a live free-scan
+            session or an emailed return token, and has nothing to index. */}
+        <Route path="/scan/review" children={() => <FreeScanReview />} />
         <Route path="/scan" component={FreeScan} />
         <Route path="/solutions" component={SolutionsIndex} />
 
