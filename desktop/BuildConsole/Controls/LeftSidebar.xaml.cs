@@ -4109,7 +4109,13 @@ namespace BuildConsole.Controls
                 var track = new Border { Height = 3, CornerRadius = new CornerRadius(99), Background = GetBrush("ChatsPanel.TrackBg"), Child = fillGrid };
 
                 var progRow = new DockPanel { Margin = new Thickness(9, 0, 9, 8), ToolTip = "Closed issues out of all issues on this epic (real transitive leaf rollup)" };
-                var pctLabel = new TextBlock { Text = $"{Math.Round(frac * 100)}%", FontFamily = new FontFamily("Consolas"), FontSize = 8, FontWeight = FontWeights.ExtraBold, Foreground = labelBrush, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(7, 0, 0, 0) };
+                // Git #4410 — the displayed % text must never disagree with the fill's own
+                // frac >= 1.0 Rainbow threshold. Plain Math.Round(frac * 100) can round any
+                // frac in [0.995, 1.0) up to a literal "100", while the fill (correctly) stays
+                // Green — text and fill claiming different completion states for the same
+                // real fraction. Clamp the rounded display to 99 unless frac is genuinely >= 1.0.
+                double displayPct = frac >= 1.0 ? 100 : Math.Min(99, Math.Round(frac * 100));
+                var pctLabel = new TextBlock { Text = $"{displayPct}%", FontFamily = new FontFamily("Consolas"), FontSize = 8, FontWeight = FontWeights.ExtraBold, Foreground = labelBrush, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(7, 0, 0, 0) };
                 DockPanel.SetDock(pctLabel, Dock.Right);
                 progRow.Children.Add(pctLabel);
                 progRow.Children.Add(track);
