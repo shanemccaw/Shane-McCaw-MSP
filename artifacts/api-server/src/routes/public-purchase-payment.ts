@@ -107,6 +107,7 @@ import { ensureFlowStripeCustomer } from "../lib/assessment-flow-rescan-addon.ts
 import { promoteAccountFirstBuyerOnPayment, resolvePaidPurchaseSession } from "../lib/purchase-account-flow.ts";
 import { ensureMonitoringScanKickoff } from "../lib/monitoring-onboarding-scan.ts";
 import { ensureMonitoringEntitlement } from "../lib/monitoring-entitlement-provisioning.ts";
+import { ensureRetainerEntitlement } from "../lib/purchase-retainer-entitlement.ts";
 
 const log = logger.child({ channel: "billing" });
 
@@ -758,6 +759,22 @@ router.post("/public/purchase/payment-confirmed", async (req: Request, res: Resp
       }
     } catch (err) {
       log.error({ err, checkoutSessionId: order.sessionId }, "purchase payment: monitoring scan kickoff failed (non-fatal)");
+    }
+
+    // Git #4404 — a paid Retainer provisions its real entitlement here: the
+    // client_services row (keyed on #4403's per-session unique index, so a
+    // replayed or concurrent confirm never writes a second one) and the
+    // retainer_settings row the Portal's My Architect page reads. No-op for
+    // every other product, and for a legacy pay-then-account session with no
+    // accountUserId yet — set-password's `ok` outcome provisions that one.
+    // Awaited so the buyer lands in a portal that already reflects the
+    // purchase; non-fatal, the money has moved either way.
+    try {
+      if (resolved?.ok && resolved.session.accountUserId != null) {
+        await ensureRetainerEntitlement(resolved.session);
+      }
+    } catch (err) {
+      log.error({ err, checkoutSessionId: order.sessionId }, "purchase payment: retainer entitlement provisioning failed (non-fatal)");
     }
 
     res.json({

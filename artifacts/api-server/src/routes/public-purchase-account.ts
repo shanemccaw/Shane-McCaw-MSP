@@ -103,6 +103,7 @@ import {
 import { getActiveMfaMethods, getRpId, getRpOrigin, encryptTotp } from "./mfa.ts";
 import { ensureMonitoringScanKickoff } from "../lib/monitoring-onboarding-scan.ts";
 import { ensureMonitoringEntitlement } from "../lib/monitoring-entitlement-provisioning.ts";
+import { ensureRetainerEntitlement } from "../lib/purchase-retainer-entitlement.ts";
 
 const log = logger.child({ channel: "auth" });
 
@@ -440,6 +441,17 @@ router.post("/public/purchase/set-password", setPasswordLimiter, async (req: Req
     log.error({ err, sessionId: session.id }, "purchase set-password: monitoring entitlement provisioning FAILED (portal-handoff will retry)");
   });
 
+  // Git #4404 — the legacy pay-then-account order has no account at
+  // payment-confirmed, so a Retainer's entitlement (client_services +
+  // retainer_settings) is provisioned now that it does. Idempotent per checkout
+  // session, a no-op for non-retainer products. Awaited so the portal the buyer
+  // is about to land in already reflects the purchase; non-fatal.
+  try {
+    await ensureRetainerEntitlement({ ...session, accountUserId: result.userId });
+  } catch (err) {
+    log.error({ err, sessionId: session.id }, "purchase set-password: retainer entitlement provisioning failed (non-fatal)");
+  }
+
   // Same single-use, short-lived auto-login handoff the assessment flow mints
   // (Git #636): the portal's own boot effect trades it for a real session the
   // instant that tab lands. Phase 4 of #1309 builds the /buy handoff on this.
@@ -557,6 +569,15 @@ router.post("/public/purchase/portal-handoff", handoffLimiter, async (req: Reque
   await ensureMonitoringEntitlement({ ...session, accountUserId: eligibility.userId }).catch((err) => {
     log.error({ err, sessionId: session.id }, "portal handoff: monitoring entitlement provisioning FAILED (non-fatal)");
   });
+
+  // Git #4404 — backstop before the buyer is handed into the portal: if the
+  // payment-confirmed / set-password provisioning of a Retainer's entitlement
+  // failed transiently, it is retried here. Idempotent, retainer-only, non-fatal.
+  try {
+    await ensureRetainerEntitlement({ ...session, accountUserId: eligibility.userId });
+  } catch (err) {
+    log.error({ err, sessionId: session.id }, "portal handoff: retainer entitlement provisioning failed (non-fatal)");
+  }
 
   // Same single-use, short-lived shape set-password mints (and #636 before it):
   // 32 CSPRNG bytes, 2-minute TTL, consumed atomically by /auth/signup-exchange.
