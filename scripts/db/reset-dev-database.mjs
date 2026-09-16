@@ -371,13 +371,34 @@ async function confirm(promptText) {
   });
 }
 
-function checkPlatformBoots() {
-  const health = spawnSync(
+// Same real verification #4272 proved live: hit the real auth path with a
+// deliberately wrong password. 401 means the platform booted and the auth
+// path ran cleanly against the reset DB (not a 500, not a connection
+// failure) -- a real functional check, not a generic health ping.
+function checkAuthPathRunsCleanly() {
+  const result = spawnSync(
     "curl",
-    ["-s", "-o", "NUL", "-w", "%{http_code}", "http://localhost:8080/api/health"],
+    [
+      "-s",
+      "-X",
+      "POST",
+      "http://localhost:8080/api/auth/login",
+      "-H",
+      "Content-Type: application/json",
+      "-d",
+      '{"email":"shane@shanemccaw.com","password":"__reset-verify-deliberately-wrong__"}',
+      "-w",
+      "\n%{http_code}",
+    ],
     { encoding: "utf8" }
   );
-  return health.stdout ? health.stdout.trim() : "no response";
+  if (result.error) return { httpCode: "no response", body: String(result.error) };
+  const out = result.stdout || "";
+  const lastNewline = out.lastIndexOf("\n");
+  return {
+    body: out.slice(0, lastNewline).trim(),
+    httpCode: out.slice(lastNewline + 1).trim(),
+  };
 }
 
 async function main() {
@@ -479,8 +500,12 @@ async function main() {
   console.log(`${changedTables} table(s) changed.`);
 
   console.log("\n--- Post-reset verification ---");
-  const httpCode = checkPlatformBoots();
-  console.log(`GET /api/health -> ${httpCode}`);
+  const auth = checkAuthPathRunsCleanly();
+  const authOk = auth.httpCode === "401";
+  console.log(
+    `POST /api/auth/login (deliberately wrong password) -> ${auth.httpCode} ` +
+      `${authOk ? "(platform booted, auth path ran cleanly against the reset DB)" : "(UNEXPECTED -- investigate)"}`
+  );
   const staffCount = psqlValue(
     databaseUrl,
     `SELECT count(*) FROM users WHERE msp_id = ${targetMspId} AND tenant_id IS NULL;`
