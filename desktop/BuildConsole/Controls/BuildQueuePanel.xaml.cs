@@ -4078,8 +4078,24 @@ namespace BuildConsole.Controls
                 return headerText;
             }
 
-            var headerRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(2, 10, 0, 4) };
-            headerRow.Children.Add(headerText);
+            // Git #4391 — same real pattern #4368 already established one level down
+            // (BuildRollupRow): the title/label and the badge/icon controls used to share one
+            // horizontal row, so a long epic title squeezed the send button/needs-attention
+            // text/lock toggle toward (and past) the card's right edge. Two rows instead: row 0
+            // is the title alone (full width, free to wrap), row 1 is the badge/icon strip on
+            // its own row underneath, right-aligned, so it never competes with the title for
+            // horizontal space regardless of how long the title is.
+            var headerGrid = new Grid { Margin = new Thickness(2, 10, 0, 4) };
+            headerGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            headerGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            headerText.Margin = new Thickness(0);
+            Grid.SetRow(headerText, 0);
+            headerGrid.Children.Add(headerText);
+
+            var badgeRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            Grid.SetRow(badgeRow, 1);
+            headerGrid.Children.Add(badgeRow);
 
             Button? sendButton = null;
             if (totalUnsent > 0)
@@ -4097,13 +4113,13 @@ namespace BuildConsole.Controls
                     Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
                     ToolTip = $"Send {totalUnsent} verified, not-yet-sent landed item(s) across all {unsentByBuildSet.Count} build set(s) under \"{key.Label}\" as one combined landed-list to the active chat"
                 };
-                headerRow.Children.Add(sendButton);
+                badgeRow.Children.Add(sendButton);
             }
 
             if (totalNeedsAttention > 0)
             {
                 var allNeedsAttentionNumbers = needsAttentionByBuildSet.Values.SelectMany(v => v).OrderBy(n => n).ToList();
-                headerRow.Children.Add(new TextBlock
+                badgeRow.Children.Add(new TextBlock
                 {
                     Text = $"⚠ {totalNeedsAttention} needs attention",
                     FontSize = 10,
@@ -4141,7 +4157,7 @@ namespace BuildConsole.Controls
                         ? $"Locked — every build set under \"{key.Label}\" is kept marked Priority. Click to unlock (reverts only the build sets this lock auto-marked)."
                         : $"Lock \"{key.Label}\" — mark every build set currently under this Epic Priority, and keep marking any that show up under it later."
                 };
-                headerRow.Children.Add(lockButton);
+                badgeRow.Children.Add(lockButton);
             }
 
             var statusText = new TextBlock
@@ -4153,7 +4169,7 @@ namespace BuildConsole.Controls
             };
 
             var wrapper = new StackPanel();
-            wrapper.Children.Add(headerRow);
+            wrapper.Children.Add(headerGrid);
             wrapper.Children.Add(statusText);
 
             if (sendButton != null)
