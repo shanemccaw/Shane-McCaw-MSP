@@ -18,5 +18,19 @@ export function useQuickStartPackAvailability(): { availableKeys: Set<string>; l
     return new Set(PACKS.filter((p) => realNames.has(p.name)).map((p) => p.key));
   }, [services]);
 
+  useMemo(() => {
+    if (import.meta.env.DEV && !loading && availableKeys.size === PACKS.length) {
+      // Git #4405: every pack now has a real services row, so any test/UI logic still
+      // relying on "at least one pack is not-yet-available" (e.g. buy-page.json's PACK6
+      // group) has nothing left to gate against and needs to be rewritten, not repointed.
+      console.warn(
+        "[useQuickStartPackAvailability] All Quick-Start Packs now have a real services row " +
+          "-- availableKeys covers the full PACKS list. Anything still assuming a not-yet-" +
+          "available pack exists (e.g. test-manifests/marketing/buy-page.json's PACK6 group) " +
+          "must be updated; there is no pack left to repoint at (see Git #4405).",
+      );
+    }
+  }, [availableKeys, loading]);
+
   return { availableKeys, loading };
 }
