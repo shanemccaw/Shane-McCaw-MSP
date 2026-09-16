@@ -184,7 +184,8 @@ router.post("/public/checkout-session", async (req: Request, res: Response) => {
     return;
   }
 
-  const { productSlug, fullName, email, company, industry, seats, ga4ClientId } = parsed.data;
+  const { productSlug, fullName, company, industry, seats, ga4ClientId } = parsed.data;
+  const email = parsed.data.email.toLowerCase().trim();
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
   // Catch a returning customer with a real account as early as possible in the
