@@ -1281,10 +1281,14 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       // privilege, pre-payment "Free" role (promoted to Customer on payment);
       // #3972 — a Retainer product gets RetainerConsented (this callback only
       // ever runs with a real just-consented tenant GUID, so a Retainer buy
-      // reaching here is by definition the consented case, never
-      // RetainerPending); everything else keeps `Customer` directly (a
-      // passwordless account can't log in until setup, so this grants no
-      // premature access).
+      // reaching here is by definition the consented case, never a `*Pending`
+      // rung); everything else keeps `Customer` directly (a passwordless
+      // account can't log in until setup, so this grants no premature access).
+      // #4373 — when the account ALREADY exists at a `*Pending` rung (created
+      // before consent by #4374's door, or a skipped-consent Retainer buy),
+      // this role is only the desiredRole default: ensureClientMspUser swaps
+      // the row to its own product's `*Consented` rung in the same UPDATE that
+      // links the tenant, keyed on the row's existing role, not on this value.
       let serviceType: string | null = null;
       let category: string | null = null;
       let isFreeOffering = false;

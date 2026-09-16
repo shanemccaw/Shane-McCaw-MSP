@@ -8,35 +8,111 @@ import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const log = logger.child({ channel: "tenant.portal" });
 
-/** Every role a Prospect account can be created under. */
-type ProspectRole =
-  | typeof LEGACY_ROLE.free
-  | typeof LEGACY_ROLE.customer
-  | typeof LEGACY_ROLE.retainerPending
-  | typeof LEGACY_ROLE.retainerConsented;
+/**
+ * The pre-consent rung of each self-service product that can hold a real
+ * account before M365 consent exists (#4370). Every value here is a rung
+ * users_role_scope_check admits with NO tenant_id (#3971 for Retainer, #4372
+ * for Monitoring/Packs) — that is the defining property of a `*Pending` rung,
+ * and the reason this list, not a string-suffix test, decides what counts as
+ * one.
+ */
+export type PendingProspectRole =
+  | typeof LEGACY_ROLE.monitoringPending
+  | typeof LEGACY_ROLE.packPending
+  | typeof LEGACY_ROLE.retainerPending;
 
 /**
- * #3972 — the real-product-type role a purchase/consent flow should provision
- * a Prospect under, given the product's catalog `category` (`services.category`
- * — "retainer", "monitoring", "config_pack", …) and whether a tenant (M365
- * consent) is already attached.
+ * The post-consent rung each `*Pending` rung becomes the moment a tenant is
+ * actually linked — the promote-on-consent swap ensureClientMspUser performs
+ * (#3973, generalized per product by #4373). One entry per `*Pending` rung, by
+ * construction: a `*Pending` rung with no `*Consented` partner cannot exist
+ * here, so the swap can never strand a tenant link on a pre-consent role.
+ */
+export const PENDING_TO_CONSENTED_ROLE = Object.freeze({
+  [LEGACY_ROLE.monitoringPending]: LEGACY_ROLE.monitoringConsented,
+  [LEGACY_ROLE.packPending]: LEGACY_ROLE.packConsented,
+  [LEGACY_ROLE.retainerPending]: LEGACY_ROLE.retainerConsented,
+} as const satisfies Record<PendingProspectRole, string>);
+
+export type ConsentedProspectRole = (typeof PENDING_TO_CONSENTED_ROLE)[PendingProspectRole];
+
+/** Every role a Prospect account can be created under. */
+export type ProspectRole =
+  | typeof LEGACY_ROLE.free
+  | typeof LEGACY_ROLE.customer
+  | PendingProspectRole
+  | ConsentedProspectRole;
+
+/** True when `role` is one of the tenant-less pre-consent `*Pending` rungs. */
+export function isPendingProspectRole(role: string | null | undefined): role is PendingProspectRole {
+  return role != null && Object.prototype.hasOwnProperty.call(PENDING_TO_CONSENTED_ROLE, role);
+}
+
+/**
+ * The `*Consented` rung a `*Pending` rung swaps to on real consent, or null
+ * for any role that is not a `*Pending` rung (a `Free`/`Customer`/`*Consented`
+ * /staff row has no consent transition to make here).
+ */
+export function consentedRoleForPending(role: string | null | undefined): ConsentedProspectRole | null {
+  return isPendingProspectRole(role) ? PENDING_TO_CONSENTED_ROLE[role] : null;
+}
+
+/**
+ * The `*Pending` rung a tenant-less account of the given catalog `category`
+ * (`services.category`) starts in. `retainer` / `monitoring` / `config_pack`
+ * are the three real self-service categories with a rung pair (#4370);
+ * anything else — an uncatalogued or test slug, a NULL category, a category
+ * with no pair of its own — falls back to `RetainerPending`, for the same
+ * reason #3972 branched on `hasTenant` before `category` in the first place:
+ * the only tenant-less path an unrecognised product can legitimately arrive
+ * by is the read-consent-OPTIONAL skip (read-consent-flow.ts), which is a
+ * Retainer-only privilege, and returning a tenant-scoped role instead would
+ * re-hit the #3950 users_role_scope_check violation. A `*Pending` rung is also
+ * the fail-closed choice — it can see only the resume-purchase stub (#4375).
+ */
+export function pendingRoleForCategory(category: string | null): PendingProspectRole {
+  switch (category) {
+    case "monitoring":
+      return LEGACY_ROLE.monitoringPending;
+    case "config_pack":
+      return LEGACY_ROLE.packPending;
+    case "retainer":
+    default:
+      return LEGACY_ROLE.retainerPending;
+  }
+}
+
+/**
+ * #3972 / #4373 — the real-product-type role a purchase/consent flow should
+ * provision a Prospect under, given the product's catalog `category`
+ * (`services.category` — "retainer", "monitoring", "config_pack", …) and
+ * whether a tenant (M365 consent) is already attached.
  *
- * `hasTenant` is the primary signal, not `category`: `RetainerPending` is the
- * ONLY role users_role_scope_check (#3971) permits with no tenant_id, and a
- * tenant-less call at either real call site (consent.ts's callback always has
- * one; attachPasswordToAccount's session.tenantId is null only for a
- * skipped-consent Retainer purchase — monitoring/pack purchases always require
- * consent first, per the existing "read consent REQUIRED" rule, so they can
- * never reach here without a tenant) can only legitimately be a Retainer buy.
- * Branching on `hasTenant` first, rather than requiring `category === "retainer"`
- * too, is what lets a not-yet-cataloged/test product slug still provision
- * correctly instead of re-hitting the #3950 constraint violation.
+ * `hasTenant` is still the primary signal, `category` the secondary one:
+ *
+ *   - No tenant → the product's own `*Pending` rung (pendingRoleForCategory):
+ *     `MonitoringPending` / `PackPending` / `RetainerPending`, the three rungs
+ *     users_role_scope_check permits with no tenant_id (#3971, #4372). Before
+ *     #4370 the only tenant-less arrival was a skipped-consent Retainer buy —
+ *     monitoring/pack purchases require read consent first, per
+ *     read-consent-flow.ts — which is why this used to be `RetainerPending`
+ *     unconditionally, and why it still is for an unrecognised category. The
+ *     pre-consent account door #4374 adds is what makes a tenant-less
+ *     Monitoring/Pack arrival real.
+ *   - Tenant present, `retainer` → `RetainerConsented` (#3970: a distinct paid
+ *     state, deliberately never merged into `Customer`).
+ *   - Tenant present, anything else (monitoring, config_pack, uncatalogued) →
+ *     `Customer`, unchanged from #3972's "provably unaffected" contract. A
+ *     Monitoring/Pack account that CONSENTS while sitting at its `*Pending`
+ *     rung is not this branch: ensureClientMspUser's swap moves it to its own
+ *     `*Consented` rung, keyed on the row's existing role, regardless of what
+ *     this function returned as desiredRole.
  */
 export function resolveProspectRole(
   category: string | null,
   hasTenant: boolean,
-): typeof LEGACY_ROLE.retainerPending | typeof LEGACY_ROLE.retainerConsented | typeof LEGACY_ROLE.customer {
-  if (!hasTenant) return LEGACY_ROLE.retainerPending;
+): PendingProspectRole | typeof LEGACY_ROLE.retainerConsented | typeof LEGACY_ROLE.customer {
+  if (!hasTenant) return pendingRoleForCategory(category);
   return category === "retainer" ? LEGACY_ROLE.retainerConsented : LEGACY_ROLE.customer;
 }
 
@@ -68,8 +144,9 @@ export async function ensureClientAccount(
       email: normalizedEmail,
       role: "client",
       name: name?.trim() || undefined,
-      // tenantId/mspId are optional (#3972) — `RetainerPending` is a real,
-      // deliberately tenant-less scope (users_role_scope_check exempts it, #3971),
+      // tenantId/mspId are optional (#3972) — a `*Pending` rung is a real,
+      // deliberately tenant-less scope (users_role_scope_check exempts
+      // RetainerPending per #3971 and MonitoringPending/PackPending per #4372),
       // so mspRole is written whenever a scope is given, whether or not a tenant
       // came with it.
       ...(scope
@@ -244,15 +321,20 @@ async function ensureDirectCustomerRecord(userId: number, tenantId?: string | nu
  * default (mspRole "Free", no mspId, no tenantId — i.e. what used to be "no
  * msp_users row exists yet"); an account already carrying an explicit role or
  * link is never role-patched here (promoteMspUserToCustomer owns upgrades;
- * #3973 owns the RetainerPending -> RetainerConsented swap on real consent).
+ * #3973/#4373 own the `*Pending` -> `*Consented` swap on real consent).
  * Defaults to `Customer`, keeping the historical behavior.
  *
- * #3973 (step 3 of #3970) — the one other role this function DOES swap,
- * unconditionally and regardless of desiredRole: a `RetainerPending` row
- * (no tenant, ever, while in that state — #3971) reaching here IS the tenant
- * actually getting connected, so it becomes `RetainerConsented` in the exact
- * same `UPDATE` that sets tenant_id/mspId below — one atomic transition, never
- * a tenant link left sitting on the pre-consent role.
+ * #3973 (step 3 of #3970), generalized per product by #4373 (issue 3 of
+ * #4370) — the one other kind of role this function DOES swap, unconditionally
+ * and regardless of desiredRole: a `*Pending` row (no tenant, ever, while in
+ * that state — #3971/#4372) reaching here IS the tenant actually getting
+ * connected, so it becomes its own product's `*Consented` rung
+ * (PENDING_TO_CONSENTED_ROLE: RetainerPending -> RetainerConsented,
+ * MonitoringPending -> MonitoringConsented, PackPending -> PackConsented) in
+ * the exact same `UPDATE` that sets tenant_id/mspId below — one atomic
+ * transition, never a tenant link left sitting on the pre-consent role. The
+ * swap is keyed on the row's EXISTING role, not on desiredRole or on the
+ * product being bought now: consent completes the rung the account is in.
  */
 export async function ensureClientMspUser(
   userId: number,
@@ -294,11 +376,12 @@ export async function ensureClientMspUser(
   if (existing.existingCustomerId != null) return; // already tenant-linked — done
 
   if (customerId == null) {
-    // #3972 — RetainerPending is the one desiredRole that is SUPPOSED to
-    // reach here with no tenant resolvable: a skipped-consent Retainer
-    // purchase, by design, not a defect. Nothing to link yet; #3973 wires the
-    // RetainerPending -> RetainerConsented swap once real consent lands.
-    if (desiredRole === LEGACY_ROLE.retainerPending) return;
+    // #3972/#4373 — a `*Pending` desiredRole is the one kind that is SUPPOSED
+    // to reach here with no tenant resolvable: a skipped-consent Retainer
+    // purchase, or (#4374) a Monitoring/Pack account created before consent —
+    // by design, not a defect. Nothing to link yet; the `*Pending` ->
+    // `*Consented` swap below fires once real consent lands.
+    if (isPendingProspectRole(desiredRole)) return;
 
     // No tenants row resolvable. users_role_scope_check makes a tenant-scoped
     // role without users.tenant_id impossible, so there is no bare-bridge
@@ -339,19 +422,20 @@ export async function ensureClientMspUser(
   // merge, a wholly-unbridged row (all three scope columns at their defaults)
   // is that same state, so it takes desiredRole; anything else keeps its role.
   const stillAtUnbridgedDefault = existing.existingRole === "Free" && existing.existingMspId == null;
-  // #3973 — a RetainerPending row reaching here (tenant now resolvable, not
-  // yet linked) is by definition completing consent: swap it to
-  // RetainerConsented regardless of desiredRole, which carries the CALLER's
-  // product-type default (Free/Customer) and has no bearing on this ladder
-  // transition.
-  const isRetainerConsentCompletion = existing.existingRole === LEGACY_ROLE.retainerPending;
+  // #3973/#4373 — a `*Pending` row reaching here (tenant now resolvable, not
+  // yet linked) is by definition completing consent: swap it to its own
+  // product's `*Consented` rung regardless of desiredRole, which carries the
+  // CALLER's product-type default (Free/Customer/whatever is being bought now)
+  // and has no bearing on this ladder transition. `null` for every non-Pending
+  // role, so a Free/Customer/*Consented/staff row never takes this branch.
+  const consentCompletionRole = consentedRoleForPending(existing.existingRole);
   await db
     .update(usersTable)
     .set({
       tenantId: customerId,
       mspId: existing.existingMspId ?? mspId,
-      ...(isRetainerConsentCompletion
-        ? { mspRole: LEGACY_ROLE.retainerConsented }
+      ...(consentCompletionRole != null
+        ? { mspRole: consentCompletionRole }
         : stillAtUnbridgedDefault
           ? { mspRole: desiredRole ?? LEGACY_ROLE.customer }
           : {}),
@@ -376,9 +460,10 @@ export async function ensureClientMspUser(
  *      flow) stamped inline with tenantId/mspId (when a tenant was resolved)
  *      and `role` — see [[resolveProspectRole]] (#3972) for how a caller picks
  *      it: "Free" for the assessment funnel (promoted to `Customer` on
- *      payment; see promoteMspUserToCustomer), `RetainerPending` for a
- *      skipped-consent Retainer buy (deliberately tenant-less), else
- *      `RetainerConsented`/`Customer`.
+ *      payment; see promoteMspUserToCustomer), the product's `*Pending` rung
+ *      for a tenant-less arrival (a skipped-consent Retainer buy, or a
+ *      Monitoring/Pack account created before consent — deliberately
+ *      tenant-less either way), else `RetainerConsented`/`Customer`.
  * It also converts the funnel-entry lead (name+email capture) new → converted.
  *
  * Reuses ensureClientAccount / ensureDirectCustomerRecord / ensureClientMspUser so
@@ -412,11 +497,11 @@ export async function provisionProspectAccount(opts: {
       )
     : null;
 
-  // #3972/#3950 — mspRole is written even with no tenant: `RetainerPending`
-  // (the only role opts.role can legitimately be here with no tenant, per
+  // #3972/#3950 — mspRole is written even with no tenant: a `*Pending` rung
+  // (the only kind opts.role can legitimately be here with no tenant, per
   // resolveProspectRole) is exempt from users_role_scope_check's tenant_id
-  // requirement, so a scope-less insert must still carry the role rather than
-  // silently falling back to the column default.
+  // requirement (#3971, #4372), so a scope-less insert must still carry the
+  // role rather than silently falling back to the column default.
   const acct = await ensureClientAccount(
     email,
     opts.fullName ?? undefined,
@@ -436,9 +521,9 @@ export async function provisionProspectAccount(opts: {
     // payment webhook, which verifies and alerts), but this is never routine.
     log.error({ err, userId, tenantId: opts.tenantId }, "provisionProspectAccount: ensure customer/msp_user FAILED — user exists without a customer bridge");
   }
-  // RetainerPending is deliberately tenant-less (#3972) — no tenant id to
-  // report missing.
-  if (customerId == null && opts.role !== LEGACY_ROLE.retainerPending) {
+  // A `*Pending` rung is deliberately tenant-less (#3972/#4373) — no tenant id
+  // to report missing.
+  if (customerId == null && !isPendingProspectRole(opts.role)) {
     log.error(
       { userId, tenantId: opts.tenantId },
       "provisionProspectAccount: no tenants id resolved for Prospect — account has no tenant link yet",

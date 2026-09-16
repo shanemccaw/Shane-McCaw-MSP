@@ -27,7 +27,7 @@ import {
 } from "@workspace/db";
 import { desc, eq, inArray, like, sql } from "drizzle-orm";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
-import { resolveProspectRole } from "./direct-tenant-provisioning.ts";
+import { resolveProspectRole, provisionProspectAccount } from "./direct-tenant-provisioning.ts";
 import {
   resolvePaidPurchaseSession,
   issueVerificationCode,
@@ -333,7 +333,8 @@ describe("attachPasswordToAccount", () => {
   it("attaches to an EXISTING password-less account without provisioning a second one", async () => {
     const email = testEmail("existing");
     // #3971's users_role_scope_check requires a tenant for the default "Free"
-    // role — RetainerPending is the one role it exempts, so this tenant-less
+    // role — only the `*Pending` rungs (RetainerPending per #3971,
+    // MonitoringPending/PackPending per #4372) are exempt, so this tenant-less
     // pre-existing-Prospect fixture needs it explicit (#3972).
     await db.insert(usersTable).values({ email, role: "client", name: "Pre-Existing Prospect", mspRole: LEGACY_ROLE.retainerPending });
 
@@ -371,9 +372,19 @@ describe("resolveProspectRole — #3972, the real-product-type -> role mapping",
     expect(resolveProspectRole(null, true)).toBe(LEGACY_ROLE.customer);
   });
 
-  it("no tenant is ALWAYS RetainerPending regardless of category — the only role users_role_scope_check permits tenant-less", () => {
-    expect(resolveProspectRole("monitoring", false)).toBe(LEGACY_ROLE.retainerPending);
+  // #4373 — no tenant is the product's OWN `*Pending` rung, each of which
+  // users_role_scope_check permits tenant-less (#3971 Retainer, #4372
+  // Monitoring/Pack); an unrecognised category falls back to RetainerPending,
+  // the only tenant-less path such a product can legitimately arrive by.
+  it("no tenant is the product's own *Pending rung — MonitoringPending / PackPending / RetainerPending (#4373)", () => {
+    expect(resolveProspectRole("monitoring", false)).toBe(LEGACY_ROLE.monitoringPending);
+    expect(resolveProspectRole("config_pack", false)).toBe(LEGACY_ROLE.packPending);
+    expect(resolveProspectRole("retainer", false)).toBe(LEGACY_ROLE.retainerPending);
+  });
+
+  it("no tenant with an unrecognised/uncatalogued category falls back to RetainerPending, never a tenant-scoped role (#3950)", () => {
     expect(resolveProspectRole(null, false)).toBe(LEGACY_ROLE.retainerPending);
+    expect(resolveProspectRole("project", false)).toBe(LEGACY_ROLE.retainerPending);
   });
 });
 
@@ -538,5 +549,69 @@ describe("primitives", () => {
     expect(maskEmail("ab@x.io")).toBe("a***@x.io");
     expect(maskEmail("a-very-long-local-part@x.io")).toBe("a******t@x.io");
     expect(maskEmail("not-an-email")).toBe("not-an-email");
+  });
+});
+
+// ── Git #4373 — per-product promote-on-consent, against the REAL constraint ────
+//
+// The mocked swap tests live in direct-tenant-provisioning.test.ts; this is the
+// live-Postgres proof that a tenant-less `*Pending` row (admitted by #4372's
+// users_role_scope_check) becomes its own product's `*Consented` rung, with the
+// tenant linked, in the single UPDATE the consent callback path drives through
+// provisionProspectAccount -> ensureClientMspUser. Because the constraint also
+// REQUIRES a tenant for every `*Consented` rung, a swap that did not land in
+// the same statement as the tenant link would be refused by Postgres itself.
+describe("provisionProspectAccount — a pre-consent *Pending account consents (#4373, live DB)", () => {
+  it.each([
+    ["monitoring", LEGACY_ROLE.monitoringPending, LEGACY_ROLE.monitoringConsented],
+    ["config_pack", LEGACY_ROLE.packPending, LEGACY_ROLE.packConsented],
+    ["retainer", LEGACY_ROLE.retainerPending, LEGACY_ROLE.retainerConsented],
+  ] as const)("%s: %s -> %s in one atomic update when a tenant is first linked", async (category, pending, consented) => {
+    const email = testEmail(`consent-${category}`);
+    const tenantGuid = randomUUID();
+
+    // The account exists before any tenant does — exactly #4374's door shape.
+    await db.insert(usersTable).values({ email, role: "client", name: "Pre-Consent Prospect", mspRole: pending });
+
+    // Consent lands: the callback path provisions against the now-real GUID,
+    // with the caller's product-type default as desiredRole. The swap must be
+    // keyed on the row's existing rung, so the desiredRole here is deliberately
+    // whatever resolveProspectRole would say for a tenant-present arrival.
+    const result = await provisionProspectAccount({
+      email,
+      fullName: "Pre-Consent Prospect",
+      tenantId: tenantGuid,
+      role: resolveProspectRole(category, true),
+    });
+    expect(result).not.toBeNull();
+    expect(result?.customerId).not.toBeNull();
+
+    const [user] = await db
+      .select({ mspRole: usersTable.mspRole, tenantId: usersTable.tenantId, mspId: usersTable.mspId })
+      .from(usersTable)
+      .where(eq(usersTable.email, email));
+    expect(user.mspRole).toBe(consented);
+    expect(user.tenantId).toBe(result?.customerId);
+    expect(user.mspId).not.toBeNull();
+
+    // Idempotent: a second consent pass re-points nothing and re-swaps nothing.
+    const again = await provisionProspectAccount({
+      email,
+      fullName: "Pre-Consent Prospect",
+      tenantId: tenantGuid,
+      role: resolveProspectRole(category, true),
+    });
+    expect(again?.customerId).toBe(result?.customerId);
+    const [after] = await db
+      .select({ mspRole: usersTable.mspRole, tenantId: usersTable.tenantId })
+      .from(usersTable)
+      .where(eq(usersTable.email, email));
+    expect(after).toEqual({ mspRole: consented, tenantId: result?.customerId });
+
+    const [tenantRow] = await db
+      .select({ id: tenantsTable.id })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.tenantId, tenantGuid));
+    if (tenantRow) createdTenantIds.push(tenantRow.id);
   });
 });
