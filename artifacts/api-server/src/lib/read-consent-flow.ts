@@ -55,9 +55,9 @@ export function readConsentRequirementForServiceType(
  */
 export async function getReadConsentRequirementForProduct(
   productSlug: string,
-): Promise<{ requirement: ReadConsentRequirement; serviceType: string | null }> {
+): Promise<{ requirement: ReadConsentRequirement; serviceType: string | null; category: string | null }> {
   const [svc] = await db
-    .select({ serviceType: servicesTable.serviceType })
+    .select({ serviceType: servicesTable.serviceType, category: servicesTable.category })
     .from(servicesTable)
     .where(eq(servicesTable.slug, productSlug))
     .limit(1);
@@ -71,6 +71,9 @@ export async function getReadConsentRequirementForProduct(
   return {
     requirement: readConsentRequirementForServiceType(svc?.serviceType),
     serviceType: svc?.serviceType ?? null,
+    // #4377 — the account-first gate (lib/account-first-purchase.ts) keys on
+    // category, the same discriminator the purchase flow uses everywhere else.
+    category: svc?.category ?? null,
   };
 }
 

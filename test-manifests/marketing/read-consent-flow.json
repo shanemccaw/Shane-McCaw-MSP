@@ -7,7 +7,8 @@
     "WHAT THIS COVERS: the #1311 backend extraction only — no UI is wired to these routes yet (Buy.tsx wiring is Phase 8, #1309). Every call is either the genuine PUBLIC intake (POST /api/public/checkout-session, minting a real checkout_sessions row + funnel lead per run — same accepted side effect as billing/retainer-signup.json's CREATE) or a session-keyed public flow route.",
     "PRODUCT SLUGS are real catalog rows confirmed against the live services table: architect-essentials-retainer (serviceType 'retainer' — the ONLY serviceType whose read consent is optional/skippable) and monitoring-foundation-smb (serviceType 'monitoring_tier' — consent required, skip must be refused 409).",
     "WHAT CANNOT BE ASSERTED HERE, honestly: the Microsoft admin-consent screen itself and GET /api/consent/callback's grant stamping — the OAuth wall is architecturally undrivable by this harness (same caveat as copilot-readiness/money-path-e2e.json). The callback's skip-clearing branch (consentSkippedAt back to null when a real grant lands) is covered by unit tests in artifacts/api-server/src/routes/consent.test.ts instead.",
-    "The two sessions minted per run expire in 24h and are never consented/paid — no account, tenant, or grant is ever created by this manifest."
+    "The two sessions minted per run expire in 24h and are never consented/paid — no account, tenant, or grant is ever created by this manifest.",
+    "Git #4377: the Monitoring consent URL is now only minted for a session bound to a completed account, so the anonymous Monitoring probe asserts the 409 account_required refusal. The account-ready path, and the returning buyer signing back in and resuming, need a real TOTP sign-in this harness cannot drive; they are covered by artifacts/api-server/src/routes/account-first-purchase.live-db.test.ts against the real database."
   ],
 
   "apiTests": [
@@ -80,11 +81,12 @@
       "extract": { "as": "rcMonitoringSessionId", "jsonPath": "$.sessionId" }
     },
     {
-      "name": "URL (monitoring) — the same route reports required (not skippable) for a Monitoring session",
+      "name": "URL REFUSED (monitoring) — Git #4377: Monitoring is account → consent → pay, so a session with no completed account (password + MFA) is refused 409 account_required before any consent URL is minted",
+      "sessionTag": "4377-account-first",
       "method": "GET",
       "path": "/api/public/flow/read-consent-url?sessionId={{rcMonitoringSessionId}}",
       "headers": { "Content-Type": "application/json" },
-      "expect": { "status": 200, "jsonPath": "$.requirement", "value": "required" }
+      "expect": { "status": 409, "jsonPath": "$.error", "value": "account_required" }
     },
     {
       "name": "SKIP REFUSED (monitoring) — the skip is a privileged branch: a required product's session is refused 409 consent_required, server-side, regardless of what the caller asks",

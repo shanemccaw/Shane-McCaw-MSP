@@ -180,6 +180,13 @@ vi.mock("../lib/consent-verification.ts", () => ({
   verifyTenantConsentWithMicrosoft: (...args: unknown[]) => mockVerifyConsent(...args),
 }));
 
+// #4377 — the account-first readiness check has its own live-DB test
+// (account-first-purchase.live-db.test.ts); here only the route's use of it.
+const mockAccountFirstReady = vi.fn();
+vi.mock("../lib/account-first-purchase.ts", () => ({
+  checkAccountFirstConsentReadyForSession: (...args: unknown[]) => mockAccountFirstReady(...args),
+}));
+
 vi.mock("../lib/logger.ts", () => {
   // `.child()` returns the same logger so both the module-level binding in
   // consent.ts (logger.child({ channel: "auth" })) and transitive imports
@@ -1689,6 +1696,8 @@ describe("GET /public/flow/read-consent-url (#1311)", () => {
     dbSelectQueue = [];
     mockSelect.mockClear();
     mockUpdate.mockClear();
+    mockAccountFirstReady.mockReset();
+    mockAccountFirstReady.mockResolvedValue({ outcome: "not_account_first" });
   });
 
   it("returns an optional, skippable session-state URL for a Retainer session", async () => {
@@ -1709,16 +1718,28 @@ describe("GET /public/flow/read-consent-url (#1311)", () => {
     expect(body.readConsentSkipped).toBe(false);
   });
 
-  it("returns required + not skippable for a Monitoring session", async () => {
+  it("returns required + not skippable for a Monitoring session whose account is complete (#4377)", async () => {
+    mockAccountFirstReady.mockResolvedValue({ outcome: "ready", userId: 42 });
     const store = await callUrlRoute([
       [flowSessionRow({ productSlug: "monitoring-foundation-smb" })],
-      [{ serviceType: "monitoring_tier" }],
+      [{ serviceType: "monitoring_tier", category: "monitoring" }],
     ]);
+    expect(mockAccountFirstReady).toHaveBeenCalledWith(SESSION_ID, "monitoring");
     expect(store.statusCode).toBe(200);
     const body = store.jsonBody as { requirement: string; skippable: boolean; url: string };
     expect(body.requirement).toBe("required");
     expect(body.skippable).toBe(false);
     expect(body.url).toContain(`state=${SESSION_ID}`);
+  });
+
+  it("refuses 409 account_required for a Monitoring session with no completed account (#4377)", async () => {
+    mockAccountFirstReady.mockResolvedValue({ outcome: "account_required", reason: "no_account" });
+    const store = await callUrlRoute([
+      [flowSessionRow({ productSlug: "monitoring-foundation-smb" })],
+      [{ serviceType: "monitoring_tier", category: "monitoring" }],
+    ]);
+    expect(store.statusCode).toBe(409);
+    expect(store.jsonBody).toEqual({ error: "account_required", reason: "no_account" });
   });
 
   it("fails CLOSED to required when the slug names no services row", async () => {

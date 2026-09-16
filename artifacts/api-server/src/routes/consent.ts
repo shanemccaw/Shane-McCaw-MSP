@@ -81,6 +81,7 @@ import { startPowerPlatformEnrollmentDeviceCode, pollPowerPlatformEnrollmentDevi
 import { createAuditLog } from "../lib/audit.ts";
 import { resolveOrCreateDirectTenant, resolveOrCreateTenantForMsp, provisionProspectAccount, resolveProspectRole } from "../lib/direct-tenant-provisioning.ts";
 import { getReadConsentRequirementForProduct, buildSessionReadConsentUrl } from "../lib/read-consent-flow.ts";
+import { checkAccountFirstConsentReadyForSession } from "../lib/account-first-purchase.ts";
 import { logger } from "../lib/logger.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 const log = logger.child({ channel: "auth" });
@@ -2713,7 +2714,21 @@ router.get("/public/flow/read-consent-url", async (req: Request, res: Response) 
   const session = await resolveFlowSession(req.query.sessionId, res);
   if (!session) return;
 
-  const { requirement } = await getReadConsentRequirementForProduct(session.productSlug);
+  const { requirement, category } = await getReadConsentRequirementForProduct(session.productSlug);
+
+  // #4377 — Monitoring and Packs run account → consent → pay: the grant is only
+  // requested for a session bound to a real account (password + MFA) at the
+  // session's own address. Retainer, assessments and the free scan are untouched.
+  const readiness = await checkAccountFirstConsentReadyForSession(session.id, category);
+  if (readiness.outcome === "account_required") {
+    log.warn(
+      { sessionId: session.id, productSlug: session.productSlug, reason: readiness.reason },
+      "public flow: read-consent URL REFUSED — account-first product, the session has no completed account yet",
+    );
+    res.status(409).json({ error: "account_required", reason: readiness.reason });
+    return;
+  }
+
   const url = buildSessionReadConsentUrl(getHostBase(req), session.id, process.env.MT_APP_CLIENT_ID);
 
   res.json({
