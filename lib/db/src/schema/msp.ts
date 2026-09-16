@@ -674,7 +674,7 @@ export type InsertMspInvite = typeof mspInvitesTable.$inferInsert;
 
 export const mspRefreshTokensTable = pgTable("msp_refresh_tokens", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   tokenHash: text("token_hash").notNull().unique(),
   issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),

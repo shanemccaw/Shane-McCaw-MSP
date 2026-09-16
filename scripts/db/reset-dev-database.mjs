@@ -129,49 +129,18 @@ const ORPHAN_FULL_WIPE_TABLES = [
   "simulator_run_history",
 ];
 
-// #4399 (filed by this build): msp_refresh_tokens.user_id is shaped like an
-// FK to users(id) -- NOT NULL, holds real user ids, used for auth -- but has
-// NO enforced FOREIGN KEY constraint in the live schema (confirmed via
-// pg_constraint at build time), so information_schema-driven FK discovery
-// (the whole basis of #4313's closure tool) structurally cannot see it. Left
-// undiscovered, a reset would either miss wiping former customer-user
-// tokens entirely or (worse) have no way to preserve MSP-staff tokens
-// correctly. Injected here as a synthetic edge so it's scoped exactly like a
-// real FK edge would be.
-const UNCONSTRAINED_FK_SHAPED_EDGES = [
-  {
-    childTable: "msp_refresh_tokens",
-    childColumn: "user_id",
-    parentTable: "users",
-    parentColumn: "id",
-    deleteRule: "NO ACTION",
-    constraintName: "(unconstrained -- #4399)",
-  },
-  // Same class of gap, same issue (#4399, comment added by this build):
-  // sla_breaches/sla_compliance_records/sla_timers all carry real msp_id +
-  // customer_id columns but only have an enforced FK on policy_id (-> the
-  // PRESERVED sla_policies config table) -- which is exactly why the closure
-  // tool resolved them via the preserved-config path and left them
-  // unresolved/skipped instead of correctly scoped to the target MSP.
-  ...["sla_breaches", "sla_compliance_records", "sla_timers"].flatMap((t) => [
-    {
-      childTable: t,
-      childColumn: "msp_id",
-      parentTable: "msps",
-      parentColumn: "id",
-      deleteRule: "NO ACTION",
-      constraintName: "(unconstrained -- #4399)",
-    },
-    {
-      childTable: t,
-      childColumn: "customer_id",
-      parentTable: "tenants",
-      parentColumn: "id",
-      deleteRule: "NO ACTION",
-      constraintName: "(unconstrained -- #4399)",
-    },
-  ]),
-];
+// #4399: msp_refresh_tokens.user_id and sla_breaches/sla_compliance_records/
+// sla_timers' msp_id + customer_id used to be shaped like real FKs (NOT NULL
+// where applicable, holding real ids) with no enforced FOREIGN KEY in the
+// live schema, so information_schema-driven FK discovery (the whole basis
+// of #4313's closure tool) structurally couldn't see them -- this file used
+// to inject a synthetic UNCONSTRAINED_FK_SHAPED_EDGES workaround for exactly
+// that gap. #4399's migration
+// (lib/db/migrations/manual/2026-09-16-missing-fk-constraints-4399.sql) added
+// the real constraints, so queryAllFkEdges() now discovers all 7 edges
+// itself and the workaround was removed as dead code (live-verified:
+// find-tenant-scoped-tables.mjs resolves all four tables via the real FK
+// edge post-migration).
 
 const BACKUP_DIR = "C:\\Source\\ShaneMcCawConsulting\\db-backups";
 
@@ -235,7 +204,7 @@ function loadTargetMspId(databaseUrl) {
 // condition via a fixpoint over ALL real FK edges (not just the shortest
 // edge the closure tool reports for display).
 function buildResetPlan(databaseUrl, targetMspId) {
-  const edges = [...queryAllFkEdges(databaseUrl), ...UNCONSTRAINED_FK_SHAPED_EDGES];
+  const edges = queryAllFkEdges(databaseUrl);
   const closure = walkClosure(ROOTS, edges);
   const closureTables = [...closure.keys()].filter((t) => !ROOTS.includes(t));
 

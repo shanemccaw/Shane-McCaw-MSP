@@ -1,6 +1,6 @@
 import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb, index } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { mspsTable } from "./msp.ts";
+import { mspsTable, tenantsTable } from "./msp.ts";
 
 // #4277 — reverse-engineered from the live `shanemccawmsp` database's
 // `information_schema` (these tables had no pgTable definition anywhere in
@@ -43,8 +43,8 @@ export type InsertMspSlaWeight = typeof mspSlaWeightsTable.$inferInsert;
 export const slaTimersTable = pgTable("sla_timers", {
   id: serial("id").primaryKey(),
   timerId: text("timer_id").notNull().unique().default(sql`gen_random_uuid()::text`),
-  mspId: integer("msp_id").notNull(),
-  customerId: integer("customer_id"),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id),
+  customerId: integer("customer_id").references(() => tenantsTable.id),
   policyId: integer("policy_id").references(() => slaPoliciesTable.id, { onDelete: "set null" }),
   ticketRef: text("ticket_ref"),
   ticketType: text("ticket_type"),
@@ -71,8 +71,8 @@ export const slaBreachesTable = pgTable("sla_breaches", {
   id: serial("id").primaryKey(),
   breachId: text("breach_id").notNull().unique().default(sql`gen_random_uuid()::text`),
   timerId: text("timer_id").references(() => slaTimersTable.timerId, { onDelete: "cascade" }),
-  mspId: integer("msp_id").notNull(),
-  customerId: integer("customer_id"),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id),
+  customerId: integer("customer_id").references(() => tenantsTable.id),
   policyId: integer("policy_id").references(() => slaPoliciesTable.id, { onDelete: "set null" }),
   ticketRef: text("ticket_ref"),
   phase: text("phase").notNull().default("response"),
@@ -94,8 +94,8 @@ export type InsertSlaBreach = typeof slaBreachesTable.$inferInsert;
 export const slaComplianceRecordsTable = pgTable("sla_compliance_records", {
   id: serial("id").primaryKey(),
   recordId: text("record_id").notNull().unique().default(sql`gen_random_uuid()::text`),
-  mspId: integer("msp_id").notNull(),
-  customerId: integer("customer_id"),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id),
+  customerId: integer("customer_id").references(() => tenantsTable.id),
   policyId: integer("policy_id").references(() => slaPoliciesTable.id, { onDelete: "set null" }),
   periodStart: timestamp("period_start", { withTimezone: true }).notNull(),
   periodEnd: timestamp("period_end", { withTimezone: true }).notNull(),
