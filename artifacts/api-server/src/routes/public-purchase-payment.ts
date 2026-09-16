@@ -101,7 +101,8 @@ import { logger } from "../lib/logger.ts";
 import { sendEmail, purchaseConfirmationEmail } from "../lib/mailer.ts";
 import { markAssessmentLeadPurchased } from "../lib/crm-pipeline.ts";
 import { ensureFlowStripeCustomer } from "../lib/assessment-flow-rescan-addon.ts";
-import { promoteAccountFirstBuyerOnPayment } from "../lib/purchase-account-flow.ts";
+import { promoteAccountFirstBuyerOnPayment, resolvePaidPurchaseSession } from "../lib/purchase-account-flow.ts";
+import { ensureMonitoringScanKickoff } from "../lib/monitoring-onboarding-scan.ts";
 
 const log = logger.child({ channel: "billing" });
 
@@ -694,6 +695,34 @@ router.post("/public/purchase/payment-confirmed", async (req: Request, res: Resp
       }
     } catch (err) {
       log.error({ err, checkoutSessionId: order.sessionId }, "purchase payment: account-first promotion failed (non-fatal)");
+    }
+
+    // Git #4397 — ensureMonitoringScanKickoff (#1314's backstop) only ever
+    // fired from set-password's `ok` outcome, but an account-first buyer
+    // (#4374's door) never reaches set-password after paying — its
+    // accountUserId was already recorded at pre-consent account creation, so
+    // set-password's own `already_set` branch never ran the kickoff either
+    // (#4377/#4378 landed the promotion above but left this gap open).
+    // Payment confirmation is the one step every account-first buyer reaches,
+    // and the session resolves with that accountUserId already attached, so
+    // this is the natural place to close it. Idempotent (skips if a
+    // diagnostic run already exists) and monitoring-only, so this is a no-op
+    // for every non-monitoring purchase and for a legacy pay-then-account
+    // session, whose accountUserId isn't recorded until set-password runs,
+    // after this point.
+    try {
+      const resolved = await resolvePaidPurchaseSession(order.sessionId);
+      if (resolved.ok && resolved.session.accountUserId != null) {
+        const kickoff = await ensureMonitoringScanKickoff(resolved.session);
+        if (kickoff.fired) {
+          log.info(
+            { checkoutSessionId: order.sessionId, customerId: kickoff.customerId },
+            "purchase payment: monitoring scan kicked off for account-first buyer",
+          );
+        }
+      }
+    } catch (err) {
+      log.error({ err, checkoutSessionId: order.sessionId }, "purchase payment: monitoring scan kickoff failed (non-fatal)");
     }
 
     res.json({
