@@ -87,14 +87,61 @@ class Rollback extends Error {}
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const db = drizzle(pool);
 
-// Real rows in the local dev database. Nothing here is created or modified
-// outside the rolled-back transaction.
-const MSP = 1;
-const OTHER_MSP = 1626;
-const TENANT = 1;
-const OTHER_TENANT = 3;
-const MSP_USER = 1;
-const CUSTOMER_USER = 39;
+/**
+ * Resolve real msp/tenant/user ids live, the same discipline ./parity-check.ts's
+ * own pass A already uses — never hardcode a row id, because a later scoped
+ * reset (#4272 deleted the real `mccawsoft2` tenant and its users) silently
+ * turns a hardcoded id into an opaque FK violation instead of a clear failure.
+ *
+ * Returns null when the database has no msp user or no customer user to anchor
+ * on (or no second msp/tenant to use as the "foreign org" in the cross-org
+ * checks) — the caller treats that as "nothing to run against", not a crash.
+ * Nothing here is created or modified outside the rolled-back transaction.
+ */
+async function resolveFixtureIds(handle: { execute: (q: ReturnType<typeof sql>) => Promise<{ rows: unknown[] }> }): Promise<{
+  MSP: number; OTHER_MSP: number; TENANT: number; OTHER_TENANT: number; MSP_USER: number; CUSTOMER_USER: number;
+} | null> {
+  const [mspUserRow] = (await handle.execute(sql`
+    SELECT id, msp_id FROM users WHERE msp_id IS NOT NULL AND tenant_id IS NULL ORDER BY id LIMIT 1
+  `)).rows as Array<{ id: number; msp_id: number }>;
+  if (!mspUserRow) return null;
+
+  const [otherMspRow] = (await handle.execute(sql`
+    SELECT id FROM msps WHERE id != ${mspUserRow.msp_id} ORDER BY id LIMIT 1
+  `)).rows as Array<{ id: number }>;
+  if (!otherMspRow) return null;
+
+  const [customerUserRow] = (await handle.execute(sql`
+    SELECT id, tenant_id FROM users WHERE tenant_id IS NOT NULL ORDER BY id LIMIT 1
+  `)).rows as Array<{ id: number; tenant_id: number }>;
+  if (!customerUserRow) return null;
+
+  const [otherTenantRow] = (await handle.execute(sql`
+    SELECT id FROM tenants WHERE id != ${customerUserRow.tenant_id} ORDER BY id LIMIT 1
+  `)).rows as Array<{ id: number }>;
+  if (!otherTenantRow) return null;
+
+  return {
+    MSP: mspUserRow.msp_id,
+    OTHER_MSP: otherMspRow.id,
+    TENANT: customerUserRow.tenant_id,
+    OTHER_TENANT: otherTenantRow.id,
+    MSP_USER: mspUserRow.id,
+    CUSTOMER_USER: customerUserRow.id,
+  };
+}
+
+const resolved = await resolveFixtureIds(db);
+if (!resolved) {
+  console.log(
+    "SKIP  check-rbac-integrity — no real msp user + customer user (with a second msp/tenant " +
+    "to use as the foreign org) exists in this database right now. Nothing hardcoded to fall " +
+    "back on (see #4413) — seed a real or vitest-fixture tenant/user first, then re-run.",
+  );
+  await pool.end();
+  process.exit(0);
+}
+const { MSP, OTHER_MSP, TENANT, OTHER_TENANT, MSP_USER, CUSTOMER_USER } = resolved;
 
 /** Row counts across the six RBAC tables, in a fixed order. */
 async function rbacCounts(handle: { execute: (q: ReturnType<typeof sql>) => Promise<{ rows: unknown[] }> }): Promise<number[]> {
