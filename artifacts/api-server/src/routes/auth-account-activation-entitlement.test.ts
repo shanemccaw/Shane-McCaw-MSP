@@ -70,6 +70,7 @@ mock.module("@workspace/db", {
     mfaEnrollmentsTable: {},
     webauthnCredentialsTable: {},
     mspAuditLogsTable: {},
+    auditLogsTable: {},
     mspServiceAccountsTable: {},
     clientServicesTable: {},
     servicesTable: {},
@@ -98,6 +99,7 @@ mock.module("../lib/mailer.ts", {
 mock.module("../lib/portal-url.ts", {
   namedExports: {
     getPortalBaseUrl: () => "https://example.com",
+    getMspConsoleBaseUrl: () => "https://console.example.com",
     buildAccountSetupUrl: () => "https://example.com/account-setup?token=test",
   },
 });
