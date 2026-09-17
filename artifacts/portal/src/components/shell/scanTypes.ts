@@ -33,6 +33,10 @@ export interface ScanStatusActiveRun {
   readonly checksError: number;
   readonly checksLicenseGap: number;
   readonly checksTotal: number;
+  /** Git #4461 — real live progress index, written throttled while the run is
+   * active. checksOk/checksError/checksLicenseGap above stay 0 until the run
+   * finishes; this is the one counter that isn't terminal-only. */
+  readonly checksDone: number;
   readonly startedAt: string;
 }
 

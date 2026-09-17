@@ -818,6 +818,25 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
     // label, never the raw internal key (#1147).
     const checkLabelByKey = new Map<string, string>();
 
+    // Git #4461 — live progress index. checksOk/checksError/checksLicenseGap/
+    // checksTotal below are only persisted once, after the whole package
+    // finishes, so a page load mid-run has nothing real to read until an SSE
+    // event reaches that tab. checksDone is the one counter written WHILE the
+    // run is active, throttled so a fast package doesn't fire one UPDATE per
+    // check — one write per PROGRESS_DB_WRITE_THROTTLE_MS, plus always the
+    // final check so the row never lags behind by more than one throttle
+    // window when the run finishes.
+    let lastProgressDbWriteAt = 0;
+    const writeProgress = (done: number, total: number, isLast: boolean) => {
+      const now = Date.now();
+      if (!isLast && now - lastProgressDbWriteAt < PROGRESS_DB_WRITE_THROTTLE_MS) return;
+      lastProgressDbWriteAt = now;
+      db.update(mspDiagnosticRunsTable)
+        .set({ checksDone: done, checksTotal: total, updatedAt: new Date() })
+        .where(eq(mspDiagnosticRunsTable.runId, runId))
+        .catch((err: unknown) => log.warn({ err, runId }, "diagnostics-runner: progress write failed (non-fatal)"));
+    };
+
     const pkgResult = await executeMonitoringPackage({
       packageKey,
       tenantId: resolvedTenantId,
@@ -841,6 +860,10 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
           severityMatched: evt.severityMatched,
           severityLabel: evt.severityLabel,
         });
+        // evt.index is 0-based ("this is the i-th check just reported"), so
+        // evt.index + 1 is the real count of checks reported so far.
+        const done = evt.index + 1;
+        writeProgress(done, evt.total, done >= evt.total);
       },
     });
 
@@ -1246,6 +1269,10 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
 // process is genuinely still executing.
 
 const RUN_HEARTBEAT_MS = 60_000;
+/** Git #4461 — min interval between checks_done/checks_total writes while a run
+ * is live; well under the portal's 3s active-poll cadence so a fresh page load
+ * never waits more than one throttle window for a real number. */
+const PROGRESS_DB_WRITE_THROTTLE_MS = 2_000;
 /** Ten missed heartbeats — well past any pause a live process could produce. */
 export const DIAGNOSTICS_RUN_STALE_AFTER_MS = 10 * 60_000;
 export const INTERRUPTED_RUN_ERROR_MESSAGE =

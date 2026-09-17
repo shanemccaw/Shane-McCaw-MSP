@@ -279,7 +279,11 @@ export function useScanState(): ScanState {
 
   if (status.active) {
     const runId = status.active.runId;
-    const index = log.length > 0 ? Math.max(...log.map((e) => e.index)) : Math.max(1, status.active.checksOk + status.active.checksError + status.active.checksLicenseGap);
+    // Git #4461 — the poll fallback (before any SSE event has landed on this
+    // tab) reads the real live checksDone counter, not checksOk/checksError/
+    // checksLicenseGap: those three stay 0 for the whole run (written once,
+    // terminal-only), which used to make this always Math.max(1, 0) = 1.
+    const index = log.length > 0 ? Math.max(...log.map((e) => e.index)) : Math.max(1, status.active.checksDone);
     const disconnected = sseState === "disconnected" && !(witnessedTerminal?.runId === runId);
     const phase: ScanPhase = disconnected ? "disconnected" : lateJoin ? "late-join" : "running";
     return {

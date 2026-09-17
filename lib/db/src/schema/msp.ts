@@ -3770,6 +3770,13 @@ export const mspDiagnosticRunsTable = pgTable("msp_diagnostic_runs", {
   startedAt: timestamp("started_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   checksTotal: integer("checks_total").notNull().default(0),
+  // Live progress index while the run is still active (Git #4461) — written
+  // throttled from the runner's onProgress callback, so a fresh page load can
+  // show a live run's real "Check N of M" position instead of stalling at 1
+  // until an SSE event reaches this tab. checksOk/checksError/checksLicenseGap
+  // below stay terminal-only (written once, after the whole package finishes);
+  // this column is the one mid-run counter that isn't.
+  checksDone: integer("checks_done").notNull().default(0),
   checksOk: integer("checks_ok").notNull().default(0),
   checksError: integer("checks_error").notNull().default(0),
   checksRequiresScript: integer("checks_requires_script").notNull().default(0),

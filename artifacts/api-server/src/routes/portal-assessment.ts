@@ -1074,6 +1074,11 @@ router.get(
               checksError: latestRun.checksError ?? 0,
               checksLicenseGap: latestRun.checksLicenseGap ?? 0,
               checksTotal: latestRun.checksTotal ?? 0,
+              // Git #4461 — the one counter the runner writes WHILE the run is
+              // live (checksOk/checksError/checksLicenseGap above stay 0 until
+              // the run finishes). This is what lets a fresh page load show the
+              // real "Check N of M" position before any SSE event arrives.
+              checksDone: latestRun.checksDone ?? 0,
               startedAt: latestRun.startedAt ?? latestRun.createdAt,
             }
           : null,
