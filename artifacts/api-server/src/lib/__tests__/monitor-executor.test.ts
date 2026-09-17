@@ -1692,6 +1692,8 @@ describe("executeMonitorCheck", () => {
     spOperation: null,
     ppOperation: null,
     armOperation: null,
+    gateEndpoint: null,
+    gateExpression: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -1856,6 +1858,8 @@ describe("executeMonitorCheck — cached result label recovery", () => {
     spOperation: null,
     ppOperation: null,
     armOperation: null,
+    gateEndpoint: null,
+    gateExpression: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -2277,6 +2281,8 @@ describe("executeMonitorCheck — fan-out (group-scoped)", () => {
     spOperation: null,
     ppOperation: null,
     armOperation: null,
+    gateEndpoint: null,
+    gateExpression: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -2517,6 +2523,8 @@ describe("executeMonitorCheck — PowerShell-backed (executorType='powershell')"
     spOperation: null,
     ppOperation: null,
     armOperation: null,
+    gateEndpoint: null,
+    gateExpression: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -2697,6 +2705,8 @@ describe("executeMonitorCheck — SharePoint-admin-backed (executorType='sharepo
     spOperation: "tenant-sharing-capability",
     ppOperation: null,
     armOperation: null,
+    gateEndpoint: null,
+    gateExpression: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -2872,6 +2882,8 @@ describe("executeMonitorCheck — Power-Platform-backed (executorType='power-pla
     spOperation: null,
     ppOperation: "dlp-policies",
     armOperation: null,
+    gateEndpoint: null,
+    gateExpression: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -3596,6 +3608,8 @@ describe("executeMonitorCheck — DNS-backed (executorType='dns', #496)", () => 
     spOperation: null,
     ppOperation: null,
     armOperation: null,
+    gateEndpoint: null,
+    gateExpression: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -3767,6 +3781,8 @@ describe("executeMonitorCheck — azure-rm transport (#1871)", () => {
     spOperation: null,
     ppOperation: null,
     armOperation: "list-custom-role-definitions",
+    gateEndpoint: null,
+    gateExpression: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -3896,5 +3912,107 @@ describe("executeMonitorCheck — azure-rm transport (#1871)", () => {
     expect(result.status).toBe("error");
     expect(result.errorMessage).toContain("not in the code-owned registry");
     expect(mockProbe).not.toHaveBeenCalled();
+  });
+});
+
+// ── #4503: prerequisite gate — suppress a check whose feature is disabled ────
+//
+// identity:app-proxy-connector-groups scored `0` for every tenant that has
+// never turned on Application Proxy at all — indistinguishable from "App Proxy
+// is on but has no connector groups configured." gateEndpoint/gateExpression
+// let a check fetch a prerequisite singleton first and skip its own endpoint
+// entirely when that prerequisite says the feature isn't in use.
+
+describe("executeMonitorCheck — prerequisite gate (#4503)", () => {
+  const mockFetch = graphFetchForTenant as Mock;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const gatedCheck = {
+    id: 92,
+    checkId: "gate-check-uuid",
+    key: "identity:app-proxy-connector-groups",
+    label: "Application Proxy Connector Groups",
+    description: null,
+    endpoint: "https://graph.microsoft.com/beta/onPremisesPublishingProfiles/applicationProxy/connectorGroups",
+    method: "GET",
+    requestBody: null,
+    selectParams: null,
+    filterParams: null,
+    properties: ["id"] as string[],
+    mapping: [
+      { sourceField: "id", targetField: "connectorGroupCount", transform: "count" },
+    ] as Array<{ sourceField: string; targetField: string; transform?: string }>,
+    severityRules: [
+      { expression: "{{connectorGroupCount}} == 0", severity: "info", label: "No Application Proxy connector group is configured" },
+    ] as Array<{ expression: string; severity: string; label?: string }>,
+    outputSchema: null,
+    engines: [] as string[],
+    frequency: "daily" as const,
+    requiresCustomerScript: false,
+    scriptPackageId: null,
+    fanOutSource: null,
+    fanOutItemIdField: null,
+    fanOutMaxItems: null,
+    fanOutItemFilter: null,
+    fanOutItemNormalizer: null,
+    executorType: "graph" as const,
+    psCmdletKey: null,
+    psParams: null,
+    spOperation: null,
+    ppOperation: null,
+    armOperation: null,
+    gateEndpoint: "https://graph.microsoft.com/beta/onPremisesPublishingProfiles/applicationProxy",
+    gateExpression: "{{isEnabled}} == true",
+    schemaVersion: 1,
+    status: "active" as const,
+    createdByAdminId: null,
+    updatedByAdminId: null,
+    isCustomerFacing: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  it("skips the check's own endpoint and reports no finding when the gate is not satisfied", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ id: "applicationProxy", isEnabled: false }),
+      headers: { get: () => "application/json" },
+    });
+
+    const result = await executeMonitorCheck({ check: gatedCheck, tenantId: "tenant1", triggerId: "run1", skipIdempotency: true });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1); // only the gate — never the connectorGroups endpoint
+    expect(result.status).toBe("ok");
+    expect(result.severityMatched).toBeNull();
+    expect(result.itemCount).toBe(0);
+    expect(result.extractedProperties._gateSkipped).toBe(true);
+    expect(result.extractedProperties.isEnabled).toBe(false);
+  });
+
+  it("fetches the check's own endpoint and evaluates severity normally when the gate is satisfied", async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ id: "applicationProxy", isEnabled: true }),
+        headers: { get: () => "application/json" },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ value: [] }),
+        headers: { get: () => "application/json" },
+      });
+
+    const result = await executeMonitorCheck({ check: gatedCheck, tenantId: "tenant1", triggerId: "run2", skipIdempotency: true });
+
+    expect(mockFetch).toHaveBeenCalledTimes(2); // gate, then the real endpoint
+    expect(result.status).toBe("ok");
+    expect(result.severityMatched).toBe("info");
+    expect(result.extractedProperties.connectorGroupCount).toBe(0);
   });
 });

@@ -244,6 +244,8 @@ describe("onedrive:overshared-files — end to end through the fan-out executor"
     spOperation: null,
     ppOperation: null,
     armOperation: null,
+    gateEndpoint: null,
+    gateExpression: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
