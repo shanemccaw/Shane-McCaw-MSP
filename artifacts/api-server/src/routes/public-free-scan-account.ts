@@ -40,7 +40,7 @@ import { z } from "zod";
 import { db, tenantsTable, type FreeScanEngagement } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { credentialSchema, resolveActor } from "./public-free-scan-sow.ts";
-import { loadOrCreateEngagement } from "../lib/free-scan-engagement.ts";
+import { loadOrCreateEngagement, selectionFromRow } from "../lib/free-scan-engagement.ts";
 import {
   accountStage,
   beginSmsEnrollment,
@@ -493,7 +493,8 @@ router.get("/public/free-scan/account/me", readLimiter, noStore, async (req: Req
         sowReference: engagement.sowReference,
         status: engagement.status,
         paymentPlan: engagement.paymentPlan,
-        phaseCount: (engagement.selectedPhaseSlugs ?? []).length,
+        // The same normalised selection the SOW and Remediate step count from.
+        phaseCount: selectionFromRow(engagement).phaseSlugs.length,
         signerName: engagement.signerName,
         signedAt: engagement.signedAt ? engagement.signedAt.toISOString() : null,
         paidAt: engagement.paidAt ? engagement.paidAt.toISOString() : null,

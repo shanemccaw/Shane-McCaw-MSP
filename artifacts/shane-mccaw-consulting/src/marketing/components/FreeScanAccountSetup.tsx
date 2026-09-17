@@ -417,7 +417,7 @@ export function FreeScanAccountSetup({
                 >
                   <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".16em", textTransform: "uppercase", color: "#64748b" }}>Setup key</span>
                   <span
-                    style={{ fontSize: 14, fontWeight: 700, letterSpacing: ".16em", color: "#f1f5f9", fontFamily: "Menlo,Consolas,monospace", wordBreak: "break-all" }}
+                    style={{ fontSize: 14, fontWeight: 700, letterSpacing: ".16em", color: "#f1f5f9", fontFamily: "Menlo,Consolas,monospace" }}
                     data-testid="freescan-account-totp-secret"
                   >
                     {secret ? groupKey(secret) : "…"}
