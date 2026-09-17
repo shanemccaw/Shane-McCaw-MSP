@@ -29,6 +29,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/lib/auth-context";
 import { useChangeControlSettingsLive } from "@/components/settingsChangeControlLive";
+import { AddOnCheckoutReturnBanner } from "@/components/change-control/AddOnCheckoutReturnBanner";
+import { AddOnPurchaseCard } from "@/components/change-control/AddOnPurchaseCard";
 import { FreezeCalendarCard, MaintenanceWindowsCard } from "@/components/change-control/CalendarSection";
 import { CatalogSection } from "@/components/change-control/CatalogSection";
 import { ChangeActionDialog, type ChangeActionTarget } from "@/components/change-control/ChangeActionDialog";
@@ -45,7 +47,8 @@ import {
 import { cn } from "@/lib/utils";
 
 export default function ChangeControlPage() {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
+  const canManageBilling = can("customer", "billing.manage");
   const register = useChangeControlRegister();
   const settings = useChangeControlSettingsLive();
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -121,6 +124,8 @@ export default function ChangeControlPage() {
         </span>
       </div>
 
+      <AddOnCheckoutReturnBanner onConfirmed={() => void register.refetch()} />
+
       {addOnRequired && (
         <div className="flex flex-col gap-2.5 rounded-xl border border-status-amber/30 bg-status-amber/5 p-4" data-testid="change-control-addon-required">
           <span className="text-[13.5px] font-semibold text-foreground">The change control add-on isn&apos;t active for your organisation</span>
@@ -133,10 +138,13 @@ export default function ChangeControlPage() {
           <span className="max-w-[700px] text-xs leading-relaxed text-muted-foreground/80">
             Changes are still recorded. Every change made to your tenant becomes a change request
             whether or not the add-on is active, and your MSP sees it on their console. Raising a
-            change request here is not gated either. Ask your MSP about adding change control to
-            read the register here.
+            change request here is not gated either.
+            {canManageBilling
+              ? " You can buy the add-on below to read the register here."
+              : " Ask your MSP about adding change control to read the register here."}
           </span>
           <span className="font-mono text-[10.5px] text-muted-foreground/60">402 ADD_ON_REQUIRED · requireAddOnEntitlement(change_control) · the server&apos;s own answer, not a paraphrase</span>
+          {canManageBilling && <AddOnPurchaseCard featureKey="change_control" returnPath="/change-control" />}
           <div className="pt-1">
             <Button variant="outline" size="sm" onClick={() => setWizardOpen(true)} data-testid="change-control-raise-anyway-button">
               Raise a change anyway
