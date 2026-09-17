@@ -143,6 +143,24 @@ namespace BuildConsole.Services
             }
         }
 
-        public static string Combine(string? stdout, string? stderr) => $"{stdout}\n{stderr}".Trim();
+        /// <summary>Combined script output, already passed through <see cref="RedactConnectionSecrets"/>.</summary>
+        public static string Combine(string? stdout, string? stderr) => RedactConnectionSecrets($"{stdout}\n{stderr}".Trim());
+
+        // Git #4436 — scheme://user:pw@host userinfo (user and password both; host/port/db stay readable),
+        // plus password=… conninfo keywords and PGPASSWORD=… assignments. Mirrors scripts/db/pg-cli.mjs.
+        private static readonly Regex UrlCredentials =
+            new(@"([a-z][a-z0-9+.\-]*://)[^\s/@]*:[^\s]*@", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        private static readonly Regex PasswordAssignment =
+            new(@"\b(password|PGPASSWORD)(\s*=\s*)(?:'[^']*'|""[^""]*""|[^\s&;]+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        /// <summary>Git #4436 — strips connection credentials from any text bound for the palette pane (which is
+        /// copyable and screenshot-able). The scripts no longer put the password in child argv; this is the
+        /// defense-in-depth layer so no other code path can surface one either.</summary>
+        public static string RedactConnectionSecrets(string? text)
+        {
+            if (string.IsNullOrEmpty(text)) return text ?? "";
+            string redacted = UrlCredentials.Replace(text, "$1<credentials-redacted>@");
+            return PasswordAssignment.Replace(redacted, "$1$2<redacted>");
+        }
     }
 }

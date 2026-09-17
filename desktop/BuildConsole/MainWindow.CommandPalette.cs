@@ -333,7 +333,7 @@ namespace BuildConsole
             string full = $"{result.StdOut}\n{result.StdErr}".Trim();
             if (string.IsNullOrWhiteSpace(full))
                 full = result.Ok ? "Script finished with no output." : $"Script failed (exit {result.ExitCode}), no output.";
-            return full;
+            return PaletteScriptProcess.RedactConnectionSecrets(full); // Git #4436
         }
     }
 }

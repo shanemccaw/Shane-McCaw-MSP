@@ -148,7 +148,8 @@ namespace BuildConsole.Services
                     sb.Append($"\n════ Step {i + 1} of {Steps.Length}: {Steps[i].Command} ════\n");
                     sb.Append(Steps[i].Output.TrimEnd()).Append('\n');
                 }
-                return sb.ToString().TrimEnd();
+                // Git #4436 — the chain pane embeds the reset gate's own text; redact the whole render too.
+                return PaletteScriptProcess.RedactConnectionSecrets(sb.ToString().TrimEnd());
             }
         }
 

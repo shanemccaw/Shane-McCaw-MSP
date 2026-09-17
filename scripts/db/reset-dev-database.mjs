@@ -65,6 +65,7 @@ import {
   queryAllFkEdges,
   walkClosure,
 } from "./find-tenant-scoped-tables.mjs";
+import { pgCli, redactConnectionSecrets } from "./pg-cli.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..", "..");
@@ -167,15 +168,22 @@ function isLocalDevUrl(databaseUrl) {
   return isLocalHost && !looksRemote;
 }
 
+// #4436: every psql/pg_dump call below passes pgCli()'s password-free conninfo
+// in argv and the password as PGPASSWORD in the child env -- never the raw
+// DATABASE_URL, which would put the password into any "Command failed: ..." error.
 function psqlValue(databaseUrl, sql) {
-  return execFileSync("psql", [databaseUrl, "-t", "-A", "-c", sql], {
+  const { conninfo, env } = pgCli(databaseUrl);
+  return execFileSync("psql", [conninfo, "-t", "-A", "-c", sql], {
     encoding: "utf8",
+    env,
   }).trim();
 }
 
 function psqlRun(databaseUrl, sql) {
-  return execFileSync("psql", [databaseUrl, "-t", "-A", "-c", sql], {
+  const { conninfo, env } = pgCli(databaseUrl);
+  return execFileSync("psql", [conninfo, "-t", "-A", "-c", sql], {
     encoding: "utf8",
+    env,
   });
 }
 
@@ -296,7 +304,8 @@ function takeBackup(databaseUrl) {
     .replace("Z", "Z");
   const file = path.join(BACKUP_DIR, `shanemccawmsp_pre-dev-reset_${stamp}.dump`);
   console.log(`\nTaking backup: ${file}`);
-  execFileSync("pg_dump", [databaseUrl, "-Fc", "-f", file], { stdio: "inherit" });
+  const { conninfo, env } = pgCli(databaseUrl);
+  execFileSync("pg_dump", [conninfo, "-Fc", "-f", file], { stdio: "inherit", env });
   const list = spawnSync("pg_restore", ["--list", file], { encoding: "utf8" });
   if (list.status !== 0) {
     throw new Error(`Backup verification failed: pg_restore --list exited ${list.status}`);
@@ -325,8 +334,10 @@ function runResetSql(databaseUrl, plan, targetMspId, rollback) {
   const tmpDir = mkdtempSync(path.join(tmpdir(), "reset-dev-db-"));
   const sqlFile = path.join(tmpDir, "reset.sql");
   writeFileSync(sqlFile, sql, "utf8");
-  const result = spawnSync("psql", [databaseUrl, "-v", "ON_ERROR_STOP=1", "-f", sqlFile], {
+  const { conninfo, env } = pgCli(databaseUrl);
+  const result = spawnSync("psql", [conninfo, "-v", "ON_ERROR_STOP=1", "-f", sqlFile], {
     encoding: "utf8",
+    env,
   });
   rmSync(tmpDir, { recursive: true, force: true });
   return { sql, result };
@@ -413,9 +424,11 @@ async function main() {
   if (dryRunOutcome.result.status !== 0) {
     console.error("Dry run FAILED -- refusing to proceed to a real reset.");
     console.error(`exit status: ${dryRunOutcome.result.status}`);
-    console.error(dryRunOutcome.result.stdout);
-    console.error(dryRunOutcome.result.stderr);
-    if (dryRunOutcome.result.error) console.error(dryRunOutcome.result.error);
+    console.error(redactConnectionSecrets(dryRunOutcome.result.stdout));
+    console.error(redactConnectionSecrets(dryRunOutcome.result.stderr));
+    if (dryRunOutcome.result.error) {
+      console.error(redactConnectionSecrets(dryRunOutcome.result.error.stack ?? dryRunOutcome.result.error));
+    }
     process.exit(1);
   }
   console.log("Dry run succeeded: no FK violations, transaction rolled back cleanly.");
@@ -432,7 +445,7 @@ async function main() {
   if (!args.yes) {
     const answer = await confirm(
       `\nThis will DELETE msp #${targetMspId} "${targetMspName}"'s tenants/customers and all ` +
-        `their downstream data from ${databaseUrl}. A backup will be taken first. Type "yes" to proceed: `
+        `their downstream data from ${redactConnectionSecrets(databaseUrl)}. A backup will be taken first. Type "yes" to proceed: `
     );
     if (answer !== "yes") {
       console.log("Aborted -- no data was changed.");
@@ -456,7 +469,7 @@ async function main() {
   const realOutcome = runResetSql(databaseUrl, plan, targetMspId, /* rollback */ false);
   if (realOutcome.result.status !== 0) {
     console.error("Real reset FAILED after a successful dry run -- this should not happen.");
-    console.error(realOutcome.result.stderr);
+    console.error(redactConnectionSecrets(realOutcome.result.stderr));
     console.error(`Backup is available at: ${backupFile}`);
     process.exit(1);
   }
@@ -497,6 +510,8 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err.message || err);
+  // #4436: defense in depth -- argv no longer carries the password, but never
+  // print an error without stripping connection credentials first.
+  console.error(redactConnectionSecrets(err?.message || err));
   process.exit(1);
 });

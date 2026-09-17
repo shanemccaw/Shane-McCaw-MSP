@@ -138,8 +138,9 @@ namespace BuildConsole.Services
                         ? $"script exited {exitCode}"
                         : "script output did not include the target MSP / dry-run success lines";
                 ActivityLog.Log("command-palette.dev-reset", $"Preview (dry run) did not succeed — {why}. Real reset stays locked.");
-                return $"✗ Preview failed ({why}). The real reset stays locked until a preview succeeds.\n\n"
-                     + (output.Length > 0 ? output : "(no output)");
+                return PaletteScriptProcess.RedactConnectionSecrets(
+                    $"✗ Preview failed ({why}). The real reset stays locked until a preview succeeds.\n\n"
+                    + (output.Length > 0 ? output : "(no output)"));
             }
             finally
             {
@@ -182,9 +183,12 @@ namespace BuildConsole.Services
                     ? $"Backup: {backupPath}" + (backupVerified != null ? $"\n{backupVerified}" : "")
                     : "Backup: none reported — the script did not reach its backup step, so it changed nothing after it.";
 
-                return (ok, $"{header}\n\n{backupText}\n\n"
-                          + "──── real script output (node scripts/db/reset-dev-database.mjs --yes) ────\n"
-                          + (output.Length > 0 ? output : "(no output)"));
+                // Git #4436 — the whole pane text is redacted, not just the script output (Combine already
+                // redacts that), so a credential in launchError or anything else composed here can't reach it.
+                return (ok, PaletteScriptProcess.RedactConnectionSecrets(
+                    $"{header}\n\n{backupText}\n\n"
+                    + "──── real script output (node scripts/db/reset-dev-database.mjs --yes) ────\n"
+                    + (output.Length > 0 ? output : "(no output)")));
             }
             finally
             {

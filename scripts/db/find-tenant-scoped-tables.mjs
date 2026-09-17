@@ -39,6 +39,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 
+import { pgCli, redactConnectionSecrets } from "./pg-cli.mjs";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..", "..");
 
@@ -95,10 +97,12 @@ export function queryAllFkEdges(databaseUrl) {
       AND tc.table_schema = 'public'
     ORDER BY ccu.table_name, tc.table_name;
   `;
+  // #4436: password goes via PGPASSWORD, never argv.
+  const { conninfo, env } = pgCli(databaseUrl);
   const out = execFileSync(
     "psql",
-    [databaseUrl, "-t", "-A", "-F", "|", "-c", sql],
-    { encoding: "utf8" }
+    [conninfo, "-t", "-A", "-F", "|", "-c", sql],
+    { encoding: "utf8", env }
   );
   return out
     .split("\n")
@@ -218,5 +222,10 @@ function main() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main();
+  try {
+    main();
+  } catch (err) {
+    console.error(redactConnectionSecrets(err?.message ?? err));
+    process.exit(1);
+  }
 }
