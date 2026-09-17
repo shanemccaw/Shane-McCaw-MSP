@@ -54,6 +54,14 @@ namespace BuildConsole
         // Minimum net rise in pagefile-in-use across that window to be treated as real (filters the
         // small commit jitter normal allocations produce). 300 MB.
         private const ulong PagefileRiseMinBytes = 300UL * 1024 * 1024;
+        // Git #4561: the clear/resume side needs its own noise floor, not a zero-tolerance exact
+        // non-positive delta. Confirmed live (synthetic 90s run, ordinary ±2MB background-paging
+        // noise, RAM held safely under the resume threshold throughout): a same-tick net rise of a
+        // few MB — completely unrelated to the original pressure — broke the clear streak on most
+        // ticks and the queue never auto-resumed. 32 MB is comfortably above normal background
+        // jitter and far below the 300 MB PagefileRiseMinBytes real-pressure floor, so it cannot
+        // mask an actual renewed rise.
+        private const ulong PagefileClearToleranceBytes = 32UL * 1024 * 1024;
         // Pressure must stay CLEARED continuously for this long before auto-resume — a real
         // sustained cooldown, not one good sample.
         private static readonly TimeSpan MemoryPressureClearSustain = TimeSpan.FromSeconds(30);
@@ -158,8 +166,10 @@ namespace BuildConsole
                 && newest > oldest
                 && (newest - oldest) >= PagefileRiseMinBytes
                 && newest >= prev;
-            // "Stable or shrinking" (the cooldown side): net non-increase across the window.
-            bool pagefileNotRising = !haveFullWindow || newest <= oldest;
+            // "Stable or shrinking" (the cooldown side): net change across the window within a real
+            // noise tolerance — NOT an exact non-positive delta (Git #4561; see
+            // PagefileClearToleranceBytes above for why zero tolerance broke real auto-resume).
+            bool pagefileNotRising = !haveFullWindow || newest <= oldest + PagefileClearToleranceBytes;
 
             bool ramElevated = status.dwMemoryLoad >= PhysicalLoadPauseThreshold;
             bool ramLow = status.dwMemoryLoad < PhysicalLoadResumeThreshold;
