@@ -30,6 +30,12 @@
 //     the hidden hoisted links under <root>/node_modules/.pnpm/node_modules:
 //       - FOREIGN : a reparse point resolving OUTSIDE the scanned root
 //       - DANGLING: a reparse point whose resolved target no longer exists
+//       - SKIPPED-OPTIONAL (Git #4508, NOT poisoning): a dangling link whose target is
+//         a package pnpm itself recorded as skipped on this host (node_modules/
+//         .modules.yaml "skipped" — other-OS/CPU native builds and optional deps only
+//         reachable through them). pnpm hoists these links by design; they never had
+//         a store copy here, so they are counted separately, never repaired, and do
+//         not affect `clean`.
 //   * every file in <host>/node_modules/.bin: absolute paths baked into shims
 //     that point into a worktree (`\wt\`) or point outside the root at a path
 //     that no longer exists (#1967's vitest shim class).
@@ -191,6 +197,78 @@ function scanMissingTrees(root, out) {
   }
 }
 
+/**
+ * Git #4508 — pnpm's own record of the optional dependencies it deliberately did NOT
+ * install on this host: the `skipped` list in <root>/node_modules/.modules.yaml
+ * (rewritten by every install). pnpm still hoists those packages as "private" links
+ * under .pnpm/node_modules, pointing at .pnpm/<pkg>@<ver> dirs that by design never
+ * exist here — e.g. @esbuild/linux-x64 (os: [linux]) or fsevents (os: [darwin]) on a
+ * win32 checkout. Real evidence (2026-09-17, main checkout): all 76 "dangling" links
+ * behind the "store poisoned ... still not clean after repair" banner were exactly the
+ * 38 entries of this list, each linked twice. The list is used instead of re-deriving
+ * os/cpu from pnpm-lock.yaml because pnpm also skips packages with no os/cpu of their
+ * own that are only reachable through a skipped one (@emnapi/runtime via
+ * @img/sharp-wasm32 — both in that real list, neither carries os/cpu).
+ *
+ * Returns a Set of virtual-store dir-name prefixes ("@esbuild+linux-x64@0.27.3"), or an
+ * empty Set when the file is absent/unreadable — then nothing is excused and every
+ * dangling link is reported exactly as before.
+ */
+function readPnpmSkipped(root) {
+  const dirNames = new Set();
+  let text;
+  try {
+    text = readFileSync(path.join(root, "node_modules", ".modules.yaml"), "utf8");
+  } catch {
+    return dirNames;
+  }
+  let skipped = [];
+  try {
+    skipped = JSON.parse(text).skipped || []; // pnpm 11 writes this file as JSON
+  } catch {
+    // Older pnpm writes real YAML: a top-level `skipped:` block of `  - <depPath>` lines.
+    const block = text.match(/^skipped:\s*\r?\n((?:[ \t]+-[^\r\n]*\r?\n?)*)/m);
+    if (block) {
+      skipped = block[1]
+        .split(/\r?\n/)
+        .map((l) => l.replace(/^[ \t]+-[ \t]*/, "").trim().replace(/^['"]|['"]$/g, ""))
+        .filter(Boolean);
+    }
+  }
+  for (const depPath of skipped) {
+    if (typeof depPath !== "string") continue;
+    // Drop any peer suffix "(...)" — pnpm renders peers into the dir name as "_..." —
+    // then apply pnpm's scope separator ("/" -> "+").
+    const base = depPath.replace(/\(.*$/, "");
+    if (base) dirNames.add(base.replace(/\//g, "+"));
+  }
+  return dirNames;
+}
+
+/**
+ * True when a dangling link's target — followed through any further links under root
+ * (root node_modules/<pkg> -> .pnpm/node_modules/<pkg> -> .pnpm/<pkg>@<ver>/...) —
+ * ends at a virtual-store dir for a package pnpm recorded as skipped on this host.
+ */
+function isPnpmSkippedTarget(root, target, skippedDirs) {
+  if (skippedDirs.size === 0) return false;
+  let t = target;
+  for (let hop = 0; hop < 8 && isReparsePoint(t); hop++) {
+    const next = resolveLinkTarget(t);
+    if (!next || !isUnder(next, root)) return false;
+    t = next;
+  }
+  const parts = path.relative(root, t).split(path.sep);
+  const i = parts.indexOf(".pnpm");
+  if (i !== 1 || parts[0] !== "node_modules") return false; // only root's own virtual store
+  const dir = parts[i + 1];
+  if (!dir || dir === "node_modules") return false;
+  for (const prefix of skippedDirs) {
+    if (dir === prefix || dir.startsWith(prefix + "_")) return true;
+  }
+  return false;
+}
+
 function checkLink(root, link, out) {
   if (!isReparsePoint(link)) return;
   out.linksChecked++;
@@ -204,7 +282,11 @@ function checkLink(root, link, out) {
     return;
   }
   if (!existsSync(target)) {
-    out.danglingLinks.push({ link, target });
+    if (isPnpmSkippedTarget(root, target, out._skippedDirs)) {
+      out.skippedOptionalLinks.push({ link, target });
+    } else {
+      out.danglingLinks.push({ link, target });
+    }
   }
 }
 
@@ -300,8 +382,12 @@ export function scanSharedStore(root) {
     danglingLinks: [],
     poisonedBins: [],
     missingTrees: [],
+    // Git #4508 — dangling links to optional deps pnpm deliberately skipped on this
+    // host. Reported for visibility, never counted against `clean`, never repaired.
+    skippedOptionalLinks: [],
     clean: true,
   };
+  Object.defineProperty(out, "_skippedDirs", { value: readPnpmSkipped(root), enumerable: false });
   const rootNm = path.join(root, "node_modules");
   if (isReparsePoint(rootNm)) {
     // Scanning THROUGH a junctioned view double-reports someone else's store; the
@@ -462,6 +548,12 @@ function printScan(scan) {
     scan.missingTrees,
     (m) => `${m.package} — ${m.reason}`
   );
+  if (scan.skippedOptionalLinks.length > 0) {
+    console.log(
+      `  (not poisoning) ${scan.skippedOptionalLinks.length} link(s) point at optional deps pnpm skipped on this host ` +
+        `(node_modules/.modules.yaml "skipped", e.g. other-OS/CPU native builds) — expected, nothing to repair.`
+    );
+  }
   console.log(
     scan.clean ? "  CLEAN — no foreign, dangling, poisoned or missing entries." : "  POISONED — see entries above."
   );

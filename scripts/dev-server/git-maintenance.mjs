@@ -414,6 +414,7 @@ export function sweepStrayWorktreeDirs(config, opts = {}) {
         foreign: scan.foreignLinks.length,
         dangling: scan.danglingLinks.length,
         poisonedBins: scan.poisonedBins.length,
+        skippedOptional: scan.skippedOptionalLinks.length, // Git #4508 — benign, not counted in clean
       };
       if (!scan.clean) {
         console.warn(

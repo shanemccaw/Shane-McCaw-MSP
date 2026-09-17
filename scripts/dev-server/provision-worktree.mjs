@@ -137,6 +137,7 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
         dangling: scan.danglingLinks.length,
         poisonedBins: scan.poisonedBins.length,
         missingTrees: scan.missingTrees.length,
+        skippedOptional: scan.skippedOptionalLinks.length, // Git #4508 — benign, not counted in clean
       };
       if (!scan.clean) {
         let repairRes = null;
