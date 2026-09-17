@@ -57,10 +57,39 @@ namespace BuildConsole.Services
 
         private static bool _setupProblemReported;
 
-        /// <summary>The base-URL key the DOM baseline table is written under — scheme://authority, the same
-        /// convention TestModeComposerPanel's Verify/Update Baseline actions already use for this table.</summary>
+        /// <summary>Git #1472/#4459 — the single real matcher for whether a URL is one of the configured
+        /// watched Visual Test Tracker base URLs (BuildConsoleSettings.VisualTestTrackerBaseUrls). Returns
+        /// the matching configured entry (preserving any path prefix), or null if the URL matches none.
+        /// Moved here from MainWindow.MatchesWatchedVisualTestBaseUrl (which now forwards to this) so
+        /// BaseUrlKeyFor below shares the exact same matching logic instead of a second copy.</summary>
+        public static string? MatchWatchedBase(string? url)
+        {
+            if (string.IsNullOrEmpty(url)) return null;
+            var bases = BuildConsoleSettings.Load().VisualTestTrackerBaseUrls;
+            if (bases != null)
+            {
+                foreach (var b in bases)
+                {
+                    if (string.IsNullOrWhiteSpace(b)) continue;
+                    if (url.IndexOf(b, StringComparison.OrdinalIgnoreCase) >= 0) return b;
+                }
+            }
+            return url.IndexOf("localhost:5175", StringComparison.OrdinalIgnoreCase) >= 0 ? "localhost:5175" : null;
+        }
+
+        /// <summary>The base-URL key every Visual Test Tracker table shares — the matched watched base
+        /// string (the same value visual_test_tracker_pages rows use), preserving any path prefix so two
+        /// watched bases on the same host with different prefixes get distinct rows (Git #4459 — this was
+        /// previously scheme://authority here, which dropped the prefix and let those rows collide). Falls
+        /// back to host[:port] only when the URL matches no configured watched base at all.</summary>
         public static string BaseUrlKeyFor(string fullUrl)
-            => Uri.TryCreate(fullUrl, UriKind.Absolute, out var uri) ? $"{uri.Scheme}://{uri.Authority}" : "";
+        {
+            var matched = MatchWatchedBase(fullUrl);
+            if (matched != null) return matched;
+            return Uri.TryCreate(fullUrl, UriKind.Absolute, out var uri)
+                ? uri.Host + (uri.Port > 0 ? $":{uri.Port}" : "")
+                : "";
+        }
 
         private static string CacheKey(string baseUrl, string pagePath) => baseUrl + "\n" + pagePath;
 

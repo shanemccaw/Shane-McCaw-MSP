@@ -228,11 +228,7 @@ namespace BuildConsole.Controls
             if (string.IsNullOrWhiteSpace(connStr)) return;
 
             var store = new VisualTestTrackerStore(connStr);
-            string baseUrl = "";
-            if (Uri.TryCreate(fullUrl, UriKind.Absolute, out var uri))
-            {
-                baseUrl = $"{uri.Scheme}://{uri.Authority}";
-            }
+            string baseUrl = PageAutoCheckService.BaseUrlKeyFor(fullUrl);
 
             var baseline = await store.GetDomBaselineAsync(baseUrl, route);
             if (baseline != null && baseline.IsVerificationDue)
@@ -840,11 +836,7 @@ namespace BuildConsole.Controls
             var connStr = VisualTestTrackerStore.ResolveConnectionString();
             VisualTestTrackerStore? store = !string.IsNullOrWhiteSpace(connStr) ? new VisualTestTrackerStore(connStr) : null;
 
-            string baseUrl = "";
-            if (Uri.TryCreate(_fullUrl, UriKind.Absolute, out var uri))
-            {
-                baseUrl = $"{uri.Scheme}://{uri.Authority}";
-            }
+            string baseUrl = PageAutoCheckService.BaseUrlKeyFor(_fullUrl);
 
             VisualTestTrackerDomBaseline? baseline = null;
             if (store != null)
@@ -905,11 +897,7 @@ namespace BuildConsole.Controls
             if (!string.IsNullOrWhiteSpace(connStr))
             {
                 var store = new VisualTestTrackerStore(connStr);
-                string baseUrl = "";
-                if (Uri.TryCreate(_fullUrl, UriKind.Absolute, out var uri))
-                {
-                    baseUrl = $"{uri.Scheme}://{uri.Authority}";
-                }
+                string baseUrl = PageAutoCheckService.BaseUrlKeyFor(_fullUrl);
 
                 await store.UpdateDomBaselineVerificationDateAsync(baseUrl, _activeRoute);
                 BdrDomVerificationBanner.Visibility = Visibility.Collapsed;

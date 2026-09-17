@@ -439,7 +439,10 @@ namespace BuildConsole
         /// </summary>
         private async Task RunPageAutoCheckAsync(Microsoft.Web.WebView2.Wpf.WebView2 webView, string pageUrl, string watchedBase, string pagePath)
         {
-            string baseUrl = PageAutoCheckService.BaseUrlKeyFor(pageUrl);
+            // Git #4459 — baseUrl must be the same watched-base key pagePath was already computed relative
+            // to (the caller's matchedBase), not a re-derived scheme://authority — otherwise two watched
+            // bases sharing a host with different path prefixes collide on this table's (base_url, page_path).
+            string baseUrl = watchedBase;
             var banner = PageAutoCheckBanner.For(webView);
 
             // A banner about another page is stale the moment the tab moves off it.

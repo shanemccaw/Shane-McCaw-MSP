@@ -2454,26 +2454,10 @@ namespace BuildConsole
         /// <summary>Git #1472 — the watched base URLs the Visual Test Tracker checks navigation
         /// against (BuildConsoleSettings.VisualTestTrackerBaseUrls — configurable, not hardcoded to
         /// portal-v2). Returns the matching base URL (the configured entry, not the full nav URL) if
-        /// <paramref name="url"/> contains one of them, else null.</summary>
+        /// <paramref name="url"/> contains one of them, else null. Git #4459 — the matching itself now
+        /// lives in PageAutoCheckService.MatchWatchedBase so this and BaseUrlKeyFor share one copy.</summary>
         private static string? MatchesWatchedVisualTestBaseUrl(string? url)
-        {
-            if (string.IsNullOrEmpty(url)) return null;
-            var bases = BuildConsole.Services.BuildConsoleSettings.Load().VisualTestTrackerBaseUrls;
-            if (bases != null)
-            {
-                foreach (var b in bases)
-                {
-                    if (string.IsNullOrWhiteSpace(b)) continue;
-                    int idx = url.IndexOf(b, StringComparison.OrdinalIgnoreCase);
-                    if (idx >= 0) return b;
-                }
-            }
-            if (url.IndexOf("localhost:5175", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                return "localhost:5175";
-            }
-            return null;
-        }
+            => BuildConsole.Services.PageAutoCheckService.MatchWatchedBase(url);
 
         /// <summary>Git #1472 — on every NavigationCompleted (any tab, any pane — see
         /// WebView_NavigationCompleted), checks whether the navigated tab matches a watched base URL and,
