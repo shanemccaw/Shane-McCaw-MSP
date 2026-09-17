@@ -515,7 +515,7 @@ export function NoScreen() {
                 </div>
 
                 <div
-                  onClick={() => getShellApi()?.openDoc({ kind: "screen", id: "msp-directory", screenId: "msp-directory", label: "Marketing" })}
+                  onClick={() => getShellApi()?.openDoc({ kind: "screen", id: "marketing", screenId: "marketing", label: "Marketing" })}
                   style={{
                     padding: 10, borderRadius: 6, background: SURFACE.well, border: `1px solid ${LINE.control}`,
                     cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between",
