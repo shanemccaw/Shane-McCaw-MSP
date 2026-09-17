@@ -16,9 +16,12 @@
  * WHAT THIS REPLACES
  * ------------------
  * The Full Remediation Guide's tick boxes were React state that died with the
- * tab, and `RemediationGuideBody.tsx` said so in its own header and in the
- * document's standfirst ("your progress is kept while this page is open").
- * #730 makes them survive a reload, a re-login and a different device.
+ * tab, and the former `RemediationGuideBody.tsx` said so in its own header and
+ * in the document's standfirst ("your progress is kept while this page is
+ * open"). That component is gone — deleted with the rest of `copilot-journey`
+ * in `f40438cd`, preserved only at tag `portal-archive-2026-08-29`; the live
+ * successor is `remediation-checklist.ts` (#1538). #730 makes ticks survive a
+ * reload, a re-login and a different device.
  *
  * WHAT A TICK IS, AND WHAT IT IS NOT
  * ----------------------------------

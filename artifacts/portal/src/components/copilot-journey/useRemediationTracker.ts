@@ -6,9 +6,12 @@
  *   GET /api/portal/remediation-tracker
  *   PUT /api/portal/remediation-tracker/steps/:stepId
  *
- * Before #730 the guide's ticks were `useState` inside `RemediationGuideBody`
- * and died with the tab, which the document's own standfirst admitted ("your
- * progress is kept while this page is open"). They now live in
+ * Before #730 the guide's ticks were `useState` inside the former
+ * `RemediationGuideBody` component and died with the tab, which the document's
+ * own standfirst admitted ("your progress is kept while this page is open").
+ * That component is gone — deleted with the rest of `copilot-journey` in
+ * `f40438cd`, preserved only at tag `portal-archive-2026-08-29`; the live
+ * successor is `remediation-checklist.ts` (#1538). Ticks now live in
  * `remediation_tracker_steps`, scoped to the CUSTOMER rather than the user, so
  * a reload, a re-login, a second admin on the account and Shane all see one
  * tracker.

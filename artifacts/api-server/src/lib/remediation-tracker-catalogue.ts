@@ -58,9 +58,13 @@ export const REMEDIATION_TRACKER_CATALOGUE: readonly RemediationTrackerCatalogue
 ] as const;
 
 /**
- * Real copy, straight out of `RemediationGuideBody.tsx`'s own `ACTION_LABELS`
- * (which sources it from `Design/Remediation Tracker.dc.html`) for the four
- * actioned statuses, plus the two states that constant doesn't cover.
+ * Real copy, straight out of the former `RemediationGuideBody.tsx`'s own
+ * `ACTION_LABELS` (which sources it from `Design/Remediation Tracker.dc.html`)
+ * for the four actioned statuses, plus the two states that constant doesn't
+ * cover. `RemediationGuideBody.tsx` itself is gone — deleted with the rest of
+ * `copilot-journey` in `f40438cd`, preserved only at tag
+ * `portal-archive-2026-08-29`; the live successor is `remediation-checklist.ts`
+ * (#1538).
  */
 export const REMEDIATION_TRACKER_STATUS_LABELS: Readonly<Record<string, string>> = {
   not_started: "Not started",
