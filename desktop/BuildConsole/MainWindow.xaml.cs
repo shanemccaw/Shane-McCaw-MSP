@@ -6727,7 +6727,7 @@ namespace BuildConsole
                     if (ready && !navigated)
                     {
                         navigated = true;
-                        wv.CoreWebView2.NavigateToString(htmlContent);
+                        NavigateViewerContent(wv, filePath, fileText, htmlContent);
                     }
                 };
 
@@ -6747,6 +6747,65 @@ namespace BuildConsole
 
             EditorTabs.Items.Add(newTab);
             EditorTabs.SelectedItem = newTab;
+        }
+
+        // Git #4558 — CoreWebView2.NavigateToString has a real, documented hard
+        // limit of 2,097,152 chars for htmlContent; anything longer throws
+        // ArgumentException and crashed the tab open unhandled. Navigate()-ing a
+        // real temp .html file has no such in-memory string ceiling, so a large
+        // file still gets the full rich viewer instead of a blank/crashed tab.
+        private const int NavigateToStringCharLimit = 2_097_152;
+
+        private static void NavigateViewerContent(BuildConsole.Controls.ChatSafeWebView2 wv, string filePath, string fileText, string htmlContent)
+        {
+            try
+            {
+                if (htmlContent.Length < NavigateToStringCharLimit)
+                {
+                    wv.CoreWebView2.NavigateToString(htmlContent);
+                    return;
+                }
+
+                try
+                {
+                    string tempDir = Path.Combine(Path.GetTempPath(), "BuildConsole_LargeFileViewer");
+                    Directory.CreateDirectory(tempDir);
+                    string tempFile = Path.Combine(tempDir, $"{Guid.NewGuid():N}.html");
+                    File.WriteAllText(tempFile, htmlContent);
+                    wv.CoreWebView2.Navigate(new Uri(tempFile).AbsoluteUri);
+                }
+                catch (Exception tempEx)
+                {
+                    // Real fallback: too large for NavigateToString AND the temp-file
+                    // write/navigate failed too — show a plain, honest, unstyled text
+                    // view (truncated if necessary to stay under the same limit)
+                    // rather than a blank tab or a crash.
+                    string safePath = System.Net.WebUtility.HtmlEncode(filePath);
+                    string plainText = fileText.Length > NavigateToStringCharLimit - 4096
+                        ? fileText.Substring(0, NavigateToStringCharLimit - 4096) + "\n\n... [truncated — file too large to display in full]"
+                        : fileText;
+                    string plainHtml = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head>"
+                        + "<body style=\"background:#1E1E2E;color:#CDD6F4;font-family:Consolas,monospace;margin:0;padding:16px;\">"
+                        + $"<div style=\"color:#F38BA8;margin-bottom:12px;\">Showing plain text — {safePath} is too large for the rich viewer "
+                        + $"({htmlContent.Length:N0} chars, over WebView2's {NavigateToStringCharLimit:N0}-char limit), and the temp-file fallback "
+                        + $"failed ({System.Net.WebUtility.HtmlEncode(tempEx.Message)}).</div>"
+                        + $"<pre style=\"white-space:pre-wrap;word-break:break-all;\">{System.Net.WebUtility.HtmlEncode(plainText)}</pre></body></html>";
+                    wv.CoreWebView2.NavigateToString(plainHtml);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Defense in depth (Git #4558) — any other unexpected failure in
+                // this path degrades to a visible in-tab error, not an unhandled
+                // "UI Thread Error" dialog.
+                try
+                {
+                    string errHtml = "<!DOCTYPE html><html><body style=\"background:#1E1E2E;color:#F38BA8;font-family:Consolas,monospace;padding:16px;\">"
+                        + $"Error opening file: {System.Net.WebUtility.HtmlEncode(ex.Message)}</body></html>";
+                    wv.CoreWebView2.NavigateToString(errHtml);
+                }
+                catch { /* real last resort — nothing more we can do from here */ }
+            }
         }
 
         private static string GenerateViewerHtml(string filePath, string fileText, string ext)
