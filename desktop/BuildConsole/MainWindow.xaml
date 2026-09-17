@@ -819,6 +819,18 @@
                             <TextBlock x:Name="MemoryMeterText" Text="—"
                                        Foreground="{StaticResource TextBrush}"
                                        FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center" Width="110"/>
+                            <!-- Git #4543 — informational-only auto-pause indicator. Collapsed
+                                 normally; shown (with the meter bar recolored red) whenever the
+                                 build queue is auto-paused by real memory pressure. Display only:
+                                 it never triggers or clears the pause (fully automatic detection
+                                 lives in MainWindow.ResourceMonitor.cs / QueueWatcherService). -->
+                            <TextBlock x:Name="MemoryPressurePauseText"
+                                       Text="Queue paused: memory pressure"
+                                       Visibility="Collapsed"
+                                       Foreground="{StaticResource RedBrush}"
+                                       FontWeight="SemiBold"
+                                       FontSize="{StaticResource CaptionFontSize}"
+                                       VerticalAlignment="Center" Margin="8,0,0,0"/>
                         </StackPanel>
                     </StackPanel>
                 </StatusBarItem>

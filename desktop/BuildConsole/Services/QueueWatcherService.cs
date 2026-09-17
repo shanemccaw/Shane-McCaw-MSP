@@ -899,6 +899,51 @@ namespace BuildConsole.Services
             if (!paused) RequestTickOnUiThread();
         }
 
+        /// <summary>
+        /// Git #4543 — a SECOND, fully automatic pause distinct from the manual <see cref="_paused"/>
+        /// toggle: set/cleared by <see cref="MainWindow"/>'s ResourceMonitor when the machine crosses
+        /// into (and later out of) real, early memory pressure — pagefile-in-use actively climbing
+        /// over consecutive samples while physical RAM load is already elevated, the genuine leading
+        /// indicator of imminent swap thrashing, caught BEFORE the box becomes unresponsive. Gated in
+        /// <see cref="TickAsync"/> exactly like <see cref="_paused"/> (reaping still runs; only NEW
+        /// auto-claims wait), but:
+        ///  - it is NEVER persisted to settings — it reflects live machine state, not a user choice,
+        ///    so a restart must not come up "memory-paused" off a stale flag; and
+        ///  - it is separate from <see cref="_paused"/> so it never clobbers Shane's own manual
+        ///    Pause/Resume state (either being set holds the automatic loop; clearing one does not
+        ///    override the other — see the gate in <see cref="TickAsync"/>).
+        /// Zero user interaction, by design: no button sets or clears this — the whole point of #4543
+        /// is that by the time swap thrashing is visible Shane may not be able to click anything, so
+        /// the cure must be self-triggering and self-resuming. Volatile: the ResourceMonitor poll runs
+        /// on the UI DispatcherTimer, but the flag is read from TickAsync, so a plain volatile bool is
+        /// the right, lock-free primitive (single writer, single reader, no compound state).
+        /// </summary>
+        private volatile bool _memoryPressurePaused;
+
+        /// <summary>Git #4543 — whether the automatic pickup loop is currently held by real memory pressure (see <see cref="SetMemoryPressurePause"/>). Independent of <see cref="IsPaused"/>.</summary>
+        public bool IsMemoryPressurePaused => _memoryPressurePaused;
+
+        /// <summary>Git #4543 — raised whenever the memory-pressure pause state actually changes (deduped), so the resource meter can reflect it. Argument: the new paused value.</summary>
+        public event Action<bool>? MemoryPressurePauseChanged;
+
+        /// <summary>
+        /// Git #4543 — flips the automatic memory-pressure pause. No-op (and no log/event) when already
+        /// in the requested state. Called only by the ResourceMonitor detector, never by a UI action.
+        /// Not persisted (see <see cref="_memoryPressurePaused"/>). On CLEAR, re-evaluates the queue
+        /// immediately (like <see cref="SetPaused"/>'s resume) so a build isn't held an extra interval
+        /// after pressure genuinely subsides.
+        /// </summary>
+        public void SetMemoryPressurePause(bool paused)
+        {
+            if (_memoryPressurePaused == paused) return;
+            _memoryPressurePaused = paused;
+            ActivityLog.Log("watcher", paused
+                ? "Queue AUTO-PAUSED (memory pressure) — pagefile climbing while RAM load is high; already-running builds continue, but no NEW queued item is claimed/started until pressure clears. Fully automatic, no action needed."
+                : "Queue AUTO-RESUMED (memory pressure cleared) — RAM load back under threshold and pagefile stable/shrinking for the sustained cooldown; re-evaluating the queue now.");
+            MemoryPressurePauseChanged?.Invoke(paused);
+            if (!paused) RequestTickOnUiThread();
+        }
+
         /// <summary>Git #3824 — fires one TickAsync on the UI thread from any caller thread, keeping
         /// TickAsync's "UI thread only" invariant (same marshaling as <see cref="ArmCompletionTrigger"/>).</summary>
         private void RequestTickOnUiThread()
@@ -2491,6 +2536,16 @@ namespace BuildConsole.Services
             // any NEW queued item is skipped entirely while paused — no
             // server-side claim happens, so items stay queued until resumed.
             if (_paused) return;
+
+            // Git #4543 — automatic memory-pressure pause. Same effect as the manual pause just
+            // above (reaping already ran; only the NEW claim/launch below is held), but self-
+            // triggered by the ResourceMonitor's early/predictive detector (pagefile climbing while
+            // RAM load is high) and self-cleared on a sustained cooldown — zero user interaction.
+            // Placed AFTER the reap/self-repair steps and the _appReady/_paused gates, and BEFORE
+            // the #4542 OccupiedSlots/TryReserveSlot capacity math, so it never interferes with the
+            // atomic slot reservation — it simply declines to start anything new while the machine
+            // is leaning on swap, exactly when adding an 8th heavy build would tip it over.
+            if (_memoryPressurePaused) return;
 
             // Git #2106 — reconcile reserved slots against DB truth before computing capacity.
             // A slot is reserved ONLY while its build is genuinely 'limit-paused' and awaiting
