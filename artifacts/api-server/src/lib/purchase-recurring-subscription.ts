@@ -288,8 +288,9 @@ async function ensurePurchaseSubscriptionInner(
 
   const customerId = idOf(intent.customer);
   if (!customerId) {
-    // A tenant-less (skipped-consent) Retainer is charged as an anonymous intent
-    // with no card kept on file — there is nothing a subscription can bill.
+    // An anonymous intent kept no card on file — there is nothing a subscription
+    // can bill. Since #4438 a skipped-consent Retainer resolves its customer from
+    // the buyer's account, so this is reached only when that resolution failed.
     log.error(
       { checkoutSessionId: session.id, paymentIntentId: intent.id, productType },
       "purchase subscription: the paid intent has no Stripe customer — recurring subscription CANNOT be created; month 2 will not bill",

@@ -67,10 +67,13 @@
  * stamps checkout_sessions.consent_skipped_at ONLY for products whose
  * requirement is optional, so this route accepts a stamped skip as the
  * consent-equivalent gate rather than re-deriving the requirement and risking
- * drift. A skipped session has no tenant GUID — the charge degrades to an
- * anonymous PaymentIntent exactly like the pre-#490 assessment path. The
- * column ships in #1311's manual migration; its read is guarded so an
- * un-migrated database degrades to consent-required instead of a 500.
+ * drift. A skipped session has no tenant GUID, so no tenants row to hang a
+ * Stripe customer off; since #4438 a skipped-consent Retainer resolves its
+ * customer from the buyer's own account instead
+ * (lib/purchase-buyer-stripe-customer.ts), so its card is still kept on file and
+ * its recurring subscription is still created. The column ships in #1311's
+ * manual migration; its read is guarded so an un-migrated database degrades to
+ * consent-required instead of a 500.
  *
  * ── Recurring products are charged one month, card kept on file ───────────────
  * Monitoring and Retainer are monthly products; this pair charges the first
@@ -109,6 +112,7 @@ import { logger } from "../lib/logger.ts";
 import { sendEmail, purchaseConfirmationEmail } from "../lib/mailer.ts";
 import { markAssessmentLeadPurchased } from "../lib/crm-pipeline.ts";
 import { ensureFlowStripeCustomer } from "../lib/assessment-flow-rescan-addon.ts";
+import { ensureBuyerStripeCustomer } from "../lib/purchase-buyer-stripe-customer.ts";
 import { promoteAccountFirstBuyerOnPayment, resolvePaidPurchaseSession } from "../lib/purchase-account-flow.ts";
 import { ensureMonitoringScanKickoff } from "../lib/monitoring-onboarding-scan.ts";
 import { ensureMonitoringEntitlement } from "../lib/monitoring-entitlement-provisioning.ts";
@@ -148,6 +152,8 @@ type ResolvedPurchase = {
   tenantId: string | null;
   /** `tenants.id`, when the GUID has a local row — enables the Stripe customer, never blocks the sale. */
   tenantRowId: number | null;
+  /** The account created through this session (#4374), when there is one yet. */
+  accountUserId: number | null;
   seats: number;
   productType: PurchaseProductType;
   productSlug: string;
@@ -229,6 +235,7 @@ async function resolvePurchaseOrder(
       tenantId: checkoutSessionsTable.tenantId,
       productSlug: checkoutSessionsTable.productSlug,
       seats: checkoutSessionsTable.seats,
+      accountUserId: checkoutSessionsTable.accountUserId,
     })
     .from(checkoutSessionsTable)
     .where(
@@ -400,6 +407,7 @@ async function resolvePurchaseOrder(
     company: session.company,
     tenantId: session.tenantId,
     tenantRowId: tenantRow?.id ?? null,
+    accountUserId: session.accountUserId,
     seats,
     productType,
     productSlug: session.productSlug,
@@ -413,14 +421,43 @@ async function resolvePurchaseOrder(
 /**
  * The Stripe Customer both this charge and any later subscription hang off, or
  * null when it cannot be resolved. Never throws: a customer is an ENHANCEMENT
- * to the charge and its absence (a skipped-consent retainer has no tenant at
- * all) degrades to an anonymous PaymentIntent rather than blocking the sale.
+ * to the charge and a failure to resolve one degrades to an anonymous
+ * PaymentIntent rather than blocking the sale.
+ *
+ * A tenant-backed order uses the tenant's customer. A tenant-less order is a
+ * skipped-consent Retainer (#1311) — the one product sold without consent — and
+ * since #4438 resolves its customer from the buyer's own account, because a
+ * monthly product with no customer has no card on file and #4431 can never
+ * create its subscription. Deliberately scoped to Retainer: any other product
+ * without a tenants row stays anonymous exactly as before.
  */
 async function resolvePurchaseCustomerId(
   stripe: import("stripe").Stripe,
   order: ResolvedPurchase,
 ): Promise<string | null> {
   if (order.tenantRowId == null) {
+    if (order.productType === "retainer" && order.billingInterval === "month") {
+      try {
+        const buyer = await ensureBuyerStripeCustomer(stripe, {
+          checkoutSessionId: order.sessionId,
+          accountUserId: order.accountUserId,
+          email: order.email,
+          fullName: order.fullName,
+          company: order.company,
+        });
+        log.info(
+          { checkoutSessionId: order.sessionId, accountUserId: order.accountUserId, stripeCustomerId: buyer.customerId, source: buyer.source },
+          "purchase payment: tenant-less Retainer — Stripe customer resolved from the buyer, card will be kept on file",
+        );
+        return buyer.customerId;
+      } catch (err) {
+        log.error(
+          { err, checkoutSessionId: order.sessionId, accountUserId: order.accountUserId },
+          "purchase payment: tenant-less Retainer's Stripe customer could not be resolved — falling back to an anonymous PaymentIntent; its recurring subscription CANNOT be created",
+        );
+        return null;
+      }
+    }
     log.info(
       { checkoutSessionId: order.sessionId, tenantId: order.tenantId, productType: order.productType },
       "purchase payment: no tenants row for this session — charging without a Stripe customer",

@@ -167,6 +167,14 @@ export const usersTable = pgTable("users", {
   // than cascading, since a decliner's own assignment shouldn't disappear
   // because their manager's user row did.
   managerUserId: integer("manager_user_id").references((): AnyPgColumn => usersTable.id, { onDelete: "set null" }),
+  // #4438 — the buyer's own Stripe Customer, for a purchase made before any
+  // tenant exists. A skipped-consent Retainer (#1311) has no tenants row, so
+  // tenants.stripe_customer_id (#490) cannot hold the customer its card and
+  // recurring subscription (#4431) hang off; it lives on the account instead.
+  // Adopted onto tenants.stripe_customer_id (when that is still empty) the
+  // moment a later consent links this user to a tenant, so the buyer stays one
+  // Stripe customer. Nullable; never set for tenant-backed purchases.
+  stripeCustomerId: text("stripe_customer_id"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("users_msp_id_idx").on(t.mspId),

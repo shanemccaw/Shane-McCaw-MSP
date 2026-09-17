@@ -81,6 +81,7 @@ import { startPowerPlatformEnrollmentDeviceCode, pollPowerPlatformEnrollmentDevi
 import { createAuditLog } from "../lib/audit.ts";
 import { resolveOrCreateDirectTenant, resolveOrCreateTenantForMsp, provisionProspectAccount, resolveProspectRole } from "../lib/direct-tenant-provisioning.ts";
 import { ensureRetainerEntitlement } from "../lib/purchase-retainer-entitlement.ts";
+import { adoptBuyerStripeCustomerOntoTenant } from "../lib/purchase-buyer-stripe-customer.ts";
 import { getReadConsentRequirementForProduct, buildSessionReadConsentUrl } from "../lib/read-consent-flow.ts";
 import { checkAccountFirstConsentReadyForSession } from "../lib/account-first-purchase.ts";
 import { logger } from "../lib/logger.ts";
@@ -1398,6 +1399,22 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
               { tenant, sessionId: stateFingerprint(state), userId: prospect.userId },
               "consent callback: Prospect user was created WITHOUT a tenant link (users.tenant_id) — customer provisioning failed; payment webhook will retry and alert",
             );
+          } else {
+            // Git #4438 — a buyer who paid before any tenant existed (a
+            // skipped-consent Retainer) has their Stripe customer on the account
+            // (users.stripe_customer_id). Now that the account is linked to a
+            // tenant, the tenant adopts that customer when it has none, so a later
+            // tenant-backed purchase bills the same customer instead of minting a
+            // second. A no-op for every account with no customer of its own.
+            // Non-fatal: consent must never fail over billing bookkeeping.
+            try {
+              await adoptBuyerStripeCustomerOntoTenant(prospect.userId, prospect.customerId);
+            } catch (err) {
+              log.error(
+                { err, tenant, userId: prospect.userId, customerId: prospect.customerId },
+                "consent callback: adopting the account's Stripe customer onto its tenant FAILED (non-fatal)",
+              );
+            }
           }
           // Git #4432 — a skipped-consent (#1311) Retainer buyer already has a
           // paid client_services row (payment-confirmed provisioned it with

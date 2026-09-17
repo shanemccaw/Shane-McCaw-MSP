@@ -241,9 +241,15 @@ describe("payment-intent — retainer", () => {
     expect(res.body.billingInterval).toBe("month");
     const [piParams] = mockPaymentIntentsCreate.mock.calls[0];
     expect(piParams.amount).toBe(expected);
-    // No tenant → anonymous intent, and no card kept without a customer to keep it on.
-    expect(piParams).not.toHaveProperty("customer");
-    expect(piParams).not.toHaveProperty("setup_future_usage");
+    // #4438 — no tenant, but still a real customer resolved from the buyer (this
+    // session has no account yet, so it is session-keyed) and the card is kept
+    // on file, so #4431's recurring subscription can be created at confirm.
+    expect(mockCustomersCreate).toHaveBeenCalledTimes(1);
+    const [customerParams, customerOpts] = mockCustomersCreate.mock.calls[0];
+    expect(customerParams.metadata).toMatchObject({ source: "buy_purchase_flow", checkoutSessionId: sessionId });
+    expect(customerOpts.idempotencyKey).toBe(`buy-purchase-flow:customer:session:${sessionId}`);
+    expect(piParams.customer).toBe("cus_new_1307");
+    expect(piParams.setup_future_usage).toBe("off_session");
   });
 
   it("still requires consent when the session neither consented nor recorded a skip", async () => {
