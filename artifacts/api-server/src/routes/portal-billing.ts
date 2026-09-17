@@ -600,7 +600,7 @@ router.post("/portal/billing/customer-portal", requireAuth, requireCustomerCapab
 
   const session = await stripe.billingPortal.sessions.create({
     customer: customer.id,
-    return_url: `${getMspPortalBaseUrl()}/billing`,
+    return_url: `${getMspPortalBaseUrl(req)}/billing`,
   });
 
   req.log.info({ userId, customerId: customer.id }, "billing-portal: session created");
@@ -658,8 +658,8 @@ router.post("/portal/billing/subscriptions/:id/resubscribe", requireAuth, requir
       quantity: 1,
     }],
     mode: "subscription",
-    success_url: `${getMspPortalBaseUrl()}/billing?payment=success`,
-    cancel_url: `${getMspPortalBaseUrl()}/billing?payment=cancelled`,
+    success_url: `${getMspPortalBaseUrl(req)}/billing?payment=success`,
+    cancel_url: `${getMspPortalBaseUrl(req)}/billing?payment=cancelled`,
     metadata: {
       type: "onboarding_purchase",
       userId: String(userId),

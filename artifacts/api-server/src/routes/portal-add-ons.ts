@@ -225,7 +225,7 @@ router.post(
       buyerUserId: String(req.user!.id),
       amountCents: String(amountCents),
     };
-    const portalBase = getMspPortalBaseUrl();
+    const portalBase = getMspPortalBaseUrl(req);
 
     try {
       const { default: StripeCtor } = await import("stripe");

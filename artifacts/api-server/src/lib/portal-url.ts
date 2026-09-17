@@ -1,3 +1,5 @@
+import type { Request } from "express";
+
 /**
  * Returns the canonical base URL for the client portal (no trailing slash).
  *
@@ -33,16 +35,42 @@ export function getPortalBaseUrl(): string {
 /**
  * Domain selection shared by getPortalBaseUrl()/getMspPortalBaseUrl() — same
  * priority order, but WITHOUT an artifact suffix (/crm or /portal) appended.
+ *
+ * Git #4506 — LOCAL DEV ONLY: when there's no REPLIT_DOMAINS/REPLIT_DEV_DOMAIN
+ * (i.e. this isn't actually running on Replit — Staging/Production always set
+ * one, so that resolution path below is untouched), a real `req` lets us use
+ * the browser's own Origin/Referer instead of `PORTAL_BASE_URL`.
+ * `PORTAL_BASE_URL` in `.env.local` is a static, gitignored, per-machine value
+ * that has no way to track scripts/dev-server's actual per-service port
+ * assignment (scripts/dev-server/services.json) — it drifts stale exactly
+ * like the `http://localhost:3000` default that broke every Stripe hosted
+ * Checkout redirect return (#4506). The request that's actually asking for a
+ * checkout/return URL already carries the real origin it's being served
+ * from, which is always correct by construction. Callers with no `req` (e.g.
+ * background jobs building an email link) keep the pre-existing behavior.
  */
-function getDomainBase(): string {
-  if (process.env.PORTAL_BASE_URL) {
-    return process.env.PORTAL_BASE_URL.replace(/\/crm\/?$/, "");
-  }
-
+function getDomainBase(req?: Request): string {
   const domains = (process.env.REPLIT_DOMAINS ?? "")
     .split(",")
     .map((d) => d.trim())
     .filter(Boolean);
+  const onReplit = domains.length > 0 || Boolean(process.env.REPLIT_DEV_DOMAIN);
+
+  if (!onReplit && req) {
+    const origin = req.get("origin") || req.get("referer");
+    if (origin) {
+      try {
+        const u = new URL(origin);
+        return `${u.protocol}//${u.host}`;
+      } catch {
+        // fall through to the static resolution below on a malformed header
+      }
+    }
+  }
+
+  if (process.env.PORTAL_BASE_URL) {
+    return process.env.PORTAL_BASE_URL.replace(/\/crm\/?$/, "");
+  }
 
   const custom = domains.find((d) => !d.includes("replit."));
   if (custom) return `https://${custom}`;
@@ -61,9 +89,13 @@ function getDomainBase(): string {
  * artifact (/crm) that getPortalBaseUrl() targets. Use this for any link
  * meant to land a customer/client user in msp-portal — e.g. share links
  * for documents, SOWs, presentations.
+ *
+ * Pass the current `req` when one is available (any route handler building a
+ * Stripe hosted-Checkout success_url/cancel_url/return_url is exactly this
+ * case) — see getDomainBase()'s Git #4506 note for why.
  */
-export function getMspPortalBaseUrl(): string {
-  return `${getDomainBase()}/portal`;
+export function getMspPortalBaseUrl(req?: Request): string {
+  return `${getDomainBase(req)}/portal`;
 }
 
 /**
