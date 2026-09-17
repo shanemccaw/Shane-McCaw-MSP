@@ -1,0 +1,52 @@
+{
+  "issue": 4452,
+  "feature": "Change Control add-on gate (#4452, Feature #1486) — when the calling tenant holds no active `change_control` row in tenant_add_on_entitlements, GET /api/portal/change-control answers 402 ADD_ON_REQUIRED (requireAddOnEntitlement, artifacts/api-server/src/lib/portal-addon-entitlements.ts). artifacts/portal/src/pages/change-control.tsx must render that as its own 'add-on not active' state — not the 'Couldn't load the change register' failure card, and never with the header claiming 'change control add-on active' (which it previously printed unconditionally). Companion to test-manifests/portal/change-control.json, which covers the ENTITLED path.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "loginAs": "Customer — RBAC test",
+  "lastVerifiedAgainstCommit": "PENDING",
+  "notes": [
+    "PRECONDITION: the 'Customer — RBAC test' account's tenant must hold NO active change_control entitlement. scripts/db/reset-rbac-test-accounts.mjs binds that account to the mccawsoft2 tenant and seeds no entitlement, so after a reset this is the natural state. This manifest and change-control.json are therefore mutually exclusive for one account: whichever matches the tenant's real entitlement state is the one expected green.",
+    "Live-verified in-session (#4452) against the real :8080 api-server and a worktree portal Vite, driven by playwright-core/Edge as a synthetic zz-test-4452 Customer on a synthetic tenant (both deleted afterwards): gated state rendered this manifest's exact strings with a single 402 request and no downstream change-control reads; after temporarily granting the entitlement the same page read 'Live · genuinely empty', header 'change control add-on active', and all five change-control reads answered 200.",
+    "The Raise-a-change dialog is opened but NOT submitted — POST /api/portal/change-control creates a real change request, and this suite does not write."
+  ],
+  "apiTests": [
+    {
+      "name": "SETUP — log in as the Customer RBAC test account; extract the bearer.",
+      "sessionTag": "4452-addon-gate",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}", "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "G1 — the register read answers 402 with code ADD_ON_REQUIRED for a tenant without the add-on. This is the exact code the portal hook keys the gated state on; any other 402 code still renders as a failed read.",
+      "sessionTag": "4452-addon-gate",
+      "method": "GET",
+      "path": "/api/portal/change-control",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 402, "jsonPath": "$.code", "value": "ADD_ON_REQUIRED" }
+    },
+    {
+      "name": "G2 — creation stays unconditional (#1168): the settings read the page uses for approver eligibility is not behind the add-on gate.",
+      "sessionTag": "4452-addon-gate",
+      "method": "GET",
+      "path": "/api/portal/settings/change-control",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.policy", "exists": true }
+    }
+  ],
+  "uiSteps": [
+    { "name": "goto the real Change Control page.", "sessionTag": "4452-addon-gate", "action": "goto", "target": "/portal/change-control" },
+    { "name": "GU0 — the page resolved.", "sessionTag": "4452-addon-gate", "action": "expect", "selector": "[data-testid='change-control-page']", "state": "visible", "critical": true },
+    { "name": "GU1 — the status line names the add-on gate, not a load failure.", "sessionTag": "4452-addon-gate", "action": "expect", "selector": "[data-testid='change-control-status']", "textContains": "add-on not active" },
+    { "name": "GU2 — the header no longer claims the add-on is active.", "sessionTag": "4452-addon-gate", "action": "expect", "selector": "[data-testid='change-control-approval-addon']", "textContains": "change control add-on not active" },
+    { "name": "GU3 — the add-on card rendered with its real copy.", "sessionTag": "4452-addon-gate", "action": "expect", "selector": "[data-testid='change-control-addon-required']", "textContains": "isn't active for your organisation", "critical": true },
+    { "name": "GU4 — the card quotes the server's own code.", "sessionTag": "4452-addon-gate", "action": "expect", "selector": "[data-testid='change-control-addon-required']", "textContains": "ADD_ON_REQUIRED" },
+    { "name": "GU5 — sections that read behind the same gate are not rendered (they would only 402).", "sessionTag": "4452-addon-gate", "action": "expect", "selector": "[data-testid='change-control-catalog']", "state": "absent" },
+    { "name": "GU6 — freeze calendar likewise absent.", "sessionTag": "4452-addon-gate", "action": "expect", "selector": "[data-testid='change-control-freeze-calendar']", "state": "absent" },
+    { "name": "GU7 — creation is ungated: Raise a change anyway opens the real dialog (not submitted).", "sessionTag": "4452-addon-gate", "action": "click", "selector": "[data-testid='change-control-raise-anyway-button']" },
+    { "name": "GU8 — the dialog is open.", "sessionTag": "4452-addon-gate", "action": "expect", "selector": "[role='dialog']", "state": "visible" }
+  ]
+}

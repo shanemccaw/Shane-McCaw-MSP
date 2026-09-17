@@ -3,9 +3,15 @@
  * `docs/portal/change-control-contract-pack.md` (#2989) and
  * `Design/portal/design_handoff_full_site/screens/Change Control.dc.html`.
  *
- * Tri-state the design's own `dataState` enum maps onto real signals:
+ * The design's own `dataState` enum maps onto real signals:
  *   - loading      → register query pending
  *   - read-failed  → register query errored
+ *   - add-on gate  → register answered 402 `ADD_ON_REQUIRED` (#4452). Not in
+ *                     the design's enum: the tenant holds no active
+ *                     `change_control` entitlement, which is a purchase gap and
+ *                     must not read as a failed load. The header's "change
+ *                     control add-on active" clause is shown only once the
+ *                     register has actually answered 200.
  *   - no-tenant    → register resolved with `scoped: false` (the fail-closed
  *                     envelope — a real HTTP 200, not an error)
  *   - live-empty   → `scoped: true` and zero requests
@@ -48,21 +54,29 @@ export default function ChangeControlPage() {
 
   const isLoading = register.isLoading;
   const isFail = register.isError;
-  const scoped = register.data?.scoped ?? false;
-  const noTenant = !isLoading && !isFail && !scoped;
-  const requests = register.data?.requests ?? [];
-  const isEmpty = !isLoading && !isFail && scoped && requests.length === 0;
-  const live = !isLoading && !isFail && scoped;
+  // 402 ADD_ON_REQUIRED (#4452): the tenant holds no active change_control
+  // entitlement. Every other read on this page sits behind the same gate, so
+  // none of them fire — they would only 402 in turn.
+  const addOnRequired = register.data?.addOnRequired === true;
+  // True only once the register itself answered 200, which is the one proof
+  // the add-on gate actually passed.
+  const entitled = !isLoading && !isFail && !addOnRequired;
+  const registerData = register.data?.register ?? null;
+  const scoped = registerData?.scoped ?? false;
+  const noTenant = entitled && !scoped;
+  const requests = registerData?.requests ?? [];
+  const isEmpty = entitled && scoped && requests.length === 0;
+  const live = entitled && scoped;
 
-  const freezeWindows = useFreezeWindows(!isLoading && !isFail);
-  const maintenanceWindows = useMaintenanceWindows(!isLoading && !isFail);
-  const metrics = useChangeMetrics(!isLoading && !isFail && !noTenant);
+  const freezeWindows = useFreezeWindows(entitled);
+  const maintenanceWindows = useMaintenanceWindows(entitled);
+  const metrics = useChangeMetrics(entitled && !noTenant);
 
   const myPersonId = user ? `u${user.id}` : null;
   const canApproveChanges = myPersonId !== null && settings.eligibleApprovers.includes(myPersonId);
   const activeFreeze = freezeWindows.data?.find((w) => w.activeNow) ?? null;
 
-  const stats = register.data?.stats;
+  const stats = registerData?.stats;
 
   return (
     <div className="flex flex-col gap-4 pb-14" data-testid="change-control-page">
@@ -78,23 +92,58 @@ export default function ChangeControlPage() {
           <span
             className={cn(
               "size-1.5 rounded-full",
-              isLoading ? "bg-muted-foreground" : isFail ? "bg-status-red" : noTenant ? "bg-status-amber" : isEmpty ? "bg-status-blue" : "bg-status-green",
+              isLoading
+                ? "bg-muted-foreground"
+                : isFail
+                  ? "bg-status-red"
+                  : addOnRequired || noTenant
+                    ? "bg-status-amber"
+                    : isEmpty
+                      ? "bg-status-blue"
+                      : "bg-status-green",
             )}
           />
           {isLoading
             ? "Loading the register"
             : isFail
               ? "Couldn't load the register"
-              : noTenant
-                ? "No connected M365 tenant · fails closed"
-                : isEmpty
-                  ? "Live · genuinely empty"
-                  : `Live · ${requests.length} change requests on your tenant`}
+              : addOnRequired
+                ? "Read closed · 402 · change control add-on not active"
+                : noTenant
+                  ? "No connected M365 tenant · fails closed"
+                  : isEmpty
+                    ? "Live · genuinely empty"
+                    : `Live · ${requests.length} change requests on your tenant`}
         </span>
-        <span className="ml-auto text-[11px] text-muted-foreground">
-          {canApproveChanges ? "You may approve changes" : "You may not approve changes"} · change control add-on active
+        <span className="ml-auto text-[11px] text-muted-foreground" data-testid="change-control-approval-addon">
+          {canApproveChanges ? "You may approve changes" : "You may not approve changes"}
+          {entitled ? " · change control add-on active" : addOnRequired ? " · change control add-on not active" : ""}
         </span>
       </div>
+
+      {addOnRequired && (
+        <div className="flex flex-col gap-2.5 rounded-xl border border-status-amber/30 bg-status-amber/5 p-4" data-testid="change-control-addon-required">
+          <span className="text-[13.5px] font-semibold text-foreground">The change control add-on isn&apos;t active for your organisation</span>
+          <span className="max-w-[700px] text-xs leading-relaxed text-muted-foreground">
+            Change control is a separately priced add-on, not part of any Monitoring tier, so your
+            tier does not unlock it. The register, the standard change catalogue, the freeze and
+            maintenance calendars and change metrics all read behind that add-on, and the server
+            answers 402 for your organisation until it is active. This is not a fault.
+          </span>
+          <span className="max-w-[700px] text-xs leading-relaxed text-muted-foreground/80">
+            Changes are still recorded. Every change made to your tenant becomes a change request
+            whether or not the add-on is active, and your MSP sees it on their console. Raising a
+            change request here is not gated either. Ask your MSP about adding change control to
+            read the register here.
+          </span>
+          <span className="font-mono text-[10.5px] text-muted-foreground/60">402 ADD_ON_REQUIRED · requireAddOnEntitlement(change_control) · the server&apos;s own answer, not a paraphrase</span>
+          <div className="pt-1">
+            <Button variant="outline" size="sm" onClick={() => setWizardOpen(true)} data-testid="change-control-raise-anyway-button">
+              Raise a change anyway
+            </Button>
+          </div>
+        </div>
+      )}
 
       {isLoading && (
         <div className="flex flex-col gap-2.5">
@@ -127,7 +176,7 @@ export default function ChangeControlPage() {
         </div>
       )}
 
-      {!isLoading && !isFail && stats && (
+      {entitled && stats && (
         <>
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
             <StatTile label="Open changes" value={stats.open} note="Pending approval, approved, scheduled or in window." />
@@ -213,18 +262,18 @@ export default function ChangeControlPage() {
         </div>
       )}
 
-      {!isLoading && !isFail && <CatalogSection />}
+      {entitled && <CatalogSection />}
 
-      {!isLoading && !isFail && (
+      {entitled && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <FreezeCalendarCard windows={freezeWindows.data ?? []} noTenant={noTenant} />
           <MaintenanceWindowsCard windows={maintenanceWindows.data ?? []} noTenant={noTenant} enforced={settings.policy.maintenanceWindows} />
         </div>
       )}
 
-      {!isLoading && !isFail && !noTenant && metrics.data && <MetricsSection metrics={metrics.data} />}
+      {entitled && !noTenant && metrics.data && <MetricsSection metrics={metrics.data} />}
 
-      {!isLoading && !isFail && <PolicySection settings={settings} />}
+      {entitled && <PolicySection settings={settings} />}
 
       <RaiseChangeDialog open={wizardOpen} onOpenChange={setWizardOpen} />
       <ChangeActionDialog target={actionTarget} onOpenChange={(open) => !open && setActionTarget(null)} />

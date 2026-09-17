@@ -63,13 +63,29 @@ const FREEZE_KEY = ["portal", "change-control", "freeze-windows"] as const;
 const MAINTENANCE_KEY = ["portal", "change-control", "maintenance-windows"] as const;
 const METRICS_KEY = ["portal", "change-control", "metrics"] as const;
 
+/**
+ * The register read, with the add-on gate resolved as a value rather than an
+ * error (#4452). `requireAddOnEntitlement` answers 402 `ADD_ON_REQUIRED` when
+ * the tenant holds no active `change_control` entitlement — a purchase gap,
+ * not a read failure, so it must not render as "Couldn't load the register"
+ * (nor be retried: the answer does not change between attempts). Any other
+ * non-OK status, including a 402 with a different code, still throws.
+ */
+export type ChangeControlRegisterRead =
+  | { readonly addOnRequired: false; readonly register: WireChangeControlRegister }
+  | { readonly addOnRequired: true; readonly register: null };
+
 export function useChangeControlRegister() {
   const { fetchWithAuth } = useAuth();
   return useQuery({
     queryKey: REGISTER_KEY,
-    queryFn: async () => {
+    queryFn: async (): Promise<ChangeControlRegisterRead> => {
       const res = await fetchWithAuth("/api/portal/change-control", undefined, { silent: true });
-      return parseJsonOrThrow<WireChangeControlRegister>(res);
+      if (res.status === 402) {
+        const body = (await res.clone().json().catch(() => null)) as { code?: unknown } | null;
+        if (body?.code === "ADD_ON_REQUIRED") return { addOnRequired: true, register: null };
+      }
+      return { addOnRequired: false, register: await parseJsonOrThrow<WireChangeControlRegister>(res) };
     },
   });
 }

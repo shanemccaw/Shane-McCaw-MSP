@@ -74,6 +74,7 @@
     "portal/identity-interstitial.json",
     "portal/accept-agreement.json",
     "portal/change-control.json",
+    "portal/change-control-addon-gate.json",
     "portal/scope-and-sla.json",
     "portal/documents.json",
     "portal/settings-change-control-departments-persistence.json",
