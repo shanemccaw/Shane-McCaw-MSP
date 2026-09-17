@@ -553,6 +553,30 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
     docUrl: "https://learn.microsoft.com/en-us/graph/api/directory-deleteditems-restore",
   },
 
+  // ── Entra device object writes (NOT Intune managedDevice — see the note) ───
+  {
+    // Git #4480 — device-hardening-v1's action.delete-stale-device-record. The
+    // OTHER of #4480's two "only executable fix path" rules. This is the Entra
+    // DIRECTORY device object (/devices/{id}), not an Intune managedDevice — the
+    // DeviceManagementManagedDevices.* permissions above do not cover it at all;
+    // Microsoft scopes the two resources under entirely separate permissions.
+    method: "DELETE",
+    pattern: "/devices/*",
+    documentedApplicationTiers: {
+      leastPrivileged: "Device.ReadWrite.All",
+      higherPrivileged: "Directory.ReadWrite.All",
+    },
+    permissions: ["Device.ReadWrite.All"],
+    justification:
+      "device-hardening-v1 (action.delete-stale-device-record) deletes an Entra device object with no " +
+      "sign-in in 90+ days (devices:stale-duplicate-records, a warning finding on the testbed scan). " +
+      "Device.ReadWrite.All is Microsoft's least-privileged application permission for this operation; " +
+      "Directory.ReadWrite.All is the higher-privileged alternative and is not requested. This is a NEW " +
+      "permission this rule adds to the requested set — there is no narrower device-delete-only scope, and " +
+      "nothing else this platform does already holds Device.ReadWrite.All.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/device-delete",
+  },
+
   // ── Privileged Identity Management (PIM) writes ────────────────────────────
   {
     // #1901 — privileged-access-v1 steps 0 and 4 (assign + remove eligibility;
@@ -833,6 +857,29 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
       "is deliberately not requested — it would confer write access to the whole directory.",
     docUrl: "https://learn.microsoft.com/en-us/graph/api/oauth2permissiongrant-delete",
   },
+  {
+    // Git #4480 — app-governance-v1's action.delete-stale-app-registration. This
+    // is one of the two rules #4480's own body names as "the only executable fix
+    // path for real critical/warning findings on the testbed scan" — get it right.
+    method: "DELETE",
+    pattern: "/applications/*",
+    documentedApplicationTiers: {
+      leastPrivileged: "Application.ReadWrite.OwnedBy",
+      higherPrivileged: "Application.ReadWrite.All, Directory.ReadWrite.All",
+    },
+    permissions: ["Application.ReadWrite.All"],
+    justification:
+      "app-governance-v1 (action.delete-stale-app-registration) deletes an app registration found to be " +
+      "unreviewed for over a year (appgov:stale-app-registrations, a critical finding on the testbed scan). " +
+      "Microsoft's least-privileged Application cell, Application.ReadWrite.OwnedBy, CANNOT be used: it " +
+      "authorises only applications this platform's own write app owns, and a customer's stale app " +
+      "registration is precisely one it does not own — the same OwnedBy-does-not-apply-to-third-party-apps " +
+      "reasoning as the action.disable-risky-app PATCH /servicePrincipals/* rule above. Of the two " +
+      "higher-privileged ALTERNATIVES (`,`, not `and`), Application.ReadWrite.All is already required by " +
+      "action.disable-risky-app and action.rotate-app-secret, so this rule adds nothing to the requested " +
+      "set; Directory.ReadWrite.All is never taken.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/application-delete",
+  },
 
   // ── Teams / Intune writes ──────────────────────────────────────────────────
   {
@@ -949,6 +996,112 @@ export const GRAPH_WRITE_PERMISSION_RULES: readonly WritePermissionRule[] = [
       "DeviceManagementManagedDevices.ReadWrite.All — it updates managedDevice PROPERTIES and grants no " +
       "remote action at all. It is genuinely requestable and is requested.",
     docUrl: "https://learn.microsoft.com/en-us/graph/api/intune-devices-manageddevice-update",
+  },
+
+  // ── Git #4480 — device-hardening-v1 / kfm-configuration-v1 creates ─────────
+  {
+    // Git #4480 — device-hardening-v1's action.create-bitlocker-protection-profile
+    // (stored as an absolute beta URL) and action.create-windows-update-ring
+    // (stored relative). Both normalise to the same POST /deviceManagement/
+    // deviceConfigurations path — the rule matches on method + path, not body, so
+    // one rule covers both real steps; their difference is the request body's
+    // @odata.type, which Microsoft does not permission separately.
+    method: "POST",
+    pattern: "/deviceManagement/deviceConfigurations",
+    documentedApplicationTiers: {
+      leastPrivileged: "DeviceManagementConfiguration.ReadWrite.All",
+      higherPrivileged: "Not listed — this page still uses Microsoft's older single-column \"Permissions (from least to most privileged)\" table.",
+    },
+    permissions: ["DeviceManagementConfiguration.ReadWrite.All"],
+    justification:
+      "device-hardening-v1 creates two Intune device configuration profiles through this one endpoint: " +
+      "action.create-bitlocker-protection-profile (a BitLocker encryption profile) and " +
+      "action.create-windows-update-ring (a Windows Update ring). Same permission device-compliance-v1's " +
+      "assignment rules already hold for this resource type — DeviceManagementConfiguration.ReadWrite.All " +
+      "covers creating a deviceConfiguration as well as assigning one, so this rule adds nothing to the " +
+      "requested set.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/intune-deviceconfig-deviceconfiguration-create",
+  },
+  {
+    // Git #4480 — device-hardening-v1's action.create-os-patch-compliance-policy.
+    method: "POST",
+    pattern: "/deviceManagement/deviceCompliancePolicies",
+    documentedApplicationTiers: {
+      leastPrivileged: "DeviceManagementConfiguration.ReadWrite.All",
+      higherPrivileged: "Not listed — this page still uses Microsoft's older single-column \"Permissions (from least to most privileged)\" table.",
+    },
+    permissions: ["DeviceManagementConfiguration.ReadWrite.All"],
+    justification:
+      "device-hardening-v1 (action.create-os-patch-compliance-policy) creates an Intune device compliance " +
+      "policy that enforces OS patch currency. Same permission device-compliance-v1's " +
+      "action.update-compliance-policy-assignment already holds for this resource type — create and assign " +
+      "of a deviceCompliancePolicy are both scoped under DeviceManagementConfiguration.ReadWrite.All — so " +
+      "this rule adds nothing to the requested set.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/intune-deviceconfig-devicecompliancepolicy-create",
+  },
+  {
+    // Git #4480 — device-hardening-v1's action.create-autopilot-deployment-profile.
+    // Distinct pattern from the unwired action.assign-autopilot-profile rule
+    // above (`.../assign`, no trailing "s", no trailing "s") and from the sibling
+    // assignments-create rule immediately below (`.../assignments`, one more
+    // segment) — three different resources/actions on the same parent.
+    method: "POST",
+    pattern: "/deviceManagement/windowsAutopilotDeploymentProfiles",
+    documentedApplicationTiers: {
+      leastPrivileged: "DeviceManagementServiceConfig.ReadWrite.All",
+      higherPrivileged: "Not listed — this page still uses Microsoft's older single-column \"Permissions (from least to most privileged)\" table.",
+    },
+    permissions: ["DeviceManagementServiceConfig.ReadWrite.All"],
+    justification:
+      "device-hardening-v1 (action.create-autopilot-deployment-profile) creates a Windows Autopilot " +
+      "deployment profile. Microsoft scopes the whole Autopilot enrolment surface — create, assign, and the " +
+      "existing unwired action.assign-autopilot-profile above — under this one Intune Enrollment Program " +
+      "permission. UNLIKE the unwired assign rule above, THIS step ships in an active pack, so it is " +
+      "REQUESTED here: the reasoning that refused it there (\"no Config Pack wires this template yet\") no " +
+      "longer applies to the permission itself once any shipped step needs it. This is a NEW permission " +
+      "added to the requested set by this rule.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/intune-enrollment-windowsautopilotdeploymentprofile-create",
+  },
+  {
+    // Git #4480 — device-hardening-v1's action.assign-autopilot-deployment-profile.
+    // POSTs to the profile's `assignments` collection to create a
+    // windowsAutopilotDeploymentProfileAssignment directly — a different Graph
+    // resource and a different endpoint from the `assign` ACTION the unwired
+    // action.assign-autopilot-profile rule above documents (one path segment
+    // longer: assignments vs assign, and no shadowing risk because the literal
+    // final segment differs).
+    method: "POST",
+    pattern: "/deviceManagement/windowsAutopilotDeploymentProfiles/*/assignments",
+    documentedApplicationTiers: {
+      leastPrivileged: "DeviceManagementServiceConfig.ReadWrite.All",
+      higherPrivileged: "Not listed — this page still uses Microsoft's older single-column \"Permissions (from least to most privileged)\" table.",
+    },
+    permissions: ["DeviceManagementServiceConfig.ReadWrite.All"],
+    justification:
+      "device-hardening-v1 (action.assign-autopilot-deployment-profile) assigns the Autopilot deployment " +
+      "profile created immediately above to a target group, by creating a " +
+      "windowsAutopilotDeploymentProfileAssignment on the profile's assignments collection. Same permission " +
+      "as the profile-create rule above — Microsoft scopes create and assignment-create under the same " +
+      "DeviceManagementServiceConfig.ReadWrite.All — so this rule adds nothing beyond what that rule already " +
+      "requests.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/intune-enrollment-windowsautopilotdeploymentprofileassignment-create",
+  },
+  {
+    // Git #4480 — kfm-configuration-v1's action.create-kfm-settings-catalog-policy.
+    method: "POST",
+    pattern: "/deviceManagement/configurationPolicies",
+    documentedApplicationTiers: {
+      leastPrivileged: "DeviceManagementConfiguration.ReadWrite.All",
+      higherPrivileged: "Not listed — this page still uses Microsoft's older single-column \"Permissions (from least to most privileged)\" table.",
+    },
+    permissions: ["DeviceManagementConfiguration.ReadWrite.All"],
+    justification:
+      "kfm-configuration-v1 (action.create-kfm-settings-catalog-policy) creates an Intune Settings Catalog " +
+      "policy (deviceManagementConfigurationPolicy) that enforces Known Folder Move redirection to " +
+      "OneDrive. Microsoft scopes the whole Settings Catalog surface under the same " +
+      "DeviceManagementConfiguration.ReadWrite.All permission as the older deviceConfiguration/" +
+      "deviceCompliancePolicy resources above, so this rule adds nothing to the requested set.",
+    docUrl: "https://learn.microsoft.com/en-us/graph/api/intune-deviceconfigv2-devicemanagementconfigurationpolicy-create",
   },
 
   // ── Microsoft 365 Defender / security incident writes ──────────────────────

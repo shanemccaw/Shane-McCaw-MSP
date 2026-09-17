@@ -9,6 +9,13 @@
  * covering a write the platform still issues.
  */
 import { describe, it, expect } from "vitest";
+import { eq } from "drizzle-orm";
+import {
+  db,
+  configPacksTable,
+  configPackTemplatesTable,
+  baselineActionTemplatesTable,
+} from "@workspace/db";
 import {
   requiredPermissionsForWrite,
   normaliseEndpoint,
@@ -167,17 +174,31 @@ describe("adding a service principal to a group needs the body-driven extra", ()
 });
 
 describe("the derived request set", () => {
-  it("is exactly the 25 permissions #1875/#1899/#1901/#2856/#2846 derived from the packs' real steps", () => {
+  it("is exactly the 27 permissions #1875/#1899/#1901/#2856/#2846/#4480 derived from the packs' real steps", () => {
     expect([...DERIVED_WRITE_APP_PERMISSIONS]).toEqual([
       "Application.ReadWrite.All",
       "DelegatedPermissionGrant.ReadWrite.All",
+      // Git #4480 — device-hardening-v1's action.delete-stale-device-record. A
+      // real Entra directory device object delete, NOT an Intune managedDevice —
+      // entirely separate from every DeviceManagementManagedDevices.* permission.
+      "Device.ReadWrite.All",
       // #1901 — device-compliance-v1 step 3 (Intune MAM app protection policy assign).
       "DeviceManagementApps.ReadWrite.All",
       // #1901 — device-compliance-v1 steps 1 and 2 (compliance policy + config profile assign).
+      // Git #4480 reuses this same permission for device-hardening-v1's BitLocker
+      // profile create, Windows Update ring create, OS patch compliance policy
+      // create, and kfm-configuration-v1's Settings Catalog policy create — none
+      // of those four add anything new to this set.
       "DeviceManagementConfiguration.ReadWrite.All",
       // #1901 — device-compliance-v1 step 4 (managedDevice PATCH). NOT the
       // PrivilegedOperations.All scope the syncDevice rule is refused over.
       "DeviceManagementManagedDevices.ReadWrite.All",
+      // Git #4480 — device-hardening-v1's Autopilot deployment profile create and
+      // its assignments-create. Scopes the whole Autopilot enrolment surface,
+      // including the previously-unwired action.assign-autopilot-profile rule,
+      // which becomes genuinely runnable as a side effect (see the #2858 catalogue
+      // test below).
+      "DeviceManagementServiceConfig.ReadWrite.All",
       "Files.ReadWrite.All",
       "Group.Create",
       // #2856 — Shane's Option 2: request the least-privileged of the two real
@@ -238,8 +259,14 @@ describe("the derived request set", () => {
     // #2856 landed after #1901 and adds an 18th pre-existing member (Group.ReadWrite.All)
     // to the baseline this test isolates against, so its own 6-permission delta stays exact.
     // #2846 is later still and adds Policy.ReadWrite.SecurityDefaults for the same reason —
-    // both are excluded here so this assertion keeps measuring what #1901 alone cost.
-    const addedByLaterIssues = ["Group.ReadWrite.All", "Policy.ReadWrite.SecurityDefaults"];
+    // #4480 adds Device.ReadWrite.All and DeviceManagementServiceConfig.ReadWrite.All —
+    // all excluded here so this assertion keeps measuring what #1901 alone cost.
+    const addedByLaterIssues = [
+      "Group.ReadWrite.All",
+      "Policy.ReadWrite.SecurityDefaults",
+      "Device.ReadWrite.All",
+      "DeviceManagementServiceConfig.ReadWrite.All",
+    ];
     const added = DERIVED_WRITE_APP_PERMISSIONS.filter(
       (p) => !beforeThisIssue.includes(p) && !addedByLaterIssues.includes(p),
     );
@@ -276,10 +303,14 @@ describe("the derived request set", () => {
       "User.DeleteRestore.All", "User.ReadWrite.All", "User.RevokeSessions.All",
       "UserAuthenticationMethod.ReadWrite.All",
     ];
-    // #2846 landed after #2856 and adds its own permission; excluded so this
-    // assertion keeps measuring #2856's real cost alone.
+    // #2846 landed after #2856 and adds its own permission, and #4480 adds two
+    // more; all excluded so this assertion keeps measuring #2856's real cost alone.
     const added = DERIVED_WRITE_APP_PERMISSIONS.filter(
-      (p) => !afterThisIssue.includes(p) && p !== "Policy.ReadWrite.SecurityDefaults",
+      (p) =>
+        !afterThisIssue.includes(p) &&
+        p !== "Policy.ReadWrite.SecurityDefaults" &&
+        p !== "Device.ReadWrite.All" &&
+        p !== "DeviceManagementServiceConfig.ReadWrite.All",
     );
     expect(added).toEqual(["Group.ReadWrite.All"]);
   });
@@ -304,8 +335,40 @@ describe("the derived request set", () => {
       "User.DeleteRestore.All", "User.ReadWrite.All", "User.RevokeSessions.All",
       "UserAuthenticationMethod.ReadWrite.All",
     ];
-    const added = DERIVED_WRITE_APP_PERMISSIONS.filter((p) => !afterPreviousIssue.includes(p));
+    // #4480 landed after #2846 and adds its own two permissions; excluded so this
+    // assertion keeps measuring #2846's real cost alone.
+    const added = DERIVED_WRITE_APP_PERMISSIONS.filter(
+      (p) =>
+        !afterPreviousIssue.includes(p) &&
+        p !== "Device.ReadWrite.All" &&
+        p !== "DeviceManagementServiceConfig.ReadWrite.All",
+    );
     expect(added).toEqual(["Policy.ReadWrite.SecurityDefaults"]);
+  });
+
+  it("#4480 added exactly 2 new permissions (Device.ReadWrite.All, DeviceManagementServiceConfig.ReadWrite.All) on top of #2846", () => {
+    // The 8 previously-unmapped app-governance-v1/device-hardening-v1/
+    // kfm-configuration-v1 steps. Six of the eight reuse a permission this
+    // platform already held (Application.ReadWrite.All for the app-registration
+    // delete; DeviceManagementConfiguration.ReadWrite.All for the four
+    // deviceConfiguration/deviceCompliancePolicy/configurationPolicies creates).
+    // Only the Entra device-object delete and the Autopilot deployment-profile
+    // create/assign genuinely add a new permission to the consent screen.
+    const afterPreviousIssue = [
+      "Application.ReadWrite.All", "DelegatedPermissionGrant.ReadWrite.All",
+      "DeviceManagementApps.ReadWrite.All", "DeviceManagementConfiguration.ReadWrite.All",
+      "DeviceManagementManagedDevices.ReadWrite.All", "Files.ReadWrite.All", "Group.Create",
+      "Group.ReadWrite.All", "GroupMember.ReadWrite.All", "LicenseAssignment.ReadWrite.All",
+      "OrganizationalBranding.ReadWrite.All", "Policy.Read.All",
+      "Policy.ReadWrite.AuthenticationMethod", "Policy.ReadWrite.Authorization",
+      "Policy.ReadWrite.ConditionalAccess", "Policy.ReadWrite.SecurityDefaults",
+      "RoleManagement.ReadWrite.Directory", "SecurityIncident.ReadWrite.All",
+      "SharePointTenantSettings.ReadWrite.All", "TeamSettings.ReadWrite.All",
+      "User-PasswordProfile.ReadWrite.All", "User.DeleteRestore.All", "User.ReadWrite.All",
+      "User.RevokeSessions.All", "UserAuthenticationMethod.ReadWrite.All",
+    ];
+    const added = DERIVED_WRITE_APP_PERMISSIONS.filter((p) => !afterPreviousIssue.includes(p));
+    expect(added.sort()).toEqual(["Device.ReadWrite.All", "DeviceManagementServiceConfig.ReadWrite.All"]);
   });
 
   it("excludes the permissions deliberately not requested, and says why", () => {
@@ -758,7 +821,18 @@ describe("#2858 — the unwired catalogue resolves to a documented permission", 
     ["action.retire-device", "POST", "/deviceManagement/managedDevices/{{deviceId}}/retire", ["DeviceManagementManagedDevices.PrivilegedOperations.All"], false],
     ["action.fresh-start-device", "POST", "/deviceManagement/managedDevices/{{deviceId}}/cleanWindowsDevice", ["DeviceManagementManagedDevices.PrivilegedOperations.All"], false],
     ["action.remote-wipe-device", "POST", "/deviceManagement/managedDevices/{{deviceId}}/wipe", ["DeviceManagementManagedDevices.PrivilegedOperations.All"], false],
-    ["action.assign-autopilot-profile", "POST", "https://graph.microsoft.com/beta/deviceManagement/windowsAutopilotDeploymentProfiles/{{profileId}}/assign", ["DeviceManagementServiceConfig.ReadWrite.All"], false],
+    // Git #4480 flipped this to runnable as a SIDE EFFECT, not a direct change to
+    // this rule: device-hardening-v1's action.create-autopilot-deployment-profile
+    // and action.assign-autopilot-deployment-profile now genuinely request
+    // DeviceManagementServiceConfig.ReadWrite.All for a real shipped pack step,
+    // and Microsoft scopes the whole Autopilot enrolment surface — including this
+    // still-unwired `assign` action — under that same permission. This rule's own
+    // `grantRecommended: false` and `notRequestedReason` are unchanged and still
+    // honestly describe why THIS step was never asked for on its own merits; it
+    // is runnable today only because a different, shipped step already holds the
+    // scope it needs, the identical situation the assignLicense/TAP rules already
+    // document for reused permissions.
+    ["action.assign-autopilot-profile", "POST", "https://graph.microsoft.com/beta/deviceManagement/windowsAutopilotDeploymentProfiles/{{profileId}}/assign", ["DeviceManagementServiceConfig.ReadWrite.All"], true],
     ["action.resolve-alert", "PATCH", "/security/alerts_v2/{{alertId}}", ["SecurityAlert.ReadWrite.All"], false],
     ["action.set-out-of-office", "PATCH", "/users/{{userId}}/mailboxSettings", ["MailboxSettings.ReadWrite"], false],
     ["action.update-org-contact-info", "PATCH", "/organization/{{tenantId}}", ["Organization.ReadWrite.All"], false],
@@ -791,13 +865,19 @@ describe("#2858 — the unwired catalogue resolves to a documented permission", 
     // one: #2856 added Group.ReadWrite.All for a real shipped pack step, and
     // #2846 added Policy.ReadWrite.SecurityDefaults when the Security Defaults
     // PATCH (quickstart-v1 step 5) swapped its borrowed Conditional Access WRITE
-    // for the permission scoped to the policy it actually touches. Neither is an
-    // unwired-catalogue rule sneaking one in, which is all this guards.
-    expect(DERIVED_WRITE_APP_PERMISSIONS).toHaveLength(25);
+    // for the permission scoped to the policy it actually touches. #4480 added
+    // Device.ReadWrite.All and DeviceManagementServiceConfig.ReadWrite.All for
+    // two genuinely NEW shipped pack steps (device-hardening-v1's stale-device
+    // delete and Autopilot profile create/assign) — which is why
+    // DeviceManagementServiceConfig.ReadWrite.All is REMOVED from the forbidden
+    // list below: it is no longer a permission this platform declines to
+    // request, it is a permission #4480 rules request directly. None of these
+    // three issues is an unwired-catalogue rule sneaking one in, which is all
+    // this guards.
+    expect(DERIVED_WRITE_APP_PERMISSIONS).toHaveLength(27);
     for (const forbidden of [
       "Domain.ReadWrite.All",
       "DeviceManagementManagedDevices.PrivilegedOperations.All",
-      "DeviceManagementServiceConfig.ReadWrite.All",
       "SecurityAlert.ReadWrite.All",
       "MailboxSettings.ReadWrite",
       "Organization.ReadWrite.All",
@@ -877,5 +957,132 @@ describe("#2858 — the unwired catalogue resolves to a documented permission", 
     // Creating a grant and deleting one are separate rules on the same permission.
     expect(requiredPermissionsForWrite("POST", "/oauth2PermissionGrants").rule!.pattern).toBe("/oauth2PermissionGrants");
     expect(requiredPermissionsForWrite("DELETE", "/oauth2PermissionGrants/{{id}}").rule!.pattern).toBe("/oauth2PermissionGrants/*");
+  });
+});
+
+/**
+ * Git #4480 — app-governance-v1, device-hardening-v1, kfm-configuration-v1.
+ *
+ * These 8 endpoints were added to these packs AFTER #1901 closed, and returned
+ * `rule: null` until now. The (pack, templateId, method, endpoint) tuples below
+ * were read out of the live `config_pack_templates` -> `baseline_action_templates`
+ * join on 2026-09-17, NOT copied from #4480's issue body — the query is repeated
+ * below as a real regression guard so a NINTH pack template can never silently
+ * ship the same gap again.
+ */
+describe("#4480 — app-governance-v1, device-hardening-v1, kfm-configuration-v1 all resolve to a documented permission", () => {
+  const packSteps: Array<[string, string, string, string, string[]]> = [
+    // [pack, templateId, method, endpoint (verbatim from the live row), expected required]
+    ["app-governance-v1", "action.delete-stale-app-registration", "DELETE", "/applications/{{appId}}", ["Application.ReadWrite.All"]],
+    ["device-hardening-v1", "action.create-windows-update-ring", "POST", "/deviceManagement/deviceConfigurations", ["DeviceManagementConfiguration.ReadWrite.All"]],
+    ["device-hardening-v1", "action.create-bitlocker-protection-profile", "POST", "https://graph.microsoft.com/beta/deviceManagement/deviceConfigurations", ["DeviceManagementConfiguration.ReadWrite.All"]],
+    ["device-hardening-v1", "action.create-os-patch-compliance-policy", "POST", "/deviceManagement/deviceCompliancePolicies", ["DeviceManagementConfiguration.ReadWrite.All"]],
+    ["device-hardening-v1", "action.create-autopilot-deployment-profile", "POST", "https://graph.microsoft.com/beta/deviceManagement/windowsAutopilotDeploymentProfiles", ["DeviceManagementServiceConfig.ReadWrite.All"]],
+    ["device-hardening-v1", "action.assign-autopilot-deployment-profile", "POST", "https://graph.microsoft.com/beta/deviceManagement/windowsAutopilotDeploymentProfiles/{{profileId}}/assignments", ["DeviceManagementServiceConfig.ReadWrite.All"]],
+    ["device-hardening-v1", "action.delete-stale-device-record", "DELETE", "/devices/{{deviceObjectId}}", ["Device.ReadWrite.All"]],
+    ["kfm-configuration-v1", "action.create-kfm-settings-catalog-policy", "POST", "https://graph.microsoft.com/beta/deviceManagement/configurationPolicies", ["DeviceManagementConfiguration.ReadWrite.All"]],
+  ];
+
+  for (const [pack, templateId, method, endpoint, expected] of packSteps) {
+    it(`${pack}: ${templateId} — ${method} ${endpoint}`, () => {
+      const got = requiredPermissionsForWrite(method, endpoint, { templateId });
+      expect(got.rule, `${method} ${endpoint} still matches no rule`).not.toBeNull();
+      expect(got.required.sort()).toEqual([...expected].sort());
+      // The whole point of #4480: every one of these is fully runnable once the
+      // write app is granted, not just documented-but-refused.
+      expect(got.notRequested).toEqual([]);
+    });
+  }
+
+  it("the two testbed-critical templates resolve exactly as the scan needs — no guessed permission", () => {
+    // #4480's own body: these two are "the only executable fix path for real
+    // warning/critical findings on the testbed scan". Asserted on their own,
+    // separately from the table above, so a future edit to the table can't
+    // silently weaken this specific guarantee.
+    const staleAppReg = requiredPermissionsForWrite("DELETE", "/applications/{{appId}}", {
+      templateId: "action.delete-stale-app-registration",
+    });
+    expect(staleAppReg.required).toEqual(["Application.ReadWrite.All"]);
+    expect(staleAppReg.notRequested).toEqual([]);
+    expect(DERIVED_WRITE_APP_PERMISSIONS).toContain("Application.ReadWrite.All");
+
+    const staleDevice = requiredPermissionsForWrite("DELETE", "/devices/{{deviceObjectId}}", {
+      templateId: "action.delete-stale-device-record",
+    });
+    expect(staleDevice.required).toEqual(["Device.ReadWrite.All"]);
+    expect(staleDevice.notRequested).toEqual([]);
+    expect(DERIVED_WRITE_APP_PERMISSIONS).toContain("Device.ReadWrite.All");
+  });
+
+  it("the Entra device delete and the Intune managedDevice rules stay separate resources", () => {
+    // /devices/* (Entra directory device object) must never shadow or be
+    // shadowed by /deviceManagement/managedDevices/* (Intune) — they are
+    // different Graph resources with different permissions, and the two-segment
+    // /devices/* pattern added by #4480 has no path overlap with the
+    // three/four-segment managedDevices patterns either way.
+    expect(requiredPermissionsForWrite("DELETE", "/devices/{{id}}").required).toEqual(["Device.ReadWrite.All"]);
+    expect(requiredPermissionsForWrite("DELETE", "/deviceManagement/managedDevices/{{id}}").required)
+      .toEqual(["DeviceManagementManagedDevices.ReadWrite.All"]);
+  });
+
+  it("the deviceConfigurations create rule matches both templates that share the endpoint", () => {
+    // action.create-bitlocker-protection-profile stores an absolute beta URL;
+    // action.create-windows-update-ring stores the same path relative. Both
+    // normalise to the identical pattern and resolve to the identical rule —
+    // the permission is the same regardless of which body the caller sends.
+    const absolute = requiredPermissionsForWrite("POST", "https://graph.microsoft.com/beta/deviceManagement/deviceConfigurations");
+    const relative = requiredPermissionsForWrite("POST", "/deviceManagement/deviceConfigurations");
+    expect(absolute.rule).toBe(relative.rule);
+    expect(absolute.required).toEqual(relative.required);
+  });
+});
+
+/**
+ * Git #4480's suggested fix, taken: a real regression test that fails the
+ * moment ANY active config-pack template resolves to `rule: null`, so the next
+ * pack cannot silently ship the same gap #4480 found. This is the live
+ * derivation itself, not a copy of it — it connects to the same local
+ * PostgreSQL `DATABASE_URL` the dev api-server reads from and runs
+ * `requiredPermissionsForWrite` over every row, exactly the way
+ * `GET /api/admin/write-permissions` (admin-write-permissions.ts) does.
+ */
+describe("live guard — zero active pack templates are unmapped (Git #4480)", () => {
+  it("requiredPermissionsForWrite() returns a non-null rule for every active pack template's Graph endpoint", async () => {
+    const rows = await db
+      .select({
+        packKey: configPacksTable.packKey,
+        templateId: baselineActionTemplatesTable.templateId,
+        method: baselineActionTemplatesTable.method,
+        endpoint: baselineActionTemplatesTable.endpoint,
+        bodyTemplate: baselineActionTemplatesTable.bodyTemplate,
+      })
+      .from(configPacksTable)
+      .innerJoin(configPackTemplatesTable, eq(configPackTemplatesTable.packId, configPacksTable.id))
+      .innerJoin(
+        baselineActionTemplatesTable,
+        eq(baselineActionTemplatesTable.templateId, configPackTemplatesTable.templateId),
+      )
+      .where(eq(configPacksTable.status, "active"));
+
+    // A pack with zero active templates would make this assertion vacuous —
+    // guard the guard.
+    expect(rows.length).toBeGreaterThan(0);
+
+    const unmapped: string[] = [];
+    for (const row of rows) {
+      if (isNonGraphEndpoint(row.endpoint)) continue; // EXO/Defender — not this table's concern.
+      const look = requiredPermissionsForWrite(row.method, row.endpoint, {
+        templateId: row.templateId,
+        body: row.bodyTemplate,
+      });
+      // appOnlyUnsupported (Git #1901) is a real matched rule, just one Microsoft
+      // documents as impossible for an app-only credential — that is a DIFFERENT,
+      // honest state from `rule: null`, which is what this guard exists to catch.
+      if (!look.rule) {
+        unmapped.push(`${row.packKey}: ${row.templateId} (${row.method} ${row.endpoint})`);
+      }
+    }
+
+    expect(unmapped, `unmapped active pack templates:\n${unmapped.join("\n")}`).toEqual([]);
   });
 });
