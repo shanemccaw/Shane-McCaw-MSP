@@ -734,6 +734,42 @@ namespace BuildConsole.Services
         /// weekly window rolls over) or when the tracked reset moment passes. Default 50.</summary>
         public int AutoConservationReleasePercent { get; set; } = 50;
 
+        // ── Git #4599 — real, persisted memory-pressure auto-pause tuning ──────────────────
+        // #4543/#4561 shipped the auto-pause/auto-resume feature itself with fixed internal
+        // constants in MainWindow.ResourceMonitor.cs. Shane's ask: the pause point was too
+        // aggressive (88%) and the release too slow — and all four values (including a full
+        // on/off switch) need to be real, persisted Settings he can tune himself, not hardcoded
+        // constants. Same %AppData%\BuildConsole\settings.json store / field-initializer-as-
+        // default convention as every field above; a pre-#4599 settings.json (no keys) deserializes
+        // with these defaults intact, which are themselves the new, less-aggressive values Shane
+        // asked for (not the original #4543 88/80/30s constants).
+
+        /// <summary>Git #4599 — master on/off switch for the whole #4543/#4561 memory-pressure
+        /// auto-pause feature. Default ON (preserves existing #4543 behaviour for an upgrade with
+        /// no settings.json key yet). When OFF, MainWindow.ResourceMonitor's EvaluateMemoryPressure
+        /// skips pause/resume logic entirely and immediately releases any pause already in effect —
+        /// the real escape hatch for an unattended overnight/"bedtime" run where Shane wants max
+        /// throughput and isn't around to hit the #4577 manual override.</summary>
+        public bool MemoryPressureAutoPauseEnabled { get; set; } = true;
+
+        /// <summary>Git #4599 — physical RAM load percent (dwMemoryLoad) at/above which, combined
+        /// with a rising pagefile, the queue auto-pauses. Default raised to 98 (Shane: "shouldn't
+        /// pause until RAM is much higher... closer to when real swapping actually starts") from
+        /// #4543's original fixed 88.</summary>
+        public int MemoryPressurePauseThresholdPercent { get; set; } = 98;
+
+        /// <summary>Git #4599 — physical RAM load percent the pause/resume hysteresis requires
+        /// falling back under (lower than the pause threshold) before counting toward the clear
+        /// streak. Default 92, replacing #4543's original fixed 80 — kept close under the new 98%
+        /// pause threshold so release tracks a genuinely-higher pause point rather than requiring RAM
+        /// to fall all the way back to the old 80% baseline.</summary>
+        public int MemoryPressureResumeThresholdPercent { get; set; } = 92;
+
+        /// <summary>Git #4599 — how long (seconds) memory pressure must stay continuously cleared
+        /// before the queue auto-resumes. Default shortened to 10s (Shane: "release/resume faster
+        /// once pressure clears") from #4543/#4561's original fixed 30s.</summary>
+        public int MemoryPressureClearSustainSeconds { get; set; } = 10;
+
         /// <summary>
         /// Git #1870 — Batter Up "Free flow" gate. This is a DIFFERENT gate from
         /// <see cref="QueuePaused"/>: QueuePaused stops rows LAUNCHING out of bt_build_queue;
