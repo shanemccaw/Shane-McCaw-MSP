@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { PoamCreatePanel } from "@/components/poams/PoamCreatePanel";
 import { PoamDeletedPanel } from "@/components/poams/PoamDeletedPanel";
 import { PoamDetailPanel } from "@/components/poams/PoamDetailPanel";
@@ -10,41 +9,6 @@ import { PoamListRow } from "@/components/poams/PoamListRow";
 import { useListPoams } from "@/lib/poams-api";
 import type { PoamDeletion } from "@/lib/poams-types";
 import { cn } from "@/lib/utils";
-
-const LEDGER: { gap: string; where: string; link?: { label: string; href: string } }[] = [
-  {
-    gap: "No cancel, complete or convert from here. All three transitions are your MSP's console actions; this page reads the resulting status word and explains it.",
-    where: "§2 · §5.6",
-  },
-  { gap: "Milestones are read-only. Your MSP adds, edits and completes them; nothing here writes a milestone.", where: "§3" },
-  {
-    gap: "Reads are closed for every organisation today. No Monitoring tier bundles the POA&Ms module yet, so the list and detail reads answer 402 — a pricing decision, not a fault. Raising and signing are not gated.",
-    where: "§0.2 · §6",
-  },
-  {
-    gap: "An empty list and an unresolvable tenant scope look identical. Both answer with an empty list; only the server log tells them apart, so this page does not claim to.",
-    where: "§6",
-  },
-  {
-    gap: "Delete always needs a reason, and the warn-then-type-the-code ladder is this page's own. The server restricts nobody beyond the Customer floor until the role model (#1696/#1704) lands.",
-    where: "§1.7 · §7.3",
-  },
-  {
-    gap: "Asking to purge early purges nothing. It queues a review for an operator; the plan stays in its retention window until they decide, and no status for that decision comes back here.",
-    where: "§1.8",
-  },
-  {
-    gap: "A plan you delete still shows on your MSP's console list — their read does not filter soft-deleted rows yet.",
-    where: "§8.2",
-  },
-  { gap: 'No plan here reads "completed". The word is in the enum, but no route anywhere writes it yet; this page will show it when one does.', where: "§3" },
-  { gap: "Overdue is derived, never stored, and only for an active plan or a pending milestone. A cancelled or converted plan with a past date is not overdue.", where: "§1.4" },
-  { gap: "The original target date never moves. When the live target has been pushed, both dates are shown.", where: "§5.4" },
-  {
-    gap: "Your signing address is recorded as the proxy's hop until trust proxy is configured — a platform-wide limit, stated rather than hidden.",
-    where: "§1.6",
-  },
-];
 
 export default function PoamsPage() {
   const { poams, isLoading, isError, tierGated, refetch, isRefetching } = useListPoams();
@@ -265,29 +229,6 @@ export default function PoamsPage() {
         </>
       )}
 
-      <Card className="bg-muted/5">
-        <CardContent className="flex flex-col gap-2.5 pt-6">
-          <span className="text-[13px] font-semibold text-foreground">What this page deliberately does not do</span>
-          <div className="flex flex-col">
-            {LEDGER.map((l, i) => (
-              <div key={i} className="flex items-start gap-3 border-t border-border/50 py-2 first:border-t-0">
-                <div className="min-w-0 flex-1 text-[11.5px] leading-relaxed text-foreground">
-                  {l.gap}
-                  {l.link && (
-                    <>
-                      {" "}
-                      <Link href={l.link.href} className="font-semibold text-primary hover:underline">
-                        {l.link.label}
-                      </Link>
-                    </>
-                  )}
-                </div>
-                <span className="flex-none font-mono text-[10.5px] text-muted-foreground/70">{l.where}</span>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

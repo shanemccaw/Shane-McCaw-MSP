@@ -15,13 +15,6 @@ import {
 import type { RemediationFixRoute } from "@/lib/remediation-checklist-types";
 import { cn } from "@/lib/utils";
 
-const LEDGER: string[] = [
-  "It never sets a checklist item to accepted-as-risk from a plain status change. That value is reachable only through a signed acceptance, and this page's status control cannot select it.",
-  "It never releases a tenant-changing script without an approved change request, and a pending request counts as no request.",
-  "It never treats a tick as evidence. Verification is a separate, real fact a re-scan confirms — a claim on its own is not proof.",
-  "It never invents a checklist item, a fix route, or a bypass correlation. An empty result is shown as an empty result, not a fixture.",
-];
-
 /**
  * Remediation Tracking (#1489, Feature #1485) — real Design export
  * (`Design/portal/design_handoff_full_site/screens/Remediation Tracking.dc.html`)
@@ -204,19 +197,6 @@ export default function RemediationTrackingPage() {
         </Tabs>
       )}
 
-      <Card className="bg-muted/5">
-        <CardContent className="flex flex-col gap-2 pt-6">
-          <span className="text-[12.5px] font-semibold text-foreground">What this page does not do</span>
-          <div className="flex flex-col gap-1.5">
-            {LEDGER.map((l, i) => (
-              <div key={i} className="flex items-start gap-2.5">
-                <span className="mt-1.5 size-[5px] flex-none rounded-full bg-muted-foreground" />
-                <span className="text-[11.5px] leading-relaxed text-muted-foreground">{l}</span>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

@@ -50,56 +50,12 @@ function formatDateTime(iso: string): string {
   );
 }
 
-const LEDGER: { gap: string; where: string }[] = [
-  {
-    gap: "Drafts never reach this page. The read filters published-only at the database, and there is no parameter to ask for more — what your MSP is still writing does not exist here.",
-    where: "§1.1 · §6.1",
-  },
-  {
-    gap: "Not found means not found, whatever the reason. An unknown report, another organisation's report and an unpublished one all 404 alike, so this page never says which.",
-    where: "§1.2 · §6.2",
-  },
-  {
-    gap: "Comments cannot be edited or deleted by anyone — neither router has a route for it. What is written stays as written, on both sides.",
-    where: "§2.2 · §6.3",
-  },
-  {
-    gap: "You always post as yourself. The author type is fixed to customer and the author is your session; the request body has no field for either.",
-    where: "§1.4 · §6.4",
-  },
-  {
-    gap: "Your comment notifies the operator who wrote the report, best-effort, after the comment has already committed. The code reads right, but this hasn't been confirmed live — so this page says the comment is recorded, not that anyone has been told.",
-    where: "§1.4 · §7",
-  },
-  {
-    gap: "An author without a name is shown as Unknown operator, never invented. Both the report and the comment wire shapes can carry a null name.",
-    where: "§2.1 · §5",
-  },
-  {
-    gap: "This is not the status-reports card on My Architect. That card reads a different table (retainer status reports, sent from the admin side). Same words, separate record — kept separate here, not merged.",
-    where: "§0",
-  },
-  {
-    gap: "Newest period first, not newest entry. A report entered late for an earlier period sorts by the period it covers, and says so when opened.",
-    where: "§1.1",
-  },
-  {
-    gap: "No comment counts in the list. The list read returns none, so this page does not pretend to know until you open a report.",
-    where: "§2.1",
-  },
-  {
-    gap: "No pagination. The customer list read has no limit or offset — every published report comes back in one answer.",
-    where: "§1.1",
-  },
-];
-
 export default function StatusReportsPage() {
   const { id: idParam } = useParams<{ id?: string }>();
   const [, navigate] = useLocation();
   const { data: reports, isLoading, isError, refetch, isRefetching } = useStatusReports();
 
   const [selectedId, setSelectedId] = useState<number | null>(idParam ? Number(idParam) : null);
-  const [ledgerOpen, setLedgerOpen] = useState(true);
   const [draft, setDraft] = useState("");
 
   // A direct `/status-reports/:id` link (e.g. from a notification) whose id
@@ -443,32 +399,6 @@ export default function StatusReportsPage() {
         </div>
       )}
 
-      <Card className="bg-muted/5">
-        <CardContent className="flex flex-col gap-2.5 pt-6">
-          <div className="flex items-baseline gap-2.5">
-            <span className="text-[13px] font-semibold text-foreground">What this page deliberately does not do</span>
-            <button
-              type="button"
-              onClick={() => setLedgerOpen((v) => !v)}
-              className="ml-auto text-[11.5px] font-semibold text-muted-foreground hover:text-foreground"
-            >
-              {ledgerOpen ? "Collapse" : "Expand"}
-            </button>
-          </div>
-          {ledgerOpen && (
-            <div className="flex flex-col">
-              {LEDGER.map((l, i) => (
-                <div key={i} className="flex items-start gap-3 border-t border-border/50 py-2 first:border-t-0">
-                  <span className="min-w-0 flex-1 text-[11.5px] leading-relaxed text-foreground">{l.gap}</span>
-                  <span className="flex-none whitespace-nowrap font-mono text-[10.5px] text-muted-foreground/70">
-                    {l.where}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

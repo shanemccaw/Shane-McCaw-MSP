@@ -26,48 +26,8 @@ import { cn } from "@/lib/utils";
  * decline and add-a-row, all real POSTs against the tables
  * `ownership-matrix.ts`'s own header documents.
  */
-const LEDGER: { gap: string; where: string }[] = [
-  {
-    gap: 'No reorder or handover ("delegation") controls. Both write routes are real and live (`POST /portal/ownership/reorder`, `/delegations`, `/delegations/end`), but the Design export draws no control for either anywhere on this screen, precedence carries no succession/activation logic to reorder for (§4), and #1491\'s own structured index still lists #1518/#1524 ("decide the fate of portal_ownership_delegations") as an open decision.',
-    where: "§1b/§4",
-  },
-  {
-    gap: 'No "away" date or standing deputy on any person. No column records either yet, so both are always blank.',
-    where: "§6",
-  },
-  {
-    gap: 'Every person is kind "Person". "Group" and "Vendor" are typed on the wire but no roster table produces either.',
-    where: "§6",
-  },
-  {
-    gap: 'The "External" side is offered but nothing populates a real person with it — people here are exactly your own active users plus your MSP\'s staff.',
-    where: "§6",
-  },
-  {
-    gap: 'Consulted and Informed are never guessed. An empty C or I means nobody has ever recorded one — not "the MSP" and not "everyone else". They can be placed the same way R/A can (the same write route), but nothing here fills one in for you.',
-    where: "§2/§6",
-  },
-  {
-    gap: "No default MSP placement. Your MSP's staff can hold any cell and start on none — there is no template position.",
-    where: "§4/§6",
-  },
-  {
-    gap: 'Untracked-but-enabled workloads are omitted from this list entirely by the route itself, so this page cannot show an "untracked" count — that flag is only consulted server-side to decide what to omit.',
-    where: "§4",
-  },
-  {
-    gap: "A decline reaches only whoever assigned the cell. Nothing here records a reports-to chain to escalate further (a real, already-filed gap).",
-    where: "§6, #2527",
-  },
-  {
-    gap: 'No "promote a coverage gap into a row" flow. That needs a client-side catalog of known-missing object types this app does not carry (contract pack §1b names this as the one place such a fixture would be legitimate) — the real write this page does wire is the design\'s own "Add a row" panel (`source: "custom"`), which renders as a full matrix row with its own RACI cells.',
-    where: "§1b",
-  },
-];
-
 export default function OwnershipPage() {
   const { data, isLoading, isError, error, refetch, isRefetching } = useOwnership();
-  const [ledgerOpen, setLedgerOpen] = useState(true);
   const [declineTarget, setDeclineTarget] = useState<DeclineTarget | null>(null);
   const [addRowOpen, setAddRowOpen] = useState(false);
   const assignMutation = useAssignOwnership();
@@ -277,32 +237,6 @@ export default function OwnershipPage() {
           <SourcesCard sources={data.sources} tenantScoped={data.tenantScoped} />
         </>
       )}
-
-      <Card className="bg-muted/5">
-        <CardContent className="flex flex-col gap-2.5 pt-6">
-          <div className="flex items-baseline gap-2.5">
-            <span className="text-[13px] font-semibold text-foreground">What this page deliberately does not do</span>
-            <Button
-              variant="link"
-              size="sm"
-              className="ml-auto h-auto p-0 text-[11.5px] font-semibold text-muted-foreground"
-              onClick={() => setLedgerOpen((o) => !o)}
-            >
-              {ledgerOpen ? "Collapse" : "Expand"}
-            </Button>
-          </div>
-          {ledgerOpen && (
-            <div className="flex flex-col">
-              {LEDGER.map((l, i) => (
-                <div key={i} className="flex items-start gap-3 border-t border-border/50 py-2 first:border-t-0">
-                  <div className="min-w-0 flex-1 text-[11.5px] leading-relaxed text-foreground">{l.gap}</div>
-                  <span className="flex-none font-mono text-[10.5px] text-muted-foreground/70">{l.where}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
       <AddOwnershipRowDialog open={addRowOpen} onOpenChange={setAddRowOpen} />
       <DeclineOwnershipDialog target={declineTarget} onOpenChange={(open) => !open && setDeclineTarget(null)} />

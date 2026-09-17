@@ -379,35 +379,6 @@ export default function SecurityPlanPage() {
         </>
       )}
 
-      <Card className="bg-muted/5">
-        <CardContent className="flex flex-col gap-2.5 pt-6">
-          <span className="text-[13px] font-semibold text-foreground">What this page deliberately does not do</span>
-          <div className="flex flex-col">
-            <div className="flex items-start gap-3 border-t border-border/50 py-2 first:border-t-0">
-              <span className="min-w-0 flex-1 text-[11.5px] leading-relaxed text-foreground">
-                Part II only groups a row under a control domain when its own source register
-                has actually recorded one for it (#4143). A row nobody has classified yet does
-                not appear in any Part II domain, but it still appears, unaltered, in Part III's
-                per-register schedule — nothing is dropped, only left ungrouped.
-              </span>
-            </div>
-            <div className="flex items-start gap-3 border-t border-border/50 py-2">
-              <span className="min-w-0 flex-1 text-[11.5px] leading-relaxed text-foreground">
-                No cross-module "still needs attention" roll-up. The seven source modules use
-                genuinely different, unrelated status vocabularies (contract pack §4); deciding
-                which of those states count as "unresolved" across all of them would be authored
-                business logic, not an extraction.
-              </span>
-            </div>
-            <div className="flex items-start gap-3 border-t border-border/50 py-2">
-              <span className="min-w-0 flex-1 text-[11.5px] leading-relaxed text-foreground">
-                No overall score. Nothing here rolls the rows up into a percentage, a grade or a
-                pass mark; the registers do not share a scale.
-              </span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

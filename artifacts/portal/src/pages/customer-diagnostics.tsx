@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader2, Download, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, Download } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useScanState } from "@/components/shell/useScanState";
 import { useDiagnosticsPage, useScriptDownload } from "@/components/diagnostics/useDiagnosticsPage";
@@ -33,17 +33,6 @@ const SEVERITY_FILTERS: readonly { key: DiagnosticFindingSeverity | "all"; label
   { key: "ok", label: "OK" },
 ];
 
-const LEDGER: readonly { gap: string; where: string }[] = [
-  { gap: "No \"run a scan\" button. Scans are triggered by your provider against your monitoring package; this is a read-only view.", where: "§0 · §1f" },
-  { gap: "A running scan is shown as a strip, not as results. The latest-scan read only takes on a run once it is complete or partial; the in-progress one comes from the shell's own scan-status read, which selects differently.", where: "§1a · §4" },
-  { gap: "No script list. No list endpoint ever existed; downloads are per check, and a script only appears here once a check your own scan surfaced is actually flagged for one.", where: "§0 · §1c" },
-  { gap: "No industry average or Microsoft excellence benchmark shown while the reference table holds no rows for a pillar — that field is null, not zero.", where: "§1d" },
-  { gap: "No raw Microsoft data or remediation notes behind a finding. This read is a deliberately narrower summary than the operator's.", where: "§1a · §1b" },
-  { gap: "No scan history here — only the latest run.", where: "§1a" },
-  { gap: "Licence-blocked checks are counted apart from errors, as the run itself does, so a tenant without a licence is never shown as broken.", where: "§2" },
-  { gap: "Nothing scores the tenant as a single number here. Pillar scores are drawn; the composite lives with the CIO report, not this page.", where: "§2" },
-];
-
 /**
  * Diagnostics and Scripts (#3999, Feature #1660, portal epic #1485) — recreated
  * from `Design/portal/design_handoff_full_site/screens/Diagnostics and
@@ -69,7 +58,6 @@ export default function CustomerDiagnosticsPage() {
   const scan = useScanState();
   const { downloading, download } = useScriptDownload();
   const [filter, setFilter] = useState<DiagnosticFindingSeverity | "all">("all");
-  const [ledgerOpen, setLedgerOpen] = useState(true);
 
   const noContext = user?.customerId == null;
   const run = latest?.run ?? null;
@@ -389,31 +377,6 @@ export default function CustomerDiagnosticsPage() {
               </div>
             </>
           ) : null}
-
-          <div className="flex flex-col gap-[9px] rounded-[14px] p-4" style={{ border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.015)" }} data-testid="diagnostics-ledger">
-            <div className="flex items-baseline gap-[10px]">
-              <span className="text-[13px] font-semibold text-[#f8fafc]">What this page deliberately does not do</span>
-              <button
-                type="button"
-                onClick={() => setLedgerOpen((v) => !v)}
-                className="ml-auto flex items-center gap-1 text-[11.5px] font-semibold text-[#64748b] hover:text-[#cbd5e1]"
-                data-testid="diagnostics-ledger-toggle"
-              >
-                {ledgerOpen ? "Collapse" : "Expand"}
-                {ledgerOpen ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
-              </button>
-            </div>
-            {ledgerOpen ? (
-              <div className="flex flex-col">
-                {LEDGER.map((l) => (
-                  <div key={l.where} className="flex items-start gap-3 py-2" style={{ borderTop: "1px solid rgba(255,255,255,.05)" }}>
-                    <span className="min-w-0 flex-1 text-[11.5px] leading-[1.5] text-[#cbd5e1]">{l.gap}</span>
-                    <span className="flex-none whitespace-nowrap font-mono text-[10.5px] text-[#475569]">{l.where}</span>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </div>
         </>
       )}
     </div>

@@ -92,49 +92,6 @@ const BOARD_COLUMNS: Array<{ key: KanbanColumn; label: string; hotOnWaiting?: bo
   { key: "completed", label: "COMPLETED" },
 ];
 
-const LEDGER: Array<{ gap: string; where: string }> = [
-  {
-    gap: "No list. The only customer read is one project by id; you arrive from a link (your MSP's email, or a future Overview surface). A project index does not exist on the server, so none is drawn here.",
-    where: "§1a",
-  },
-  {
-    gap: "Sign-off happens here now: a drawn signature, a permission checkbox, and optional feedback, posted to the real closure route. It only ever updates a closure row an admin already requested — it never creates one, and it refuses a second signature (409).",
-    where: "§1c · #4025 · #4058",
-  },
-  {
-    gap: "Progress is your MSP's arithmetic — completed tasks over all tasks, recomputed when they change a card. Preview cards do not count and this page does not recompute it.",
-    where: "§1b",
-  },
-  {
-    gap: "Dashed cards are a projection of the template for steps not yet started: read-only, not tasks, gone once the step is seeded.",
-    where: "§1a",
-  },
-  {
-    gap: "Phase and priority are free text. No fixed list is drawn for either; whatever your MSP last wrote stands.",
-    where: "§1b · §6",
-  },
-  {
-    gap: "The board has five columns including Review. The admin API's own type omits Review but the database allows it, so a card can sit there and this page shows it.",
-    where: "§1b · §6",
-  },
-  {
-    gap: "The status reports here are the retainer kind, sent only — the same ones My Architect shows. Accepting or questioning one happens there; this page only raises the flag.",
-    where: "§1a",
-  },
-  {
-    gap: "The coupon line shows the earliest invoice's discount only. The code's own comment promises a sum it does not deliver, so no total is claimed.",
-    where: "§1a finding",
-  },
-  {
-    gap: "A standalone SOW never becomes a project. Only an accepted project-class offer creates one; a signed standalone SOW is an end state on its own.",
-    where: "§3",
-  },
-  {
-    gap: "Live board updates arrive over a token-in-URL event stream; the page patches cards on a kanban change rather than polling.",
-    where: "§1a",
-  },
-];
-
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -157,8 +114,6 @@ export default function ProjectDetailPage() {
   const live = !!data && !isError;
 
   useProjectKanbanEvents(id, live);
-
-  const [ledgerOpen, setLedgerOpen] = useState(true);
 
   // Closure sign-off ceremony state (#4025) — a drawn signature, an optional
   // permission checkbox, and optional feedback, all local until submitted.
@@ -701,31 +656,6 @@ export default function ProjectDetailPage() {
         </>
       )}
 
-      <Card className="bg-muted/5">
-        <CardContent className="flex flex-col gap-2.5 pt-6">
-          <div className="flex items-baseline gap-2.5">
-            <span className="text-[13px] font-semibold text-foreground">What this page deliberately does not do</span>
-            <Button
-              variant="link"
-              size="sm"
-              className="ml-auto h-auto p-0 text-[11.5px] font-semibold text-muted-foreground"
-              onClick={() => setLedgerOpen((o) => !o)}
-            >
-              {ledgerOpen ? "Collapse" : "Expand"}
-            </Button>
-          </div>
-          {ledgerOpen && (
-            <div className="flex flex-col">
-              {LEDGER.map((l, i) => (
-                <div key={i} className="flex items-start gap-3 border-t border-border/50 py-2 first:border-t-0">
-                  <span className="min-w-0 flex-1 text-[11.5px] leading-relaxed text-foreground">{l.gap}</span>
-                  <span className="flex-none whitespace-nowrap font-mono text-[10.5px] text-muted-foreground/70">{l.where}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

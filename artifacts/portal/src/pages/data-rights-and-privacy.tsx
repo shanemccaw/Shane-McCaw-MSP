@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
-import { CheckCircle2, AlertCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { CheckCircle2, AlertCircle } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useDataRightsPrivacyLive } from "@/components/data-rights-privacy/useDataRightsPrivacyLive";
 
@@ -27,10 +27,11 @@ const CONFIRM_PHRASE = "DELETE";
  * Security for closing the login itself rather than restating it.
  *
  * The two static description blocks below ("Your account and its history" /
- * "What monitoring has recorded about your tenant") and the "what this page
- * deliberately does not do" ledger are literal copy from the design, not
- * data — they describe the fixed shape of the real export/deletion contract,
- * not customer-specific values.
+ * "What monitoring has recorded about your tenant") are literal copy from
+ * the design, not data — they describe the fixed shape of the real
+ * export/deletion contract, not customer-specific values. (The design also
+ * carried an internal "what this page deliberately does not do" disclosure
+ * here; removed from the customer-facing render per #4451.)
  */
 /**
  * Split out from the page wrapper below so the consolidated Settings page
@@ -42,7 +43,6 @@ export function DataRightsAndPrivacyContent() {
   const live = useDataRightsPrivacyLive();
   const [armed, setArmed] = useState(false);
   const [confirmText, setConfirmText] = useState("");
-  const [ledgerOpen, setLedgerOpen] = useState(true);
 
   function disarm() {
     setArmed(false);
@@ -311,31 +311,6 @@ export function DataRightsAndPrivacyContent() {
         </Link>
       </div>
 
-      {/* What this page deliberately does not do */}
-      <div className="flex flex-col gap-[9px] rounded-[14px] px-5 pb-[15px] pt-4" style={{ border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.015)" }}>
-        <div className="flex items-baseline gap-[10px]">
-          <span className="text-[13px] font-semibold text-[#f8fafc]">What this page deliberately does not do</span>
-          <button
-            type="button"
-            onClick={() => setLedgerOpen((v) => !v)}
-            className="ml-auto flex items-center gap-1 text-[11.5px] font-semibold text-[#64748b] transition-colors hover:text-[#cbd5e1]"
-            data-testid="data-rights-ledger-toggle"
-          >
-            {ledgerOpen ? "Collapse" : "Expand"}
-            {ledgerOpen ? <ChevronUp className="size-[13px]" /> : <ChevronDown className="size-[13px]" />}
-          </button>
-        </div>
-        {ledgerOpen ? (
-          <div className="flex flex-col">
-            {LEDGER.map((l) => (
-              <div key={l.where} className="flex items-start gap-3 border-t py-2" style={{ borderColor: "rgba(255,255,255,.05)" }}>
-                <span className="min-w-0 flex-1 text-[11.5px] leading-[1.5] text-[#cbd5e1]">{l.gap}</span>
-                <span className="shrink-0 whitespace-nowrap text-[10.5px] text-[#475569]" style={{ fontFamily: "ui-monospace, Menlo, monospace" }}>{l.where}</span>
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </div>
     </div>
   );
 }
@@ -360,39 +335,4 @@ const SCHEMA_BLOCKS = [
   { name: "Documents & SOWs", what: "generated documents, statements of work and who signed them" },
   { name: "Consent & agreements", what: "your Microsoft 365 consent record and clickwrap acceptances" },
   { name: "Organisation activity", what: "the audit trail across the whole organisation, newest 500 entries" },
-] as const;
-
-const LEDGER = [
-  {
-    gap: "No deletion status to check later. The request is a single audit entry with no lifecycle; the only states are not-yet-submitted and submitted, and \"submitted\" does not survive a reload.",
-    where: "§1 · §6",
-  },
-  {
-    gap: "No confirmation email to you from this page. Only the operator is notified; the confirmation the message promises is sent by the person who fulfils the request.",
-    where: "§1 · §2",
-  },
-  {
-    gap: "Nothing is erased by the request. Every deletion is a human action outside the platform; the page says so rather than implying an automatic wipe.",
-    where: "§6",
-  },
-  {
-    gap: "No partial export or deletion. Both act on the whole account — there is no \"just my invoices\".",
-    where: "§6",
-  },
-  {
-    gap: "No export for another person. The export is always the signed-in account's own, widened only to the logins that share the organisation.",
-    where: "§1",
-  },
-  {
-    gap: "No placeholder rows. An organisation with nothing recorded gets empty lists in the file, because that is the real answer.",
-    where: "§4",
-  },
-  {
-    gap: "One deletion path, two doors. Account Security's delete-account button calls the same request; this page links there instead of restating it.",
-    where: "§5",
-  },
-  {
-    gap: "The 7-year retention line is the server's wording, kept verbatim, so the two surfaces can never disagree about what is kept.",
-    where: "§1 · §5",
-  },
 ] as const;

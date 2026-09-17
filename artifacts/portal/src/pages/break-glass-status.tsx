@@ -55,21 +55,6 @@ const LINK_STYLE: Record<LinkStatus, { ink: string; bg: string; bd: string }> = 
   superseded: { ink: "#94a3b8", bg: "rgba(148,163,184,.08)", bd: "rgba(148,163,184,.22)" },
 };
 
-const LEDGER: { gap: string; where: string }[] = [
-  { gap: "Never shows the credential. This is a status read; the reveal happens once, on a server page the invited person reaches from their email after a Microsoft sign-in, and is purged when they acknowledge it.", where: "§2.2 · §2.5" },
-  { gap: "\"Global Administrator\", not \"an administrator role\". One directory role template qualifies today, and the page says so rather than generalising.", where: "§5" },
-  { gap: "No reset while any link is live. The override is refused server-side until every attempt is expired or superseded; the button is locked here for the same reason.", where: "§2.6" },
-  { gap: "A reset does not resume the run. It stays paused until the new credential is acknowledged, so the page never claims the pack is moving again.", where: "§2.6" },
-  { gap: "\"No handoff waiting\" is one answer for three situations — never reached the gate, paused for another reason, already delivered or superseded. The read cannot distinguish them, so the page says that instead of guessing.", where: "§2.2" },
-  { gap: "An eligible-but-inactive role does not burn the link. That outcome is drawn as an open link with a next step, not as a failure.", where: "§5" },
-  { gap: "Requested and sent are reported separately. A bounced invite is skipped and logged, so the two counts can honestly differ.", where: "§2.1" },
-  { gap: "No sign-in identity or failed-try count per link. Those two fields exist only on the MSP operator read, not the customer one.", where: "§3.3" },
-  { gap: "No cross-tenant watchlist, history or audit trail. Those are the operator console's surface, with its own role floor.", where: "§3" },
-  { gap: "A handoff that is not yours looks like one that does not exist. Both answer 404, and the page treats them as the same \"not found\".", where: "§2.1" },
-  { gap: "The repeated-override alert is internal. It goes to the platform mailbox after a second reset in 24 hours and is not rendered as a customer signal.", where: "§7" },
-  { gap: "The public sign-in and reveal pages are left as they are — server-rendered, white-labelled, outside this portal.", where: "§2.3–2.5 · §9" },
-];
-
 function hhmm(d: Date): string {
   return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
 }
@@ -149,36 +134,6 @@ function MessagePanel({ title, body, testId, action }: { title: string; body: st
         <span className="text-[13.5px] font-semibold text-foreground">{title}</span>
         <span className="max-w-[660px] text-xs leading-relaxed" style={{ color: "#94a3b8" }}>{body}</span>
         {action}
-      </div>
-    </Panel>
-  );
-}
-
-function Ledger() {
-  const [open, setOpen] = useState(true);
-  return (
-    <Panel dim testId="break-glass-ledger">
-      <div className="flex flex-col gap-2" style={{ padding: "16px 20px 15px" }}>
-        <div className="flex items-baseline gap-2.5">
-          <span className="text-[13px] font-semibold text-foreground">What this page deliberately does not do</span>
-          <button
-            type="button"
-            onClick={() => setOpen((o) => !o)}
-            className="ml-auto text-[11.5px] font-semibold text-[#64748b] hover:text-[#cbd5e1]"
-          >
-            {open ? "Collapse" : "Expand"}
-          </button>
-        </div>
-        {open && (
-          <div className="flex flex-col">
-            {LEDGER.map((l) => (
-              <div key={l.gap} className="flex items-start gap-3 border-t py-2" style={{ borderColor: "rgba(255,255,255,.05)" }}>
-                <span className="min-w-0 flex-1 text-[11.5px] leading-normal" style={{ color: "#cbd5e1" }}>{l.gap}</span>
-                <span className="flex-none whitespace-nowrap font-mono text-[10.5px]" style={{ color: "#475569" }}>{l.where}</span>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </Panel>
   );
@@ -666,8 +621,6 @@ function RunView({
         </>
       )}
 
-      {read && <Ledger />}
-
       {modal && modalSpec && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-6"
@@ -801,7 +754,6 @@ function HandoffList() {
           }
         />
       )}
-      {read && <Ledger />}
     </>
   );
 }

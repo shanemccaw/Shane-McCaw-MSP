@@ -88,16 +88,6 @@ function fmtWhen(iso: string | null): string {
   return fmtDate(iso);
 }
 
-const LEDGER: { gap: string; where: string }[] = [
-  { gap: "\"Not set up\" is drawn as a real state, not an error — and, since #2512, the list, detail and reply routes all agree on the same 200 configured:false shape for the same condition, not just the list.", where: "§7-§10 · #2512" },
-  { gap: "Submitting and replying are queued. The desk picks writes up on a sweep (~every 5 minutes), so nothing appears instantly, and this page says so rather than faking a row.", where: "§7 · §10" },
-  { gap: "Private agent notes are never shown here — only public thread entries reach a customer.", where: "§9" },
-  { gap: "Ticket statuses are the desk's own free-text words. This page does not invent a status vocabulary; the coloured pill keys off the desk's four coarse buckets only.", where: "§8 · §12" },
-  { gap: "Priority and category ride inside the ticket text, not as structured Zoho fields — this page says so rather than implying fields the desk doesn't have.", where: "§7" },
-  { gap: "A reply is prefixed with your name, because the desk would otherwise credit it to the connected agent, not you.", where: "§10" },
-  { gap: "\"Not yours\" and \"doesn't exist\" are the same 404 by design — ownership can't be probed by id.", where: "§9" },
-  { gap: "The chat itself lives on ShaneBot, not a second chat drawn on this page — this page only explains the propose-then-confirm handoff and links there.", where: "§1 · §11" },
-];
 
 const SHANEBOT_PROPOSALS: { title: string; body: string; note: string; noteColor: string }[] = [
   {
@@ -148,8 +138,6 @@ export function CustomerRequestsContent() {
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [queuedNotice, setQueuedNotice] = useState(false);
-
-  const [ledgerOpen, setLedgerOpen] = useState(true);
 
   const loadList = useCallback(async () => {
     setListState("loading");
@@ -676,25 +664,6 @@ export function CustomerRequestsContent() {
             </div>
           ))}
         </div>
-      </div>
-
-      <div className="flex flex-col gap-2 rounded-2xl border p-4" style={{ borderColor: "rgba(255,255,255,.07)", background: "rgba(255,255,255,.015)" }}>
-        <div className="flex items-baseline gap-2.5">
-          <span className="text-[13px] font-semibold text-foreground">What this page deliberately does not do</span>
-          <button type="button" onClick={() => setLedgerOpen((o) => !o)} className="ml-auto text-[11.5px] font-semibold" style={{ color: "#64748b" }}>
-            {ledgerOpen ? "Collapse" : "Expand"}
-          </button>
-        </div>
-        {ledgerOpen && (
-          <div className="flex flex-col">
-            {LEDGER.map((l, i) => (
-              <div key={i} className="flex items-start gap-3 py-2" style={{ borderTop: i === 0 ? undefined : "1px solid rgba(255,255,255,.05)" }}>
-                <span className="min-w-0 flex-1 text-[11.5px] leading-relaxed" style={{ color: "#cbd5e1" }}>{l.gap}</span>
-                <span className="flex-none whitespace-nowrap font-mono text-[10.5px]" style={{ color: "#475569" }}>{l.where}</span>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );

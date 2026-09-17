@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,36 +36,6 @@ const AREA_STYLES: Record<ScopeAreaStatus, { label: string; ink: string; border:
   alert: { label: "Needs action", ink: "text-status-red", border: "border-status-red/35", dot: "bg-status-red" },
 };
 
-const LEDGER: { gap: string; where: string }[] = [
-  {
-    gap: "No per-request breakdown, ticket references, policy names or internal scores. The routes translate to headline, subtext and counts; the page draws only what is served.",
-    where: "§1 · §2",
-  },
-  {
-    gap: "Always three scope areas. The route returns exactly three, so the page never adds a fourth or hides an empty one.",
-    where: "§2",
-  },
-  {
-    gap: '"Needs action" can appear on an area whose own change is small, because any open violation escalates every exceeded area. The page explains that beside the list.',
-    where: "§2",
-  },
-  {
-    gap: '"Computed at" is when this page opened. Neither reading is stored; there is no last-run time to show.',
-    where: "§3",
-  },
-  {
-    gap: "No numeric compliance figure for scope. Only the SLA reading serves one, and only as the server's label.",
-    where: "§2",
-  },
-  {
-    gap: "The Overview's SLA and scope scores come from a stored snapshot and can disagree with these live readings; the page names that rather than reconciling it.",
-    where: "§7",
-  },
-  {
-    gap: "A failed read shows the server's own message and no substitute figures.",
-    where: "§6",
-  },
-];
 
 function formatUpdatedAt(iso: string): string {
   return new Date(iso).toLocaleString("en-US", {
@@ -117,7 +86,6 @@ function ErrorCard({ message, onRetry, retrying }: { message: string; onRetry: (
 export default function ScopeAndSlaPage() {
   const sla = useSlaStatus();
   const scope = useScopeStatus();
-  const [ledgerOpen, setLedgerOpen] = useState(true);
 
   const bothFailed = sla.isError && scope.isError;
   const bothLoading = sla.isLoading && scope.isLoading;
@@ -271,31 +239,6 @@ export default function ScopeAndSlaPage() {
         </Card>
       )}
 
-      <Card className="bg-muted/5">
-        <CardContent className="flex flex-col gap-2.5 pt-6">
-          <div className="flex items-baseline gap-2.5">
-            <span className="text-[13px] font-semibold text-foreground">What this page deliberately does not do</span>
-            <Button
-              variant="link"
-              size="sm"
-              className="ml-auto h-auto p-0 text-[11.5px] font-semibold text-muted-foreground"
-              onClick={() => setLedgerOpen((o) => !o)}
-            >
-              {ledgerOpen ? "Collapse" : "Expand"}
-            </Button>
-          </div>
-          {ledgerOpen && (
-            <div className="flex flex-col">
-              {LEDGER.map((l, i) => (
-                <div key={i} className="flex items-start gap-3 border-t border-border/50 py-2 first:border-t-0">
-                  <span className="min-w-0 flex-1 text-[11.5px] leading-relaxed text-foreground">{l.gap}</span>
-                  <span className="flex-none font-mono text-[10.5px] text-muted-foreground/70">{l.where}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

@@ -42,40 +42,6 @@ function shortDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
-const LEDGER: ReadonlyArray<{ readonly gap: string; readonly where: string }> = [
-  {
-    gap: "Nothing executes from a decision. Close early, release and prepare-CR all raise a change request with its approval ledger; the gated step runs after approval.",
-    where: "§1.8 · §9.1",
-  },
-  {
-    gap: "Steps and progress are the current cycle's only. Finished cycles keep their own ticks, frozen, and appear as past cycles — never re-counted, never wiped.",
-    where: "§1.1 · §1.4",
-  },
-  {
-    gap: "A hold window is matched to the cycle it gates by its run id, not by step number alone. A legacy window with no run id decorates the runbook it names, and both paths are real.",
-    where: "§1.3 · §9.8",
-  },
-  {
-    gap: "The agreed wait is never rewritten. Extensions accumulate beside it and are shown beside it.",
-    where: "§1.7 · §9.6",
-  },
-  {
-    gap: "Close early is accepted only while the window is genuinely early; the server re-checks and refuses otherwise. The page mirrors that by only offering it as the primary action then.",
-    where: "§1.8 · §9.4",
-  },
-  {
-    gap: "An empty cycle is never complete. Ticking nothing spawns nothing; the page states what completes a cycle.",
-    where: "§1.4",
-  },
-  { gap: "Pillars arrive lowercase and are title-cased here, on the page.", where: "§5.1" },
-  { gap: "Who ticked a step is stored but not served; the page shows when, not who.", where: "§7.1" },
-  {
-    gap: "The live-empty state is the real state of the database today — zero runbooks, zero cycles, zero windows — drawn as such, not as an error.",
-    where: "§8",
-  },
-  { gap: "The four lifecycle procedures are library entries, not runbooks. They are not listed here.", where: "§7.5" },
-];
-
 type Modal =
   | { readonly kind: "gated"; readonly runbook: Runbook }
   | { readonly kind: "addStep"; readonly runbook: Runbook }
@@ -105,7 +71,6 @@ export default function RunbooksPage() {
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [modal, setModal] = useState<Modal | null>(null);
-  const [ledgerOpen, setLedgerOpen] = useState(true);
   const [events, setEvents] = useState<readonly HoldWindowEvent[] | null>(null);
   const [eventsFor, setEventsFor] = useState<number | null>(null);
 
@@ -243,45 +208,6 @@ export default function RunbooksPage() {
           </>
         )}
 
-        <div
-          className="flex flex-col gap-[9px] rounded-[14px] border"
-          style={{ borderColor: "rgba(255,255,255,.07)", background: "rgba(255,255,255,.015)", padding: "16px 20px 15px" }}
-        >
-          <div className="flex items-baseline gap-[10px]">
-            <span className="text-[13px] font-semibold" style={{ color: "#f8fafc" }}>
-              What this page deliberately does not do
-            </span>
-            <button
-              type="button"
-              onClick={() => setLedgerOpen((v) => !v)}
-              className="ml-auto text-[11.5px] font-semibold hover:text-[#cbd5e1]"
-              style={{ color: "#64748b" }}
-            >
-              {ledgerOpen ? "Collapse" : "Expand"}
-            </button>
-          </div>
-          {ledgerOpen ? (
-            <div className="flex flex-col">
-              {LEDGER.map((l, i) => (
-                <div
-                  key={i}
-                  className="flex items-start gap-[12px]"
-                  style={{ padding: "8px 0", borderTop: "1px solid rgba(255,255,255,.05)" }}
-                >
-                  <span className="min-w-0 flex-1 text-[11.5px] leading-[1.5]" style={{ color: "#cbd5e1" }}>
-                    {l.gap}
-                  </span>
-                  <span
-                    className="flex-none text-[10.5px] whitespace-nowrap"
-                    style={{ color: "#475569", fontFamily: "ui-monospace, Menlo, monospace" }}
-                  >
-                    {l.where}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </div>
       </div>
 
       {modal?.kind === "gated" ? (

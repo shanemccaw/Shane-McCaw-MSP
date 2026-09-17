@@ -123,38 +123,6 @@ function fmtCollectedAt(iso: string): string {
   });
 }
 
-const LEDGER: readonly { readonly gap: string; readonly where: string }[] = [
-  {
-    gap: "Changes nothing. No DNS write, no DKIM signing command, no script run — this page is instructions beside a reading, by design.",
-    where: "§1",
-  },
-  {
-    gap: 'DKIM "not found at the default selectors" is never shortened to "not configured". The check probes selector1 and selector2 only; custom selectors are invisible to it, and the card says so.',
-    where: "§2",
-  },
-  {
-    gap: "The SPF and DMARC record values shown are the standard Microsoft 365 shapes, not your records. The actual SPF and DMARC strings the scan matched are not forwarded to this page.",
-    where: "§2",
-  },
-  {
-    gap: '"Never checked" is drawn as unknown, not as three failures. Every field is null until a scan records this check.',
-    where: "§4",
-  },
-  { gap: "A failed read shows as a failed read. Nothing is guessed in its place.", where: "§4" },
-  {
-    gap: "No severity label. The scan keeps one label per row even when two or three things are wrong; the page counts open items from the three readings instead.",
-    where: "§2",
-  },
-  {
-    gap: "No re-check button. The reading is a point in time from the last scan; drift over time is the Configuration State page's job.",
-    where: "§3",
-  },
-  {
-    gap: "An unresolvable tenant looks like a never-scanned one. The route answers both the same way, and so does this page.",
-    where: "§4",
-  },
-];
-
 /**
  * Split out from the page wrapper below so the consolidated Settings page
  * (#1736) can mount it as one tab without re-wiring the fetch logic — same
@@ -308,22 +276,6 @@ export function EmailAuthSetupContent() {
             <Link href="/diagnostics" className="text-[12px] font-semibold text-primary hover:underline">
               Latest scan →
             </Link>
-          </div>
-        </div>
-      ) : null}
-
-      {!loading ? (
-        <div className="flex flex-col gap-[9px] rounded-[14px] px-5 pb-[15px] pt-4" style={{ border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.015)" }}>
-          <span className="text-[13px] font-semibold text-[#f8fafc]">What this page deliberately does not do</span>
-          <div className="flex flex-col">
-            {LEDGER.map((l, i) => (
-              <div key={i} className="flex items-start gap-3 py-2" style={{ borderTop: i > 0 ? "1px solid rgba(255,255,255,.05)" : undefined }}>
-                <span className="min-w-0 flex-1 text-[11.5px] leading-[1.5] text-[#cbd5e1]">{l.gap}</span>
-                <span className="flex-none whitespace-nowrap text-[10.5px] text-[#475569]" style={{ fontFamily: "ui-monospace, Menlo, monospace" }}>
-                  {l.where}
-                </span>
-              </div>
-            ))}
           </div>
         </div>
       ) : null}

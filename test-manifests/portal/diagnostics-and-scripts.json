@@ -10,7 +10,8 @@
     "apiTests prove the real, already-built backend contract directly (unaffected by the worktree-merge gap above, since they hit api-server routes that already exist on main): log in via POST /api/auth/login, extract a bearer token, then exercise GET /api/portal/diagnostics/latest and GET /api/portal/health-benchmark exactly as useDiagnosticsPage.ts's own fetchWithAuth calls do. These were NOT live-executed this session for the same runTest-unreachable reason above — write it up honestly, and re-run once #3999 merges.",
     "No write assertions: both reads are pure (SELECT-only routes), so there is nothing to round-trip or restore. The script download route is NOT exercised here — the testbed customer has no requires_script finding to download against today (see feature note above), so there is nothing real to hit; adding a fabricated one to make the download path 'pass' would violate the no-fixture-data rule this build is under.",
     "UI steps assert the honest-state scaffolding (page shell, state line, findings section, pillar-health card, scripts card) rather than exact finding titles or scores, which are real tenant data that changes with every scan run.",
-    "ENV VARS required: DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD — the same Customer testbed account other portal manifests use."
+    "ENV VARS required: DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD — the same Customer testbed account other portal manifests use.",
+    "#4451: UI3 flipped from asserting the internal 'what this page deliberately does not do' engineering disclosure was visible to asserting it is now absent -- that component was removed from the customer-facing render per #4451 (Shane flagged it across 7+ portal pages as internal scope commentary, not customer-appropriate copy). Not live-executed via shaneapp://runTest this session, same worktree-merge-gap reason as this file's SETUP note above. Verified instead via artifacts/portal `tsc --noEmit` clean and `vite build` clean against the edited page."
   ],
 
   "apiTests": [
@@ -50,6 +51,6 @@
     { "name": "goto the real Diagnostics page.", "action": "goto", "target": "/portal/diagnostics" },
     { "name": "UI1 — the page renders.", "action": "expect", "selector": "[data-testid='diagnostics-page']", "state": "visible", "critical": true },
     { "name": "UI2 — the real state line renders (live / scanning / never-scanned honesty line, never a placeholder).", "action": "expect", "selector": "[data-testid='diagnostics-state-line']", "state": "visible", "critical": true },
-    { "name": "UI3 — the ledger card ('what this page deliberately does not do') always renders.", "action": "expect", "selector": "[data-testid='diagnostics-ledger']", "state": "visible" }
+    { "name": "UI3 — the internal 'what this page deliberately does not do' disclosure card is gone from the customer-facing render (#4451).", "action": "expect", "selector": "[data-testid='diagnostics-ledger']", "state": "absent" }
   ]
 }

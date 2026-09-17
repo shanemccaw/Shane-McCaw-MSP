@@ -13,7 +13,8 @@
     "Confirmed live against the local DB at build time: sla_timers and scope_creep_detections both have 0 rows for every tenant (`SELECT count(*) FROM sla_timers` / `scope_creep_detections`), so the entitled testbed tenant's real, honest response today is the on_track / zero-open-items state for both engines — the same shape §5/§6 of the contract pack describes as indistinguishable from a bug-masked one before the fix, and now genuinely just an empty state. This manifest's apiTests assert exactly that real, current shape rather than a scenario the local data can't produce.",
     "ENV VARS required: DEPLOY_URL, TEST_RBAC_CUSTOMER_EMAIL / TEST_RBAC_CUSTOMER_PASSWORD — the same testbed Customer account other portal manifests (risk-register.json, change-control.json) already use.",
     "textContains reads el.innerText / el.textContent, so every assertion below targets RENDERED text. Copy is final and reproduced verbatim from the component source (carried forward from the design's own strings), so these are reliable probes.",
-    "data-testid coverage: scope-and-sla-page, scope-and-sla-status, scope-and-sla-sla-card, scope-and-sla-scope-card — all real testids added on the built components as part of this manifest (none pre-existed)."
+    "data-testid coverage: scope-and-sla-page, scope-and-sla-status, scope-and-sla-sla-card, scope-and-sla-scope-card — all real testids added on the built components as part of this manifest (none pre-existed).",
+    "#4451: removed SS6, which asserted the internal 'what this page deliberately does not do' engineering disclosure (spec-section citations) was visible on screen -- that component was removed from the customer-facing render per #4451 (Shane flagged it across 7+ portal pages as internal scope commentary, not customer-appropriate copy; note 3 above already documents this page's own ledger was carried forward from the design — it has since been retired). Not live-executed via shaneapp://runTest this session, same worktree-merge-gap reason as note 1 above. Verified instead via artifacts/portal `tsc --noEmit` clean and `vite build` clean against the edited page."
   ],
 
   "apiTests": [
@@ -91,8 +92,6 @@
     { "name": "SS2 — ...and its REAL rendered text is the headline A2 returned — the endpoint-to-DOM integration proof, and confirmation this is the real post-#2513-fix reading, not the always-empty pre-fix one.", "action": "expect", "selector": "[data-testid='scope-and-sla-sla-card']", "textContains": "{{slaHeadline}}" },
     { "name": "SS3 — the scope card rendered.", "action": "expect", "selector": "[data-testid='scope-and-sla-scope-card']", "state": "visible", "critical": true },
     { "name": "SS4 — ...and its REAL rendered text is the headline A5 returned.", "action": "expect", "selector": "[data-testid='scope-and-sla-scope-card']", "textContains": "{{scopeHeadline}}" },
-    { "name": "SS5 — the first area's real label (A7) renders inside the scope card's per-area breakdown.", "action": "expect", "selector": "[data-testid='scope-and-sla-scope-card']", "textContains": "{{firstAreaLabel}}" },
-
-    { "name": "SS6 — the honest ledger section is present with its real, unconditional heading.", "action": "expect", "selector": "[data-testid='scope-and-sla-page']", "textContains": "What this page deliberately does not do" }
+    { "name": "SS5 — the first area's real label (A7) renders inside the scope card's per-area breakdown.", "action": "expect", "selector": "[data-testid='scope-and-sla-scope-card']", "textContains": "{{firstAreaLabel}}" }
   ]
 }

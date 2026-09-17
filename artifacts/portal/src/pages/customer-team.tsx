@@ -40,7 +40,6 @@ export default function CustomerTeamPage() {
 
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [modal, setModal] = useState<ModalState>(null);
-  const [ledgerOpen, setLedgerOpen] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const members = live.members;
@@ -190,39 +189,6 @@ export default function CustomerTeamPage() {
           ) : null}
         </div>
       ) : null}
-
-      {/* What this page deliberately does not do */}
-      <div
-        className="flex flex-col gap-[9px] rounded-[14px] px-5 pb-[15px] pt-4"
-        style={{ border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.015)" }}
-      >
-        <div className="flex items-baseline gap-[10px]">
-          <span className="text-[13px] font-semibold text-[#f8fafc]">What this page deliberately does not do</span>
-          <button
-            type="button"
-            onClick={() => setLedgerOpen((v) => !v)}
-            className="ml-auto text-[11.5px] font-semibold text-[#64748b] hover:text-[#cbd5e1]"
-            data-testid="team-ledger-toggle"
-          >
-            {ledgerOpen ? "Collapse" : "Expand"}
-          </button>
-        </div>
-        {ledgerOpen ? (
-          <div className="flex flex-col">
-            {LEDGER.map((l) => (
-              <div key={l.where} className="flex items-start gap-3 border-t py-2" style={{ borderColor: "rgba(255,255,255,.05)" }}>
-                <span className="min-w-0 flex-1 text-[11.5px] leading-[1.5] text-[#cbd5e1]">{l.gap}</span>
-                <span
-                  className="shrink-0 whitespace-nowrap text-[10.5px] text-[#475569]"
-                  style={{ fontFamily: "ui-monospace, Menlo, monospace" }}
-                >
-                  {l.where}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </div>
 
       {modal && selected && modal.kind !== "invite" ? (
         <ActionModal
@@ -1163,66 +1129,3 @@ const SPECS: Record<string, (member: TeamMember, modal: NonNullable<ModalState>)
     confirmable: true,
   }),
 };
-
-const LEDGER = [
-  {
-    gap: "Viewing and managing are separate. Anyone on the organisation sees the roster; the actions appear only with the team-management grant, which is read live on every call.",
-    where: "§0 · §1",
-  },
-  {
-    gap: "Invites create a standard member only. There is no \"invite as admin\"; the role is granted afterwards under Roles, which is what the route takes.",
-    where: "§2 · §5",
-  },
-  {
-    gap: "Temporary passwords and bypass codes are shown once, to you, and never emailed. The page states that the relay is yours.",
-    where: "§4f · §4h",
-  },
-  {
-    gap: "Sign-out-everywhere is labelled as leaving no audit entry, because it is the one mutating action that writes none.",
-    where: "§4a · §5",
-  },
-  {
-    gap: "One reduced MFA status per member — passkey over app over SMS — not a list of every method.",
-    where: "§1 · §3",
-  },
-  {
-    gap: "\"Reports to\" is written by its own route; the roster read carries managerUserId too, so the page shows what is stored rather than only what it set.",
-    where: "§1 · §4i · #3996",
-  },
-  {
-    gap: "The manager picker refuses self, other organisations and loops, mirroring the three server checks; the page cannot show the before/after in the audit because the audit row carries none.",
-    where: "§4i",
-  },
-  {
-    gap: "You cannot suspend yourself here; the button is disabled on your own row.",
-    where: "§4b",
-  },
-  {
-    gap: "Resetting MFA is a full teardown of every method, drawn with that warning, not a per-method toggle.",
-    where: "§4g",
-  },
-  {
-    gap: "The roster is unsorted because the read is; the page keeps the server's order rather than inventing one.",
-    where: "§1",
-  },
-  {
-    gap: "Two roles, no more. Only the platform keys customer-admin and billing can be granted here; an organisation's own custom roles and every other key are refused by the server (400) and not offered.",
-    where: "#3629 · #3647",
-  },
-  {
-    gap: "Granting roles is gated exactly like every other action here — the team-management grant, read live. A Customer Admin holds it by role; a plain member with the grant holds it too.",
-    where: "#3647 · #2460",
-  },
-  {
-    gap: "You cannot remove your own Customer Admin role; the button is disabled with the server's reason. Removing someone else's is allowed even if they are the last one — the page does not add a floor the server lacks.",
-    where: "#3647",
-  },
-  {
-    gap: "Billing is also granted by the platform, not only by people: whoever an invoice or service is addressed to gets it automatically, and a removal stands only until their next bill. Drawn on the role card rather than hidden.",
-    where: "#3629",
-  },
-  {
-    gap: "Roles take effect on the next request. Nothing here waits for a sign-out or token refresh, and a 503 (role model unreadable) is drawn as unavailable, never as denied.",
-    where: "#2460 · #3647",
-  },
-] as const;

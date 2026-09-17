@@ -22,8 +22,10 @@ import { cn } from "@/lib/utils";
  * against the real, GET-only `/api/portal/retainer` endpoint.
  *
  * Deliberate divergences from the design mock, all because the mock invents
- * client-side data the real read doesn't provide — see the "what this page
- * deliberately does not do" card at the bottom for the full, honest list:
+ * client-side data the real read doesn't provide (the internal "what this page
+ * deliberately does not do" disclosure the design carried for these has been
+ * removed from the customer-facing render per #4451; the divergences remain
+ * real regardless):
  *   - The month picker only ever re-filters the Work log list below. The
  *     server computes `bucket` for the CURRENT period only (contract pack
  *     §6.4, "computed once, server-side" — there is no endpoint to recompute
@@ -464,25 +466,6 @@ export default function MyArchitectPage() {
         </>
       )}
 
-      <Card className="bg-muted/5">
-        <CardContent className="flex flex-col gap-2.5 pt-6">
-          <span className="text-[13px] font-semibold text-foreground">What this page deliberately does not do</span>
-          <div className="flex flex-col">
-            {[
-              "No money. An hourly rate is served on this read and is dropped on the floor: no rate, no dollar total, no derived cost, anywhere on the page. Billing is Billing's.",
-              "No writing. Hours are not logged, entries are not edited, the allotment is not changed here — every write is your provider's, in AdminV2.",
-              "No reply box under a status report. The thread is served read-only; a customer reply endpoint does not exist yet, so the page says who to ask instead of drawing a field that posts nowhere.",
-              "No documents section. Nothing on this read references a document, and the page does not pretend one rides along.",
-              '"How the retainer works" is fixed prose, not a served field — decided policy: static copy, no backend table.',
-              "The month picker only re-filters the work log below. The bucket figures above are always the current period's — the server computes that arithmetic once and does not recompute it for a past period.",
-            ].map((gap, i) => (
-              <div key={i} className="flex items-start gap-3 border-t border-border/50 py-2 first:border-t-0">
-                <span className="min-w-0 flex-1 text-[11.5px] leading-relaxed text-foreground">{gap}</span>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

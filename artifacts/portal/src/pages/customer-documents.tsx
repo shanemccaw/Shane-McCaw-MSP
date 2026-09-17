@@ -335,8 +335,6 @@ export default function CustomerDocumentsPage() {
         </Card>
       )}
 
-      <DocumentsLedger />
-
       {viewingDoc && (
         <DocumentViewerModal
           title={viewingDoc.title}
@@ -464,63 +462,3 @@ function ShareDocumentDialog({ doc, onClose }: { doc: WireInsightDocument; onClo
   );
 }
 
-const LEDGER: { gap: string; where: string }[] = [
-  {
-    gap: "Two lists, not one. Generated documents and uploaded report files come from different places with different fields, and merging them would invent a shape neither has.",
-    where: "§1 · §2",
-  },
-  {
-    gap: "Three different gates, drawn as three. View needs delivered (or a scoped SOW); PDF needs approved or delivered; Share needs either, plus the SOW carve-out. Each button is enabled by its own rule.",
-    where: "§2a–2c",
-  },
-  {
-    gap: "Live-rendered reports are named as currently unexportable. Their PDF path navigates to a route that no longer exists and fails with a 502 (#2507); the page says so instead of offering a button that fails.",
-    where: "§4",
-  },
-  {
-    gap: "No draft, archived, generating or failed documents. They are excluded server-side and the page does not hint at them.",
-    where: "§2",
-  },
-  {
-    gap: "Re-sharing replaces only this document's link. The page says that rather than warning about links it does not affect.",
-    where: "§2c",
-  },
-  {
-    gap: "The public viewer shows the expiry and says it is counted. Views and dwell time are recorded for the sender; a reader should know that.",
-    where: "§2d · §2e",
-  },
-  {
-    gap: "No pagination, no search. Both lists come back whole, newest first, and are drawn that way.",
-    where: "§1 · §2",
-  },
-  {
-    gap: "A document can be here and missing from the Overview timeline for a multi-login organisation — the timeline scopes differently (#2499). Not this page's to fix.",
-    where: "§6",
-  },
-];
-
-function DocumentsLedger() {
-  const [open, setOpen] = useState(true);
-  return (
-    <Card className="bg-muted/5">
-      <CardContent className="flex flex-col gap-2 pt-6">
-        <div className="flex items-baseline gap-2.5">
-          <span className="text-[13px] font-semibold text-foreground">What this page deliberately does not do</span>
-          <button type="button" onClick={() => setOpen((o) => !o)} className="ml-auto text-[11.5px] font-semibold text-muted-foreground hover:text-foreground">
-            {open ? "Collapse" : "Expand"}
-          </button>
-        </div>
-        {open && (
-          <div className="flex flex-col">
-            {LEDGER.map((l, i) => (
-              <div key={i} className="flex items-start gap-3 border-t border-border/50 py-2 first:border-t-0">
-                <span className="min-w-0 flex-1 text-[11.5px] leading-relaxed text-foreground">{l.gap}</span>
-                <span className="flex-none font-mono text-[10.5px] text-muted-foreground">{l.where}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}

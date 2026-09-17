@@ -50,20 +50,6 @@ const CATEGORY_INFO: Record<string, { label: string; description: string }> = {
   status_report_published: { label: "Status Reports", description: "New status reports published by your MSP" },
 };
 
-// "What this page deliberately does not do" — real, contract-pack-derived
-// facts about this surface (docs/portal/notification-preferences-contract-pack.md
-// §2/§3/§5/§6/§8/§10), not fetched data. Copy is final per CLAUDE.md.
-const LEDGER: { gap: string; where: string }[] = [
-  { gap: "No record of what a muted category suppressed. A suppressed notification is never created, so there is nothing to look back at — only the absence of what would have appeared.", where: "§10" },
-  { gap: "No digest or cadence. Every enabled category emails immediately; batching belongs to monitoring alerts, not here.", where: "§10" },
-  { gap: "No confirmation of what was stored. Saving reports success without reading the values back, so the list you see is what you set rather than what the server returned.", where: "§2" },
-  { gap: "No signal when an email fails. Delivery is attempted once and failures are logged on our side only.", where: "§6" },
-  { gap: "No effect on what your MSP sees. Muting a category hides it from you, not from them.", where: "§5" },
-  { gap: "No separate webhook switch. Webhook delivery for a category rides on its in-app setting and cannot be kept on independently.", where: "§5" },
-  { gap: "No shared ground with monitoring alert preferences. Two deliberately separate lists; nothing here reads or writes anything there.", where: "§8" },
-  { gap: "No per-severity control. A category is on or off as a whole — there is no way to keep only the urgent ones.", where: "§3" },
-];
-
 const HAIRLINE = "rgba(255,255,255,.09)";
 const ACCENT = "#0078D4";
 const CAUTION = "#c2a63d";
@@ -96,7 +82,6 @@ export function NotificationPreferencesContent() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [toast, setToast] = useState(false);
-  const [ledgerOpen, setLedgerOpen] = useState(true);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const load = useCallback(async () => {
@@ -415,33 +400,6 @@ export function NotificationPreferencesContent() {
               </Link>
             </div>
 
-            <div className="flex flex-col gap-2 rounded-[14px] border p-4" style={{ borderColor: "rgba(255,255,255,.07)", background: "rgba(255,255,255,.015)" }}>
-              <div className="flex items-baseline gap-2.5">
-                <span className="text-[13px] font-semibold text-foreground">What this page deliberately does not do</span>
-                <button
-                  type="button"
-                  onClick={() => setLedgerOpen((o) => !o)}
-                  className="ml-auto text-[11.5px] font-semibold"
-                  style={{ color: "#64748b" }}
-                >
-                  {ledgerOpen ? "Collapse" : "Expand"}
-                </button>
-              </div>
-              {ledgerOpen && (
-                <div className="flex flex-col">
-                  {LEDGER.map((l, i) => (
-                    <div key={i} className="flex items-start gap-3 py-2" style={{ borderTop: i === 0 ? undefined : "1px solid rgba(255,255,255,.05)" }}>
-                      <span className="min-w-0 flex-1 text-[11.5px] leading-snug" style={{ color: "#cbd5e1" }}>
-                        {l.gap}
-                      </span>
-                      <span className="flex-none whitespace-nowrap font-mono text-[10.5px]" style={{ color: "#475569" }}>
-                        {l.where}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </>
         )}
 

@@ -75,7 +75,6 @@ export default function BillingPage() {
   // reading the org's ledger, not a personal one. Framed on the capability
   // itself, not a role literal, per this file's own convention (#2459).
   const seesWholeTenant = can("customer", "billing.view");
-  const [ledgerOpen, setLedgerOpen] = useState(true);
   const [askOpen, setAskOpen] = useState(false);
   const [portalError, setPortalError] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
@@ -460,38 +459,6 @@ export default function BillingPage() {
         </>
       ) : null}
 
-      <div
-        className="flex flex-col gap-[9px] rounded-[14px] px-5 pb-[15px] pt-4"
-        style={{ border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.015)" }}
-      >
-        <div className="flex items-baseline gap-[10px]">
-          <span className="text-[13px] font-semibold text-[#f8fafc]">What this page deliberately does not do</span>
-          <button
-            type="button"
-            onClick={() => setLedgerOpen((v) => !v)}
-            className="ml-auto text-[11.5px] font-semibold text-[#64748b] hover:text-[#cbd5e1]"
-            data-testid="billing-ledger-toggle"
-          >
-            {ledgerOpen ? "Collapse" : "Expand"}
-          </button>
-        </div>
-        {ledgerOpen ? (
-          <div className="flex flex-col">
-            {LEDGER.map((l) => (
-              <div key={l.where} className="flex items-start gap-3 border-t py-2" style={{ borderColor: "rgba(255,255,255,.05)" }}>
-                <span className="min-w-0 flex-1 text-[11.5px] leading-[1.5] text-[#cbd5e1]">{l.gap}</span>
-                <span
-                  className="shrink-0 whitespace-nowrap text-[10.5px] text-[#475569]"
-                  style={{ fontFamily: "ui-monospace, Menlo, monospace" }}
-                >
-                  {l.where}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </div>
-
       {askOpen ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-6"
@@ -552,44 +519,5 @@ const MONITORING_TIERS = [
     bg: "rgba(255,255,255,.015)",
     lines: ["Everything in Growth", "Signed security plan each quarter", "Out-of-hours escalation"],
     foot: "Its monthly rate is unsettled internally, so none is quoted.",
-  },
-] as const;
-
-const LEDGER = [
-  {
-    gap: "No prices on the monitoring cards. Monitoring is metered per seat and carries no flat monthly figure, so a number there would be invented.",
-    where: "§8.1",
-  },
-  {
-    gap: "No tier switch, no annual toggle, no add-on picker. A control that repriced a hypothetical would read as changing what you pay.",
-    where: "§8.2",
-  },
-  {
-    gap: "No live plan state. No tenant holds a monthly monitoring subscription today, so there is nothing real to show as your current plan.",
-    where: "§1.6",
-  },
-  {
-    gap: "No pay button on a receipt. Paying an invoice from the portal is built but not surfaced here; the button on each row downloads the PDF.",
-    where: "§1.3",
-  },
-  {
-    gap: "Clicking a receipt row opens a real invoice detail page (#4116), not its PDF — the PDF stays on the separate \"Receipt\" download button.",
-    where: "§1.2",
-  },
-  {
-    gap: "No card details on this page. Cards and billing address live with Stripe, reached through the button at the top.",
-    where: "§1.6",
-  },
-  {
-    gap: "No fake rows when the read fails. A failed fetch says so; an empty ledger says that instead, and the two never share a state.",
-    where: "§5",
-  },
-  {
-    gap: "No retainer rate. Hours and their rate belong to My Architect, and this page shows money only from the invoice ledger.",
-    where: "§7",
-  },
-  {
-    gap: "No download where no PDF was stored. A receipt without a file shows why rather than a link that would 404.",
-    where: "§1.4",
   },
 ] as const;

@@ -41,8 +41,10 @@ import { cn } from "@/lib/utils";
  * against the real, live `portal-offers.ts` / `portal-presentations.ts` routes.
  *
  * Deliberate divergences from the design mock, all because the mock invents
- * client-side data the real reads don't provide — see the "what this page
- * deliberately does not do" card at the bottom for the full, honest list:
+ * client-side data the real reads don't provide (the internal "what this page
+ * deliberately does not do" disclosure the design carried for these has been
+ * removed from the customer-facing render per #4451; the divergences remain
+ * real regardless):
  *   - The customer-safe offer projection (contract pack §1) strips
  *     `service_class`, so this page cannot tell a project offer from a
  *     non-project one and shows one accepted-offer note for both, instead of
@@ -136,8 +138,6 @@ export default function CustomerOffersPage() {
           <SowTab />
         </TabsContent>
       </Tabs>
-
-      <DivergenceLedger />
     </div>
   );
 }
@@ -789,33 +789,3 @@ function SowTab() {
   );
 }
 
-// ── Data-honesty ledger ──────────────────────────────────────────────────────
-
-const LEDGER_GAPS: readonly string[] = [
-  "One price per offer. The customer read carries only the signal-adjusted price; base and internal figures never reach this page, so no \"was/now\" comparison is drawn.",
-  "No drafts. An offer your provider has not sent is filtered out of the list and 404s by id; this page never hints one is coming.",
-  "Accept and decline only from Sent. Any other state gets no buttons, matching the 422 the server returns for an invalid transition.",
-  "No platform-agreement checkbox. That agreement is between the platform and your provider, not you — the retired version of this page showed it as a UI-only gate that persisted nothing. No customer terms-acceptance record exists to write, so none is faked here.",
-  "This page cannot tell a project offer from a non-project one. The customer-safe offer read strips that internal field, so the accepted-offer note is the same for every offer rather than branching on service type.",
-  "Adjustments are live. They count only while their signal fires, and this page says so rather than presenting them as fixed line items.",
-  "Signing takes no payment and raises no event. Payment confirmation comes later from the processor, and the status moves to Paid on its own.",
-  "Viewing a statement of work is exact-login; signing is any login of your organization's account.",
-  "Live updates on the Offers tab come over the existing event channel with a 30s fallback poll; this page does not claim more than \"accepted\" and \"declined\" arrive that way.",
-];
-
-function DivergenceLedger() {
-  return (
-    <Card className="bg-muted/5">
-      <CardContent className="flex flex-col gap-2.5 pt-6">
-        <span className="text-[13px] font-semibold text-foreground">What this page deliberately does not do</span>
-        <div className="flex flex-col">
-          {LEDGER_GAPS.map((gap, i) => (
-            <div key={i} className="flex items-start gap-3 border-t border-border/50 py-2 first:border-t-0">
-              <span className="min-w-0 flex-1 text-[11.5px] leading-relaxed text-foreground">{gap}</span>
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}

@@ -17,38 +17,6 @@ const STEPS = [
   "Your organisation is marked inactive — the same status the Overview reads, so it shows there straight away.",
 ];
 
-const LEDGER = [
-  {
-    gap: "No cancel-by-service. The action is one call for the whole organisation; there is no per-subscription switch to draw.",
-    where: "§5",
-  },
-  {
-    gap: "No undo and no reactivate. Nothing resets an inactive organisation from the portal; the page says coming back is a conversation.",
-    where: "§5 · §7",
-  },
-  {
-    gap: "Provider-served customers get the real refusal, worded as the server words it, with the export still offered. The route is direct-business only, by design.",
-    where: "§5",
-  },
-  {
-    gap: '"Paused", not "cancelled", is what services land on. The page uses the real terminal status rather than a friendlier word the data never holds.',
-    where: "§5 · §7",
-  },
-  {
-    gap: "Nothing is deleted, and the page says so. Records are retained; the export keeps working after services end.",
-    where: "§4 · §5",
-  },
-  { gap: "Export prices are the historical figures recorded at purchase, and are labelled as such.", where: "§6" },
-  {
-    gap: "The provider's own three-step offboarding (request → export → archive) is their console's flow with its own roles, and is not drawn here.",
-    where: "§1–§4",
-  },
-  {
-    gap: "A failed subscription cancellation does not stop the rest. The page states that rather than promising a clean all-or-nothing.",
-    where: "§5",
-  },
-] as const;
-
 /**
  * Offboarding — "Leaving" (Git #4002, part of #1653). Adapted from
  * `Design/portal/design_handoff_full_site/screens/Offboarding.dc.html` per
@@ -63,14 +31,15 @@ const LEDGER = [
  * previously exposed a CustomerUser's servicing MSP's display name.
  *
  * NOT wired here, matching the landed design's own "what this page
- * deliberately does not do" ledger below, not an oversight: no per-service
- * cancel, no undo/reactivate control, no MSP-side 3-step offboarding console
- * (msp/offboarding/request|export|archive — that is the provider's own
- * surface, a different Feature).
+ * deliberately does not do" copy (that internal disclosure was removed from
+ * the customer-facing render per #4451; the omissions it described remain
+ * real), not an oversight: no per-service cancel, no undo/reactivate
+ * control, no MSP-side 3-step offboarding console (msp/offboarding/
+ * request|export|archive — that is the provider's own surface, a different
+ * Feature).
  */
 export default function OffboardingPage() {
   const live = useOffboardingLive();
-  const [ledgerOpen, setLedgerOpen] = useState(true);
   const [modal, setModal] = useState<"confirm" | null>(null);
   const [confirmText, setConfirmText] = useState("");
 
@@ -329,39 +298,6 @@ export default function OffboardingPage() {
           </div>
         </div>
       ) : null}
-
-      {/* Ledger */}
-      <div
-        className="flex flex-col gap-[9px] rounded-[14px] px-5 pb-[15px] pt-4"
-        style={{ border: "1px solid rgba(255,255,255,.07)", background: "rgba(255,255,255,.015)" }}
-      >
-        <div className="flex items-baseline gap-[10px]">
-          <span className="text-[13px] font-semibold text-[#f8fafc]">What this page deliberately does not do</span>
-          <button
-            type="button"
-            onClick={() => setLedgerOpen((v) => !v)}
-            className="ml-auto text-[11.5px] font-semibold text-[#64748b] hover:text-[#cbd5e1]"
-            data-testid="offboarding-ledger-toggle"
-          >
-            {ledgerOpen ? "Collapse" : "Expand"}
-          </button>
-        </div>
-        {ledgerOpen ? (
-          <div className="flex flex-col">
-            {LEDGER.map((l) => (
-              <div key={l.where + l.gap} className="flex items-start gap-3 border-t py-2" style={{ borderColor: "rgba(255,255,255,.05)" }}>
-                <span className="min-w-0 flex-1 text-[11.5px] leading-[1.5] text-[#cbd5e1]">{l.gap}</span>
-                <span
-                  className="shrink-0 whitespace-nowrap text-[10.5px] text-[#475569]"
-                  style={{ fontFamily: "ui-monospace, Menlo, monospace" }}
-                >
-                  {l.where}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </div>
 
       {/* Confirm modal */}
       {modal === "confirm" ? (

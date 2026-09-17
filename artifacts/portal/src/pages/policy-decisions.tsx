@@ -44,25 +44,6 @@ const HOW: { head: string; body: string }[] = [
   },
 ];
 
-const LEDGER: { gap: string; where: string }[] = [
-  {
-    gap: "No restate or withdraw action. A position is changed by signing a new one, and a signature cannot be withdrawn — there is no route for either.",
-    where: "§1",
-  },
-  {
-    gap: "Your own authorities (an insurance schedule, an internal records schedule) can only be cited as text on a decision. No route — yours or your MSP's — can enter one into the catalogue yet.",
-    where: "§6, #3042",
-  },
-  {
-    gap: "No MSP-side create for this register. A deliberate trust decision, not a missing column.",
-    where: "#2589 §2.4, #3035",
-  },
-  {
-    gap: "This page shows only the positions you started from scratch here. A position taken on an accepted risk lives on the Risk Register's own section instead — the two registers are never merged.",
-    where: "§0/§9",
-  },
-];
-
 export default function PolicyDecisionsPage() {
   const { data: decisions, isLoading, isError, error, refetch, isRefetching } = usePolicyRegister();
   const { data: obligations } = useComplianceObligations();
@@ -70,7 +51,6 @@ export default function PolicyDecisionsPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [howOpen, setHowOpen] = useState(false);
   const [attnOpen, setAttnOpen] = useState(true);
-  const [ledgerOpen, setLedgerOpen] = useState(true);
 
   const tierBlocked = (error as (Error & { code?: string }) | null)?.code === "TIER_UPGRADE_REQUIRED";
 
@@ -271,32 +251,6 @@ export default function PolicyDecisionsPage() {
           </CardContent>
         </Card>
       )}
-
-      <Card className="bg-muted/5">
-        <CardContent className="flex flex-col gap-2.5 pt-6">
-          <div className="flex items-baseline gap-2.5">
-            <span className="text-[13px] font-semibold text-foreground">What this page deliberately does not do</span>
-            <Button
-              variant="link"
-              size="sm"
-              className="ml-auto h-auto p-0 text-[11.5px] font-semibold text-muted-foreground"
-              onClick={() => setLedgerOpen((o) => !o)}
-            >
-              {ledgerOpen ? "Collapse" : "Expand"}
-            </Button>
-          </div>
-          {ledgerOpen && (
-            <div className="flex flex-col">
-              {LEDGER.map((l, i) => (
-                <div key={i} className="flex items-start gap-3 border-t border-border/50 py-2 first:border-t-0">
-                  <div className="min-w-0 flex-1 text-[11.5px] leading-relaxed text-foreground">{l.gap}</div>
-                  <span className="flex-none font-mono text-[10.5px] text-muted-foreground/70">{l.where}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
       <RecordDecisionDialog open={formOpen} onOpenChange={setFormOpen} />
     </div>

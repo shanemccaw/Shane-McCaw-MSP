@@ -90,19 +90,6 @@ const ROUTE_DECLARED_EVENTS = [
 // literal-string search) — subscribable but permanently dead.
 const DEAD_EVENT = "signal.fired";
 
-const LEDGER: { gap: string; where: string }[] = [
-  { gap: "No reveal of a secret after the moment it is created or rotated — only the 14-character prefix is readable afterwards.", where: "§6" },
-  { gap: "No replay of a failed delivery. Nothing in the platform can re-attempt one, so a delivery that exhausts its three attempts is lost.", where: "§7" },
-  { gap: "No access to the payload that was sent. It is stored against every delivery but never served.", where: "§2" },
-  { gap: "No paging past the most recent 200 deliveries per endpoint.", where: "§2" },
-  { gap: "No stored health. The status on each row is computed in the browser from the deliveries fetched, and can change with the page size read.", where: "§3" },
-  { gap: "No rotation history and no grace period — one secret at a time, replaced destructively.", where: "§2" },
-  { gap: "No archive on delete. The endpoint and its whole delivery history are removed together.", where: "§2" },
-  { gap: "No shared taxonomy with alert preferences. Category names line up; event names do not, and no alert condition is ever dispatched.", where: "§4" },
-  { gap: "No distinction between an endpoint that does not exist and one that belongs to someone else — both answer identically.", where: "§2" },
-  { gap: "No platform-owned endpoints, despite the owner type existing. Nothing can create one.", where: "§3" },
-];
-
 const HAIRLINE = "rgba(255,255,255,.09)";
 const ACCENT = "#0078D4";
 const CAUTION = "#c2a63d";
@@ -164,7 +151,6 @@ export function WebhooksContent() {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [catalogOpen, setCatalogOpen] = useState(false);
-  const [ledgerOpen, setLedgerOpen] = useState(true);
 
   const load = useCallback(async () => {
     setDataState("loading");
@@ -844,36 +830,6 @@ export function WebhooksContent() {
               filtering step and no approval step between the two.
             </span>
           </div>
-        )}
-      </div>
-
-      <div className="flex flex-col gap-2 rounded-2xl border p-4" style={{ borderColor: "rgba(255,255,255,.07)", background: "rgba(255,255,255,.015)" }}>
-        <div className="flex items-baseline gap-2.5">
-          <span className="text-[13px] font-semibold text-foreground">What this page deliberately does not do</span>
-          <button
-            type="button"
-            onClick={() => setLedgerOpen((o) => !o)}
-            className="ml-auto text-[11.5px] font-semibold"
-            style={{ color: "#64748b" }}
-          >
-            {ledgerOpen ? "Collapse" : "Expand"}
-          </button>
-        </div>
-        {ledgerOpen && (
-          <>
-            <div className="flex flex-col">
-              {LEDGER.map((l, i) => (
-                <div key={i} className="flex items-start gap-3 py-2" style={{ borderTop: i === 0 ? undefined : "1px solid rgba(255,255,255,.05)" }}>
-                  <span className="min-w-0 flex-1 text-[11.5px] leading-relaxed" style={{ color: "#cbd5e1" }}>{l.gap}</span>
-                  <span className="flex-none whitespace-nowrap font-mono text-[10.5px]" style={{ color: "#475569" }}>{l.where}</span>
-                </div>
-              ))}
-            </div>
-            <span className="pt-1 text-[10.5px] leading-relaxed" style={{ color: "#475569" }}>
-              None of these has an issue filed against it yet, so none is a settled decision — they are open questions
-              this design leaves visible rather than papers over.
-            </span>
-          </>
         )}
       </div>
 
