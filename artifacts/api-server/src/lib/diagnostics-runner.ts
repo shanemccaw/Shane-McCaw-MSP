@@ -28,7 +28,7 @@ import {
   portalWfRunsTable,
   portalWfOperatorTasksTable,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, lt } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { executeMonitoringPackage, type CheckResult } from "./monitor-executor.ts";
 import { emitWorkflowEvent } from "./workflow-executor.ts";
@@ -791,6 +791,13 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
     .set({ status: "running", startedAt: new Date(), updatedAt: new Date() })
     .where(eq(mspDiagnosticRunsTable.runId, runId));
 
+  // Liveness heartbeat (Git #4453). This run lives only inside this process —
+  // nothing resumes it after a restart — and its row carries no progress until
+  // the very end, so a killed process used to leave the row `running` forever.
+  // Bumping updated_at on a timer is what lets failInterruptedDiagnosticRuns()
+  // tell a genuinely live run (however slow its current check) from a dead one.
+  const heartbeat = startRunHeartbeat(runId);
+
   try {
     // Pre-flight: a missing tenantId is a known, resolvable-in-advance state
     // (consent never completed), not a per-check failure. Fail the whole run
@@ -1213,5 +1220,107 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
     });
 
     throw err;
+  } finally {
+    clearInterval(heartbeat);
   }
+}
+
+// ── Interrupted-run detection (Git #4453) ────────────────────────────────────
+//
+// runDiagnostics() is fire-and-forget inside the api-server process. When that
+// process exits mid-scan (a dev-server restart, a deploy, a crash) the run dies
+// with it, but its row stays `pending`/`running`. Every reader that treats those
+// statuses as live — /portal/scan-status (the shell's Tenant Status card, which
+// then read "Check 1 of 198" on every login because a dead run never sends a
+// progress event), /public/assessment-account, pillar-summary-stats,
+// telemetry-comparison — kept reporting a scan that was never going to finish.
+//
+// Deliberately heartbeat-based rather than an unconditional "fail everything
+// running at boot" sweep (the failOrphanedTestSuiteRuns shape): several
+// api-server processes can share one database (the dev server plus isolated
+// live-verify instances), and a boot-time sweep in one would fail a run another
+// process is genuinely still executing.
+
+const RUN_HEARTBEAT_MS = 60_000;
+/** Ten missed heartbeats — well past any pause a live process could produce. */
+export const DIAGNOSTICS_RUN_STALE_AFTER_MS = 10 * 60_000;
+export const INTERRUPTED_RUN_ERROR_MESSAGE =
+  "This scan was interrupted before it finished — the service restarted mid-scan, so no results were saved from it. Run the scan again to get results.";
+
+function startRunHeartbeat(runId: string): NodeJS.Timeout {
+  const timer = setInterval(() => {
+    db.update(mspDiagnosticRunsTable)
+      .set({ updatedAt: new Date() })
+      .where(
+        and(
+          eq(mspDiagnosticRunsTable.runId, runId),
+          inArray(mspDiagnosticRunsTable.status, ["pending", "running"]),
+        ),
+      )
+      .catch((err: unknown) => log.warn({ err, runId }, "diagnostics-runner: heartbeat write failed (non-fatal)"));
+  }, RUN_HEARTBEAT_MS);
+  // A heartbeat must never be the thing keeping the process alive.
+  timer.unref();
+  return timer;
+}
+
+/**
+ * Marks every `pending`/`running` diagnostics run whose heartbeat has been
+ * silent for DIAGNOSTICS_RUN_STALE_AFTER_MS as `failed`, with a real reason, and
+ * raises the same operator task a run that failed in-process gets. Safe to run
+ * from any number of processes at once: the UPDATE ... RETURNING claims each
+ * row exactly once. Returns the number of runs it failed.
+ */
+export async function failInterruptedDiagnosticRuns(): Promise<number> {
+  const cutoff = new Date(Date.now() - DIAGNOSTICS_RUN_STALE_AFTER_MS);
+  const now = new Date();
+
+  const interrupted = await db
+    .update(mspDiagnosticRunsTable)
+    .set({
+      status: "failed",
+      completedAt: now,
+      errorMessage: INTERRUPTED_RUN_ERROR_MESSAGE,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        inArray(mspDiagnosticRunsTable.status, ["pending", "running"]),
+        lt(mspDiagnosticRunsTable.updatedAt, cutoff),
+      ),
+    )
+    .returning({
+      runId: mspDiagnosticRunsTable.runId,
+      mspId: mspDiagnosticRunsTable.mspId,
+      customerId: mspDiagnosticRunsTable.customerId,
+      tenantId: mspDiagnosticRunsTable.tenantId,
+    });
+
+  for (const run of interrupted) {
+    log.warn(
+      { runId: run.runId, customerId: run.customerId, tenantId: run.tenantId },
+      "diagnostics-runner: run interrupted — no heartbeat since the owning process stopped; marked failed",
+    );
+    // Only does anything if this process still holds replay state for the run.
+    clearDiagnosticsRunSSEState(run.runId);
+
+    let customerName = run.tenantId ? `Tenant ${run.tenantId.slice(0, 8)}` : "unknown customer";
+    if (run.customerId != null) {
+      const [customer] = await db
+        .select({ name: tenantsTable.customerName })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, run.customerId))
+        .limit(1);
+      if (customer?.name) customerName = customer.name;
+    }
+    await createFailureOperatorTask({
+      runId: run.runId,
+      mspId: run.mspId,
+      customerId: run.customerId,
+      customerName,
+      errorMessage: INTERRUPTED_RUN_ERROR_MESSAGE,
+    });
+  }
+
+  return interrupted.length;
 }

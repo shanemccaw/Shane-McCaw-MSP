@@ -24,6 +24,7 @@ import { db } from "@workspace/db";
 import { insightsGeneratedDocumentsTable, wfRunsTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 import { failOrphanedTestSuiteRuns } from "./lib/test-suite-runner.ts";
+import { failInterruptedDiagnosticRuns } from "./lib/diagnostics-runner.ts";
 import { installAiUsageSink } from "./lib/ai-usage-sink.ts";
 import { primeLadderSnapshot } from "./middlewares/rbac-ladder.ts";
 
@@ -110,6 +111,21 @@ app.listen(port, (err) => {
   failOrphanedTestSuiteRuns().catch((err) => {
     logger.warn({ err }, "Orphaned test-suite-run sweep failed (non-fatal)");
   });
+
+  // Git #4453 — a diagnostics run whose process died mid-scan otherwise stays
+  // `running` forever (the shell read "Check 1 of 198" on every login). The
+  // sweep is heartbeat-based, so a run killed by THIS restart is only failed
+  // once its heartbeat has been silent long enough — hence the interval too,
+  // not just the boot pass.
+  const runInterruptedDiagnosticsSweep = () => {
+    failInterruptedDiagnosticRuns()
+      .then((count) => {
+        if (count > 0) logger.warn({ count }, "Interrupted diagnostics runs marked failed");
+      })
+      .catch((err) => logger.warn({ err }, "Interrupted diagnostics-run sweep failed (non-fatal)"));
+  };
+  runInterruptedDiagnosticsSweep();
+  setInterval(runInterruptedDiagnosticsSweep, 2 * 60 * 1000); // every 2 minutes
 
   checkWebhookHealthOnStartup(logger).catch((err) => {
     logger.warn({ err }, "Stripe webhook health check failed (non-fatal)");
