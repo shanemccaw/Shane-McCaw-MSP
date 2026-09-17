@@ -1,0 +1,14 @@
+{
+  "StepIndex": 6,
+  "Route": "http://localhost:5173/scan/account",
+  "Selector": "[data-testid=\u0027freescan-account-engagement\u0027]",
+  "Description": "expect [data-testid=\u0027freescan-account-engagement\u0027]",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 46,
+  "Changes": [
+    "Captured DOM scope: 46 total element nodes under \u0027[data-testid=\u0027freescan-account-engagement\u0027]\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-16T23:48:57.7028242-04:00"
+}

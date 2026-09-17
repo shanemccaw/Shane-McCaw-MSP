@@ -1,0 +1,14 @@
+{
+  "StepIndex": 4,
+  "Route": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+  "Selector": "[data-testid=\u0027buy-steprail\u0027]",
+  "Description": "expect [data-testid=\u0027buy-steprail\u0027]",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 20,
+  "Changes": [
+    "Captured DOM scope: 20 total element nodes under \u0027[data-testid=\u0027buy-steprail\u0027]\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-17T09:25:27.3746128-04:00"
+}

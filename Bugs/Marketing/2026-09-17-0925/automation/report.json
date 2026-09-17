@@ -1,0 +1,428 @@
+{
+  "testName": "Issue #0 - Marketing Buy / Checkout page (/buy) \u2014 the one checkout for all three products. Asserts the product-specific rules that make or break the flow: monitoring gates pricing\u002Bpayment behind a tenant connection, retainer offers a skippable scan and is never gated, packs are multi-select with a summed one-time total, and the terms checkbox gates the pay button without ever hiding the payment fields.",
+  "productName": "Marketing",
+  "sessionId": "2026-09-17-0925",
+  "startedAt": "2026-09-17T09:25:19.0556042-04:00",
+  "endedAt": "2026-09-17T09:25:41.3045445-04:00",
+  "durationSeconds": 22.25,
+  "success": true,
+  "summary": "\u2714 TEST PASSED (11/11 Steps)",
+  "urlsVisited": [
+    "http://localhost:5173/buy?product=monitoring\u0026seats=250"
+  ],
+  "steps": [
+    {
+      "index": 1,
+      "action": "goto",
+      "selector": "/buy?product=monitoring\u0026seats=250",
+      "targetUrl": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "expected": "navigation to http://localhost:5173/buy?product=monitoring\u0026seats=250 succeeds",
+      "actual": "succeeded",
+      "passed": true,
+      "durationMs": 292,
+      "detail": "Navigated to http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092518\\screenshots\\1.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 2,
+      "action": "expect",
+      "selector": "[data-testid=\u0027buy-page\u0027][data-stage=\u0027identity\u0027]",
+      "targetUrl": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "expected": "[data-testid=\u0027buy-page\u0027][data-stage=\u0027identity\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 21,
+      "detail": "[data-testid=\u0027buy-page\u0027][data-stage=\u0027identity\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092518\\screenshots\\2.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 3,
+      "action": "expect",
+      "selector": "[data-testid=\u0027buy-account\u0027]",
+      "targetUrl": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "expected": "[data-testid=\u0027buy-account\u0027] state == \u0027visible\u0027; textContains any of [\u0022Start with your account\u0022]",
+      "actual": "found=True, visible=True; text=\u0022CREATE YOUR ACCOUNT \u00B7 STEP 1 OF 4 Start with your account Your account comes first, before anything touches your tenant or your card. The read-only connection and the payment are then made as you, not...\u0022",
+      "passed": true,
+      "durationMs": 20,
+      "detail": "[data-testid=\u0027buy-account\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained \u0022Start with your account\u0022",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092518\\screenshots\\3.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 4,
+      "action": "expect",
+      "selector": "[data-testid=\u0027buy-steprail\u0027]",
+      "targetUrl": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "expected": "[data-testid=\u0027buy-steprail\u0027] state == \u0027visible\u0027; textContains any of [\u0022Select tier\u0022]",
+      "actual": "found=True, visible=True; text=\u00221 Create account \u2192 2 Select tier \u2192 3 Connect \u2192 4 Pay \u2192 5 Login\u0022",
+      "passed": true,
+      "durationMs": 38,
+      "detail": "[data-testid=\u0027buy-steprail\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained \u0022Select tier\u0022",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092518\\screenshots\\4.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 5,
+      "action": "expect",
+      "selector": "[data-testid=\u0027buy-connect\u0027]",
+      "targetUrl": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "expected": "[data-testid=\u0027buy-connect\u0027] state == \u0027absent\u0027",
+      "actual": "found=False, visible=False",
+      "passed": true,
+      "durationMs": 38,
+      "detail": "[data-testid=\u0027buy-connect\u0027] \u2014 state \u0027absent\u0027 matched (found=False, visible=False)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092518\\screenshots\\5.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 6,
+      "action": "expect",
+      "selector": "[data-testid=\u0027buy-pay\u0027]",
+      "targetUrl": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "expected": "[data-testid=\u0027buy-pay\u0027] state == \u0027absent\u0027",
+      "actual": "found=False, visible=False",
+      "passed": true,
+      "durationMs": 20,
+      "detail": "[data-testid=\u0027buy-pay\u0027] \u2014 state \u0027absent\u0027 matched (found=False, visible=False)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092518\\screenshots\\6.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 7,
+      "action": "expect",
+      "selector": "[data-testid=\u0027buy-resume-open\u0027]",
+      "targetUrl": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "expected": "[data-testid=\u0027buy-resume-open\u0027] state == \u0027visible\u0027; textContains any of [\u0022Sign in to resume\u0022]",
+      "actual": "found=True, visible=True; text=\u0022Already started a purchase? Sign in to resume it.\u0022",
+      "passed": true,
+      "durationMs": 20,
+      "detail": "[data-testid=\u0027buy-resume-open\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained \u0022Sign in to resume\u0022",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092518\\screenshots\\7.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 8,
+      "action": "goto",
+      "selector": "/buy?product=monitoring\u0026resume=1",
+      "targetUrl": "http://localhost:5173/buy?product=monitoring\u0026resume=1",
+      "expected": "navigation to http://localhost:5173/buy?product=monitoring\u0026resume=1 succeeds",
+      "actual": "succeeded",
+      "passed": true,
+      "durationMs": 243,
+      "detail": "Navigated to http://localhost:5173/buy?product=monitoring\u0026resume=1",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092518\\screenshots\\8.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 9,
+      "action": "expect",
+      "selector": "[data-testid=\u0027buy-resume\u0027]",
+      "targetUrl": "http://localhost:5173/buy?product=monitoring\u0026resume=1",
+      "expected": "[data-testid=\u0027buy-resume\u0027] state == \u0027visible\u0027; textContains any of [\u0022Sign in to resume your purchase\u0022]",
+      "actual": "found=True, visible=True; text=\u0022Sign in to resume your purchase Use the email and password you created your account with. You\u0027ll pick up exactly where you left off. Sign in and resume Start a new purchase instead\u0022",
+      "passed": true,
+      "durationMs": 16,
+      "detail": "[data-testid=\u0027buy-resume\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained \u0022Sign in to resume your purchase\u0022",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092518\\screenshots\\9.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 10,
+      "action": "expect",
+      "selector": "[data-testid=\u0027buy-resume-email\u0027]",
+      "targetUrl": "http://localhost:5173/buy?product=monitoring\u0026resume=1",
+      "expected": "[data-testid=\u0027buy-resume-email\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 17,
+      "detail": "[data-testid=\u0027buy-resume-email\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092518\\screenshots\\10.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 11,
+      "action": "expect",
+      "selector": "[data-testid=\u0027buy-account\u0027]",
+      "targetUrl": "http://localhost:5173/buy?product=monitoring\u0026resume=1",
+      "expected": "[data-testid=\u0027buy-account\u0027] state == \u0027absent\u0027",
+      "actual": "found=False, visible=False",
+      "passed": true,
+      "durationMs": 17,
+      "detail": "[data-testid=\u0027buy-account\u0027] \u2014 state \u0027absent\u0027 matched (found=False, visible=False)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092518\\screenshots\\11.png",
+      "domSnapshotPath": null
+    }
+  ],
+  "consoleErrors": [],
+  "apiFailures": [],
+  "executedCommands": [],
+  "screenshotPaths": [
+    "screenshots/screenshot-01.png",
+    "screenshots/screenshot-02.png",
+    "screenshots/screenshot-03.png",
+    "screenshots/screenshot-04.png",
+    "screenshots/screenshot-05.png",
+    "screenshots/screenshot-06.png",
+    "screenshots/screenshot-07.png",
+    "screenshots/screenshot-08.png",
+    "screenshots/screenshot-09.png",
+    "screenshots/screenshot-10.png",
+    "screenshots/screenshot-11.png"
+  ],
+  "screenshotDiffs": [
+    {
+      "StepIndex": 1,
+      "StepLabel": "goto /buy?product=monitoring\u0026seats=250",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092518\\screenshots\\1.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\marketing\\buy-page\\1.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 2,
+      "StepLabel": "expect [data-testid=\u0027buy-page\u0027][data-stage=\u0027identity\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092518\\screenshots\\2.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\marketing\\buy-page\\2.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 3,
+      "StepLabel": "expect [data-testid=\u0027buy-account\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092518\\screenshots\\3.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\marketing\\buy-page\\3.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 4,
+      "StepLabel": "expect [data-testid=\u0027buy-steprail\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092518\\screenshots\\4.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\marketing\\buy-page\\4.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 5,
+      "StepLabel": "expect [data-testid=\u0027buy-connect\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092518\\screenshots\\5.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\marketing\\buy-page\\5.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 6,
+      "StepLabel": "expect [data-testid=\u0027buy-pay\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092518\\screenshots\\6.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\marketing\\buy-page\\6.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 7,
+      "StepLabel": "expect [data-testid=\u0027buy-resume-open\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092518\\screenshots\\7.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\marketing\\buy-page\\7.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 8,
+      "StepLabel": "goto /buy?product=monitoring\u0026resume=1",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092518\\screenshots\\8.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\marketing\\buy-page\\8.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 9,
+      "StepLabel": "expect [data-testid=\u0027buy-resume\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092518\\screenshots\\9.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\marketing\\buy-page\\9.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 10,
+      "StepLabel": "expect [data-testid=\u0027buy-resume-email\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092518\\screenshots\\10.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\marketing\\buy-page\\10.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 11,
+      "StepLabel": "expect [data-testid=\u0027buy-account\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092518\\screenshots\\11.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\marketing\\buy-page\\11.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    }
+  ],
+  "domDiffs": [
+    {
+      "StepIndex": 1,
+      "Route": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "Selector": "/buy?product=monitoring\u0026seats=250",
+      "Description": "goto /buy?product=monitoring\u0026seats=250",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [],
+      "SnapshotPath": "dom/dom-step-01.json",
+      "Timestamp": "2026-09-17T09:25:22.4167551-04:00"
+    },
+    {
+      "StepIndex": 2,
+      "Route": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "Selector": "[data-testid=\u0027buy-page\u0027][data-stage=\u0027identity\u0027]",
+      "Description": "expect [data-testid=\u0027buy-page\u0027][data-stage=\u0027identity\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 49,
+      "Changes": [
+        "Captured DOM scope: 49 total element nodes under \u0027[data-testid=\u0027buy-page\u0027][data-stage=\u0027identity\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-02.json",
+      "Timestamp": "2026-09-17T09:25:24.0002465-04:00"
+    },
+    {
+      "StepIndex": 3,
+      "Route": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "Selector": "[data-testid=\u0027buy-account\u0027]",
+      "Description": "expect [data-testid=\u0027buy-account\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 10,
+      "Changes": [
+        "Captured DOM scope: 10 total element nodes under \u0027[data-testid=\u0027buy-account\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-03.json",
+      "Timestamp": "2026-09-17T09:25:25.7764996-04:00"
+    },
+    {
+      "StepIndex": 4,
+      "Route": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "Selector": "[data-testid=\u0027buy-steprail\u0027]",
+      "Description": "expect [data-testid=\u0027buy-steprail\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 20,
+      "Changes": [
+        "Captured DOM scope: 20 total element nodes under \u0027[data-testid=\u0027buy-steprail\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-04.json",
+      "Timestamp": "2026-09-17T09:25:27.3746128-04:00"
+    },
+    {
+      "StepIndex": 5,
+      "Route": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "Selector": "[data-testid=\u0027buy-connect\u0027]",
+      "Description": "expect [data-testid=\u0027buy-connect\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 52,
+      "Changes": [
+        "Captured DOM scope: 52 total element nodes under \u0027[data-testid=\u0027buy-connect\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-05.json",
+      "Timestamp": "2026-09-17T09:25:28.9784311-04:00"
+    },
+    {
+      "StepIndex": 6,
+      "Route": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "Selector": "[data-testid=\u0027buy-pay\u0027]",
+      "Description": "expect [data-testid=\u0027buy-pay\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 52,
+      "Changes": [
+        "Captured DOM scope: 52 total element nodes under \u0027[data-testid=\u0027buy-pay\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-06.json",
+      "Timestamp": "2026-09-17T09:25:30.5784892-04:00"
+    },
+    {
+      "StepIndex": 7,
+      "Route": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "Selector": "[data-testid=\u0027buy-resume-open\u0027]",
+      "Description": "expect [data-testid=\u0027buy-resume-open\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027[data-testid=\u0027buy-resume-open\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-07.json",
+      "Timestamp": "2026-09-17T09:25:32.2075828-04:00"
+    },
+    {
+      "StepIndex": 8,
+      "Route": "http://localhost:5173/buy?product=monitoring\u0026resume=1",
+      "Selector": "/buy?product=monitoring\u0026resume=1",
+      "Description": "goto /buy?product=monitoring\u0026resume=1",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [],
+      "SnapshotPath": "dom/dom-step-08.json",
+      "Timestamp": "2026-09-17T09:25:34.6172393-04:00"
+    },
+    {
+      "StepIndex": 9,
+      "Route": "http://localhost:5173/buy?product=monitoring\u0026resume=1",
+      "Selector": "[data-testid=\u0027buy-resume\u0027]",
+      "Description": "expect [data-testid=\u0027buy-resume\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 6,
+      "Changes": [
+        "Captured DOM scope: 6 total element nodes under \u0027[data-testid=\u0027buy-resume\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-09.json",
+      "Timestamp": "2026-09-17T09:25:36.3379144-04:00"
+    },
+    {
+      "StepIndex": 10,
+      "Route": "http://localhost:5173/buy?product=monitoring\u0026resume=1",
+      "Selector": "[data-testid=\u0027buy-resume-email\u0027]",
+      "Description": "expect [data-testid=\u0027buy-resume-email\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027[data-testid=\u0027buy-resume-email\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-10.json",
+      "Timestamp": "2026-09-17T09:25:38.0389484-04:00"
+    },
+    {
+      "StepIndex": 11,
+      "Route": "http://localhost:5173/buy?product=monitoring\u0026resume=1",
+      "Selector": "[data-testid=\u0027buy-account\u0027]",
+      "Description": "expect [data-testid=\u0027buy-account\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 47,
+      "Changes": [
+        "Captured DOM scope: 47 total element nodes under \u0027[data-testid=\u0027buy-account\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-11.json",
+      "Timestamp": "2026-09-17T09:25:39.6456547-04:00"
+    }
+  ],
+  "recommendations": "All automated UI steps passed. Review baseline screenshots for visual drift."
+}

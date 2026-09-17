@@ -1,0 +1,14 @@
+{
+  "StepIndex": 3,
+  "Route": "http://localhost:5173/scan/account",
+  "Selector": "body",
+  "Description": "expect body",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 46,
+  "Changes": [
+    "Captured DOM scope: 46 total element nodes under \u0027body\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-16T23:48:52.9576178-04:00"
+}

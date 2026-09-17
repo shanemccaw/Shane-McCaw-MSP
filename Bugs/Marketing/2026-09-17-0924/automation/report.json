@@ -1,0 +1,394 @@
+{
+  "testName": "Issue #0 - Marketing Buy / Checkout page (/buy) \u2014 the one checkout for all three products. Asserts the product-specific rules that make or break the flow: monitoring gates pricing\u002Bpayment behind a tenant connection, retainer offers a skippable scan and is never gated, packs are multi-select with a summed one-time total, and the terms checkbox gates the pay button without ever hiding the payment fields.",
+  "productName": "Marketing",
+  "sessionId": "2026-09-17-0924",
+  "startedAt": "2026-09-17T09:24:35.6849653-04:00",
+  "endedAt": "2026-09-17T09:25:03.2607078-04:00",
+  "durationSeconds": 27.58,
+  "success": true,
+  "summary": "\u2714 TEST PASSED (10/10 Steps)",
+  "urlsVisited": [
+    "http://localhost:5175/portal/login",
+    "http://localhost:5173/buy?product=monitoring\u0026seats=250"
+  ],
+  "steps": [
+    {
+      "index": 1,
+      "action": "goto",
+      "selector": "/buy?product=monitoring\u0026seats=250",
+      "targetUrl": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "expected": "navigation to http://localhost:5173/buy?product=monitoring\u0026seats=250 succeeds",
+      "actual": "succeeded",
+      "passed": true,
+      "durationMs": 859,
+      "detail": "Navigated to http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092433\\screenshots\\1.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 2,
+      "action": "expect",
+      "selector": "[data-testid=\u0027buy-page\u0027][data-stage=\u0027identity\u0027]",
+      "targetUrl": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "expected": "[data-testid=\u0027buy-page\u0027][data-stage=\u0027identity\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 20,
+      "detail": "[data-testid=\u0027buy-page\u0027][data-stage=\u0027identity\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092433\\screenshots\\2.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 3,
+      "action": "expect",
+      "selector": "[data-testid=\u0027buy-steprail\u0027]",
+      "targetUrl": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "expected": "[data-testid=\u0027buy-steprail\u0027] state == \u0027visible\u0027; textContains any of [\u0022Select tier\u0022]",
+      "actual": "found=True, visible=True; text=\u00221 Create account \u2192 2 Select tier \u2192 3 Connect \u2192 4 Pay \u2192 5 Login\u0022",
+      "passed": true,
+      "durationMs": 33,
+      "detail": "[data-testid=\u0027buy-steprail\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained \u0022Select tier\u0022",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092433\\screenshots\\3.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 4,
+      "action": "expect",
+      "selector": "[data-testid=\u0027buy-steprail\u0027]",
+      "targetUrl": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "expected": "[data-testid=\u0027buy-steprail\u0027] state == \u0027visible\u0027; textContains any of [\u0022Connect\u0022]",
+      "actual": "found=True, visible=True; text=\u00221 Create account \u2192 2 Select tier \u2192 3 Connect \u2192 4 Pay \u2192 5 Login\u0022",
+      "passed": true,
+      "durationMs": 15,
+      "detail": "[data-testid=\u0027buy-steprail\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained \u0022Connect\u0022",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092433\\screenshots\\4.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 5,
+      "action": "expect",
+      "selector": "[data-testid=\u0027buy-steprail\u0027]",
+      "targetUrl": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "expected": "[data-testid=\u0027buy-steprail\u0027] state == \u0027visible\u0027; textContains any of [\u0022Pay\u0022]",
+      "actual": "found=True, visible=True; text=\u00221 Create account \u2192 2 Select tier \u2192 3 Connect \u2192 4 Pay \u2192 5 Login\u0022",
+      "passed": true,
+      "durationMs": 23,
+      "detail": "[data-testid=\u0027buy-steprail\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained \u0022Pay\u0022",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092433\\screenshots\\5.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 6,
+      "action": "expect",
+      "selector": "[data-testid=\u0027buy-steprail\u0027]",
+      "targetUrl": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "expected": "[data-testid=\u0027buy-steprail\u0027] state == \u0027visible\u0027; textContains any of [\u0022Login\u0022]",
+      "actual": "found=True, visible=True; text=\u00221 Create account \u2192 2 Select tier \u2192 3 Connect \u2192 4 Pay \u2192 5 Login\u0022",
+      "passed": true,
+      "durationMs": 22,
+      "detail": "[data-testid=\u0027buy-steprail\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained \u0022Login\u0022",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092433\\screenshots\\6.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 7,
+      "action": "expect",
+      "selector": "[data-testid=\u0027buy-tier-continue\u0027]",
+      "targetUrl": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "expected": "[data-testid=\u0027buy-tier-continue\u0027] state == \u0027absent\u0027",
+      "actual": "found=False, visible=False",
+      "passed": true,
+      "durationMs": 359,
+      "detail": "[data-testid=\u0027buy-tier-continue\u0027] \u2014 state \u0027absent\u0027 matched (found=False, visible=False)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092433\\screenshots\\7.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 8,
+      "action": "expect",
+      "selector": "[data-testid=\u0027buy-tier-change\u0027]",
+      "targetUrl": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "expected": "[data-testid=\u0027buy-tier-change\u0027] state == \u0027absent\u0027",
+      "actual": "found=False, visible=False",
+      "passed": true,
+      "durationMs": 15,
+      "detail": "[data-testid=\u0027buy-tier-change\u0027] \u2014 state \u0027absent\u0027 matched (found=False, visible=False)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092433\\screenshots\\8.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 9,
+      "action": "expect",
+      "selector": "[data-testid=\u0027buy-connect\u0027]",
+      "targetUrl": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "expected": "[data-testid=\u0027buy-connect\u0027] state == \u0027absent\u0027",
+      "actual": "found=False, visible=False",
+      "passed": true,
+      "durationMs": 29,
+      "detail": "[data-testid=\u0027buy-connect\u0027] \u2014 state \u0027absent\u0027 matched (found=False, visible=False)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092433\\screenshots\\9.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 10,
+      "action": "expect",
+      "selector": "[data-testid=\u0027buy-pay\u0027]",
+      "targetUrl": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "expected": "[data-testid=\u0027buy-pay\u0027] state == \u0027absent\u0027",
+      "actual": "found=False, visible=False",
+      "passed": true,
+      "durationMs": 33,
+      "detail": "[data-testid=\u0027buy-pay\u0027] \u2014 state \u0027absent\u0027 matched (found=False, visible=False)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092433\\screenshots\\10.png",
+      "domSnapshotPath": null
+    }
+  ],
+  "consoleErrors": [],
+  "apiFailures": [],
+  "executedCommands": [],
+  "screenshotPaths": [
+    "screenshots/screenshot-01.png",
+    "screenshots/screenshot-02.png",
+    "screenshots/screenshot-03.png",
+    "screenshots/screenshot-04.png",
+    "screenshots/screenshot-05.png",
+    "screenshots/screenshot-06.png",
+    "screenshots/screenshot-07.png",
+    "screenshots/screenshot-08.png",
+    "screenshots/screenshot-09.png",
+    "screenshots/screenshot-10.png"
+  ],
+  "screenshotDiffs": [
+    {
+      "StepIndex": 1,
+      "StepLabel": "goto /buy?product=monitoring\u0026seats=250",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092433\\screenshots\\1.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\marketing\\buy-page\\1.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 2,
+      "StepLabel": "expect [data-testid=\u0027buy-page\u0027][data-stage=\u0027identity\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092433\\screenshots\\2.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\marketing\\buy-page\\2.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 3,
+      "StepLabel": "expect [data-testid=\u0027buy-steprail\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092433\\screenshots\\3.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\marketing\\buy-page\\3.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 4,
+      "StepLabel": "expect [data-testid=\u0027buy-steprail\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092433\\screenshots\\4.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\marketing\\buy-page\\4.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 5,
+      "StepLabel": "expect [data-testid=\u0027buy-steprail\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092433\\screenshots\\5.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\marketing\\buy-page\\5.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 6,
+      "StepLabel": "expect [data-testid=\u0027buy-steprail\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092433\\screenshots\\6.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\marketing\\buy-page\\6.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 7,
+      "StepLabel": "expect [data-testid=\u0027buy-tier-continue\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092433\\screenshots\\7.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\marketing\\buy-page\\7.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 8,
+      "StepLabel": "expect [data-testid=\u0027buy-tier-change\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092433\\screenshots\\8.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\marketing\\buy-page\\8.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 9,
+      "StepLabel": "expect [data-testid=\u0027buy-connect\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092433\\screenshots\\9.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\marketing\\buy-page\\9.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 10,
+      "StepLabel": "expect [data-testid=\u0027buy-pay\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260917092433\\screenshots\\10.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\marketing\\buy-page\\10.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    }
+  ],
+  "domDiffs": [
+    {
+      "StepIndex": 1,
+      "Route": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "Selector": "/buy?product=monitoring\u0026seats=250",
+      "Description": "goto /buy?product=monitoring\u0026seats=250",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [],
+      "SnapshotPath": "dom/dom-step-01.json",
+      "Timestamp": "2026-09-17T09:24:45.8852571-04:00"
+    },
+    {
+      "StepIndex": 2,
+      "Route": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "Selector": "[data-testid=\u0027buy-page\u0027][data-stage=\u0027identity\u0027]",
+      "Description": "expect [data-testid=\u0027buy-page\u0027][data-stage=\u0027identity\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 49,
+      "Changes": [
+        "Captured DOM scope: 49 total element nodes under \u0027[data-testid=\u0027buy-page\u0027][data-stage=\u0027identity\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-02.json",
+      "Timestamp": "2026-09-17T09:24:47.4991968-04:00"
+    },
+    {
+      "StepIndex": 3,
+      "Route": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "Selector": "[data-testid=\u0027buy-steprail\u0027]",
+      "Description": "expect [data-testid=\u0027buy-steprail\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 20,
+      "Changes": [
+        "Captured DOM scope: 20 total element nodes under \u0027[data-testid=\u0027buy-steprail\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-03.json",
+      "Timestamp": "2026-09-17T09:24:49.1490326-04:00"
+    },
+    {
+      "StepIndex": 4,
+      "Route": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "Selector": "[data-testid=\u0027buy-steprail\u0027]",
+      "Description": "expect [data-testid=\u0027buy-steprail\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 20,
+      "Changes": [
+        "Captured DOM scope: 20 total element nodes under \u0027[data-testid=\u0027buy-steprail\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-04.json",
+      "Timestamp": "2026-09-17T09:24:50.7661805-04:00"
+    },
+    {
+      "StepIndex": 5,
+      "Route": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "Selector": "[data-testid=\u0027buy-steprail\u0027]",
+      "Description": "expect [data-testid=\u0027buy-steprail\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 20,
+      "Changes": [
+        "Captured DOM scope: 20 total element nodes under \u0027[data-testid=\u0027buy-steprail\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-05.json",
+      "Timestamp": "2026-09-17T09:24:52.4140413-04:00"
+    },
+    {
+      "StepIndex": 6,
+      "Route": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "Selector": "[data-testid=\u0027buy-steprail\u0027]",
+      "Description": "expect [data-testid=\u0027buy-steprail\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 20,
+      "Changes": [
+        "Captured DOM scope: 20 total element nodes under \u0027[data-testid=\u0027buy-steprail\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-06.json",
+      "Timestamp": "2026-09-17T09:24:54.0303683-04:00"
+    },
+    {
+      "StepIndex": 7,
+      "Route": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "Selector": "[data-testid=\u0027buy-tier-continue\u0027]",
+      "Description": "expect [data-testid=\u0027buy-tier-continue\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 52,
+      "Changes": [
+        "Captured DOM scope: 52 total element nodes under \u0027[data-testid=\u0027buy-tier-continue\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-07.json",
+      "Timestamp": "2026-09-17T09:24:57.1310982-04:00"
+    },
+    {
+      "StepIndex": 8,
+      "Route": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "Selector": "[data-testid=\u0027buy-tier-change\u0027]",
+      "Description": "expect [data-testid=\u0027buy-tier-change\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 52,
+      "Changes": [
+        "Captured DOM scope: 52 total element nodes under \u0027[data-testid=\u0027buy-tier-change\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-08.json",
+      "Timestamp": "2026-09-17T09:24:58.7495885-04:00"
+    },
+    {
+      "StepIndex": 9,
+      "Route": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "Selector": "[data-testid=\u0027buy-connect\u0027]",
+      "Description": "expect [data-testid=\u0027buy-connect\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 52,
+      "Changes": [
+        "Captured DOM scope: 52 total element nodes under \u0027[data-testid=\u0027buy-connect\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-09.json",
+      "Timestamp": "2026-09-17T09:25:00.390158-04:00"
+    },
+    {
+      "StepIndex": 10,
+      "Route": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+      "Selector": "[data-testid=\u0027buy-pay\u0027]",
+      "Description": "expect [data-testid=\u0027buy-pay\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 52,
+      "Changes": [
+        "Captured DOM scope: 52 total element nodes under \u0027[data-testid=\u0027buy-pay\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-10.json",
+      "Timestamp": "2026-09-17T09:25:01.9855828-04:00"
+    }
+  ],
+  "recommendations": "All automated UI steps passed. Review baseline screenshots for visual drift."
+}

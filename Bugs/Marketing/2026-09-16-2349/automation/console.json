@@ -1,0 +1,8 @@
+[
+  {
+    "level": "error",
+    "message": "[console.error] [billing] free-scan review: SOW read failed {\u0022err\u0022:{}}",
+    "stack": "Error\n    at console.error (\u003Canonymous\u003E:23:25)\n    at emit (http://localhost:5173/src/lib/logger.ts:3:17)\n    at Object.error (http://localhost:5173/src/lib/logger.ts:10:35)\n    at http://localhost:5173/src/marketing/pages/FreeScanReview.tsx:403:13",
+    "timestamp": "2026-09-16T23:50:01.2305154-04:00"
+  }
+]

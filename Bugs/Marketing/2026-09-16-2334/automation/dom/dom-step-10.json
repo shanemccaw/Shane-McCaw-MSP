@@ -1,0 +1,12 @@
+{
+  "StepIndex": 10,
+  "Route": "http://localhost:5173/buy?product=retainer\u0026resume=1",
+  "Selector": "/buy?product=retainer\u0026resume=1",
+  "Description": "goto /buy?product=retainer\u0026resume=1",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 0,
+  "Changes": [],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-16T23:35:06.5579756-04:00"
+}

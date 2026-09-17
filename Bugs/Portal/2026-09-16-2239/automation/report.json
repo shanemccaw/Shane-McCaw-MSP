@@ -1,0 +1,53 @@
+{
+  "testName": "Issue #4452 - Change Control add-on gate (#4452, Feature #1486) \u2014 when the calling tenant holds no active \u0060change_control\u0060 row in tenant_add_on_entitlements, GET /api/portal/change-control answers 402 ADD_ON_REQUIRED (requireAddOnEntitlement, artifacts/api-server/src/lib/portal-addon-entitlements.ts). artifacts/portal/src/pages/change-control.tsx must render that as its own \u0027add-on not active\u0027 state \u2014 not the \u0027Couldn\u0027t load the change register\u0027 failure card, and never with the header claiming \u0027change control add-on active\u0027 (which it previously printed unconditionally). Companion to test-manifests/portal/change-control.json, which covers the ENTITLED path.",
+  "productName": "Portal",
+  "sessionId": "2026-09-16-2239",
+  "startedAt": "2026-09-16T22:39:50.9556249-04:00",
+  "endedAt": "2026-09-16T22:40:14.4775483-04:00",
+  "durationSeconds": 23.52,
+  "success": false,
+  "summary": "\u274C TEST ABORTED \u2014 loginAs \u0027Customer \u2014 RBAC test\u0027 failed: submitted credentials for \u0027Customer \u2014 RBAC test\u0027 but the app never redirected away from its login page within 20000ms (current URL: http://localhost:5175/portal/login) \u2014 treating as a failed login (bad credentials or an unexpected page).",
+  "urlsVisited": [
+    "http://localhost:5175/portal/login",
+    "http://localhost:5175/portal/change-control"
+  ],
+  "steps": [],
+  "consoleErrors": [],
+  "apiFailures": [
+    {
+      "name": "post-api-auth-refresh",
+      "method": "POST",
+      "requestUrl": "http://localhost:5175/api/auth/refresh",
+      "statusCode": 401,
+      "durationMs": 0,
+      "reason": "HTTP 401",
+      "timestamp": "2026-09-16T22:39:52.1640196-04:00"
+    },
+    {
+      "name": "post-api-auth-login",
+      "method": "POST",
+      "requestUrl": "http://localhost:5175/api/auth/login",
+      "statusCode": 401,
+      "durationMs": 0,
+      "reason": "HTTP 401",
+      "timestamp": "2026-09-16T22:39:54.0820125-04:00"
+    }
+  ],
+  "executedCommands": [],
+  "screenshotPaths": [
+    "screenshots/screenshot-01.png"
+  ],
+  "screenshotDiffs": [
+    {
+      "StepIndex": 0,
+      "StepLabel": "loginAs Customer \u2014 RBAC test",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4452-20260916223950\\screenshots\\0.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\change-control-addon-gate\\0.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    }
+  ],
+  "domDiffs": [],
+  "recommendations": "Run aborted: loginAs \u0027Customer \u2014 RBAC test\u0027 failed: submitted credentials for \u0027Customer \u2014 RBAC test\u0027 but the app never redirected away from its login page within 20000ms (current URL: http://localhost:5175/portal/login) \u2014 treating as a failed login (bad credentials or an unexpected page).. Check prerequisite selectors, authentication, or network connectivity."
+}

@@ -1,0 +1,14 @@
+{
+  "StepIndex": 11,
+  "Route": "http://localhost:5173/buy?product=monitoring\u0026resume=1",
+  "Selector": "[data-testid=\u0027buy-account\u0027]",
+  "Description": "expect [data-testid=\u0027buy-account\u0027]",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 47,
+  "Changes": [
+    "Captured DOM scope: 47 total element nodes under \u0027[data-testid=\u0027buy-account\u0027]\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-17T09:25:39.6456547-04:00"
+}

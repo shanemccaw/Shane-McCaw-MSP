@@ -1,0 +1,14 @@
+{
+  "StepIndex": 7,
+  "Route": "http://localhost:5175/portal/login",
+  "Selector": "[data-testid=\u0027ms-changes-wave-0\u0027]",
+  "Description": "expect [data-testid=\u0027ms-changes-wave-0\u0027]",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 27,
+  "Changes": [
+    "Captured DOM scope: 27 total element nodes under \u0027[data-testid=\u0027ms-changes-wave-0\u0027]\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-16T22:56:29.9356225-04:00"
+}

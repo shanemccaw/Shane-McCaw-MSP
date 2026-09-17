@@ -1,0 +1,14 @@
+{
+  "StepIndex": 2,
+  "Route": "http://localhost:5173/scan/account",
+  "Selector": "[data-testid=\u0027freescan-account-forgot-password\u0027]",
+  "Description": "expect [data-testid=\u0027freescan-account-forgot-password\u0027]",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 0,
+  "Changes": [
+    "Captured DOM scope: 0 total element nodes under \u0027[data-testid=\u0027freescan-account-forgot-password\u0027]\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-17T10:07:42.9613262-04:00"
+}

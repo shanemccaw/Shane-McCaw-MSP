@@ -1,0 +1,12 @@
+{
+  "StepIndex": 6,
+  "Route": "http://localhost:5175/portal/login",
+  "Selector": "/portal/microsoft-changes",
+  "Description": "goto /portal/microsoft-changes",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 0,
+  "Changes": [],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-16T22:55:58.3433739-04:00"
+}

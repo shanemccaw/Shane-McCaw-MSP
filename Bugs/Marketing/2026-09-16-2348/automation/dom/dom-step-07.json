@@ -1,0 +1,12 @@
+{
+  "StepIndex": 7,
+  "Route": "http://localhost:5173/scan/remediate",
+  "Selector": "/scan/remediate",
+  "Description": "goto /scan/remediate",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 0,
+  "Changes": [],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-16T23:48:59.8120916-04:00"
+}

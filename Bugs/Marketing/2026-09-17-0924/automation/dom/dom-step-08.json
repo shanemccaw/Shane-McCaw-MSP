@@ -1,0 +1,14 @@
+{
+  "StepIndex": 8,
+  "Route": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+  "Selector": "[data-testid=\u0027buy-tier-change\u0027]",
+  "Description": "expect [data-testid=\u0027buy-tier-change\u0027]",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 52,
+  "Changes": [
+    "Captured DOM scope: 52 total element nodes under \u0027[data-testid=\u0027buy-tier-change\u0027]\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-17T09:24:58.7495885-04:00"
+}

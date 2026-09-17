@@ -1,0 +1,427 @@
+{
+  "testName": "Issue #0 - Marketing Free Scan scoped Prospect account (/scan/account \u002B the acctScreen block on /scan/remediate) \u2014 Git #4329, Feature #1352. A paid Free Scan Prospect creates a SCOPED login (emailed code -\u003E password -\u003E authenticator app or SMS) that opens only their own engagement: scan results, signed SOW and the Remediate step behind it. It is not a Portal login: the credential lives in free_scan_accounts (never users.password_hash / mfa_enrollments / client_services, so hasRealEntitlement() #656 stays closed) and the session is an httpOnly cookie scoped to /api/public/free-scan, signed with a derived key requireAuth cannot verify. Served by routes/public-free-scan-account.ts -\u003E lib/free-scan-account.ts, plus the \u0060accountSession\u0060 door on resolveActor (routes/public-free-scan-sow.ts).",
+  "productName": "Marketing",
+  "sessionId": "2026-09-16-2348",
+  "startedAt": "2026-09-16T23:48:46.3493314-04:00",
+  "endedAt": "2026-09-16T23:49:05.8453756-04:00",
+  "durationSeconds": 19.5,
+  "success": true,
+  "summary": "\u2714 TEST PASSED (10/10 Steps)",
+  "urlsVisited": [
+    "http://localhost:5173/buy?product=retainer\u0026resume=1",
+    "http://localhost:5173/scan/account"
+  ],
+  "steps": [
+    {
+      "index": 1,
+      "action": "goto",
+      "selector": "/scan/account",
+      "targetUrl": "http://localhost:5173/scan/account",
+      "expected": "navigation to http://localhost:5173/scan/account succeeds",
+      "actual": "succeeded",
+      "passed": true,
+      "durationMs": 409,
+      "detail": "Navigated to http://localhost:5173/scan/account",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234844\\screenshots\\1.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 2,
+      "action": "expect",
+      "selector": "[data-testid=\u0027freescan-account-signin\u0027]",
+      "targetUrl": "http://localhost:5173/scan/account",
+      "expected": "[data-testid=\u0027freescan-account-signin\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 24,
+      "detail": "[data-testid=\u0027freescan-account-signin\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234844\\screenshots\\2.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 3,
+      "action": "expect",
+      "selector": "body",
+      "targetUrl": "http://localhost:5173/scan/account",
+      "expected": "body state == \u0027visible\u0027; textContains any of [\u0022Sign in to your engagement\u0022]",
+      "actual": "found=True, visible=True; text=\u0022SM Shane McCaw Consent \u2192 Scan \u2192 Results \u2192 Review \u2192 5 Remediate YOUR ENGAGEMENT Sign in to your engagement Your scan results and signed statement of work. Use the email and password you set after payin...\u0022",
+      "passed": true,
+      "durationMs": 15,
+      "detail": "body \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained \u0022Sign in to your engagement\u0022",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234844\\screenshots\\3.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 4,
+      "action": "expect",
+      "selector": "[data-testid=\u0027freescan-account-signin-email\u0027]",
+      "targetUrl": "http://localhost:5173/scan/account",
+      "expected": "[data-testid=\u0027freescan-account-signin-email\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 14,
+      "detail": "[data-testid=\u0027freescan-account-signin-email\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234844\\screenshots\\4.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 5,
+      "action": "expect",
+      "selector": "[data-testid=\u0027freescan-account-signin-password\u0027]",
+      "targetUrl": "http://localhost:5173/scan/account",
+      "expected": "[data-testid=\u0027freescan-account-signin-password\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 20,
+      "detail": "[data-testid=\u0027freescan-account-signin-password\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234844\\screenshots\\5.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 6,
+      "action": "expect",
+      "selector": "[data-testid=\u0027freescan-account-engagement\u0027]",
+      "targetUrl": "http://localhost:5173/scan/account",
+      "expected": "[data-testid=\u0027freescan-account-engagement\u0027] state == \u0027absent\u0027",
+      "actual": "found=False, visible=False",
+      "passed": true,
+      "durationMs": 14,
+      "detail": "[data-testid=\u0027freescan-account-engagement\u0027] \u2014 state \u0027absent\u0027 matched (found=False, visible=False)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234844\\screenshots\\6.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 7,
+      "action": "goto",
+      "selector": "/scan/remediate",
+      "targetUrl": "http://localhost:5173/scan/remediate",
+      "expected": "navigation to http://localhost:5173/scan/remediate succeeds",
+      "actual": "succeeded",
+      "passed": true,
+      "durationMs": 438,
+      "detail": "Navigated to http://localhost:5173/scan/remediate",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234844\\screenshots\\7.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 8,
+      "action": "expect",
+      "selector": "body",
+      "targetUrl": "http://localhost:5173/scan/remediate",
+      "expected": "body state == \u0027visible\u0027; textContains any of [\u0022We lost track of your scan\u0022]",
+      "actual": "found=True, visible=True; text=\u0022SM Shane McCaw Consent \u2192 Scan \u2192 Results \u2192 Review \u2192 5 Remediate We couldn\u0027t open your remediation step We lost track of your scan. Open the results link we emailed you, or run a new free scan to pick t...\u0022",
+      "passed": true,
+      "durationMs": 26,
+      "detail": "body \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained \u0022We lost track of your scan\u0022",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234844\\screenshots\\8.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 9,
+      "action": "expect",
+      "selector": "[data-testid=\u0027freescan-remediate-signin\u0027]",
+      "targetUrl": "http://localhost:5173/scan/remediate",
+      "expected": "[data-testid=\u0027freescan-remediate-signin\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 24,
+      "detail": "[data-testid=\u0027freescan-remediate-signin\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234844\\screenshots\\9.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 10,
+      "action": "expect",
+      "selector": "[data-testid=\u0027freescan-account-setup\u0027]",
+      "targetUrl": "http://localhost:5173/scan/remediate",
+      "expected": "[data-testid=\u0027freescan-account-setup\u0027] state == \u0027absent\u0027",
+      "actual": "found=False, visible=False",
+      "passed": true,
+      "durationMs": 30,
+      "detail": "[data-testid=\u0027freescan-account-setup\u0027] \u2014 state \u0027absent\u0027 matched (found=False, visible=False)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234844\\screenshots\\10.png",
+      "domSnapshotPath": null
+    }
+  ],
+  "consoleErrors": [
+    {
+      "level": "error",
+      "message": "[console.error] [auth] free-scan remediate: read failed {\u0022err\u0022:{}}",
+      "stack": "Error\n    at console.error (\u003Canonymous\u003E:23:25)\n    at emit (http://localhost:5173/src/lib/logger.ts:3:17)\n    at Object.error (http://localhost:5173/src/lib/logger.ts:10:35)\n    at http://localhost:5173/src/marketing/pages/FreeScanRemediate.tsx:469:13",
+      "timestamp": "2026-09-16T23:49:05.8446951-04:00"
+    }
+  ],
+  "apiFailures": [
+    {
+      "name": "get-api-public-free-scan-account-me",
+      "method": "GET",
+      "requestUrl": "http://localhost:5173/api/public/free-scan/account/me",
+      "statusCode": 401,
+      "durationMs": 0,
+      "reason": "HTTP 401",
+      "timestamp": "2026-09-16T23:48:48.8699211-04:00"
+    },
+    {
+      "name": "get-api-public-free-scan-account-me",
+      "method": "GET",
+      "requestUrl": "http://localhost:5173/api/public/free-scan/account/me",
+      "statusCode": 401,
+      "durationMs": 0,
+      "reason": "HTTP 401",
+      "timestamp": "2026-09-16T23:48:59.0864204-04:00"
+    },
+    {
+      "name": "post-api-public-free-scan-remediate-read",
+      "method": "POST",
+      "requestUrl": "http://localhost:5173/api/public/free-scan/remediate/read",
+      "statusCode": 401,
+      "durationMs": 0,
+      "reason": "HTTP 401",
+      "timestamp": "2026-09-16T23:48:59.4814724-04:00"
+    }
+  ],
+  "executedCommands": [],
+  "screenshotPaths": [
+    "screenshots/screenshot-01.png",
+    "screenshots/screenshot-02.png",
+    "screenshots/screenshot-03.png",
+    "screenshots/screenshot-04.png",
+    "screenshots/screenshot-05.png",
+    "screenshots/screenshot-06.png",
+    "screenshots/screenshot-07.png",
+    "screenshots/screenshot-08.png",
+    "screenshots/screenshot-09.png",
+    "screenshots/screenshot-10.png"
+  ],
+  "screenshotDiffs": [
+    {
+      "StepIndex": 1,
+      "StepLabel": "goto /scan/account",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234844\\screenshots\\1.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\free-scan-account\\1.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 2,
+      "StepLabel": "expect [data-testid=\u0027freescan-account-signin\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234844\\screenshots\\2.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\free-scan-account\\2.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 3,
+      "StepLabel": "expect body",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234844\\screenshots\\3.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\free-scan-account\\3.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 4,
+      "StepLabel": "expect [data-testid=\u0027freescan-account-signin-email\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234844\\screenshots\\4.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\free-scan-account\\4.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 5,
+      "StepLabel": "expect [data-testid=\u0027freescan-account-signin-password\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234844\\screenshots\\5.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\free-scan-account\\5.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 6,
+      "StepLabel": "expect [data-testid=\u0027freescan-account-engagement\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234844\\screenshots\\6.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\free-scan-account\\6.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 7,
+      "StepLabel": "goto /scan/remediate",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234844\\screenshots\\7.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\free-scan-account\\7.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 8,
+      "StepLabel": "expect body",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234844\\screenshots\\8.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\free-scan-account\\8.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 9,
+      "StepLabel": "expect [data-testid=\u0027freescan-remediate-signin\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234844\\screenshots\\9.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\free-scan-account\\9.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 10,
+      "StepLabel": "expect [data-testid=\u0027freescan-account-setup\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234844\\screenshots\\10.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\free-scan-account\\10.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    }
+  ],
+  "domDiffs": [
+    {
+      "StepIndex": 1,
+      "Route": "http://localhost:5173/scan/account",
+      "Selector": "/scan/account",
+      "Description": "goto /scan/account",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [],
+      "SnapshotPath": "dom/dom-step-01.json",
+      "Timestamp": "2026-09-16T23:48:49.748742-04:00"
+    },
+    {
+      "StepIndex": 2,
+      "Route": "http://localhost:5173/scan/account",
+      "Selector": "[data-testid=\u0027freescan-account-signin\u0027]",
+      "Description": "expect [data-testid=\u0027freescan-account-signin\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 9,
+      "Changes": [
+        "Captured DOM scope: 9 total element nodes under \u0027[data-testid=\u0027freescan-account-signin\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-02.json",
+      "Timestamp": "2026-09-16T23:48:51.3630118-04:00"
+    },
+    {
+      "StepIndex": 3,
+      "Route": "http://localhost:5173/scan/account",
+      "Selector": "body",
+      "Description": "expect body",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 46,
+      "Changes": [
+        "Captured DOM scope: 46 total element nodes under \u0027body\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-03.json",
+      "Timestamp": "2026-09-16T23:48:52.9576178-04:00"
+    },
+    {
+      "StepIndex": 4,
+      "Route": "http://localhost:5173/scan/account",
+      "Selector": "[data-testid=\u0027freescan-account-signin-email\u0027]",
+      "Description": "expect [data-testid=\u0027freescan-account-signin-email\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027[data-testid=\u0027freescan-account-signin-email\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-04.json",
+      "Timestamp": "2026-09-16T23:48:54.5444402-04:00"
+    },
+    {
+      "StepIndex": 5,
+      "Route": "http://localhost:5173/scan/account",
+      "Selector": "[data-testid=\u0027freescan-account-signin-password\u0027]",
+      "Description": "expect [data-testid=\u0027freescan-account-signin-password\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027[data-testid=\u0027freescan-account-signin-password\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-05.json",
+      "Timestamp": "2026-09-16T23:48:56.1404117-04:00"
+    },
+    {
+      "StepIndex": 6,
+      "Route": "http://localhost:5173/scan/account",
+      "Selector": "[data-testid=\u0027freescan-account-engagement\u0027]",
+      "Description": "expect [data-testid=\u0027freescan-account-engagement\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 46,
+      "Changes": [
+        "Captured DOM scope: 46 total element nodes under \u0027[data-testid=\u0027freescan-account-engagement\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-06.json",
+      "Timestamp": "2026-09-16T23:48:57.7028242-04:00"
+    },
+    {
+      "StepIndex": 7,
+      "Route": "http://localhost:5173/scan/remediate",
+      "Selector": "/scan/remediate",
+      "Description": "goto /scan/remediate",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [],
+      "SnapshotPath": "dom/dom-step-07.json",
+      "Timestamp": "2026-09-16T23:48:59.8120916-04:00"
+    },
+    {
+      "StepIndex": 8,
+      "Route": "http://localhost:5173/scan/remediate",
+      "Selector": "body",
+      "Description": "expect body",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 42,
+      "Changes": [
+        "Captured DOM scope: 42 total element nodes under \u0027body\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-08.json",
+      "Timestamp": "2026-09-16T23:49:01.4090291-04:00"
+    },
+    {
+      "StepIndex": 9,
+      "Route": "http://localhost:5173/scan/remediate",
+      "Selector": "[data-testid=\u0027freescan-remediate-signin\u0027]",
+      "Description": "expect [data-testid=\u0027freescan-remediate-signin\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027[data-testid=\u0027freescan-remediate-signin\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-09.json",
+      "Timestamp": "2026-09-16T23:49:03.0020197-04:00"
+    },
+    {
+      "StepIndex": 10,
+      "Route": "http://localhost:5173/scan/remediate",
+      "Selector": "[data-testid=\u0027freescan-account-setup\u0027]",
+      "Description": "expect [data-testid=\u0027freescan-account-setup\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 42,
+      "Changes": [
+        "Captured DOM scope: 42 total element nodes under \u0027[data-testid=\u0027freescan-account-setup\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-10.json",
+      "Timestamp": "2026-09-16T23:49:04.6259521-04:00"
+    }
+  ],
+  "recommendations": "All automated UI steps passed. Review baseline screenshots for visual drift."
+}

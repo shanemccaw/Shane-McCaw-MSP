@@ -1,0 +1,40 @@
+{
+  "name": "post-api-auth-refresh",
+  "method": "POST",
+  "requestUrl": "http://localhost:5175/api/auth/refresh",
+  "statusCode": 401,
+  "durationMs": 0,
+  "reason": "HTTP 401",
+  "requestHeaders": {
+    "Accept": "*/*",
+    "Accept-Encoding": "gzip, deflate, br, zstd",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Connection": "keep-alive",
+    "Content-Length": "2",
+    "Content-Type": "application/json",
+    "Host": "localhost:5175",
+    "Origin": "http://localhost:5175",
+    "Referer": "http://localhost:5175/portal/login",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0",
+    "sec-ch-ua": "\u0022Microsoft Edge WebView2\u0022;v=\u0022153\u0022, \u0022Not_A Brand\u0022;v=\u00228\u0022, \u0022Chromium\u0022;v=\u0022153\u0022, \u0022Microsoft Edge\u0022;v=\u0022153\u0022",
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": "\u0022Windows\u0022"
+  },
+  "responseHeaders": {
+    "access-control-allow-credentials": "true",
+    "access-control-allow-origin": "http://localhost:5175",
+    "connection": "close",
+    "content-length": "28",
+    "content-type": "application/json; charset=utf-8",
+    "date": "Thu, 17 Sep 2026 02:28:31 GMT",
+    "etag": "W/\u00221c-\u002BF\u002BUBuL0Ofl197ld/rYTR9yV588\u0022",
+    "vary": "Origin",
+    "x-powered-by": "Express",
+    "x-trace-id": "7209ce98-a99d-4cc5-b63c-790da9396b13"
+  },
+  "responseBody": "{\u0022error\u0022:\u0022No refresh token\u0022}",
+  "timestamp": "2026-09-16T22:28:31.5397284-04:00"
+}

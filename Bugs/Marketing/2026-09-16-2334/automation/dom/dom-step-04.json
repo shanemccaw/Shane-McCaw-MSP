@@ -1,0 +1,14 @@
+{
+  "StepIndex": 4,
+  "Route": "http://localhost:5173/buy?product=retainer\u0026tier=architect-essentials-retainer",
+  "Selector": "[data-testid=\u0027buy-steprail\u0027]",
+  "Description": "expect [data-testid=\u0027buy-steprail\u0027]",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 16,
+  "Changes": [
+    "Captured DOM scope: 16 total element nodes under \u0027[data-testid=\u0027buy-steprail\u0027]\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-16T23:34:55.6908838-04:00"
+}

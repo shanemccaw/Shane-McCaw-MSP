@@ -1,0 +1,383 @@
+{
+  "testName": "Issue #0 - Marketing Free Scan Review step (/scan/review) \u2014 Git #1374, Phase of Feature #1352. The Statement of Work generated from a Free Scan Prospect\u0027s own scan: eight numbered sections, a delivery-timeline Gantt, six phase-breakdown cards and a right rail carrying the scope selector, the payment-plan choice and the e-signature capture. Every figure is served by the real /api/public/free-scan/sow/* pair (routes/public-free-scan-sow.ts -\u003E lib/free-scan-sow.ts), computed from the tenant\u0027s real buildPillarSummary output and the six real category=\u0027project\u0027 catalog rows. Nothing on the page is a fixture and no price is written into the .tsx.",
+  "productName": "Marketing",
+  "sessionId": "2026-09-16-2349",
+  "startedAt": "2026-09-16T23:49:44.0205592-04:00",
+  "endedAt": "2026-09-16T23:50:01.2306455-04:00",
+  "durationSeconds": 17.21,
+  "success": true,
+  "summary": "\u2714 TEST PASSED (9/9 Steps)",
+  "urlsVisited": [
+    "http://localhost:5173/scan/remediate",
+    "http://localhost:5173/scan/review"
+  ],
+  "steps": [
+    {
+      "index": 1,
+      "action": "goto",
+      "selector": "/scan/review",
+      "targetUrl": "http://localhost:5173/scan/review",
+      "expected": "navigation to http://localhost:5173/scan/review succeeds",
+      "actual": "succeeded",
+      "passed": true,
+      "durationMs": 293,
+      "detail": "Navigated to http://localhost:5173/scan/review",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234941\\screenshots\\1.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 2,
+      "action": "expect",
+      "selector": "[data-testid=\u0027freescan-flow-strip\u0027]",
+      "targetUrl": "http://localhost:5173/scan/review",
+      "expected": "[data-testid=\u0027freescan-flow-strip\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 14,
+      "detail": "[data-testid=\u0027freescan-flow-strip\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234941\\screenshots\\2.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 3,
+      "action": "expect",
+      "selector": "[data-testid=\u0027freescan-flow-step-consent\u0027]",
+      "targetUrl": "http://localhost:5173/scan/review",
+      "expected": "[data-testid=\u0027freescan-flow-step-consent\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 22,
+      "detail": "[data-testid=\u0027freescan-flow-step-consent\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234941\\screenshots\\3.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 4,
+      "action": "expect",
+      "selector": "[data-testid=\u0027freescan-flow-step-scan\u0027]",
+      "targetUrl": "http://localhost:5173/scan/review",
+      "expected": "[data-testid=\u0027freescan-flow-step-scan\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 24,
+      "detail": "[data-testid=\u0027freescan-flow-step-scan\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234941\\screenshots\\4.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 5,
+      "action": "expect",
+      "selector": "[data-testid=\u0027freescan-flow-step-results\u0027]",
+      "targetUrl": "http://localhost:5173/scan/review",
+      "expected": "[data-testid=\u0027freescan-flow-step-results\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 18,
+      "detail": "[data-testid=\u0027freescan-flow-step-results\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234941\\screenshots\\5.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 6,
+      "action": "expect",
+      "selector": "[data-testid=\u0027freescan-flow-step-review\u0027][data-state=\u0027now\u0027]",
+      "targetUrl": "http://localhost:5173/scan/review",
+      "expected": "[data-testid=\u0027freescan-flow-step-review\u0027][data-state=\u0027now\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 35,
+      "detail": "[data-testid=\u0027freescan-flow-step-review\u0027][data-state=\u0027now\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234941\\screenshots\\6.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 7,
+      "action": "expect",
+      "selector": "[data-testid=\u0027freescan-flow-step-remediate\u0027][data-state=\u0027next\u0027]",
+      "targetUrl": "http://localhost:5173/scan/review",
+      "expected": "[data-testid=\u0027freescan-flow-step-remediate\u0027][data-state=\u0027next\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 14,
+      "detail": "[data-testid=\u0027freescan-flow-step-remediate\u0027][data-state=\u0027next\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234941\\screenshots\\7.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 8,
+      "action": "expect",
+      "selector": "[data-testid=\u0027freescan-flow-step-consent\u0027][data-state=\u0027done\u0027]",
+      "targetUrl": "http://localhost:5173/scan/review",
+      "expected": "[data-testid=\u0027freescan-flow-step-consent\u0027][data-state=\u0027done\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 19,
+      "detail": "[data-testid=\u0027freescan-flow-step-consent\u0027][data-state=\u0027done\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234941\\screenshots\\8.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 9,
+      "action": "expect",
+      "selector": "body",
+      "targetUrl": "http://localhost:5173/scan/review",
+      "expected": "body state == \u0027visible\u0027; textContains any of [\u0022We lost track of your scan\u0022]",
+      "actual": "found=True, visible=True; text=\u0022SM Shane McCaw Consent \u2192 Scan \u2192 Results \u2192 4 Review \u2192 5 Remediate We couldn\u0027t open your statement of work We lost track of your scan. Open the results link we emailed you, or run a new free scan to pic...\u0022",
+      "passed": true,
+      "durationMs": 35,
+      "detail": "body \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained \u0022We lost track of your scan\u0022",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234941\\screenshots\\9.png",
+      "domSnapshotPath": null
+    }
+  ],
+  "consoleErrors": [
+    {
+      "level": "error",
+      "message": "[console.error] [billing] free-scan review: SOW read failed {\u0022err\u0022:{}}",
+      "stack": "Error\n    at console.error (\u003Canonymous\u003E:23:25)\n    at emit (http://localhost:5173/src/lib/logger.ts:3:17)\n    at Object.error (http://localhost:5173/src/lib/logger.ts:10:35)\n    at http://localhost:5173/src/marketing/pages/FreeScanReview.tsx:403:13",
+      "timestamp": "2026-09-16T23:50:01.2305154-04:00"
+    }
+  ],
+  "apiFailures": [
+    {
+      "name": "post-api-public-free-scan-sow-read",
+      "method": "POST",
+      "requestUrl": "http://localhost:5173/api/public/free-scan/sow/read",
+      "statusCode": 401,
+      "durationMs": 0,
+      "reason": "HTTP 401",
+      "timestamp": "2026-09-16T23:49:44.4485893-04:00"
+    },
+    {
+      "name": "post-api-public-free-scan-sow-read",
+      "method": "POST",
+      "requestUrl": "http://localhost:5173/api/public/free-scan/sow/read",
+      "statusCode": 401,
+      "durationMs": 0,
+      "reason": "HTTP 401",
+      "timestamp": "2026-09-16T23:49:46.7803749-04:00"
+    }
+  ],
+  "executedCommands": [],
+  "screenshotPaths": [
+    "screenshots/screenshot-01.png",
+    "screenshots/screenshot-02.png",
+    "screenshots/screenshot-03.png",
+    "screenshots/screenshot-04.png",
+    "screenshots/screenshot-05.png",
+    "screenshots/screenshot-06.png",
+    "screenshots/screenshot-07.png",
+    "screenshots/screenshot-08.png",
+    "screenshots/screenshot-09.png"
+  ],
+  "screenshotDiffs": [
+    {
+      "StepIndex": 1,
+      "StepLabel": "goto /scan/review",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234941\\screenshots\\1.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\free-scan-review\\1.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 2,
+      "StepLabel": "expect [data-testid=\u0027freescan-flow-strip\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234941\\screenshots\\2.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\free-scan-review\\2.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 3,
+      "StepLabel": "expect [data-testid=\u0027freescan-flow-step-consent\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234941\\screenshots\\3.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\free-scan-review\\3.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 4,
+      "StepLabel": "expect [data-testid=\u0027freescan-flow-step-scan\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234941\\screenshots\\4.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\free-scan-review\\4.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 5,
+      "StepLabel": "expect [data-testid=\u0027freescan-flow-step-results\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234941\\screenshots\\5.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\free-scan-review\\5.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 6,
+      "StepLabel": "expect [data-testid=\u0027freescan-flow-step-review\u0027][data-state=\u0027now\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234941\\screenshots\\6.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\free-scan-review\\6.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 7,
+      "StepLabel": "expect [data-testid=\u0027freescan-flow-step-remediate\u0027][data-state=\u0027next\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234941\\screenshots\\7.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\free-scan-review\\7.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 8,
+      "StepLabel": "expect [data-testid=\u0027freescan-flow-step-consent\u0027][data-state=\u0027done\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234941\\screenshots\\8.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\free-scan-review\\8.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 9,
+      "StepLabel": "expect body",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\0-20260916234941\\screenshots\\9.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\_unsorted\\free-scan-review\\9.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    }
+  ],
+  "domDiffs": [
+    {
+      "StepIndex": 1,
+      "Route": "http://localhost:5173/scan/review",
+      "Selector": "/scan/review",
+      "Description": "goto /scan/review",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [],
+      "SnapshotPath": "dom/dom-step-01.json",
+      "Timestamp": "2026-09-16T23:49:47.0842519-04:00"
+    },
+    {
+      "StepIndex": 2,
+      "Route": "http://localhost:5173/scan/review",
+      "Selector": "[data-testid=\u0027freescan-flow-strip\u0027]",
+      "Description": "expect [data-testid=\u0027freescan-flow-strip\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 30,
+      "Changes": [
+        "Captured DOM scope: 30 total element nodes under \u0027[data-testid=\u0027freescan-flow-strip\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-02.json",
+      "Timestamp": "2026-09-16T23:49:48.8053357-04:00"
+    },
+    {
+      "StepIndex": 3,
+      "Route": "http://localhost:5173/scan/review",
+      "Selector": "[data-testid=\u0027freescan-flow-step-consent\u0027]",
+      "Description": "expect [data-testid=\u0027freescan-flow-step-consent\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 2,
+      "Changes": [
+        "Captured DOM scope: 2 total element nodes under \u0027[data-testid=\u0027freescan-flow-step-consent\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-03.json",
+      "Timestamp": "2026-09-16T23:49:50.4232045-04:00"
+    },
+    {
+      "StepIndex": 4,
+      "Route": "http://localhost:5173/scan/review",
+      "Selector": "[data-testid=\u0027freescan-flow-step-scan\u0027]",
+      "Description": "expect [data-testid=\u0027freescan-flow-step-scan\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 2,
+      "Changes": [
+        "Captured DOM scope: 2 total element nodes under \u0027[data-testid=\u0027freescan-flow-step-scan\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-04.json",
+      "Timestamp": "2026-09-16T23:49:51.9992821-04:00"
+    },
+    {
+      "StepIndex": 5,
+      "Route": "http://localhost:5173/scan/review",
+      "Selector": "[data-testid=\u0027freescan-flow-step-results\u0027]",
+      "Description": "expect [data-testid=\u0027freescan-flow-step-results\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 2,
+      "Changes": [
+        "Captured DOM scope: 2 total element nodes under \u0027[data-testid=\u0027freescan-flow-step-results\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-05.json",
+      "Timestamp": "2026-09-16T23:49:53.5735853-04:00"
+    },
+    {
+      "StepIndex": 6,
+      "Route": "http://localhost:5173/scan/review",
+      "Selector": "[data-testid=\u0027freescan-flow-step-review\u0027][data-state=\u0027now\u0027]",
+      "Description": "expect [data-testid=\u0027freescan-flow-step-review\u0027][data-state=\u0027now\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027[data-testid=\u0027freescan-flow-step-review\u0027][data-state=\u0027now\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-06.json",
+      "Timestamp": "2026-09-16T23:49:55.2010051-04:00"
+    },
+    {
+      "StepIndex": 7,
+      "Route": "http://localhost:5173/scan/review",
+      "Selector": "[data-testid=\u0027freescan-flow-step-remediate\u0027][data-state=\u0027next\u0027]",
+      "Description": "expect [data-testid=\u0027freescan-flow-step-remediate\u0027][data-state=\u0027next\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027[data-testid=\u0027freescan-flow-step-remediate\u0027][data-state=\u0027next\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-07.json",
+      "Timestamp": "2026-09-16T23:49:56.7798963-04:00"
+    },
+    {
+      "StepIndex": 8,
+      "Route": "http://localhost:5173/scan/review",
+      "Selector": "[data-testid=\u0027freescan-flow-step-consent\u0027][data-state=\u0027done\u0027]",
+      "Description": "expect [data-testid=\u0027freescan-flow-step-consent\u0027][data-state=\u0027done\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 2,
+      "Changes": [
+        "Captured DOM scope: 2 total element nodes under \u0027[data-testid=\u0027freescan-flow-step-consent\u0027][data-state=\u0027done\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-08.json",
+      "Timestamp": "2026-09-16T23:49:58.3616633-04:00"
+    },
+    {
+      "StepIndex": 9,
+      "Route": "http://localhost:5173/scan/review",
+      "Selector": "body",
+      "Description": "expect body",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 40,
+      "Changes": [
+        "Captured DOM scope: 40 total element nodes under \u0027body\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-09.json",
+      "Timestamp": "2026-09-16T23:49:59.9837613-04:00"
+    }
+  ],
+  "recommendations": "All automated UI steps passed. Review baseline screenshots for visual drift."
+}

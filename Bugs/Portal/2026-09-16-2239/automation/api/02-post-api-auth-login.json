@@ -1,0 +1,42 @@
+{
+  "name": "post-api-auth-login",
+  "method": "POST",
+  "requestUrl": "http://localhost:5175/api/auth/login",
+  "statusCode": 401,
+  "durationMs": 0,
+  "reason": "HTTP 401",
+  "requestHeaders": {
+    "Accept": "*/*",
+    "Accept-Encoding": "gzip, deflate, br, zstd",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Connection": "keep-alive",
+    "Content-Length": "93",
+    "Content-Type": "application/json",
+    "Host": "localhost:5175",
+    "Origin": "http://localhost:5175",
+    "Referer": "http://localhost:5175/portal/login",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0",
+    "sec-ch-ua": "\u0022Microsoft Edge WebView2\u0022;v=\u0022153\u0022, \u0022Not_A Brand\u0022;v=\u00228\u0022, \u0022Chromium\u0022;v=\u0022153\u0022, \u0022Microsoft Edge\u0022;v=\u0022153\u0022",
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": "\u0022Windows\u0022"
+  },
+  "responseHeaders": {
+    "access-control-allow-credentials": "true",
+    "access-control-allow-origin": "http://localhost:5175",
+    "connection": "close",
+    "content-length": "37",
+    "content-type": "application/json; charset=utf-8",
+    "date": "Thu, 17 Sep 2026 02:39:54 GMT",
+    "etag": "W/\u002225-3YG4LRpklFolV4uVOnUIRm2hZA0\u0022",
+    "ratelimit": "\u0022200-in-15min\u0022; r=195; t=719",
+    "ratelimit-policy": "\u0022200-in-15min\u0022; q=200; w=900; pk=:YmIwY2Q1MTM2YWU1:",
+    "vary": "Origin",
+    "x-powered-by": "Express",
+    "x-trace-id": "0e8edbca-0295-4c20-a2c4-098735a904eb"
+  },
+  "responseBody": "{\u0022error\u0022:\u0022Invalid email or password\u0022}",
+  "timestamp": "2026-09-16T22:39:54.0820125-04:00"
+}
