@@ -1243,9 +1243,38 @@ export const freeScanAccountsTable = pgTable("free_scan_accounts", {
   failedLoginCount: integer("failed_login_count").notNull().default(0),
   lockedUntil: timestamp("locked_until", { withTimezone: true }),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  // ── Recovery (Git #4483) ──────────────────────────────────────────────────
+  // Emailed recovery code for a COMPLETE account — separate from the creation
+  // code above. `recoveryCodeSends` counts codes issued since
+  // `recoveryCodeWindowStartedAt`, a per-account cap on top of the per-IP limiter.
+  recoveryCodeHash: text("recovery_code_hash"),
+  recoveryCodeExpiresAt: timestamp("recovery_code_expires_at", { withTimezone: true }),
+  recoveryCodeAttempts: integer("recovery_code_attempts").notNull().default(0),
+  recoveryCodeSends: integer("recovery_code_sends").notNull().default(0),
+  recoveryCodeWindowStartedAt: timestamp("recovery_code_window_started_at", { withTimezone: true }),
+  // Minted when a recovery code is judged correct; a recovery token is only good
+  // while it carries this exact value, and every consuming action rotates or clears it.
+  recoveryNonce: text("recovery_nonce"),
+  // Lost-authenticator reset. The emailed code alone never re-enrols a factor:
+  // the Prospect must also prove the password, and an operator must approve after
+  // an identity check made outside the request. A password reset cancels it.
+  mfaResetStatus: text("mfa_reset_status", { enum: ["pending", "approved", "denied"] }),
+  mfaResetRequestedAt: timestamp("mfa_reset_requested_at", { withTimezone: true }),
+  mfaResetDecidedAt: timestamp("mfa_reset_decided_at", { withTimezone: true }),
+  // The operator's users.id. No FK: this table never couples to `users`.
+  mfaResetDecidedBy: integer("mfa_reset_decided_by"),
+  mfaResetDecisionNote: text("mfa_reset_decision_note"),
+  mfaResetApprovalExpiresAt: timestamp("mfa_reset_approval_expires_at", { withTimezone: true }),
+  // The replacement factor while it is being proven. The live factor above is
+  // untouched until the replacement is confirmed.
+  pendingMfaMethod: text("pending_mfa_method", { enum: ["totp", "sms"] }),
+  pendingTotpSecretEncrypted: text("pending_totp_secret_encrypted"),
+  pendingPhone: text("pending_phone"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
+  check("free_scan_accounts_mfa_reset_status_check", sql`${t.mfaResetStatus} IS NULL OR ${t.mfaResetStatus} IN ('pending', 'approved', 'denied')`),
+  check("free_scan_accounts_pending_mfa_method_check", sql`${t.pendingMfaMethod} IS NULL OR ${t.pendingMfaMethod} IN ('totp', 'sms')`),
   // One sign-in identity per address among accounts that have one.
   uniqueIndex("free_scan_accounts_email_uidx").on(sql`lower(${t.email})`).where(sql`password_hash IS NOT NULL`),
   check("free_scan_accounts_mfa_method_check", sql`${t.mfaMethod} IS NULL OR ${t.mfaMethod} IN ('totp', 'sms')`),

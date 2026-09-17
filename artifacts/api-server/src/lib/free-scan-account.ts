@@ -38,6 +38,8 @@
  *   - `sessionVersion` is carried in every token and bumped on sign-out and on
  *     completion, so a stale token is dead server-side, not just client-side.
  *   - Password sign-in has a per-account lockout on top of the per-IP limiter.
+ *   - Recovery of either factor (Git #4483) lives in free-scan-account-recovery.ts:
+ *     the emailed code alone resets the password but never re-enrols a factor.
  */
 
 import bcrypt from "bcryptjs";
@@ -259,7 +261,7 @@ export async function beginTotpEnrollment(account: FreeScanAccount): Promise<{ s
   return { secret, otpauthUri };
 }
 
-function totpValid(encryptedSecret: string | null, code: string): boolean {
+export function totpValid(encryptedSecret: string | null, code: string): boolean {
   if (!encryptedSecret) return false;
   try {
     return verifySync({ token: code.replace(/\s/g, ""), secret: decryptTotp(encryptedSecret), epochTolerance: 30 }).valid;
@@ -300,7 +302,7 @@ export function normalisePhone(raw: string): string | null {
   return trimmed.startsWith("+") ? `+${digits}` : digits;
 }
 
-async function issueSmsCode(accountId: number, phone: string): Promise<void> {
+export async function issueSmsCode(accountId: number, phone: string): Promise<void> {
   const code = generateSixDigitCode();
   await db
     .update(freeScanAccountsTable)
@@ -323,7 +325,7 @@ export async function beginSmsEnrollment(account: FreeScanAccount, phone: string
   await issueSmsCode(account.id, phone);
 }
 
-async function checkSmsCode(account: FreeScanAccount, code: string): Promise<CodeCheck> {
+export async function checkSmsCode(account: FreeScanAccount, code: string): Promise<CodeCheck> {
   if (!account.smsCodeHash || !account.smsCodeExpiresAt) return "no_code";
   if (account.smsCodeExpiresAt.getTime() < Date.now()) return "expired";
   const [spent] = await db
@@ -449,7 +451,7 @@ export async function revokeAccountSessions(accountId: number): Promise<void> {
 
 let dummyHashPromise: Promise<string> | null = null;
 /** A real bcrypt(12) hash to compare against when no account matches, so timing says nothing. */
-function dummyHash(): Promise<string> {
+export function dummyHash(): Promise<string> {
   dummyHashPromise ??= bcrypt.hash("free-scan-account:no-such-account", 12);
   return dummyHashPromise;
 }
@@ -475,7 +477,25 @@ export async function passwordSignIn(email: string, password: string): Promise<P
     return { ok: false, reason: "invalid" };
   }
 
-  if (account.lockedUntil && account.lockedUntil.getTime() > Date.now()) return { ok: false, reason: "locked" };
+  const check = await verifyAccountPassword(account, password);
+  if (check !== "ok") return { ok: false, reason: check };
+
+  if (account.mfaMethod === "sms" && account.phone) await issueSmsCode(account.id, account.phone);
+
+  return { ok: true, account, challenge: signToken("fsa_login", account, LOGIN_CHALLENGE_TTL_SECONDS) };
+}
+
+/**
+ * Judge an account's password under the per-account lockout. Shared by sign-in
+ * and the recovery steps that require the password (#4483), so a guess made
+ * through recovery spends the same budget as one made at sign-in.
+ */
+export async function verifyAccountPassword(account: FreeScanAccount, password: string): Promise<"ok" | "invalid" | "locked"> {
+  if (!account.passwordHash) {
+    await bcrypt.compare(password, await dummyHash());
+    return "invalid";
+  }
+  if (account.lockedUntil && account.lockedUntil.getTime() > Date.now()) return "locked";
 
   if (!(await bcrypt.compare(password, account.passwordHash))) {
     const failures = account.failedLoginCount + 1;
@@ -487,17 +507,14 @@ export async function passwordSignIn(email: string, password: string): Promise<P
         updatedAt: new Date(),
       })
       .where(eq(freeScanAccountsTable.id, account.id));
-    return { ok: false, reason: failures >= LOCKOUT_THRESHOLD ? "locked" : "invalid" };
+    return failures >= LOCKOUT_THRESHOLD ? "locked" : "invalid";
   }
 
   await db
     .update(freeScanAccountsTable)
     .set({ failedLoginCount: 0, lockedUntil: null, updatedAt: new Date() })
     .where(eq(freeScanAccountsTable.id, account.id));
-
-  if (account.mfaMethod === "sms" && account.phone) await issueSmsCode(account.id, account.phone);
-
-  return { ok: true, account, challenge: signToken("fsa_login", account, LOGIN_CHALLENGE_TTL_SECONDS) };
+  return "ok";
 }
 
 export type SecondFactorSignIn =
