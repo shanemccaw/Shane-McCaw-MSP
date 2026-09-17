@@ -28,7 +28,7 @@ import {
   portalWfRunsTable,
   portalWfOperatorTasksTable,
 } from "@workspace/db";
-import { and, eq, inArray, lt } from "drizzle-orm";
+import { and, eq, gte, inArray, lt, ne } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { executeMonitoringPackage, type CheckResult } from "./monitor-executor.ts";
 import { emitWorkflowEvent } from "./workflow-executor.ts";
@@ -1295,6 +1295,70 @@ function startRunHeartbeat(runId: string): NodeJS.Timeout {
   return timer;
 }
 
+/** Restart-loop guard window for the first-scan auto-rescan (Git #4460). */
+export const FIRST_SCAN_RESCAN_GUARD_MS = 30 * 60_000;
+
+/**
+ * Fires a replacement scan for a customer whose interrupted run just got
+ * marked failed, but only when that was genuinely their first scan ever (Git
+ * #4460 — Shane's decision). No-ops for an orphaned run (customerId null —
+ * nothing to check history against), a customer with any prior
+ * completed/partial run, or a customer already retried once within
+ * FIRST_SCAN_RESCAN_GUARD_MS whose retry also got interrupted.
+ */
+async function maybeAutoRescanFirstScan(
+  run: { runId: string; customerId: number | null; tenantId: string | null; packageKey: string },
+  rescannedCustomerIds: Set<number>,
+): Promise<void> {
+  if (run.customerId == null) return;
+  if (rescannedCustomerIds.has(run.customerId)) return;
+
+  const [priorRun] = await db
+    .select({ id: mspDiagnosticRunsTable.id })
+    .from(mspDiagnosticRunsTable)
+    .where(
+      and(
+        eq(mspDiagnosticRunsTable.customerId, run.customerId),
+        inArray(mspDiagnosticRunsTable.status, ["completed", "partial"]),
+      ),
+    )
+    .limit(1);
+  if (priorRun) return; // not their first scan — the scheduled cadence already covers them
+
+  const guardCutoff = new Date(Date.now() - FIRST_SCAN_RESCAN_GUARD_MS);
+  const [recentAutoRescanAttempt] = await db
+    .select({ id: mspDiagnosticRunsTable.id })
+    .from(mspDiagnosticRunsTable)
+    .where(
+      and(
+        eq(mspDiagnosticRunsTable.customerId, run.customerId),
+        eq(mspDiagnosticRunsTable.status, "failed"),
+        eq(mspDiagnosticRunsTable.errorMessage, INTERRUPTED_RUN_ERROR_MESSAGE),
+        ne(mspDiagnosticRunsTable.runId, run.runId),
+        gte(mspDiagnosticRunsTable.updatedAt, guardCutoff),
+      ),
+    )
+    .limit(1);
+  if (recentAutoRescanAttempt) {
+    log.warn(
+      { customerId: run.customerId, runId: run.runId },
+      "diagnostics-runner: skipping first-scan auto-rescan — a prior attempt for this customer was also interrupted recently (restart-loop guard)",
+    );
+    return;
+  }
+
+  rescannedCustomerIds.add(run.customerId);
+  const customerId = run.customerId;
+  void (async () => {
+    try {
+      await runDiagnostics({ customerId, packageKey: run.packageKey, isAssessmentTriggered: false });
+      log.info({ customerId }, "diagnostics-runner: first-scan auto-rescan started after interrupted run");
+    } catch (err) {
+      log.warn({ err, customerId }, "diagnostics-runner: first-scan auto-rescan failed to start (non-fatal)");
+    }
+  })();
+}
+
 /**
  * Marks every `pending`/`running` diagnostics run whose heartbeat has been
  * silent for DIAGNOSTICS_RUN_STALE_AFTER_MS as `failed`, with a real reason, and
@@ -1325,7 +1389,22 @@ export async function failInterruptedDiagnosticRuns(): Promise<number> {
       mspId: mspDiagnosticRunsTable.mspId,
       customerId: mspDiagnosticRunsTable.customerId,
       tenantId: mspDiagnosticRunsTable.tenantId,
+      packageKey: mspDiagnosticRunsTable.packageKey,
     });
+
+  // Git #4460 — Shane's decision: a tenant's very first scan ever must not be
+  // left with zero completed history after an interruption, so auto-rescan it
+  // immediately. A tenant with prior completed/partial history is left alone —
+  // their existing scheduled-scan cadence (weekly-rescan-populations.ts / their
+  // subscription cadence) already covers them, and auto-rescanning them too
+  // would waste a whole scan's worth of Graph/PowerShell calls for no reason.
+  //
+  // Restart-loop guard: if this same customer already has ANOTHER interrupted
+  // run recorded within FIRST_SCAN_RESCAN_GUARD_MS, the auto-rescan this sweep
+  // would otherwise fire has already been attempted once and also got
+  // interrupted (e.g. #4453's 6-restarts-in-25-minutes dev scenario) — stop
+  // retrying rather than re-triggering on every sweep pass.
+  const rescannedCustomerIds = new Set<number>();
 
   for (const run of interrupted) {
     log.warn(
@@ -1351,6 +1430,8 @@ export async function failInterruptedDiagnosticRuns(): Promise<number> {
       customerName,
       errorMessage: INTERRUPTED_RUN_ERROR_MESSAGE,
     });
+
+    await maybeAutoRescanFirstScan(run, rescannedCustomerIds);
   }
 
   return interrupted.length;
