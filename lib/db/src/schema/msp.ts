@@ -4401,6 +4401,11 @@ export const baselineActionTemplatesTable = pgTable("baseline_action_templates",
     selectMatch?: Record<string, string>;
     assign: Record<string, string>;
     optional?: boolean;
+    // #4514 — fail closed on >1 match; collect every match; resolve-then-skip.
+    unique?: boolean;
+    collect?: Record<string, string>;
+    onMatch?: "skip-write";
+    subject?: string;
   }>>().notNull().default([]),
   // #4516 — the only real key here is `expectStatus` (a Graph HTTP status code, e.g.
   // 201/204). It is unioned into graphWriteForTenant's accepted-status set (never

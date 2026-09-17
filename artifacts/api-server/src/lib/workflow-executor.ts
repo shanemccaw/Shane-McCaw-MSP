@@ -139,6 +139,8 @@ import {
 import {
   runTemplateResolveSteps,
   resolveProvidedVariablesOf,
+  templateBodyVariables,
+  findUnappliedSecretSource,
   type BaselineTemplateResolveStep,
   type ResolveStepOutcome,
 } from "./resolve-then-write.ts";
@@ -647,6 +649,17 @@ export interface BaselineTemplateExecutionResult {
   missingVariables?: string[];
   /** id of the baseline_action_template_audit_log row written for this execution, if the insert succeeded. */
   auditLogId?: number;
+  /**
+   * #4514 — true when a skip-write resolve step found the resource already present
+   * and NO write was fired; `data` is the existing item, not a write response.
+   */
+  skippedExisting?: boolean;
+  /**
+   * #4514 — the {{var}}s the skipped write's body would have carried. None of them
+   * reached the tenant, so a later node must not treat them as applied (the
+   * break-glass gate refuses to deliver a generated password listed here).
+   */
+  unappliedVariables?: string[];
 }
 
 /**
@@ -792,7 +805,7 @@ export async function resolveTemplateLookups(
   tenantId: string,
   payload: Record<string, unknown>,
 ): Promise<ResolveStepOutcome> {
-  if (!steps || steps.length === 0) return { resolvedVars: {}, failed: false };
+  if (!steps || steps.length === 0) return { resolvedVars: {}, failed: false, lookups: [] };
   const { graphReadForTenantWithWriteToken } = await import("./graph.ts");
   return runTemplateResolveSteps(steps, payload, (endpoint) =>
     graphReadForTenantWithWriteToken(tenantId, endpoint),
@@ -1449,6 +1462,7 @@ export async function runBaselineTemplateAgainstTenant(
             endpoint: lookup.failedEndpoint ?? resolved.rawEndpoint, method: resolved.method,
             customerId, tenantId, executedAt: new Date().toISOString(),
             resolveFailure: lookup.reason ?? "resolve lookup failed",
+            lookups: lookup.lookups,
             ...(source !== undefined ? { source } : {}),
           },
         });
@@ -1463,6 +1477,49 @@ export async function runBaselineTemplateAgainstTenant(
       };
     }
     effectivePayload = { ...payload, ...lookup.resolvedVars };
+
+    // #4514 — resolve-then-skip. The resource this template creates already exists
+    // (found by its naming convention, and exactly one of it), so firing the write
+    // would make a duplicate — a second break-glass Global Admin, a second CA
+    // exclusion group. Report the existing item as the step's result instead, so
+    // parameter_mapping ({{steps.<node>.data.id}}) chains onto the real object.
+    // Logged as "skipped", never "executed": Launch Control only offers rollback on
+    // "executed", and rolling back a skip would delete a resource this run never made.
+    if (lookup.skipWrite) {
+      const existing = lookup.skipWrite.item;
+      const existingId = existing != null && typeof existing === "object"
+        ? (existing as Record<string, unknown>).id ?? null
+        : null;
+      const unappliedVariables = templateBodyVariables(resolved.rawBodyTemplate);
+      let skipAuditLogId: number | undefined;
+      try {
+        const [inserted] = await db.insert(baselineActionTemplateAuditLogTable).values({
+          action: "skipped",
+          templateId,
+          // The skipped write's generated password reached no tenant object — keep it out of the row.
+          requestVariables: redactForPersistence(effectivePayload, payload),
+          afterSnapshot: {
+            success: true, status: 200, skippedExisting: true,
+            existingId, existingEndpoint: lookup.skipWrite.endpoint,
+            unappliedVariables,
+            endpoint: resolved.rawEndpoint, method: resolved.method,
+            customerId, tenantId, executedAt: new Date().toISOString(),
+            lookups: lookup.lookups,
+            ...(source !== undefined ? { source } : {}),
+          },
+        }).returning({ id: baselineActionTemplateAuditLogTable.id });
+        skipAuditLogId = inserted?.id;
+      } catch (auditErr) {
+        log.warn({ auditErr, templateId }, "runBaselineTemplateAgainstTenant: skip audit insert failed (non-fatal)");
+      }
+      log.info({ templateId, tenantId, existingId }, "runBaselineTemplateAgainstTenant: resource already exists — write skipped");
+      return {
+        success: true, status: 200, data: existing,
+        endpoint: lookup.skipWrite.endpoint, method: "GET", label: resolved.label,
+        auditLogId: skipAuditLogId, skippedExisting: true, unappliedVariables,
+      };
+    }
+
     writeResolved = await resolveBaselineTemplateRequest(templateId, effectivePayload);
     if (writeResolved.missingVariables.length > 0) {
       return {
@@ -7906,6 +7963,34 @@ Return ONLY a JSON object with these exact keys (no prose outside the JSON):
           break;
         }
 
+        // #4514 — never deliver a credential no tenant object carries. When the step
+        // that would have set this secret found the account already present and
+        // skipped its write, the generated password was never applied: revealing it
+        // hands a tenant admin a break-glass "credential" that cannot sign in, which
+        // they would only discover during the lockout it exists for. Refuse instead.
+        // Resetting the existing account's password is a separate, explicit decision
+        // this gate does not make on anyone's behalf.
+        const secretKeys = new Set<string>([secretField]);
+        if (typeof node.data.secretTemplate === "string") {
+          for (const m of (node.data.secretTemplate as string).matchAll(/\{\{([\w.]+)\}\}/g)) {
+            secretKeys.add((m[1].startsWith("payload.") ? m[1].slice(8) : m[1]).split(".")[0]);
+          }
+        }
+        const unappliedBy = findUnappliedSecretSource(payload.nodes as Record<string, unknown> | undefined, secretKeys);
+        if (unappliedBy) {
+          const existing = unappliedBy.existing as { id?: unknown; userPrincipalName?: unknown } | null;
+          nodeError = true;
+          output = {
+            error:
+              `break_glass_verification_gate: step ${unappliedBy.nodeId} found an existing account` +
+              `${existing?.userPrincipalName ? ` (${String(existing.userPrincipalName)}, id ${String(existing.id ?? "")})` : ""}` +
+              " and did not create one, so the generated credential was never applied to it. Refusing to deliver a password that cannot sign in.",
+            credentialNotApplied: true,
+            skippedNodeId: unappliedBy.nodeId,
+          };
+          break;
+        }
+
         const { encryptSecret } = await import("./secret-crypto.ts");
         const [pendingSecret] = await db.insert(breakGlassPendingSecretsTable).values({
           runId,
@@ -10014,6 +10099,10 @@ Return ONLY a JSON object with these exact keys (no prose outside the JSON):
               data: ebtResult.data,
               templateId: ebtTemplateId,
               label: ebtResult.label,
+              // #4514 — no write fired; the gate reads unappliedVariables off this node.
+              ...(ebtResult.skippedExisting
+                ? { skippedExisting: true, unappliedVariables: ebtResult.unappliedVariables ?? [] }
+                : {}),
             };
           } else {
             switchChosenHandle = ebtResult.errorType ?? "unexpected";

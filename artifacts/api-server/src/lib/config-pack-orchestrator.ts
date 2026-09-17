@@ -41,6 +41,7 @@ import {
 } from "./change-control-write-gate.ts";
 import { recordExecution } from "./msp-change-execution-store.ts";
 import { assertGraphStructurallySound } from "./workflow-graph-integrity.ts";
+import { resolveProvidedVariablesOf, type BaselineTemplateResolveStep } from "./resolve-then-write.ts";
 import { logger } from "./logger.ts";
 const log = logger.child({ channel: "engine.config-pack" });
 import {
@@ -121,6 +122,7 @@ export async function loadConfigPack(packKey: string): Promise<{
       baseDependsOn: baselineActionTemplatesTable.dependsOn,
       requiresVerificationGate: baselineActionTemplatesTable.requiresVerificationGate,
       requiredVariables: baselineActionTemplatesTable.requiredVariables,
+      resolveSteps: baselineActionTemplatesTable.resolveSteps,
       templateLabel: baselineActionTemplatesTable.label,
     })
     .from(configPackTemplatesTable)
@@ -135,16 +137,25 @@ export async function loadConfigPack(packKey: string): Promise<{
     throw new ConfigPackError("pack_empty", `Config pack '${packKey}' has no templates assigned`);
   }
 
-  const templates: PackTemplateResolved[] = rows.map((r) => ({
-    templateId: r.templateId,
-    checkKey: r.checkKey,
-    parameterMapping: r.parameterMapping ?? null,
-    label: r.templateLabel ?? r.checkKey ?? `step-${r.id}`,
-    sortOrder: r.sortOrder,
-    effectiveDependsOn: r.dependsOnOverride ?? r.baseDependsOn ?? [],
-    requiresVerificationGate: r.requiresVerificationGate ?? false,
-    requiredVariables: r.requiredVariables ?? [],
-  }));
+  const templates: PackTemplateResolved[] = rows.map((r) => {
+    // #4514 — a variable the template's own resolve steps look up live (e.g.
+    // identity-ca-hardening-v1's breakGlassGroupId, found and verified against the
+    // tenant) is not an operator input: demanding it up front is what made the
+    // pack's lockout safety rest on a hand-typed GUID nothing checked.
+    const resolveProvided = new Set(
+      resolveProvidedVariablesOf((r.resolveSteps ?? []) as BaselineTemplateResolveStep[]),
+    );
+    return {
+      templateId: r.templateId,
+      checkKey: r.checkKey,
+      parameterMapping: r.parameterMapping ?? null,
+      label: r.templateLabel ?? r.checkKey ?? `step-${r.id}`,
+      sortOrder: r.sortOrder,
+      effectiveDependsOn: r.dependsOnOverride ?? r.baseDependsOn ?? [],
+      requiresVerificationGate: r.requiresVerificationGate ?? false,
+      requiredVariables: (r.requiredVariables ?? []).filter((v) => !resolveProvided.has(v)),
+    };
+  });
 
   return { pack, templates };
 }
