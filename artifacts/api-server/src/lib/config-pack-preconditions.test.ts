@@ -22,6 +22,7 @@ vi.mock("./graph.ts", () => ({
 import {
   enforcingReplacementGap,
   evaluateConfigPackPreconditions,
+  graphWriteShape,
   isSecurityDefaultsDisableStep,
   type PackPreconditionStep,
 } from "./config-pack-preconditions.ts";
@@ -168,5 +169,46 @@ describe("Security Defaults precondition", () => {
     expect(isSecurityDefaultsDisableStep(unresolved, {})).toBe(true);
     expect(isSecurityDefaultsDisableStep(versioned, {})).toBe(true);
     expect(evaluate([enable, restrictGuests], null)).toBeNull();
+  });
+});
+
+// #4528 — the same evaluation gates execute_action and SOP runs.
+describe("graphWriteShape (#4528)", () => {
+  it("matches an SOP step to the catalog template addressing the same Graph write", () => {
+    // Real rows: SOP-SEED-IAM-07 step vs action.set-ca-policy-state.
+    expect(graphWriteShape("PATCH", "/v1.0/identity/conditionalAccess/policies/{{policyId}}")).toBe(
+      graphWriteShape("patch", "/identity/conditionalAccess/policies/{{id}}"),
+    );
+    expect(graphWriteShape("POST", "https://graph.microsoft.com/beta/identity/conditionalAccess/policies/")).toBe(
+      "POST /identity/conditionalaccess/policies",
+    );
+  });
+
+  it("does not match a different method or a different resource", () => {
+    const createPolicy = graphWriteShape("POST", "/identity/conditionalAccess/policies");
+    expect(graphWriteShape("PATCH", "/identity/conditionalAccess/policies")).not.toBe(createPolicy);
+    expect(graphWriteShape("POST", "/identity/conditionalAccess/namedLocations")).not.toBe(createPolicy);
+    expect(graphWriteShape("POST", "/users/{{id}}/revokeSignInSessions")).toBe("POST /users/{}/revokesigninsessions");
+  });
+});
+
+describe("evaluateConfigPackPreconditions subject (#4528)", () => {
+  it("names an SOP or action instead of a pack", () => {
+    const refusal = evaluateConfigPackPreconditions({
+      packKey: "SOP-SEED-IAM-03",
+      subject: "SOP 'SOP-SEED-IAM-03'",
+      steps: [caBaseline("enabled")],
+      payload: {},
+      tenantSkus: { skuPartNumbers: new Set(["ENTERPRISEPACK"]), error: null },
+    });
+    expect(refusal?.code).toBe("license_required");
+    expect(refusal?.message).toMatch(/^SOP 'SOP-SEED-IAM-03' cannot run on this tenant/);
+  });
+
+  it("refuses a lone Security Defaults disable (an execute_action has no replacement)", () => {
+    const refusal = evaluateConfigPackPreconditions({
+      packKey: "a", subject: "Action 'a'", steps: [disableSecurityDefaults], payload: {}, tenantSkus: null,
+    });
+    expect(refusal?.code).toBe("security_defaults_replacement_not_enforcing");
   });
 });

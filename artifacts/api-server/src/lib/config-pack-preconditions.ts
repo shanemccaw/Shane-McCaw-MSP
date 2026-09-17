@@ -27,8 +27,13 @@
  *      #4518 may choose: if a pack's CA policy is deliberately report-only, its
  *      Security Defaults step simply never runs.
  *
- * Pure: the caller (prepareConfigPackRun) loads the step rows and the tenant SKU
- * set once, so this module is unit-testable without db or Graph.
+ * Pure: the caller loads the step rows and the tenant SKU set once, so this
+ * module is unit-testable without db or Graph.
+ *
+ * Git #4528 — the same evaluation gates every path that fires these writes, not
+ * only packs: tenant-write-preconditions.ts loads the steps for a Config Pack
+ * (prepareConfigPackRun), a single execute_action (admin-execute-action.ts) and
+ * an SOP run (sop-execution.ts) and hands them here.
  */
 
 import { interp } from "./interp.ts";
@@ -52,6 +57,28 @@ export interface PackPreconditionStep {
 
 const SECURITY_DEFAULTS_PATH = "/policies/identitysecuritydefaultsenforcementpolicy";
 const CA_POLICIES_PATH = "/identity/conditionalaccess/policies";
+
+/**
+ * Git #4528 — a Graph write's identity independent of placeholder names and the
+ * version prefix, e.g. `"PATCH /identity/conditionalaccess/policies/{}"`. An SOP
+ * step (`/v1.0/.../policies/{{id}}`) and a catalog template
+ * (`.../policies/{{policyId}}`) that address the same Graph resource share a
+ * shape — which is how an SOP step, an operator-typed string with no template
+ * id, inherits the license requirement the catalog records for that write.
+ */
+export function graphWriteShape(method: string, endpoint: string): string {
+  const path = endpoint
+    .trim()
+    .split("?")[0]!
+    .toLowerCase()
+    .replace(/^https:\/\/graph\.microsoft\.com/, "")
+    .replace(/^\/(v1\.0|beta)(?=\/)/, "")
+    .replace(/\/+$/, "")
+    .split("/")
+    .map((seg) => (/^\{\{?[^{}]*\}?\}$/.test(seg) ? "{}" : seg))
+    .join("/");
+  return `${method.trim().toUpperCase()} ${path}`;
+}
 
 /** Endpoint path, lowercased, without query string, trailing slash, or a
  *  leading Graph version segment. */
@@ -166,11 +193,15 @@ export function enforcingPolicyShapeGap(body: Record<string, unknown>): string |
  */
 export function evaluateConfigPackPreconditions(opts: {
   packKey: string;
+  /** How a refusal names what was refused. Defaults to `Pack '<packKey>'`;
+   *  execute_action and SOP runs (#4528) name themselves. */
+  subject?: string;
   steps: PackPreconditionStep[];
   payload: Record<string, unknown>;
   tenantSkus: TenantLicenseSkuResult | null;
 }): ConfigPackError | null {
   const { packKey, steps, payload, tenantSkus } = opts;
+  const subject = opts.subject ?? `Pack '${packKey}'`;
 
   // ── 1. License ──
   const unlicensed = steps.filter((s) => !licenseSatisfied(s, tenantSkus));
@@ -184,7 +215,7 @@ export function evaluateConfigPackPreconditions(opts: {
       : "the tenant does not currently hold that license";
     return new ConfigPackError(
       "license_required",
-      `Pack '${packKey}' cannot run on this tenant: ${unlicensed.map((s) => s.templateId).join(", ")} — ` +
+      `${subject} cannot run on this tenant: ${unlicensed.map((s) => s.templateId).join(", ")} — ` +
         `${requiredLicenses.join("; ")}, and ${reason}. Nothing was written.`,
       {
         unlicensedTemplateIds: unlicensed.map((s) => s.templateId),
@@ -203,11 +234,11 @@ export function evaluateConfigPackPreconditions(opts: {
       .map((s) => ({ templateId: s.templateId, gap: enforcingReplacementGap(s, payload) }));
     if (!candidates.some((c) => c.gap === null)) {
       const why = candidates.length === 0
-        ? "the pack creates no Conditional Access policy"
+        ? "this run creates no Conditional Access policy"
         : candidates.map((c) => `${c.templateId}: ${c.gap}`).join("; ");
       return new ConfigPackError(
         "security_defaults_replacement_not_enforcing",
-        `Pack '${packKey}' would turn off Security Defaults (${disableSteps.map((s) => s.templateId).join(", ")}) ` +
+        `${subject} would turn off Security Defaults (${disableSteps.map((s) => s.templateId).join(", ")}) ` +
           `without an enforcing Conditional Access replacement — ${why}. ` +
           "Security Defaults is left on and nothing was written.",
         {

@@ -19,7 +19,6 @@ import {
   configPackTemplatesTable,
   tenantsTable,
   wfDefinitionsTable,
-  writeActionCatalogTable,
   wfVersionsTable,
   type ConfigPack,
   type TenantConsentMap,
@@ -32,8 +31,11 @@ import { fireWorkflowForDefinition, GENERATED_SECRET_REFS_FIELD } from "./workfl
 // on a run that actually mints a credential (#1911).
 import type { GeneratedSecretRef } from "./generated-secret-store.ts";
 import { graphFetchForTenant } from "./graph.ts";
-import { getSubscribedSkuPartNumbersForTenant } from "./license-gate.ts";
-import { evaluateConfigPackPreconditions, type PackPreconditionStep } from "./config-pack-preconditions.ts";
+import type { PackPreconditionStep } from "./config-pack-preconditions.ts";
+import {
+  loadRequiredLicenseSkuListsByTemplate,
+  resolveTenantWritePreconditionRefusal,
+} from "./tenant-write-preconditions.ts";
 import {
   bindChangeRequestToRun,
   claimChangeRequestForWrite,
@@ -332,8 +334,8 @@ export interface ConfigPackRunContext {
 
 /**
  * #4513 — load what the tenant preconditions need for the pack's template steps
- * (method/endpoint/body, and every catalog-recorded license requirement), read
- * the tenant's live SKU set once if any step carries a requirement, and evaluate.
+ * (method/endpoint/body, and every catalog-recorded license requirement) and
+ * evaluate them through the loader shared with execute_action and SOP runs (#4528).
  */
 async function resolvePreconditionRefusal(
   packKey: string,
@@ -344,7 +346,7 @@ async function resolvePreconditionRefusal(
   const templateIds = [...new Set(ordered.map((t) => t.templateId).filter((id): id is string => !!id))];
   if (templateIds.length === 0) return null;
 
-  const [templateRows, catalogRows] = await Promise.all([
+  const [templateRows, licenseListsByTemplate] = await Promise.all([
     db
       .select({
         templateId: baselineActionTemplatesTable.templateId,
@@ -354,25 +356,8 @@ async function resolvePreconditionRefusal(
       })
       .from(baselineActionTemplatesTable)
       .where(inArray(baselineActionTemplatesTable.templateId, templateIds)),
-    db
-      .select({
-        templateId: writeActionCatalogTable.templateId,
-        requiredLicenseSkus: writeActionCatalogTable.requiredLicenseSkus,
-      })
-      .from(writeActionCatalogTable)
-      .where(inArray(writeActionCatalogTable.templateId, templateIds)),
+    loadRequiredLicenseSkuListsByTemplate(templateIds),
   ]);
-
-  const licenseListsByTemplate = new Map<string, string[][]>();
-  for (const row of catalogRows) {
-    const skus = Array.isArray(row.requiredLicenseSkus)
-      ? (row.requiredLicenseSkus as unknown[]).filter((s): s is string => typeof s === "string")
-      : [];
-    if (!row.templateId || skus.length === 0) continue;
-    const lists = licenseListsByTemplate.get(row.templateId) ?? [];
-    lists.push(skus);
-    licenseListsByTemplate.set(row.templateId, lists);
-  }
 
   const steps: PackPreconditionStep[] = templateRows.map((r) => ({
     templateId: r.templateId,
@@ -382,18 +367,7 @@ async function resolvePreconditionRefusal(
     requiredLicenseSkuLists: licenseListsByTemplate.get(r.templateId) ?? [],
   }));
 
-  const tenantSkus = steps.some((s) => s.requiredLicenseSkuLists.length > 0)
-    ? await getSubscribedSkuPartNumbersForTenant(tenantId)
-    : null;
-
-  const refusal = evaluateConfigPackPreconditions({ packKey, steps, payload, tenantSkus });
-  if (refusal) {
-    log.warn(
-      { packKey, tenantId, code: refusal.code, details: refusal.details },
-      "config-pack-orchestrator: tenant precondition not met — the pack will not run",
-    );
-  }
-  return refusal;
+  return resolveTenantWritePreconditionRefusal({ packKey, steps, tenantId, payload });
 }
 
 /**

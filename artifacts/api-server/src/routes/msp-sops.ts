@@ -299,6 +299,9 @@ const SOP_RUN_ERROR_STATUS: Record<SopExecutionErrorCode, number> = {
   standing_policy_inactive: 422,
   standing_policy_sop_mismatch: 422,
   standing_policy_requires_policy_origin: 400,
+  // #4528 — the #4513 tenant preconditions, same statuses as the pack run route.
+  license_required: 409,
+  security_defaults_replacement_not_enforcing: 422,
 };
 
 router.post(

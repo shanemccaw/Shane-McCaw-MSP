@@ -22,8 +22,9 @@
  * Posture mirrors admin-write-actions' preview→confirm→execute contract, in
  * one route: anything other than confirmed:true returns a PREVIEW — the
  * byte-for-byte resolved request via resolveBaselineTemplateRequest(), the
- * same single substitution implementation execution uses — and never touches
- * Graph. confirmed:true executes through the one production engine,
+ * same single substitution implementation execution uses — and never writes to
+ * Graph (#4528: it does read the tenant's /subscribedSkus for the license
+ * precondition). confirmed:true executes through the one production engine,
  * runBaselineTemplateAgainstTenant() (source:"execute_action"), which records
  * every run in baseline_action_template_audit_log.
  *
@@ -46,6 +47,10 @@ import {
 } from "../lib/workflow-executor.ts";
 import { evaluateSuccessCriteria } from "../lib/write-action-safety.ts";
 import {
+  loadRequiredLicenseSkuListsByTemplate,
+  resolveTenantWritePreconditionRefusal,
+} from "../lib/tenant-write-preconditions.ts";
+import {
   WriteBackCustomerNotFoundError,
   WriteBackNotEnabledError,
   WriteConsentRequiredError,
@@ -56,6 +61,12 @@ import {
 const log = logger.child({ channel: "engine.config-pack" });
 
 const router: IRouter = Router();
+
+/** #4528 — same statuses admin-config-pack-run.ts returns for the #4513 refusals. */
+const PRECONDITION_STATUS: Record<string, number> = {
+  license_required: 409,
+  security_defaults_replacement_not_enforcing: 422,
+};
 
 /** The sellable micro-remediation slugs, for honest "did you mean" errors. */
 async function listMicroRemediationSlugs(): Promise<string[]> {
@@ -206,9 +217,34 @@ router.post("/admin/remediation/execute-action", requireAdmin, async (req: Reque
     const serviceInfo = { slug: serviceSlug, name: service.name, templateId: exec.templateId };
     const tenantInfo = { customerId: customer.id, name: customer.name, isTestbed: customer.isTestbed };
 
+    // #4528 — the same tenant preconditions a Config Pack run enforces (#4513):
+    // the template's catalog-recorded license must be held by the live tenant
+    // (a failed SKU read fails closed), and Security Defaults is never turned
+    // off by a lone action — no enforcing CA replacement exists in a single
+    // write. Evaluated for the preview too, so it reports not-ready honestly.
+    const licenseListsByTemplate = await loadRequiredLicenseSkuListsByTemplate([exec.templateId]);
+    const preconditionRefusal = await resolveTenantWritePreconditionRefusal({
+      packKey: serviceSlug,
+      subject: `Action '${serviceSlug}'`,
+      steps: [
+        {
+          templateId: exec.templateId,
+          method: template.method,
+          endpoint: template.endpoint,
+          bodyTemplate: (template.bodyTemplate ?? {}) as Record<string, unknown>,
+          requiredLicenseSkuLists: licenseListsByTemplate.get(exec.templateId) ?? [],
+        },
+      ],
+      tenantId: customer.tenantId,
+      payload,
+    });
+    const precondition = preconditionRefusal
+      ? { code: preconditionRefusal.code, error: preconditionRefusal.message, ...(preconditionRefusal.details ?? {}) }
+      : null;
+
     if (body.confirmed !== true) {
       // PREVIEW — the exact request a confirmed call will send (the same
-      // single substitution implementation execution uses). No Graph call.
+      // single substitution implementation execution uses). No Graph write.
       const resolved = await resolveBaselineTemplateRequest(exec.templateId, payload);
       log.info(
         { serviceSlug, templateId: exec.templateId, customerId: customer.id, missingVariables: resolved.missingVariables },
@@ -227,7 +263,8 @@ router.post("/admin/remediation/execute-action", requireAdmin, async (req: Reque
           requiredVariables: resolved.requiredVariables,
           missingVariables: resolved.missingVariables,
         },
-        ready: resolved.missingVariables.length === 0,
+        ready: resolved.missingVariables.length === 0 && precondition === null,
+        precondition,
         safety: {
           reversible: template.reversible,
           reverseTemplateId: template.reverseTemplateId,
@@ -237,6 +274,14 @@ router.post("/admin/remediation/execute-action", requireAdmin, async (req: Reque
         confirmationRequired:
           "This was a preview only. Re-send the same request with confirmed:true to execute this exact resolved request against the customer's LIVE tenant.",
       });
+    }
+
+    if (preconditionRefusal) {
+      log.warn(
+        { serviceSlug, templateId: exec.templateId, customerId: customer.id, code: preconditionRefusal.code },
+        "execute-action: refused by a tenant precondition before any write",
+      );
+      return void res.status(PRECONDITION_STATUS[preconditionRefusal.code] ?? 409).json(precondition);
     }
 
     // EXECUTE — the one production engine; source tags the

@@ -72,6 +72,11 @@ import {
 } from "@workspace/db";
 
 import { persistMaterializedWorkflow } from "./config-pack-orchestrator.ts";
+import { graphWriteShape } from "./config-pack-preconditions.ts";
+import {
+  loadRequiredLicenseSkuListsByGraphShape,
+  resolveTenantWritePreconditionRefusal,
+} from "./tenant-write-preconditions.ts";
 import { fireWorkflowForDefinition } from "./workflow-executor.ts";
 import {
   claimChangeRequestForWrite,
@@ -105,7 +110,10 @@ export type SopExecutionErrorCode =
   | "standing_policy_not_found"
   | "standing_policy_inactive"
   | "standing_policy_sop_mismatch"
-  | "standing_policy_requires_policy_origin";
+  | "standing_policy_requires_policy_origin"
+  // #4528 — the #4513 tenant preconditions, same codes the pack path uses.
+  | "license_required"
+  | "security_defaults_replacement_not_enforcing";
 
 export class SopExecutionError extends Error {
   readonly code: SopExecutionErrorCode;
@@ -253,6 +261,39 @@ export async function runSopForCustomer(opts: {
       `Missing required variables for SOP '${sopId}': ${missingVariables.join(", ")}. Pass targetEntity and/or "variables" in the request body.`,
       { missingVariables },
     );
+  }
+
+  // ── #4528 — tenant preconditions, before any claim, persist or write ───────
+  // The same #4513 rules a Config Pack run enforces: every write step's
+  // catalog-recorded license must be held by the live tenant (read once; a
+  // failed read fails closed), and a step turning Security Defaults off needs
+  // an enforcing, licensed CA replacement in this same run. An SOP step has no
+  // template id, so its requirement is matched by Graph write shape.
+  const writeNodes = graph.nodes.filter((n) => n.type === "graph_write_operation");
+  if (writeNodes.length > 0) {
+    const licenseListsByShape = await loadRequiredLicenseSkuListsByGraphShape();
+    const labelByNodeId = new Map(materialized.map((m) => [m.nodeId, `step ${m.stepNumber} (${m.label})`]));
+    const refusal = await resolveTenantWritePreconditionRefusal({
+      packKey: sopId,
+      subject: `SOP '${sopId}'`,
+      steps: writeNodes.map((n) => {
+        const data = n.data as Record<string, unknown>;
+        const method = String(data.method ?? "");
+        const endpoint = String(data.endpoint ?? "");
+        return {
+          templateId: labelByNodeId.get(n.id) ?? n.id,
+          method,
+          endpoint,
+          bodyTemplate: (data.body ?? {}) as Record<string, unknown>,
+          requiredLicenseSkuLists: licenseListsByShape.get(graphWriteShape(method, endpoint)) ?? [],
+        };
+      }),
+      tenantId: customer.tenantId,
+      payload,
+    });
+    if (refusal) {
+      throw new SopExecutionError(refusal.code as SopExecutionErrorCode, refusal.message, refusal.details);
+    }
   }
 
   // ── Authorization — fail-closed, same posture as runConfigPackForCustomer ──
