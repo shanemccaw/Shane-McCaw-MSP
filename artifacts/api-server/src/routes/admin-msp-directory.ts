@@ -780,6 +780,17 @@ router.patch("/admin/msp-directory/customer/:id", requireAdmin, async (req: Requ
 
   try {
     const actor = req.user!;
+
+    const [before] = await db
+      .select({ isTestbed: tenantsTable.isTestbed })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, customerId));
+    if (!before) {
+      res.status(404).json({ error: "Customer not found" });
+      return;
+    }
+    const previousIsTestbed = before.isTestbed;
+
     const updates: Partial<typeof tenantsTable.$inferInsert> = { updatedAt: new Date() };
     if (businessUnit !== undefined) {
       updates.businessUnit = typeof businessUnit === "string" ? (businessUnit.trim() || null) : null;
@@ -797,6 +808,23 @@ router.patch("/admin/msp-directory/customer/:id", requireAdmin, async (req: Requ
     if (!updated) {
       res.status(404).json({ error: "Customer not found" });
       return;
+    }
+
+    // #4517 — flipping isTestbed toggles a tenant across pricing tiers/write gates
+    // (see the #4489 comment above), so it's audited like any other security-relevant
+    // consent/grant change, matching the pattern the write-consent callback uses above.
+    if (isTestbed !== undefined && isTestbed !== previousIsTestbed) {
+      await createAuditLog({
+        actorUserId: actor.id,
+        actorName: actor.email ?? "platform-admin",
+        actorRole: "platform_admin",
+        actionType: "tenant_testbed_flag_changed",
+        actionCategory: "settings",
+        entityType: "tenant",
+        entityId: customerId,
+        tenantId: customerId,
+        metadata: { previousIsTestbed, newIsTestbed: isTestbed },
+      });
     }
 
     log.info({ actorUserId: actor.id, customerId, businessUnit: updated.businessUnit, isTestbed: updated.isTestbed }, "admin.active-directory: tenant profile updated");
