@@ -84,6 +84,7 @@ describe.skipIf(!process.env.DATABASE_URL)("#4462 — add-on gate: Premier by ti
 
   afterAll(async () => {
     await db.delete(auditLogsTable).where(sql`${auditLogsTable.metadata}->>'stripeCheckoutSessionId' LIKE ${"%" + suffix}`);
+    await db.delete(auditLogsTable).where(sql`${auditLogsTable.metadata}->>'stripeSubscriptionId' LIKE ${"%" + suffix} AND ${auditLogsTable.actionType} = 'portal_add_on_canceled'`);
     if (tenantIds.length > 0) {
       await db.delete(tenantAddOnEntitlementsTable).where(inArray(tenantAddOnEntitlementsTable.tenantId, tenantIds));
     }
@@ -217,6 +218,41 @@ describe.skipIf(!process.env.DATABASE_URL)("#4462 — add-on gate: Premier by ti
     const rows = await entitlementRows(noTierTenant);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ stripeSubscriptionId: `sub_test_webhook_${suffix}` });
+    expect((await request(appFor(noTierTenant, "change_control")).get("/gated")).status).toBe(200);
+  });
+
+  it("#4486 — a deleted add-on subscription cancels its entitlement; other kinds, replays and stale subscriptions change nothing", async () => {
+    const { cancelPortalAddOnSubscription } = await import("../routes/portal-add-ons.ts");
+    const subId = `sub_test_webhook_${suffix}`;
+    const subscription = (metadata: Record<string, string>, id = subId) =>
+      ({ id, metadata, cancellation_details: { reason: "cancellation_requested" } }) as unknown as Stripe.Subscription;
+    const addOnMeta = { checkout_kind: PORTAL_ADD_ON_CHECKOUT_KIND, tenantId: String(noTierTenant) };
+
+    // Not an add-on subscription — untouched even though the id matches.
+    expect(await cancelPortalAddOnSubscription(subscription({ checkout_kind: "direct_marketing" }))).toEqual({ outcome: "not_add_on_subscription" });
+    expect((await entitlementRows(noTierTenant))[0]).toMatchObject({ status: "active" });
+
+    const canceled = await cancelPortalAddOnSubscription(subscription(addOnMeta));
+    expect(canceled).toMatchObject({ outcome: "entitlement", result: { canceled: true, tenantId: noTierTenant, featureKey: "change_control" } });
+    expect((await entitlementRows(noTierTenant))[0]).toMatchObject({ status: "canceled", stripeSubscriptionId: subId });
+    expect((await request(appFor(noTierTenant, "change_control")).get("/gated")).status).toBe(402);
+
+    // A replayed deletion is a no-op.
+    expect(await cancelPortalAddOnSubscription(subscription(addOnMeta))).toEqual({
+      outcome: "entitlement",
+      result: { canceled: false, reason: "no_matching_entitlement" },
+    });
+
+    // Re-subscribe reactivates under the new subscription; a late deletion of the old one cannot revoke it.
+    const again = await ensureAddOnEntitlement({
+      tenantId: noTierTenant,
+      serviceId: changeControlSmbId,
+      stripeCheckoutSessionId: `cs_test_resub_${suffix}`,
+      stripeSubscriptionId: `sub_test_resub_${suffix}`,
+    });
+    expect(again).toMatchObject({ provisioned: true, reason: "reactivated" });
+    expect(await cancelPortalAddOnSubscription(subscription(addOnMeta))).toMatchObject({ result: { canceled: false } });
+    expect((await entitlementRows(noTierTenant))[0]).toMatchObject({ status: "active", stripeSubscriptionId: `sub_test_resub_${suffix}` });
     expect((await request(appFor(noTierTenant, "change_control")).get("/gated")).status).toBe(200);
   });
 });

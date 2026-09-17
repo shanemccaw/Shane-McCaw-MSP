@@ -50,6 +50,8 @@ import { resolveCustomerTierEntitlement } from "../lib/portal-tier-features.ts";
 import {
   addOnFeatureKey,
   ensureAddOnEntitlement,
+  cancelAddOnEntitlementForSubscription,
+  type AddOnEntitlementCancellation,
   type AddOnEntitlementResult,
 } from "../lib/addon-entitlement-provisioning.ts";
 import { isServiceFree, resolveServicePriceCents } from "../lib/catalog-pricing.ts";
@@ -322,6 +324,48 @@ export async function provisionPortalAddOnPurchase(session: Stripe.Checkout.Sess
     log.error(
       { stripeCheckoutSessionId: session.id, tenantId, serviceId, reason: result.reason },
       "portal add-ons: paid session names a service that is not a provisionable add-on",
+    );
+  }
+  return { outcome: "entitlement", result };
+}
+
+// ── Cancellation (webhook) ────────────────────────────────────────────────────
+
+export type PortalAddOnCancellationOutcome =
+  | { outcome: "entitlement"; result: AddOnEntitlementCancellation }
+  | { outcome: "not_add_on_subscription" };
+
+/**
+ * Revoke the entitlement an add-on subscription paid for once Stripe reports it
+ * deleted (Git #4486). Dispatched by portal-checkout.ts's signed webhook on
+ * `customer.subscription.deleted`; recognised by the `checkout_kind` the
+ * checkout-session route copies onto `subscription_data.metadata`. A later
+ * purchase reactivates the row through `ensureAddOnEntitlement`.
+ */
+export async function cancelPortalAddOnSubscription(subscription: Stripe.Subscription): Promise<PortalAddOnCancellationOutcome> {
+  const meta = subscription.metadata ?? {};
+  if (meta["checkout_kind"] !== PORTAL_ADD_ON_CHECKOUT_KIND) return { outcome: "not_add_on_subscription" };
+
+  const result = await cancelAddOnEntitlementForSubscription(subscription.id);
+  if (result.canceled) {
+    await createAuditLog({
+      actorUserId: null,
+      actorName: "stripe:subscription-deleted",
+      actorRole: "system",
+      actionType: "portal_add_on_canceled",
+      entityType: "tenant_add_on_entitlement",
+      entityId: result.entitlementId,
+      tenantId: result.tenantId,
+      metadata: {
+        featureKey: result.featureKey,
+        stripeSubscriptionId: subscription.id,
+        cancellationReason: subscription.cancellation_details?.reason ?? null,
+      },
+    });
+  } else {
+    log.info(
+      { stripeSubscriptionId: subscription.id, tenantId: meta["tenantId"] ?? null },
+      "portal add-ons: subscription deleted but no active entitlement carries it — nothing to revoke",
     );
   }
   return { outcome: "entitlement", result };

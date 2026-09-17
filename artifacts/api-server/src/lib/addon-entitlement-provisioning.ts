@@ -112,3 +112,41 @@ export async function ensureAddOnEntitlement(input: AddOnEntitlementProvisioning
   );
   return { provisioned: true, reason, entitlementId: written[0].id, featureKey };
 }
+
+export type AddOnEntitlementCancellation =
+  | { canceled: true; entitlementId: number; tenantId: number; featureKey: string }
+  | { canceled: false; reason: "no_matching_entitlement" };
+
+/**
+ * End the entitlement a cancelled add-on subscription paid for (Git #4486).
+ *
+ * Matches on `stripe_subscription_id`, and only an `active` row: a row a later
+ * re-subscribe already reactivated carries the NEW subscription's id, so a late
+ * or replayed `customer.subscription.deleted` for the old one matches nothing and
+ * cannot revoke what the tenant is paying for now. A replay of the same deletion
+ * is a no-op once the row is `canceled`.
+ */
+export async function cancelAddOnEntitlementForSubscription(stripeSubscriptionId: string): Promise<AddOnEntitlementCancellation> {
+  const [row] = await db
+    .update(tenantAddOnEntitlementsTable)
+    .set({ status: "canceled" })
+    .where(
+      and(
+        eq(tenantAddOnEntitlementsTable.stripeSubscriptionId, stripeSubscriptionId),
+        eq(tenantAddOnEntitlementsTable.status, "active"),
+      ),
+    )
+    .returning({
+      id: tenantAddOnEntitlementsTable.id,
+      tenantId: tenantAddOnEntitlementsTable.tenantId,
+      featureKey: tenantAddOnEntitlementsTable.featureKey,
+    });
+
+  if (!row) return { canceled: false, reason: "no_matching_entitlement" };
+
+  log.info(
+    { tenantId: row.tenantId, featureKey: row.featureKey, entitlementId: row.id, stripeSubscriptionId },
+    "add-on entitlement: subscription cancelled — tenant_add_on_entitlements row set to canceled",
+  );
+  return { canceled: true, entitlementId: row.id, tenantId: row.tenantId, featureKey: row.featureKey };
+}

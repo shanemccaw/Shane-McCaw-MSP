@@ -860,6 +860,7 @@ router.post(
 // Events handled:
 //   checkout.session.completed — payment confirmed → resolve_fulfillment
 //   checkout.session.async_payment_succeeded — delayed payment confirmed
+//   customer.subscription.deleted — portal add-on subscription ended → entitlement canceled (#4486)
 
 router.post("/portal/stripe/webhook", async (req: Request, res: Response): Promise<void> => {
   const sig = req.headers["stripe-signature"];
@@ -913,6 +914,17 @@ router.post("/portal/stripe/webhook", async (req: Request, res: Response): Promi
       case "checkout.session.async_payment_succeeded":
         await handleCheckoutCompleted(event.data.object as import("stripe").Stripe.Checkout.Session);
         break;
+      case "customer.subscription.deleted": {
+        // Git #4486 — a cancelled add-on subscription ends its entitlement. Only
+        // add-on subscriptions (metadata.checkout_kind) are touched here; loaded
+        // lazily for the same import-graph reason as the purchase backstop.
+        const subscription = event.data.object as import("stripe").Stripe.Subscription;
+        if (subscription.metadata?.["checkout_kind"] === PORTAL_ADD_ON_CHECKOUT_KIND) {
+          const { cancelPortalAddOnSubscription } = await import("./portal-add-ons.ts");
+          await cancelPortalAddOnSubscription(subscription);
+        }
+        break;
+      }
       default:
         // Unhandled event type — silently ignore
         break;
