@@ -23,7 +23,7 @@ import type { DryAction, Impact } from "../marketing/data/buyCheckout";
 
 export const BUY_SESSION_STORAGE_KEY = "smc_buy_flow_session";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type BuyLiveAction = DryAction & {
   pack: string;

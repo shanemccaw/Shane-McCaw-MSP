@@ -66,9 +66,29 @@
       "headers": { "Content-Type": "application/json" },
       "body": { "sessionId": "00000000-0000-4000-8000-000000004377", "productSlug": "monitoring-growth-smb", "seats": 250 },
       "expect": { "status": 404, "jsonPath": "$.error", "value": "session_expired" }
+    },
+    {
+      "sessionTag": "4339-rehydrate",
+      "name": "Git #4339 — consent-status for an unknown (valid-shape) stored session: 404 session_expired, so the reload rehydrate clears storage and mints fresh",
+      "method": "GET",
+      "path": "/api/public/flow/consent-status?sessionId=00000000-0000-4000-8000-000000004339",
+      "expect": { "status": 404, "jsonPath": "$.error", "value": "session_expired" }
+    },
+    {
+      "sessionTag": "4339-rehydrate",
+      "name": "Git #4339 — consent-status for a malformed stored session id: 400 session_invalid, never resumed",
+      "method": "GET",
+      "path": "/api/public/flow/consent-status?sessionId=not-a-uuid",
+      "expect": { "status": 400, "jsonPath": "$.error", "value": "session_invalid" }
     }
   ],
   "notes": [
+    "Git #4339 (sessionTag 4339-rehydrate): a Retainer /buy reload reads the stored session back (smc_buy_flow_session",
+    "+ smc_buy_flow_resume) and resumes it only when GET /api/public/flow/consent-status says pending or consented;",
+    "404/400 clears storage, paid is left alone so the next connect/pay mints fresh. Monitoring and Packs do not",
+    "rehydrate from storage: they resume by sign-in (#4377). The apiTests cover the expired/invalid contract the",
+    "rehydrate branches on; the reload itself is not asserted, because the runner has no step that seeds localStorage",
+    "before a goto.",
     "Git #4377 (sessionTag 4377-account-first): Monitoring runs account -> read consent -> tier & pay -> portal, with the",
     "same identity step and pre-consent door as Packs (#4378). The consent URL is refused server-side (409",
     "account_required) until the session's account has a password and MFA. Tier/seats move on the session in place",

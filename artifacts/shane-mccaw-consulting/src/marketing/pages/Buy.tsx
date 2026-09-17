@@ -20,7 +20,7 @@ import {
 import { startRegistration } from "@simplewebauthn/browser";
 import { useQuickStartPackAvailability } from "../../hooks/useQuickStartPackAvailability";
 import { useServices, type PublicService } from "../../hooks/useServices";
-import { useBuyPackLive, liveStepOutcome, BUY_SESSION_STORAGE_KEY } from "../../hooks/useBuyPackLive";
+import { useBuyPackLive, liveStepOutcome, BUY_SESSION_STORAGE_KEY, UUID_RE } from "../../hooks/useBuyPackLive";
 import { StripePaymentElement } from "../../components/StripePaymentElement";
 import { BuyResumeSignIn, type ResumedPurchase } from "../components/BuyResumeSignIn";
 import { logger } from "../../lib/logger";
@@ -92,6 +92,21 @@ type Product = "monitoring" | "retainer" | "pack";
 // Everything from write access onward is unchanged for them.
 // #4377 — Monitoring joins: account → consent → tier & pay → portal.
 const ACCOUNT_FIRST_PRODUCTS: readonly Product[] = ["monitoring", "pack"];
+
+// #4339 — what a reload needs to put a Retainer checkout back where it was: the
+// session id (also BUY_SESSION_STORAGE_KEY, which useBuyPackLive reads) plus the
+// identity and selection the session was minted from, none of which the public
+// session read returns.
+const BUY_RESUME_SNAPSHOT_KEY = "smc_buy_flow_resume";
+interface BuyResumeSnapshot {
+  sessionId: string;
+  product: Product;
+  choice: string | null;
+  seatInput: string;
+  email: string;
+  fullName: string;
+  company: string;
+}
 type Stage =
   | "identity"
   | "buy"
@@ -573,6 +588,7 @@ export default function Buy() {
   const clearPersistedSession = () => {
     try {
       window.localStorage.removeItem(BUY_SESSION_STORAGE_KEY);
+      window.localStorage.removeItem(BUY_RESUME_SNAPSHOT_KEY);
     } catch {
       /* storage unavailable */
     }
@@ -642,6 +658,19 @@ export default function Buy() {
     }
     try {
       window.localStorage.setItem(BUY_SESSION_STORAGE_KEY, data.sessionId);
+      // #4339 — the public session read returns no PII, so the identity and
+      // selection this session was minted from are kept beside its id, in the
+      // buyer's own browser, for the reload rehydrate below.
+      const snapshot: BuyResumeSnapshot = {
+        sessionId: data.sessionId,
+        product: st.product,
+        choice: st.choice,
+        seatInput: st.seatInput,
+        email: st.email.trim(),
+        fullName: st.fullName.trim(),
+        company: st.company.trim(),
+      };
+      window.localStorage.setItem(BUY_RESUME_SNAPSHOT_KEY, JSON.stringify(snapshot));
     } catch {
       /* storage unavailable — state alone still works */
     }
@@ -668,6 +697,83 @@ export default function Buy() {
       return null;
     }
   };
+
+  // #4339 — a reload before payment used to mint a second checkout session and
+  // send the buyer back through Microsoft consent for a tenant already connected
+  // to the first. Read the stored session back and confirm it server-side before
+  // trusting it: only a live, unpaid session is resumed; an expired one is
+  // cleared, and a paid one is left alone, so the next connect/pay mints fresh.
+  // Retainer only: Monitoring and Packs are account-first, and a returning buyer
+  // there resumes by signing in (#4377), never from a stored id alone.
+  useEffect(() => {
+    if (ACCOUNT_FIRST_PRODUCTS.includes(st.product) || qs("session")) return;
+    let snapshot: BuyResumeSnapshot | null = null;
+    try {
+      const storedId = window.localStorage.getItem(BUY_SESSION_STORAGE_KEY);
+      const raw = window.localStorage.getItem(BUY_RESUME_SNAPSHOT_KEY);
+      const parsed = raw ? (JSON.parse(raw) as Partial<BuyResumeSnapshot>) : null;
+      if (
+        storedId &&
+        UUID_RE.test(storedId) &&
+        parsed?.sessionId === storedId &&
+        parsed.product === st.product &&
+        parsed.email &&
+        parsed.fullName &&
+        parsed.company
+      ) {
+        snapshot = parsed as BuyResumeSnapshot;
+      }
+    } catch {
+      snapshot = null;
+    }
+    if (!snapshot) return;
+    const restored = snapshot;
+    let cancelled = false;
+    void (async () => {
+      let res: Response;
+      try {
+        res = await fetch(`/api/public/flow/consent-status?sessionId=${encodeURIComponent(restored.sessionId)}`);
+      } catch {
+        return; // network failure: leave storage alone, a later mint overwrites it
+      }
+      if (cancelled) return;
+      if (res.status === 404 || res.status === 400) {
+        log.info({ sessionId: restored.sessionId, status: res.status }, "stored checkout session expired — not resumed");
+        clearPersistedSession();
+        return;
+      }
+      if (!res.ok) return;
+      const status = (await res.json().catch(() => null)) as ConsentStatus | null;
+      if (cancelled || !status) return;
+      if (status.sessionStatus !== "pending" && status.sessionStatus !== "consented") {
+        log.info({ sessionId: restored.sessionId, sessionStatus: status.sessionStatus }, "stored checkout session not resumable — a new one will be minted");
+        return;
+      }
+      const connected = !!status.tenantConnected && status.sessionStatus === "consented";
+      log.info({ sessionId: restored.sessionId, sessionStatus: status.sessionStatus, connected }, "stored checkout session confirmed live — resuming it after reload");
+      set((s) => {
+        // The buyer may have started typing while the check ran; their own
+        // edits win and the stored session is not resumed underneath them.
+        if (s.sessionId || s.email || s.fullName || s.company || s.stage !== "buy") return {};
+        return {
+          sessionId: restored.sessionId,
+          choice: restored.choice,
+          seatInput: restored.seatInput,
+          seatEdited: restored.seatInput !== "",
+          email: restored.email,
+          fullName: restored.fullName,
+          company: restored.company,
+          connected,
+          scanSkipped: !connected && !!status.readConsentSkipped,
+        };
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Mount-only: the rehydrate answers "what did this browser leave behind".
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const waitForConsent = (
     sessionId: string,
     popup: Window | null,
