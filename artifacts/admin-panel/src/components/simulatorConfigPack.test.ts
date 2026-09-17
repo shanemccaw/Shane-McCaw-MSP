@@ -71,6 +71,19 @@ describe("deriveStepStatuses — maps run state onto the server's dependency ord
     const states = deriveStepStatuses(ORDER, null);
     expect(states.every((s) => s.status === "pending")).toBe(true);
   });
+
+  it("sanitizes dots in a dotted templateId to match the backend's nodeIdSafe node id (Git #4523)", () => {
+    const dottedOrder = ["quickstart-v1.create-break-glass-account"];
+    const snapshot = run({
+      status: "running",
+      nodeResultMap: {
+        "tpl-quickstart-v1-create-break-glass-account": { status: "ok", errorMessage: null },
+      },
+    });
+    const states = deriveStepStatuses(dottedOrder, snapshot);
+    expect(states[0]!.nodeId).toBe("tpl-quickstart-v1-create-break-glass-account");
+    expect(states[0]!.status).toBe("success");
+  });
 });
 
 describe("packProgress", () => {

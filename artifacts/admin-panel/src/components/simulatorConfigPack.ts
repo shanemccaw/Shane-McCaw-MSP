@@ -19,8 +19,10 @@
 import type { WriteActionNode } from "./SimulatorLeftTree";
 
 /** Mirror of config-pack-graph.ts's templateNodeId — the wf_run node id for a
- *  pack step. Kept in sync with the backend so nodeResultMap lookups line up. */
-export const templateNodeId = (templateId: string): string => `tpl-${templateId}`;
+ *  pack step. Kept in sync with the backend so nodeResultMap lookups line up,
+ *  including the backend's nodeIdSafe dot sanitization (Git #1316 / #4510). */
+export const templateNodeId = (templateId: string): string =>
+  `tpl-${templateId.replace(/\./g, "-")}`;
 
 /** One step of the plan the run endpoint would materialize (GET .../run/plan). */
 export interface ConfigPackPlanStep {
