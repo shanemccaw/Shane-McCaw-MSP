@@ -1883,70 +1883,6 @@ router.get("/admin/customers/:customerId/write-consent/start", requireAdmin, asy
   res.json({ consentUrl, expiresAt });
 });
 
-// ── POST /api/portal/consent/debug-write-reconsent-link ────────────────────────
-// ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
-// Allows a testbed customer to self-serve the write-consent flow from the
-// msp-portal shell. Uses the exact same write-consent logic as the admin route.
-router.post("/portal/consent/debug-write-reconsent-link", requireCapability("ladder.free"), async (req: Request, res: Response) => {
-  if (!process.env.MT_APP_WRITE_CLIENT_ID) {
-    res.status(503).json({ error: "Write app credentials not configured (MT_APP_WRITE_CLIENT_ID)" });
-    return;
-  }
-
-  const customerId = (req.user as { customerId?: number } | undefined)?.customerId;
-  if (typeof customerId !== "number" || Number.isNaN(customerId)) {
-    res.status(403).json({ error: "No customer identity on token" });
-    return;
-  }
-
-  const [customer] = await db
-    .select({ tenantId: tenantsTable.tenantId, isTestbed: tenantsTable.isTestbed })
-    .from(tenantsTable)
-    .where(eq(tenantsTable.id, customerId))
-    .limit(1);
-
-  if (!customer) {
-    res.status(404).json({ error: "Customer not found" });
-    return;
-  }
-  
-  if (!customer.isTestbed) {
-    res.status(403).json({ error: "Debug route is restricted to testbed customers" });
-    return;
-  }
-
-  const token = randomBytes(32).toString("hex");
-  const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
-
-  await db.insert(consentInviteTokensTable).values({
-    token,
-    tenantId: customer.tenantId?.trim() || null,
-    customerId,
-    clientUserId: req.user!.id,
-    expiresAt,
-  });
-
-  const callbackUrl = `${getHostBase(req)}/api/admin/write-consent/callback`;
-  const tenantHint = customer.tenantId?.trim() || "common";
-  const consentUrl = buildAdminConsentUrl(
-    tenantHint,
-    signWriteConsentState(customerId, token),
-    callbackUrl,
-    process.env.MT_APP_WRITE_CLIENT_ID,
-  );
-
-  await createAuditLog({
-    actorUserId: req.user!.id,
-    actorName: req.user!.email ?? "customer",
-    actorRole: "client",
-    actionType: "write_consent_invite_created",
-    entityType: "tenant_write_consent",
-    metadata: { tenantHint, customerId, expiresAt, debug: true },
-  });
-
-  res.json({ consentUrl, expiresAt });
-});
-
 // ── POST /api/portal/consent/write-consent-link ────────────────────────────────
 //
 // The REAL, non-debug portal door to the write-consent flow (Git #1375).
@@ -1955,11 +1891,12 @@ router.post("/portal/consent/debug-write-reconsent-link", requireCapability("lad
 // button carries a promise in the design's own final copy: *"Decline and
 // nothing is lost — you can grant it from the Portal whenever you want."* Before
 // this route the only portal-side door was
-// `POST /portal/consent/debug-write-reconsent-link` immediately above — marked
+// `POST /portal/consent/debug-write-reconsent-link` — marked
 // "⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION" and hard-gated to
 // `tenants.is_testbed`, so for every real customer that promise resolved to
 // nothing. A promise on a paid customer's screen needs a route that works for
-// them, not one that 403s outside the testbed.
+// them, not one that 403s outside the testbed. That debug route has since been
+// removed (Git #4331) now that this real replacement exists.
 //
 // IT IS NOT A LOOSENING OF THE DEBUG ROUTE. Same mint, same single-use
 // `consent_invite_tokens` row, same HMAC-signed state, same ONE fixed callback,
@@ -1970,9 +1907,6 @@ router.post("/portal/consent/debug-write-reconsent-link", requireCapability("lad
 // `ladder.free`. Granting an application write access to your whole Microsoft
 // tenant is not a Free-tier action, and the debug route's `ladder.free` floor
 // was only ever defensible because `is_testbed` was doing the real gating.
-//
-// The debug route is deliberately left exactly as it is: it is somebody else's
-// to delete, and removing it is not this issue's call to make.
 
 router.post("/portal/consent/write-consent-link", requireCapability("ladder.customer-user"), async (req: Request, res: Response) => {
   if (!process.env.MT_APP_WRITE_CLIENT_ID) {
