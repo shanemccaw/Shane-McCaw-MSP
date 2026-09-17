@@ -192,6 +192,13 @@ import {
   type LicenseGapPurchase,
   type LicenseGapRecommendation,
 } from "./license-gap-purchase-links.ts";
+import {
+  buildPillarCoverage,
+  fetchLatestCheckObservations,
+  numericProp,
+  type CheckObservation,
+  type PillarCoverageBreakdown,
+} from "./pillar-check-observations.ts";
 import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -337,6 +344,29 @@ export type PillarFindingSeverity = (typeof PILLAR_FINDING_SEVERITIES)[number];
 export type PillarStatUnit = "count" | "percent" | "currency";
 
 export type PillarStatSource =
+  /**
+   * A named field on a named check's real latest observation (Git #4560).
+   *
+   * The tiles' source of record, and deliberately NOT the `metric` indirection
+   * below: a registry `sourceKey` is an unverifiable claim about the catalog
+   * that has rotted three times (#441, #1103, #4560), and
+   * `pickMappedValueField`'s token heuristic can resolve the wrong numeric
+   * field of a multi-field check under a tile's caption. Both failures are
+   * silent, and the second shows a customer a WRONG number. Naming the check
+   * and the field explicitly removes both.
+   */
+  | {
+      kind: "check";
+      checkKey: string;
+      /** The exact `extracted_properties` field carrying this tile's number. */
+      valueField: string;
+      /**
+       * An optional second real field for the tile's sub-caption denominator
+       * (e.g. `teamsScanned` under "of {n} teams"). Omitted where the design's
+       * sub-caption carries no number.
+       */
+      denominatorField?: string;
+    }
   | { kind: "metric"; metricKey: string }
   | { kind: "licenseSeats"; field: "provisioned" | "unassigned" | "annualWasteDollars" }
   | { kind: "pillarScore" };
@@ -348,6 +378,15 @@ export interface PillarStatSpec {
   label: string;
   unit: PillarStatUnit;
   source: PillarStatSource;
+  /**
+   * The tile's sub-caption, with `{value}` standing for the real number read
+   * from `source.denominatorField` (Git #4560 — the design's own sub-captions,
+   * e.g. "of 18 teams"). The WORDS are the design's final copy; the NUMBER is
+   * always the tenant's own. Omitted where the design's sub-caption carries no
+   * number, and dropped entirely when the denominator itself is unavailable —
+   * a caption reading "of — teams" is worse than no caption.
+   */
+  subTemplate?: string;
   /**
    * The fictional `HERO_PHASE` stat this replaces, verbatim — kept so the swap
    * stays auditable and so a reviewer can see which originals had no real
@@ -368,32 +407,45 @@ export interface PillarStatSpec {
  * a customer's report as an unresolved key.
  */
 export const PILLAR_STAT_SPECS: Record<PillarSummaryKey, readonly PillarStatSpec[]> = {
-  // Exact matches: the governance card's own four numbers all have a real check.
+  // Every tile below is the one the DESIGN specifies —
+  // `Design/portal/design_handoff_full_site/screens/Pillar Pages.dc.html`,
+  // each pillar's own `tiles` array (governance ~line 620, security ~672,
+  // compliance ~760, licensing ~800, adoption ~845, health ~935). The design's
+  // numbers there are the design tool's demo data; its CHECK KEYS are real, and
+  // all four per pillar were verified present in the live `monitor_checks`
+  // catalog and carrying real observations for the testbed tenant on
+  // 2026-09-17. `valueField` names the exact `extracted_properties` field, so a
+  // multi-field check can never resolve the wrong number under the caption.
   governance: [
-    { id: "governance.sites", label: "sites inventoried", unit: "count",
-      source: { kind: "metric", metricKey: "compliance.sharePointSiteCount" },
+    { id: "governance.ownerlessGroups", label: "groups with no owner", unit: "count",
+      source: { kind: "check", checkKey: "governance:ownerless-groups", valueField: "ownerlessGroupCount", denominatorField: "_itemCount" },
+      subTemplate: "of {value} groups scanned",
       replaces: "1,204 sites inventoried" },
-    { id: "governance.overshared", label: "overshared sites", unit: "count",
-      source: { kind: "metric", metricKey: "compliance.oversharedSiteCount" },
+    { id: "governance.publicTeams", label: "public, discoverable teams", unit: "count",
+      source: { kind: "check", checkKey: "governance:public-teams-discoverable", valueField: "publicTeamCount", denominatorField: "teamsScanned" },
+      subTemplate: "of {value} teams",
       replaces: "41 overshared sites" },
-    // Relabelled, not approximated: `copilot:overshare-exposure` counts over-exposed
-    // ITEMS, which is the real blast-radius number. Nothing counts "files reachable".
-    { id: "governance.exposure", label: "items over-exposed", unit: "count",
-      source: { kind: "metric", metricKey: "copilot.overshareExposureCount" },
+    // The design's own sub-caption here ("2 with no recent sign-in") is a
+    // SECOND check — `governance:guest-staleness` — which is licence-gated
+    // (Entra ID P1) and returns no number for a tenant without it. Reading the
+    // directory census this check genuinely carries is the honest sub-caption;
+    // printing a staleness figure off a gapped check would be fabrication.
+    { id: "governance.guests", label: "guest accounts", unit: "count",
+      source: { kind: "check", checkKey: "governance:guest-count", valueField: "guestAccountCount", denominatorField: "_itemCount" },
+      subTemplate: "of {value} accounts in the directory",
       replaces: "214,806 files reachable" },
-    // Relabelled: the real check counts public CHANNELS, not teams that have one.
-    { id: "governance.publicChannels", label: "public channels", unit: "count",
-      source: { kind: "metric", metricKey: "compliance.publicChannelCount" },
+    { id: "governance.dormantServicePrincipals", label: "dormant service principals", unit: "count",
+      source: { kind: "check", checkKey: "appgov:dormant-service-principals", valueField: "dormantServicePrincipalCount", denominatorField: "servicePrincipalCount" },
+      subTemplate: "of {value} enterprise apps",
       replaces: "17 Teams with public channels" },
   ],
 
-  // Three exact matches off the real /subscribedSkus arithmetic; the fourth
-  // replaces "Copilot owned / used", which has no scalar producer (the Copilot
-  // readiness check emits a breakdown, not an owned/used pair).
+  // The three money figures stay on `licenseSeats` deliberately: the design
+  // points them all at `cost:utilization-by-sku`, and `resolvePaidSeatFigures`
+  // reads exactly that check's stored /subscribedSkus page — with the priced-
+  // SKU-only arithmetic #333 established, which a raw field read would lose.
+  // "paid" is load-bearing in the captions, not decoration.
   licensing: [
-    // "paid" is load-bearing in the caption, not decoration: the number counts
-    // only SKUs with a real price, so the free/viral capacity Graph reports is
-    // deliberately absent from it (#333).
     { id: "licensing.provisioned", label: "paid seats provisioned", unit: "count",
       source: { kind: "licenseSeats", field: "provisioned" },
       replaces: "6,180 seats provisioned" },
@@ -403,124 +455,128 @@ export const PILLAR_STAT_SPECS: Record<PillarSummaryKey, readonly PillarStatSpec
     { id: "licensing.annualWaste", label: "annual waste", unit: "currency",
       source: { kind: "licenseSeats", field: "annualWasteDollars" },
       replaces: "$847,608 annual waste" },
-    { id: "licensing.inactive", label: "inactive licences", unit: "count",
-      source: { kind: "metric", metricKey: "licensing.inactiveLicenseCount" },
+    // Was `licensing.inactiveLicenseCount` -> `licensing:inactive-user-licenses`,
+    // which names no row in the catalog (#4560). The design's own tile for this
+    // slot is `license:unused-assigned`, which is real, and is Entra ID P1-gated
+    // on this tenant — so it renders its honest licence-gap state, not a zero.
+    { id: "licensing.inactive", label: "licences on inactive accounts", unit: "count",
+      source: { kind: "check", checkKey: "license:unused-assigned", valueField: "unusedAssignedLicenseCount" },
       replaces: "25 / 2 Copilot owned / used" },
   ],
 
-  // Re-added #1115, closing the #441 gap. This card used to carry four
-  // "active <workload> users" stats, on the stated basis that they "are
-  // exactly what the adoption pillar's `usage:*` checks do produce". That
-  // basis was false: `usage:` is not a check-key domain in this platform's
-  // catalog and never has been, so all four resolved to `unknown_check_key`
-  // for every tenant, forever. They were not empty-because-unscanned; they
-  // were empty-because-misspelt, and the Copilot Readiness Report printed the
-  // four phantom keys to a paying customer as "not wired to a check in the
-  // catalogue".
-  //
-  // #1105 closed the actual gap: `adoption:teams-activity-trend`,
-  // `adoption:sharepoint-onedrive-trend` and `adoption:email-activity-trend`
-  // had a mapping-correctness bug (camelCase sourceField vs the CSV's literal
-  // header) that made them silently produce 0 forever — fixed to a real
-  // `newerThanDays 7 && not deleted` active-user count, live-verified
-  // non-zero. A brand-new `onedrive:active-users` check closed the fourth gap
-  // (no prior OneDrive per-user activity check existed at all). All four are
-  // now real `DASHBOARD_METRICS` entries (`usage.teamsActiveCount`,
-  // `usage.sharePointActiveCount`, `usage.oneDriveActiveCount`,
-  // `usage.exchangeActiveCount`) whose `sourceKey` names a real, scalar-
-  // producing check — not the DETAIL-endpoint trap this file already refuses
-  // for the Health card's `intune:*` stats.
+  // #1105/#1115 fixed the four adoption checks themselves; #4560 moves the
+  // tiles off the `usage.*` registry metrics onto those same checks directly,
+  // in the design's own order, so each caption's denominator is the real
+  // licensed/scanned population the check measured against rather than a
+  // second metric lookup.
   adoption: [
+    { id: "adoption.exchangeActive", label: "active email users", unit: "count",
+      source: { kind: "check", checkKey: "adoption:email-activity-trend", valueField: "emailActiveUserCount", denominatorField: "emailLicensedUserCount" },
+      subTemplate: "of {value} licensed · last 7 days",
+      replaces: "64% files shared in chat" },
     { id: "adoption.teamsActive", label: "active Teams users", unit: "count",
-      source: { kind: "metric", metricKey: "usage.teamsActiveCount" },
+      source: { kind: "check", checkKey: "adoption:teams-activity-trend", valueField: "teamsActiveUserCount", denominatorField: "teamsLicensedUserCount" },
+      subTemplate: "of {value} licensed · last 7 days",
       replaces: "1,631 daily active users" },
     { id: "adoption.sharePointActive", label: "active SharePoint users", unit: "count",
-      source: { kind: "metric", metricKey: "usage.sharePointActiveCount" },
+      source: { kind: "check", checkKey: "adoption:sharepoint-onedrive-trend", valueField: "sharepointActiveUserCount", denominatorField: "sharepointSitesScanned" },
+      subTemplate: "across {value} sites · last 7 days",
       replaces: "22% meetings transcribed" },
     { id: "adoption.oneDriveActive", label: "active OneDrive users", unit: "count",
-      source: { kind: "metric", metricKey: "usage.oneDriveActiveCount" },
+      source: { kind: "check", checkKey: "onedrive:active-users", valueField: "oneDriveActiveUserCount", denominatorField: "oneDriveAccountsScanned" },
+      subTemplate: "of {value} accounts · last 7 days",
       replaces: "0 named champions" },
-    { id: "adoption.exchangeActive", label: "active email users", unit: "count",
-      source: { kind: "metric", metricKey: "usage.exchangeActiveCount" },
-      replaces: "64% files shared in chat" },
   ],
 
-  // "regulated, unlabelled" maps exactly onto the real missing-labels check. The
-  // other two replace file-scan / PHI-container / mailbox-DLP numbers nothing
-  // collects, with the real compliance checks nearest to what each described.
-  //
-  // `compliance.retentionDrift` (-> compliance.retentionDriftCount) was dropped
-  // here 2026-08-17 (#1103): its `compliance:retention-drift` sourceKey named no
-  // row in the live monitor_checks catalog and was retired to a `not_collected:`
-  // sentinel, which this spec's own guarding test refuses to back a stat with —
-  // a sentinel can never produce the number this card promises.
+  // `compliance:guest-users` named no catalog row (#4560) and is gone; the
+  // design's compliance tiles are the four below. `eeeuSiteCount` is the real
+  // "shared with Everyone Except External Users" count from #357's per-site
+  // enumeration — the field the tile's caption actually names, not the
+  // tenant-aggregate `oversharedSiteCount` that sits beside it in the same row.
   compliance: [
-    { id: "compliance.missingLabels", label: "missing sensitivity labels", unit: "count",
-      source: { kind: "metric", metricKey: "compliance.missingLabelCount" },
+    { id: "compliance.eeeuSites", label: "sites shared with everyone", unit: "count",
+      source: { kind: "check", checkKey: "compliance:eeeu-site-sharing", valueField: "eeeuSiteCount", denominatorField: "sitesScanned" },
+      subTemplate: "{value} sites scanned",
       replaces: "40,480 regulated, unlabelled" },
-    { id: "compliance.weakDlp", label: "weak DLP policies", unit: "count",
-      source: { kind: "metric", metricKey: "compliance.weakDlpPolicyCount" },
+    { id: "compliance.sensitivityLabels", label: "sensitivity labels published", unit: "count",
+      source: { kind: "check", checkKey: "governance:sensitivity-label-adoption", valueField: "sensitivityLabelCount" },
       replaces: "1,412 mailboxes outside DLP" },
-    { id: "compliance.guests", label: "guest users", unit: "count",
-      source: { kind: "metric", metricKey: "compliance.guestUserCount" },
+    { id: "compliance.retentionLabels", label: "retention labels", unit: "count",
+      source: { kind: "check", checkKey: "governance:retention-label-adoption", valueField: "retentionLabelCount" },
       replaces: "78% PHI containers labelled" },
+    { id: "compliance.dlpPolicies", label: "DLP policies", unit: "count",
+      source: { kind: "check", checkKey: "compliance:zero-dlp-policies", valueField: "dlpPoliciesCount" },
+      replaces: "(the design's fourth compliance tile — no HERO_PHASE original)" },
   ],
 
-  // "outside baseline" is genuinely the non-compliant-device count. There is no
-  // total-device-inventory check and no ticket source, so the remaining three are
-  // the real Intune posture counts the card's own check list names.
+  // All four `intune:*` sourceKeys were phantom (#4560): the real device checks
+  // live under the `devices:` domain and always have. The design's health tiles
+  // are the four below, and `devices:enrollment-status` genuinely reports
+  // `service_not_configured` on a tenant without Intune — which renders as
+  // unavailable-with-a-reason, never as "0 devices enrolled".
   health: [
-    { id: "health.nonCompliantDevices", label: "non-compliant devices", unit: "count",
-      source: { kind: "metric", metricKey: "intune.nonCompliantDeviceCount" },
-      replaces: "312 outside baseline" },
-    { id: "health.configDrift", label: "device config drift", unit: "count",
-      source: { kind: "metric", metricKey: "intune.configDriftCount" },
+    { id: "health.enrolledDevices", label: "devices enrolled in Intune", unit: "count",
+      source: { kind: "check", checkKey: "devices:enrollment-status", valueField: "enrolledDeviceCount" },
       replaces: "1,876 managed endpoints" },
-    { id: "health.unencrypted", label: "unencrypted devices", unit: "count",
-      source: { kind: "metric", metricKey: "intune.unencryptedDeviceCount" },
+    { id: "health.staleDeviceRecords", label: "stale device records", unit: "count",
+      source: { kind: "check", checkKey: "devices:stale-duplicate-records", valueField: "staleDeviceRecordCount", denominatorField: "_itemCount" },
+      subTemplate: "of {value} records in Entra ID",
+      replaces: "312 outside baseline" },
+    // The design's caption is "APP CREDENTIALS EXPIRING", which would be the
+    // SUM of this check's expired key + password credentials. The check emits
+    // the two counts separately and carries no summed field, so the tile reads
+    // the one it can name exactly rather than adding a number the check never
+    // produced. Filed as its own finding.
+    { id: "health.expiredAppSecrets", label: "expired app secrets", unit: "count",
+      source: { kind: "check", checkKey: "appgov:cert-secret-expiration", valueField: "expiredPasswordCredentialCount", denominatorField: "passwordCredentialCount" },
+      subTemplate: "of {value} app secrets on file",
       replaces: "94.2% device compliance" },
-    { id: "health.outdated", label: "outdated OS devices", unit: "count",
-      source: { kind: "metric", metricKey: "intune.outdatedDeviceCount" },
+    { id: "health.servicesOperational", label: "Microsoft services operational", unit: "count",
+      source: { kind: "check", checkKey: "m365:service-health", valueField: "operationalServiceCount", denominatorField: "totalServiceCount" },
+      subTemplate: "of {value} services",
       replaces: "340 tickets a week" },
   ],
 
-  // MFA is real but is a COUNT of registered users, not the coverage percentage
-  // the fake stat showed — no denominator metric is configured for it, so it is
-  // labelled as the count it really is rather than divided by a guess. The CA
-  // policy count and Copilot session policies have no registry metric at all;
-  // replaced by the real identity posture counts this pillar's checks produce.
+  // The design's security tiles. `identity:ca-policy-count` is real and IS in
+  // this tenant's scan, but its stored row is a gate-skipped Security Defaults
+  // object carrying no count field — so this tile honestly reads unavailable
+  // rather than asserting a zero the check never measured. Filed as a finding.
   security: [
-    { id: "security.mfaRegistered", label: "MFA-registered users", unit: "count",
-      source: { kind: "metric", metricKey: "identity.mfaRegisteredCount" },
-      replaces: "96% MFA coverage" },
-    { id: "security.globalAdmins", label: "global administrators", unit: "count",
-      source: { kind: "metric", metricKey: "identity.globalAdminCount" },
+    { id: "security.caPolicies", label: "Conditional Access policies", unit: "count",
+      source: { kind: "check", checkKey: "identity:ca-policy-count", valueField: "caPolicyCount" },
       replaces: "42 CA policies" },
-    { id: "security.legacyAuth", label: "legacy auth sign-ins", unit: "count",
-      source: { kind: "metric", metricKey: "identity.legacyAuthCount" },
+    { id: "security.globalAdmins", label: "global administrators", unit: "count",
+      source: { kind: "check", checkKey: "identity:global-admin-count", valueField: "globalAdminCount" },
+      replaces: "96% MFA coverage" },
+    { id: "security.mfaRegistered", label: "MFA-registered users", unit: "count",
+      source: { kind: "check", checkKey: "identity:mfa-registration", valueField: "mfaRegisteredUserCount" },
       replaces: "0 Copilot session policies" },
-    // Same real over-exposure count governance shows — deliberately, because the
-    // original card showed the same 214,806 in both places.
-    { id: "security.blastRadius", label: "items in blast radius", unit: "count",
-      source: { kind: "metric", metricKey: "copilot.overshareExposureCount" },
+    { id: "security.secureScore", label: "Microsoft Secure Score", unit: "count",
+      source: { kind: "check", checkKey: "security:secure-score", valueField: "secureScoreCurrent", denominatorField: "secureScoreMax" },
+      subTemplate: "of {value} points",
       replaces: "214,806 files in blast radius" },
   ],
 
-  // The readiness headline is the pillar's own real score. The PHI test-prompt
-  // harness and the priced PHI exposure do not exist; replaced by the real
-  // exposure count and the real risky-user count.
+  // Copilot has no pillar PAGE (the portal routes the six above) but this card
+  // still feeds the Copilot Readiness Report. Its two phantom keys are
+  // repointed at the real successors confirmed live: `copilot:overshare-
+  // exposure` -> `copilot:data-exposure-risk` (`copilotExposedSiteCount`), and
+  // `licensing:duplicate-assignments` -> `cost:duplicate-assignments`
+  // (`duplicateLicenseAssignmentCount`).
   copilot: [
     { id: "copilot.readiness", label: "readiness score", unit: "percent",
       source: { kind: "pillarScore" },
       replaces: "34% readiness against a 75 gate" },
-    { id: "copilot.exposure", label: "items Copilot could reach", unit: "count",
-      source: { kind: "metric", metricKey: "copilot.overshareExposureCount" },
+    { id: "copilot.exposure", label: "sites Copilot could over-reach", unit: "count",
+      source: { kind: "check", checkKey: "copilot:data-exposure-risk", valueField: "copilotExposedSiteCount", denominatorField: "copilotSitesScanned" },
+      subTemplate: "{value} sites scanned",
       replaces: "3 / 3 test prompts returned PHI" },
     { id: "copilot.riskyUsers", label: "risky users", unit: "count",
       source: { kind: "metric", metricKey: "identity.riskyUserCount" },
       replaces: "$2.4M PHI exposure priced" },
     { id: "copilot.duplicateLicenses", label: "duplicate licences", unit: "count",
-      source: { kind: "metric", metricKey: "licensing.duplicateLicenseCount" },
+      source: { kind: "check", checkKey: "cost:duplicate-assignments", valueField: "duplicateLicenseAssignmentCount", denominatorField: "_itemCount" },
+      subTemplate: "of {value} users",
       replaces: "9 documents generated" },
   ],
 };
@@ -582,6 +638,14 @@ export interface PillarStat {
    * and the seat figures when no `/subscribedSkus` row exists to name a key.
    */
   checkKey: string | null;
+  /**
+   * The tile's rendered sub-caption (Git #4560) — the spec's `subTemplate` with
+   * `{value}` already replaced by the REAL denominator read off the same check
+   * observation the value came from. Absent when the spec has no template, or
+   * when the denominator field itself had no number: a caption is dropped
+   * rather than rendered with a blank in it.
+   */
+  sub?: string;
   /** Where the number came from, for provenance (`monitor_profile:<checkKey>`, …). */
   source: string;
   replaces: string;
@@ -647,6 +711,82 @@ export function isStatWiringFault(reason: string | undefined): boolean {
  * dropped from today's package but scanned last month still has a value and
  * exits at the first guard.
  */
+/**
+ * Pure: resolve one `{ kind: "check" }` stat against the tenant's real latest
+ * observation for its check (Git #4560).
+ *
+ * Every non-value outcome keeps its own distinct, honest reason — the SAME
+ * vocabulary `dashboard-resolvers.ts` produces, so a consumer never has to
+ * learn a second one:
+ *
+ *   never observed        → `no_data` (refined to `not_in_scan_package` later,
+ *                           by the same pass that refines every other source)
+ *   licence-gated         → `license_gap`, carrying the tenant's own
+ *                           `_licenseGapFeature` verbatim
+ *   service not set up    → `service_not_configured` (#1847) — never a zero
+ *   check errored         → `check_error`: nothing was measured, so nothing is
+ *                           reported. An errored check is not a measurement of 0.
+ *   ran, field absent     → `no_data`: the check produced a row but not this
+ *                           field, which is a real "we didn't measure that"
+ *
+ * A real 0 survives as 0 — that is a real answer, and the whole point of
+ * keeping these five apart.
+ *
+ * Exported for tests: this is the branch that decides what a customer's tile
+ * says, and it must be assertable without a database.
+ */
+export function statFromCheckObservation(
+  spec: PillarStatSpec & { source: Extract<PillarStatSource, { kind: "check" }> },
+  observation: CheckObservation | undefined,
+): PillarStat {
+  const { checkKey, valueField, denominatorField } = spec.source;
+  const base = {
+    id: spec.id,
+    label: spec.label,
+    unit: spec.unit,
+    checkKey,
+    replaces: spec.replaces,
+    source: `monitor_profile:${checkKey}`,
+  };
+
+  if (!observation) {
+    return { ...base, value: null, unavailableReason: "no_data" };
+  }
+  if (observation.status === "license_gap") {
+    return {
+      ...base,
+      value: null,
+      unavailableReason: "license_gap",
+      ...(observation.licenseFeature ? { licenseFeature: observation.licenseFeature } : {}),
+    };
+  }
+  if (observation.status === "service_not_configured") {
+    return { ...base, value: null, unavailableReason: "service_not_configured" };
+  }
+  if (observation.status === "error") {
+    return { ...base, value: null, unavailableReason: "check_error" };
+  }
+
+  const value = numericProp(observation.props, valueField);
+  if (value == null) {
+    return { ...base, value: null, unavailableReason: "no_data" };
+  }
+
+  // The caption's number is the tenant's, the caption's words are the design's.
+  // A missing denominator drops the caption rather than rendering "of — teams".
+  let sub: string | undefined;
+  if (spec.subTemplate && denominatorField) {
+    const denominator = numericProp(observation.props, denominatorField);
+    if (denominator != null) {
+      sub = spec.subTemplate.replace("{value}", denominator.toLocaleString("en-US"));
+    }
+  } else if (spec.subTemplate && !denominatorField) {
+    sub = spec.subTemplate;
+  }
+
+  return sub ? { ...base, value, sub } : { ...base, value };
+}
+
 export function refineStatUnavailability(
   stat: PillarStat,
   scannedCheckKeys: ReadonlySet<string> | null,
@@ -862,6 +1002,13 @@ interface RankCheckDefinition {
   key: string;
   mapping: Array<{ sourceField: string; targetField: string; transform?: string }> | null;
   properties: string[] | null;
+  /**
+   * The catalog row's own `monitor_checks.status` (Git #4560). An `inactive`
+   * row can never run, so the coverage roll-up counts it as never-run rather
+   * than letting it sit silently in whatever bucket its last stored
+   * observation implies.
+   */
+  status?: string | null;
 }
 
 /**
@@ -1034,6 +1181,17 @@ export interface PillarSummaryCard {
    * (#489). Empty for a pillar with no gapped check — never a placeholder.
    */
   licenseGapUpgrades: PillarUpgradeLink[];
+  /**
+   * "What feeds this score" (Git #4560) — every catalog check tagged to this
+   * pillar, split by what the tenant's own latest observation of it actually
+   * says: observed with data, licence-gated, blocked (errored or the Microsoft
+   * service isn't set up), or never run. The design's coverage bar, its legend
+   * and its blocked/licence-gated notes all read from exactly this, so the
+   * panel can never claim a coverage shape the observations don't support.
+   *
+   * Null only when the customer has no M365 tenant to key observations by.
+   */
+  coverage: PillarCoverageBreakdown | null;
 }
 
 export interface PillarSummaryPayload {
@@ -1286,6 +1444,7 @@ export async function buildPillarSummary(customerId: number): Promise<PillarSumm
       key: monitorChecksTable.key,
       mapping: monitorChecksTable.mapping,
       properties: monitorChecksTable.properties,
+      status: monitorChecksTable.status,
     })
     .from(monitorChecksTable);
   const findingRankWeights = buildFindingRankWeights(rules, impacts, rankCheckDefinitions);
@@ -1306,6 +1465,22 @@ export async function buildPillarSummary(customerId: number): Promise<PillarSumm
     const pillar = pillarForCheckKey(def.key, checkKeyPillars);
     if (pillar) wireCheckKeyPillars[def.key] = pillar;
   }
+
+  // Git #4560 — the tenant's real latest observation per check, read ONCE for
+  // the whole catalog. Two things read it: every `{ kind: "check" }` stat tile
+  // below, and the per-pillar coverage roll-up. Sharing one read is not just an
+  // optimisation: a tile saying "licence-gated" beside a coverage bar that
+  // counted the same check as observed would be the same class of self-
+  // contradiction #341 removed from the score/stat pair.
+  const observations = tenantRow?.tenantId
+    ? await fetchLatestCheckObservations(tenantRow.tenantId)
+    : new Map<string, CheckObservation>();
+  const inactiveCheckKeys = new Set(
+    rankCheckDefinitions.filter((def) => def.status === "inactive").map((def) => def.key),
+  );
+  const coverageByPillar = tenantRow?.tenantId
+    ? buildPillarCoverage(wireCheckKeyPillars, observations, inactiveCheckKeys)
+    : null;
 
   const { findingsByPillar, findingsRunId, findingsRunStatus, licenseGapCheckKeys } =
     await fetchPillarFindings(customerId, findingRankWeights, checkKeyPillars);
@@ -1408,6 +1583,16 @@ export async function buildPillarSummary(customerId: number): Promise<PillarSumm
           : { ...base, value: score, source: `health_engine:${enginePillar}` };
       }
 
+      // Git #4560 — the tiles' real source: a named field on a named check's
+      // real latest observation, with no registry hop to rot and no heuristic
+      // to pick the wrong number.
+      if (spec.source.kind === "check") {
+        return statFromCheckObservation(
+          spec as PillarStatSpec & { source: Extract<PillarStatSource, { kind: "check" }> },
+          observations.get(spec.source.checkKey),
+        );
+      }
+
       if (spec.source.kind === "licenseSeats") {
         const source = seats ? `monitor_profile:${seats.checkKey}` : "monitor_profile:subscribedSkus";
         if (!seats) {
@@ -1463,6 +1648,7 @@ export async function buildPillarSummary(customerId: number): Promise<PillarSumm
         ? { series: trendPoints.map((p) => p.score), window: `${PILLAR_TREND_WINDOW_DAYS}d` }
         : null,
       licenseGapUpgrades: upgradesByPillar.get(pillar) ?? [],
+      coverage: coverageByPillar?.[pillar] ?? null,
     };
   });
 

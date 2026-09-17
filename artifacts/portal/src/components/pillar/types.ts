@@ -44,8 +44,36 @@ export interface PillarStatWire {
   value: number | null;
   unavailableReason?: string;
   licenseFeature?: string;
+  /**
+   * The tile's real sub-caption (Git #4560) — the design's own copy with the
+   * tenant's real denominator already substituted server-side (e.g. "of 18
+   * teams"). Absent when the check produced no denominator: a caption is
+   * dropped rather than rendered with a blank in it.
+   */
+  sub?: string;
   checkKey: string | null;
   source: string;
+}
+
+/**
+ * One segment of the "what feeds this score" coverage bar (Git #4560),
+ * mirroring `PillarCoverageSegment` in
+ * `artifacts/api-server/src/lib/pillar-check-observations.ts`.
+ */
+export type PillarCoverageSegmentKind = "ok" | "gap" | "blocked" | "queued";
+
+export interface PillarCoverageSegmentWire {
+  kind: PillarCoverageSegmentKind;
+  count: number;
+}
+
+export interface PillarCoverageWire {
+  total: number;
+  segments: PillarCoverageSegmentWire[];
+  blockedCheckKeys: string[];
+  licenseGappedCheckKeys: string[];
+  licenseGapFeatures: { feature: string; checkCount: number }[];
+  blockedServices: string[];
 }
 
 export type PillarFindingSeverity = "critical" | "warning";
@@ -79,6 +107,8 @@ export interface PillarSummaryCardWire {
   findingCounts: { critical: number; warning: number };
   trend: { series: number[]; window: string } | null;
   licenseGapUpgrades: PillarUpgradeLinkWire[];
+  /** Git #4560 — null only for a customer with no M365 tenant to observe. */
+  coverage: PillarCoverageWire | null;
 }
 
 export interface PillarSummaryPayloadWire {

@@ -10,7 +10,12 @@ import {
   type PillarKey,
 } from "@workspace/copilot-scan-scene/journeyTokens";
 import { usePillarPage } from "@/components/pillar/usePillarPage";
-import { statDisplay, trendDeltaLabel } from "@/components/pillar/pillarDisplay";
+import {
+  blockedNote,
+  statDisplay,
+  trendDeltaLabel,
+  COVERAGE_SEGMENT_DISPLAY,
+} from "@/components/pillar/pillarDisplay";
 import NotFound from "./not-found";
 
 const HAIRLINE = "rgba(255,255,255,.09)";
@@ -36,16 +41,28 @@ const FSEV: Record<"critical" | "warning", string> = { critical: RED, warning: "
  * real ranked findings list, the real license-gap upgrade callout, and the
  * real "scanned with" honesty line.
  *
+ * Git #4560 added, all from the same real payload: the design's trend
+ * checkpoint dots, its OPEN FINDINGS severity chips, the tiles' real
+ * sub-captions, and the "WHAT FEEDS THIS SCORE" coverage bar with its
+ * legend, its blocked note and its licence-gated panel. Every count in
+ * those comes from `card.coverage`, which is the tenant's own latest
+ * observation of every check tagged to this pillar — not a second,
+ * drifting client-side tally.
+ *
  * Deliberately NOT wired here — scope carried from the dispatch, not an
  * oversight: the design's full per-check "block" breakdown (the `groups`
- * tables of dozens of individual checks with per-check tiers/history) and
- * the click-a-finding-for-full-breakdown + SOP/Runbook remediation offer
- * flow. #1621's own body leaves "what is a block" and which of the four
+ * tables of dozens of individual checks with per-check tiers/history), the
+ * CONFIG DRIFT BASELINE panel, the Licensing SKU ledger table, and the
+ * click-a-finding-for-full-breakdown + SOP/Runbook remediation offer flow.
+ * #1621's own body leaves "what is a block" and which of the four
  * remediation vehicles a finding offers as open architecture questions not
  * yet settled in chat — building either now would mean inventing an answer
- * to a question Shane hasn't decided, not a missing-backend gap. That is
- * tracked as a real, separate follow-up.
+ * to a question Shane hasn't decided, not a missing-backend gap. Those are
+ * tracked as real, separate follow-ups filed under #1621.
  */
+
+/** The design's 5-checkpoint trend strip (`trendDots` / `hTrendNote`). */
+const TREND_CHECKPOINTS = 5;
 export default function PillarPage() {
   const { pillar } = useParams<{ pillar: string }>();
   const { payload, loading, loaded, error } = usePillarPage();
@@ -66,6 +83,31 @@ export default function PillarPage() {
   const trendLabel = card ? trendDeltaLabel(card.trend) : null;
   const findings = card?.findings ?? [];
   const upgrades = card?.licenseGapUpgrades ?? [];
+  const coverage = card?.coverage ?? null;
+
+  // The design's trend strip: one filled dot per REAL checkpoint the trend
+  // series actually carries, capped at the five the strip has room for. A
+  // tenant with fewer real scores gets fewer filled dots — never a full strip
+  // implying history that doesn't exist.
+  const trendPoints = Math.min(card?.trend?.series.length ?? 0, TREND_CHECKPOINTS);
+
+  // OPEN FINDINGS chips, from the real per-severity counts.
+  const findingChips: { text: string; ink: string; border: string }[] = [];
+  if (card && scanned) {
+    if (card.findingCounts.critical) {
+      findingChips.push({ text: `${card.findingCounts.critical} critical`, ink: RED, border: "rgba(248,113,113,.35)" });
+    }
+    if (card.findingCounts.warning) {
+      findingChips.push({ text: `${card.findingCounts.warning} warning`, ink: "#fbbf24", border: "rgba(251,191,36,.35)" });
+    }
+    if (findingChips.length === 0) {
+      findingChips.push({ text: "none open", ink: GRN, border: "rgba(52,211,153,.30)" });
+    }
+  } else {
+    findingChips.push({ text: "nothing measured yet", ink: NEVER_SCANNED_INK, border: "rgba(148,163,184,.25)" });
+  }
+
+  const coverageBlockedNote = coverage ? blockedNote(coverage) : null;
 
   const stateLine = showLoading
     ? "Reading your pillar data"
@@ -162,6 +204,37 @@ export default function PillarPage() {
                 </span>
               )}
             </div>
+
+            {/* Trend checkpoints + open findings — the design's header strip */}
+            <div className="flex flex-col items-start gap-2 sm:items-end" data-testid="pillar-header-strip">
+              <div className="flex items-center gap-[5px]" data-testid="pillar-trend-dots">
+                {Array.from({ length: TREND_CHECKPOINTS }, (_, i) => (
+                  <span
+                    key={i}
+                    className="size-[7px] rounded-full"
+                    style={{
+                      background: i < trendPoints ? "#00B4D8" : "transparent",
+                      border: `1px solid ${i < trendPoints ? "rgba(0,180,216,.6)" : "rgba(148,163,184,.35)"}`,
+                    }}
+                  />
+                ))}
+              </div>
+              <span className="text-[10.5px] text-[#64748b]">
+                appears after {TREND_CHECKPOINTS} checkpoints — {trendPoints} so far
+              </span>
+              <div className="flex flex-wrap items-center gap-1.5" data-testid="pillar-finding-chips">
+                <span className="text-[9.5px] font-bold uppercase tracking-wide text-[#64748b]">Open findings</span>
+                {findingChips.map((chip) => (
+                  <span
+                    key={chip.text}
+                    className="rounded-full px-2 py-[2px] text-[10.5px] font-semibold"
+                    style={{ color: chip.ink, border: `1px solid ${chip.border}` }}
+                  >
+                    {chip.text}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* Stat tiles */}
@@ -188,6 +261,75 @@ export default function PillarPage() {
                   </div>
                 );
               })}
+            </div>
+          ) : null}
+
+          {/* What feeds this score — real coverage of this pillar's checks */}
+          {coverage && coverage.total > 0 ? (
+            <div
+              className="flex flex-col gap-3 rounded-[14px] p-4"
+              style={{ border: `1px solid ${HAIRLINE}`, background: CARD_BG }}
+              data-testid="pillar-coverage"
+            >
+              <div className="flex flex-wrap items-baseline gap-2">
+                <span className="text-[13px] font-bold text-[#f8fafc]">What feeds this score</span>
+                <span className="text-[11px] text-[#64748b]" data-testid="pillar-coverage-line">
+                  {coverage.total} checks in the catalog are tagged {identity.label.toLowerCase()}
+                  {card?.evaluation.status === "scored"
+                    ? ` · ${card.evaluation.evaluableSignalCount} produced an evaluable signal`
+                    : ""}
+                </span>
+              </div>
+
+              <div className="flex h-[8px] overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,.04)" }}>
+                {coverage.segments.map((segment) => (
+                  <div
+                    key={segment.kind}
+                    style={{
+                      width: `${((segment.count / coverage.total) * 100).toFixed(1)}%`,
+                      background: COVERAGE_SEGMENT_DISPLAY[segment.kind].color,
+                    }}
+                    data-testid={`pillar-coverage-segment-${segment.kind}`}
+                  />
+                ))}
+              </div>
+
+              <div className="flex flex-col gap-1">
+                {coverage.segments.map((segment) => (
+                  <div key={segment.kind} className="flex items-center gap-2 text-[11.5px]">
+                    <span
+                      className="size-[8px] flex-none rounded-[2px]"
+                      style={{ background: COVERAGE_SEGMENT_DISPLAY[segment.kind].color }}
+                    />
+                    <span className="font-semibold tabular-nums text-[#e2e8f0]">{segment.count}</span>
+                    <span className="text-[#94a3b8]">{COVERAGE_SEGMENT_DISPLAY[segment.kind].label}</span>
+                  </div>
+                ))}
+              </div>
+
+              {coverageBlockedNote ? (
+                <span className="text-[11.5px] text-[#94a3b8]" data-testid="pillar-coverage-blocked-note">
+                  {coverageBlockedNote}
+                </span>
+              ) : null}
+
+              {coverage.licenseGapFeatures.length > 0 ? (
+                <div
+                  className="flex flex-col gap-1.5 rounded-[10px] p-3"
+                  style={{ border: `1px solid ${HAIRLINE}` }}
+                  data-testid="pillar-licence-gated"
+                >
+                  <span className="text-[9.5px] font-bold uppercase tracking-wide text-[#64748b]">
+                    Licence-gated — honest, not broken
+                  </span>
+                  {coverage.licenseGapFeatures.map((gap) => (
+                    <span key={gap.feature} className="text-[11.5px] text-[#94a3b8]">
+                      <span className="font-semibold text-[#e2e8f0]">{gap.feature}</span> —{" "}
+                      {gap.checkCount} check{gap.checkCount === 1 ? "" : "s"} your SKUs can't feed
+                    </span>
+                  ))}
+                </div>
+              ) : null}
             </div>
           ) : null}
 

@@ -64,22 +64,23 @@ const ALL_SPECS = PILLAR_SUMMARY_KEYS.flatMap((p) => [...PILLAR_STAT_SPECS[p]]);
  * the two hops that happen server-side.
  */
 const READINESS_REPORT_STAT_IDS = [
-  // blastRadiusRows — the Copilot Readiness Summary
-  "security.blastRadius",
-  "governance.overshared",
-  "governance.sites",
-  // WORKLOAD_PICKS — Workflow Enablement & Value
+  // Git #4560 — this list used to mirror msp-portal's `copilotReadinessReport.ts`
+  // (`blastRadiusRows` / `WORKLOAD_PICKS` / `PREREQUISITE_PICKS`). That app is
+  // gone: msp-portal retired with portal-v2, and the file it pinned against no
+  // longer exists anywhere in the repo. Seven of its ids
+  // (`security.blastRadius`, `governance.overshared`, `governance.sites`,
+  // `security.legacyAuth`, `health.nonCompliantDevices`, `health.unencrypted`,
+  // `health.outdated`) were specs whose sourceKeys named no catalog row at all —
+  // they could never have rendered a number for any tenant, which is what #4560
+  // found — and they are gone with the phantom keys behind them.
+  //
+  // What remains testable, and what this now pins, is every stat id a LIVE
+  // server-side consumer grounds a real document in. Grepped, not remembered:
+  // `free-scan-sow.ts:589` and `free-scan-locked-results.ts:74` both name
+  // `licensing.annualWaste`; the narrative generators read a pillar's stats as a
+  // set rather than by id. Anything added here must be a real `.id ===` lookup
+  // in shipping code, so the list keeps meaning "a document depends on this".
   "licensing.annualWaste",
-  // PREREQUISITE_PICKS — Technical Prerequisites & Platform Alignment
-  "security.legacyAuth",
-  "security.mfaRegistered",
-  "security.globalAdmins",
-  "health.nonCompliantDevices",
-  "health.unencrypted",
-  "health.outdated",
-  "licensing.provisioned",
-  "licensing.unassigned",
-  "licensing.inactive",
 ] as const;
 
 describe("#441 — the registry's sourceKeys are claims about a table this repo cannot read", () => {
@@ -149,15 +150,49 @@ describe("#441 — the Copilot Readiness Report's grounding survives every hop",
     // stay OUT of `ALL_SPECS` was checking against a shape that never matched
     // #1105's real fix, so this asserts what #1105 actually shipped: each one
     // resolves to a real, non-sentinel metric.
+    //
+    // Git #4560 moved these four off the `usage.*` registry metrics onto the
+    // SAME four checks directly (`{ kind: "check" }`), which is a strictly
+    // stronger guarantee than the metric hop: the check key is asserted against
+    // the live catalog snapshot with no registry indirection in between. Both
+    // shapes are accepted here so this case keeps testing #1105's real fix
+    // rather than the mechanism that happened to carry it.
     for (const id of ["adoption.teamsActive", "adoption.sharePointActive", "adoption.oneDriveActive", "adoption.exchangeActive"]) {
       const spec = ALL_SPECS.find((s) => s.id === id);
       expect(spec, `${id} is missing from the adoption specs`).toBeDefined();
-      if (spec!.source.kind !== "metric") throw new Error(`${id} is not metric-backed`);
-      const def = getMetric(spec!.source.metricKey);
-      expect(def, `${id} -> ${spec!.source.metricKey} does not resolve to a real MetricDef`).toBeDefined();
-      const verdict = classifySourceKey(def!.sourceKey);
-      expect(verdict.ok, `${id} -> ${def!.sourceKey}: ${!verdict.ok ? verdict.reason : ""}`).toBe(true);
+      const sourceKey =
+        spec!.source.kind === "check"
+          ? spec!.source.checkKey
+          : spec!.source.kind === "metric"
+            ? getMetric(spec!.source.metricKey)?.sourceKey
+            : undefined;
+      expect(sourceKey, `${id} resolves to no check key at all`).toBeDefined();
+      const verdict = classifySourceKey(sourceKey!);
+      expect(verdict.ok, `${id} -> ${sourceKey}: ${!verdict.ok ? verdict.reason : ""}`).toBe(true);
+      expect(
+        verdict.ok && verdict.kind === "in_snapshot",
+        `${id} -> ${sourceKey} is not a check confirmed present in the live catalog`,
+      ).toBe(true);
     }
+  });
+
+  it("grounds every check-backed stat tile in a check the LIVE catalog actually has (#4560)", () => {
+    // The assertion #4560 exists for, and the one the old shape could not make:
+    // a tile names its check key directly, so membership is checkable with no
+    // registry hop. `known_drift` is deliberately NOT accepted here — the
+    // backlog exists to stop OTHER metrics failing the suite, never to let a
+    // customer-facing tile point at a check that does not exist.
+    const bad: string[] = [];
+    for (const spec of ALL_SPECS) {
+      if (spec.source.kind !== "check") continue;
+      const verdict = classifySourceKey(spec.source.checkKey);
+      if (!(verdict.ok && verdict.kind === "in_snapshot")) {
+        bad.push(
+          `${spec.id} -> "${spec.source.checkKey}" ${verdict.ok ? `classified ${verdict.kind}` : verdict.reason}`,
+        );
+      }
+    }
+    expect(bad, `stat tiles on checks the live catalog does not have:\n  ${bad.join("\n  ")}`).toEqual([]);
   });
 
   it("agrees with msp-portal about which reasons are OUR fault, not the tenant's", () => {

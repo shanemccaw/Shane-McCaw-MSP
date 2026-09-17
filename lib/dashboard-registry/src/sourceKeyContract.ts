@@ -87,10 +87,325 @@ export const MONITOR_CHECK_CATALOG_SNAPSHOT: {
   readonly capturedOn: string | null;
   readonly keys: readonly string[];
 } = {
-  capturedOn: null,
-  keys: [],
+  capturedOn: "2026-09-17",
+  keys: [
+    "adoption:email-activity-trend",
+    "adoption:m365-mobile-app-usage",
+    "adoption:overall-active-rate",
+    "adoption:planner-usage",
+    "adoption:sharepoint-onedrive-trend",
+    "adoption:sharepoint-user-activity",
+    "adoption:teams-activity-trend",
+    "adoption:teams-phone-provisioning",
+    "adoption:viva-engage-health",
+    "adoption:viva-engage-user-activity",
+    "appgov:cert-secret-expiration",
+    "appgov:consent-policy-status",
+    "appgov:dormant-service-principals",
+    "appgov:enterprise-app-count",
+    "appgov:enterprise-app-registration-list",
+    "appgov:risky-permission-grants",
+    "appgov:stale-app-registrations",
+    "appgov:unreviewed-consents",
+    "appgov:workload-identity-risk",
+    "compliance:app-conditional-access-policy-disabled",
+    "compliance:audit-log-retention",
+    "compliance:device-conditional-access-rule-weak-password",
+    "compliance:device-config-policy-weak-password",
+    "compliance:device-config-rule-weak-password",
+    "compliance:dlp-incidents",
+    "compliance:dlp-rule-package-invalid",
+    "compliance:dlp-rules-not-enforcing",
+    "compliance:eeeu-site-sharing",
+    "compliance:file-plan-property-authority-disabled",
+    "compliance:file-plan-property-category-disabled",
+    "compliance:file-plan-property-citation-disabled",
+    "compliance:file-plan-property-department-disabled",
+    "compliance:label-errors",
+    "compliance:missing-labels",
+    "compliance:policy-config-dlp-simulation-mode",
+    "compliance:protection-alert-policy-disabled",
+    "compliance:record-tag-missing-reviewer",
+    "compliance:retention-event-type-unlinked",
+    "compliance:retention-policy-coverage",
+    "compliance:retention-rule-no-action",
+    "compliance:role-group-empty-membership",
+    "compliance:sensitive-info-type-custom",
+    "compliance:supervisory-review-policy-no-reviewers",
+    "compliance:supervisory-review-rule-zero-sampling",
+    "compliance:weak-dlp-policies",
+    "compliance:zero-dlp-policies",
+    "copilot:active-usage-rate",
+    "copilot:data-exposure-risk",
+    "copilot:license-vs-total-users",
+    "copilot:licensed-but-inactive",
+    "copilot:readiness-prerequisite",
+    "copilot:sensitivity-labels-exist",
+    "copilot:usage-activity",
+    "copilot:usage-by-app",
+    "cost:duplicate-assignments",
+    "cost:entra-license-tier-distribution",
+    "cost:group-based-licensing-adoption",
+    "cost:license-count-by-sku",
+    "cost:underutilized-premium",
+    "cost:unused-unassigned-licenses",
+    "cost:utilization-by-sku",
+    "devices:app-protection-coverage",
+    "devices:autopilot-coverage",
+    "devices:bitlocker-key-escrow",
+    "devices:compliance-policy-coverage",
+    "devices:compliant-vs-noncompliant",
+    "devices:encryption-status",
+    "devices:enrollment-status",
+    "devices:kfm-configuration",
+    "devices:os-patch-compliance",
+    "devices:stale-duplicate-records",
+    "devices:unassigned-intune-profiles",
+    "devices:update-rings-config",
+    "diagnostics:ps-execution-test",
+    "directory:cloud-licensing-allotment-exhausted",
+    "directory:cloud-licensing-assignment-disabled-plans",
+    "directory:cloud-licensing-assignment-errors",
+    "directory:org-contact-provisioning-errors",
+    "directory:partner-delegated-admin-relationships",
+    "directory:service-health-active-incidents",
+    "exchange:antispam-policy-coverage",
+    "exchange:archive-mailbox-rate",
+    "exchange:auto-forwarding-rules",
+    "exchange:connector-health",
+    "exchange:distribution-list-count",
+    "exchange:dkim-spf-dmarc-status",
+    "exchange:litigation-hold-coverage",
+    "exchange:mail-flow-rule-review",
+    "exchange:mailbox-quota-utilization",
+    "exchange:shared-mailbox-licensing",
+    "exchange:transport-rule-count",
+    "governance:access-review-completion",
+    "governance:auto-labeling-coverage",
+    "governance:dynamic-group-usage",
+    "governance:empty-security-groups",
+    "governance:group-expiration-policy",
+    "governance:guest-access-reviews",
+    "governance:guest-count",
+    "governance:guest-staleness",
+    "governance:overdue-access-reviews",
+    "governance:ownerless-groups",
+    "governance:public-groups-discoverable",
+    "governance:public-teams-discoverable",
+    "governance:retention-label-adoption",
+    "governance:retention-policy-coverage",
+    "governance:sensitivity-label-adoption",
+    "identity:app-federated-identity-credentials",
+    "identity:app-proxy-connector-groups",
+    "identity:b2b-collaboration-settings",
+    "identity:break-glass-health",
+    "identity:ca-device-compliance",
+    "identity:ca-legacy-auth-block",
+    "identity:ca-mfa-coverage",
+    "identity:ca-policy-count",
+    "identity:ca-report-only",
+    "identity:continuous-access-evaluation",
+    "identity:cross-tenant-access",
+    "identity:department-directory",
+    "identity:global-admin-count",
+    "identity:guest-mfa-enforcement",
+    "identity:hybrid-sync-health",
+    "identity:legacy-auth-usage",
+    "identity:mfa-method-breakdown",
+    "identity:mfa-registration",
+    "identity:named-locations",
+    "identity:password-expiration-policy",
+    "identity:pim-eligible-roles",
+    "identity:pim-groups",
+    "identity:pim-permanent-roles",
+    "identity:privileged-mfa-gap",
+    "identity:risky-signins",
+    "identity:risky-users",
+    "identity:signin-risk-policy",
+    "identity:sspr-config",
+    "identity:stale-accounts",
+    "identity:terms-of-use",
+    "identity:transitive-role-assignments",
+    "identity:user-risk-policy",
+    "license:copilot-assignment",
+    "license:sku-utilization",
+    "license:unused-assigned",
+    "licensing:project-online-detection",
+    "m365:message-center",
+    "m365:service-health",
+    "onedrive:active-users",
+    "onedrive:departed-user-access",
+    "onedrive:external-sharing-settings",
+    "onedrive:overshared-files",
+    "onedrive:storage-utilization",
+    "onedrive:sync-errors",
+    "platform:branding-config",
+    "platform:multi-geo-status",
+    "platform:tenant-password-expiration",
+    "policy:activity-based-timeout",
+    "policy:admin-consent-workflow",
+    "policy:app-management-policies",
+    "policy:authentication-flows",
+    "policy:authentication-methods-policy",
+    "policy:authentication-strength-policies",
+    "policy:claims-mapping-policies",
+    "policy:cross-tenant-access-default",
+    "policy:cross-tenant-identity-sync-template",
+    "policy:cross-tenant-m365-capabilities",
+    "policy:cross-tenant-partners",
+    "policy:default-app-management-policy",
+    "policy:external-identities-policy",
+    "policy:home-realm-discovery",
+    "policy:security-defaults",
+    "policy:terms-of-use-agreements",
+    "policy:token-issuance-policies",
+    "policy:token-lifetime-policies",
+    "security:alert-count-by-severity",
+    "security:antiphishing-coverage",
+    "security:automated-investigation",
+    "security:azure-roleDefinitions-compliance",
+    "security:dlp-true-positive-rate",
+    "security:dlp-violations",
+    "security:insider-risk-alerts",
+    "security:open-incidents",
+    "security:password-protection-policy",
+    "security:safe-attachments-coverage",
+    "security:safe-links-coverage",
+    "security:secure-score",
+    "security:secure-score-by-category",
+    "sharepoint:inactive-sites",
+    "sharepoint:site-count",
+    "sharepoint:site-label-coverage",
+    "sharepoint:storage-near-limit",
+    "sharepoint:storage-utilization",
+    "sharepoint:tenant-sharing-capability",
+    "teams:app-permission-policy",
+    "teams:channel-sprawl",
+    "teams:external-access-settings",
+    "teams:guest-membership",
+    "teams:guest-settings-governance",
+    "teams:inactive-teams",
+    "teams:inventory-count",
+    "teams:meeting-policy-coverage",
+    "teams:messaging-policy-coverage",
+    "teams:ownerless-teams",
+    "teams:rooms-device-health",
+    "teams:team-count",
+  ],
 };
 
+
+/**
+ * Sentinel prefix for a sourceKey resolved out of the itemized `drift_events`
+ * store rather than `monitor_checks` (Git #4560). See `classifySourceKey`.
+ */
+export const DRIFT_EVENTS_PREFIX = "drift:";
+
+/**
+ * THE KNOWN, ENUMERATED CATALOG DRIFT — every registry sourceKey a live audit
+ * has confirmed is not in `monitor_checks`, as of the date below (Git #4560).
+ *
+ * ── WHY THIS LIST EXISTS AND WHY IT IS `ok: true` ────────────────────────────
+ * Filling `MONITOR_CHECK_CATALOG_SNAPSHOT` — the deliverable #441 specified on
+ * 2026-08-05 and which was never actually done — upgraded the guard from a
+ * 3-entry deny list into a real membership check, and it immediately found 65
+ * phantom sourceKeys, not the 13 #4560 was filed about. The registry has been
+ * drifting from the catalog for months, silently, exactly as the file header
+ * above predicted.
+ *
+ * Remapping 65 keys by inference in one pass is the WORST available option: a
+ * wrong guess does not render an empty cell, it renders a confidently WRONG
+ * number under a customer-facing caption. (That risk is not hypothetical —
+ * `compliance:overshared-sites` was deliberately left pointing at the older
+ * aggregate check by #357's own "not a rewrite" decision, so the obvious-looking
+ * swap to `compliance:eeeu-site-sharing` would have contradicted a decision
+ * already made on purpose.)
+ *
+ * So the drift is recorded here as a dated, enumerated FACT with its affected
+ * metrics named, and the guard passes it — while still failing on any sourceKey
+ * that is neither in the live catalog nor on this list. That is the property
+ * that actually matters: the backlog cannot silently GROW. Every entry is a
+ * metric that resolves to `unknown_check_key` for every tenant today; each
+ * needs a real per-check audit against its successor's `extractedProperties`
+ * shape, or retirement to a `not_collected:` sentinel where no successor
+ * exists. Tracked as its own issue — do not "fix" one by guessing.
+ *
+ * Shrinking this list is the goal. Adding to it requires a live audit, the same
+ * bar as `AUDIT_CONFIRMED_ABSENT_SOURCE_KEYS`.
+ */
+export const CATALOG_DRIFT_BACKLOG: {
+  readonly confirmedOn: string;
+  readonly keys: readonly string[];
+} = {
+  confirmedOn: "2026-09-17",
+  keys: [
+    "audit:directory-audits", // identity.changeEventCount
+    "audit:provisioning", // identity.provisioningEventCount
+    "audit:signins", // identity.signinActivity
+    "collaboration:delegation-grants", // collaboration.delegationGrantCount
+    "collaboration:forwarding-mailboxes", // collaboration.forwardingMailboxCount
+    "collaboration:inbox-rules", // collaboration.inboxRuleCount
+    "collaboration:mailboxes", // collaboration.mailboxCount
+    "collaboration:shared-mailbox-signin", // collaboration.sharedMailboxSigninEnabledCount
+    "collaboration:teams-channels", // collaboration.teamsChannelCount
+    "compliance:active-ediscovery", // compliance.activeEdiscoveryCount
+    "compliance:external-invites", // compliance.externalInviteCount
+    "compliance:guest-users", // compliance.guestUserCount
+    "compliance:missing-retention-tags", // compliance.missingRetentionTagCount
+    "compliance:onedrive-external", // compliance.oneDriveExternalCount
+    "compliance:orphaned-sites", // compliance.orphanedSiteCount
+    "compliance:orphaned-teams", // compliance.orphanedTeamCount
+    "compliance:overshared-sites", // compliance.oversharedSiteCount
+    "compliance:public-channels", // compliance.publicChannelCount
+    "compliance:sharepoint-sites", // compliance.sharePointSiteCount
+    "copilot:license-readiness", // licensing.copilotLicenseBreakdown
+    "copilot:overshare-exposure", // copilot.overshareExposureCount
+    "dynamics:app-permissions", // dynamics.appPermissionCount
+    "dynamics:app-role-drift", // dynamics.appRoleDriftCount
+    "dynamics:consent-changes", // dynamics.consentChangeCount
+    "dynamics:orphaned-sps", // dynamics.orphanedSpCount
+    "dynamics:permission-grants", // dynamics.permissionGrantCount
+    "dynamics:role-assignments", // dynamics.roleAssignmentCount
+    "dynamics:sp-drift", // dynamics.spDriftCount
+    "identity:disabled-accounts", // identity.disabledAccountCount
+    "identity:passwordless-adoption", // identity.passwordlessUserCount
+    "intune:config-drift", // intune.configDriftCount
+    "intune:high-threat-devices", // intune.highThreatDeviceCount
+    "intune:jailbroken-devices", // intune.jailbrokenDeviceCount
+    "intune:non-compliant-devices", // intune.nonCompliantDeviceCount
+    "intune:outdated-devices", // intune.outdatedDeviceCount
+    "intune:rooted-devices", // intune.rootedDeviceCount
+    "intune:unencrypted-devices", // intune.unencryptedDeviceCount
+    "intune:unenrolled-devices", // intune.unenrolledDeviceCount
+    "licensing:duplicate-assignments", // licensing.duplicateLicenseCount
+    "licensing:inactive-user-licenses", // licensing.inactiveLicenseCount
+    "licensing:sku-utilization", // licensing.skuBreakdown
+    "platform:db-failures", // platform.dbFailureCount
+    "platform:expiring-tokens", // platform.expiringTokenCount
+    "platform:failed-services", // platform.failedServiceCount
+    "platform:graph-failed-endpoints", // platform.failedEndpointCount
+    "platform:graph-rate-limits", // platform.rateLimitEventCount
+    "platform:queue-depth", // platform.queueDepthCount
+    "platform:scheduler-delays", // platform.schedulerDelayCount
+    "power-platform:app-inventory", // powerPlatform.appCount
+    "power-platform:flow-inventory", // powerPlatform.flowCount
+    "security:active-alerts", // security.activeAlertCount, security.alertsBySeverity
+    "security:attack-simulation", // security.failedSimulationCount
+    "security:high-severity-alerts", // security.highSeverityAlertCount
+    "security:malware-alerts", // security.malwareAlertCount
+    "security:phishing-alerts", // security.phishingAlertCount
+    "security:risk-detections", // security.riskDetectionCount
+    "security:secure-score-controls", // security.secureScoreControls
+    "security:secure-score-drift", // security.secureScoreDriftCount
+    "workflow:dependency-failures", // workflow.dependencyFailureCount
+    "workflow:failures", // workflow.workflowFailureCount
+    "workflow:high-latency-nodes", // workflow.highLatencyNodeCount
+    "workflow:invalid-schema-nodes", // workflow.invalidSchemaNodeCount
+    "workflow:node-timeouts", // workflow.nodeTimeoutCount
+    "workflow:queue-backlog", // workflow.queueBacklogCount
+    "workflow:unhealthy-nodes", // workflow.unhealthyNodeCount
+  ],
+};
 /**
  * The metrics whose `sourceKey` is NOT a catalog lookup, and so is not a claim
  * this file can hold to account.
@@ -123,7 +438,10 @@ export function sourceKeyIsCatalogClaim(metricKey: string): boolean {
 }
 
 export type SourceKeyVerdict =
-  | { readonly ok: true; readonly kind: "sentinel" | "in_snapshot" | "unverified" }
+  | {
+      readonly ok: true;
+      readonly kind: "sentinel" | "in_snapshot" | "unverified" | "drift_events" | "known_drift";
+    }
   | { readonly ok: false; readonly reason: string };
 
 /**
@@ -135,6 +453,19 @@ export type SourceKeyVerdict =
  */
 export function classifySourceKey(sourceKey: string): SourceKeyVerdict {
   if (sourceKey.startsWith(NOT_COLLECTED_PREFIX)) return { ok: true, kind: "sentinel" };
+
+  // `drift:` is not a catalog claim at all (Git #4560). `resolveMonitorProfile`
+  // routes a `drift:`-prefixed sourceKey to `resolveDriftEvents`, which reads
+  // the itemized `drift_events` / `drift_baseline_snapshots` store keyed by the
+  // bare domain slug — it never looks the key up in `monitor_checks`. Holding
+  // these eighteen keys to catalog membership would fail the guard on metrics
+  // that resolve correctly today, which is worse than useless: it trains a
+  // reader to ignore the guard.
+  if (sourceKey.startsWith(DRIFT_EVENTS_PREFIX)) return { ok: true, kind: "drift_events" };
+
+  if (CATALOG_DRIFT_BACKLOG.keys.includes(sourceKey)) {
+    return { ok: true, kind: "known_drift" };
+  }
 
   for (const entry of AUDIT_CONFIRMED_ABSENT_SOURCE_KEYS) {
     const hit = entry.isDomain ? sourceKey.startsWith(entry.key) : sourceKey === entry.key;

@@ -1,4 +1,9 @@
-import type { PillarStatUnit, PillarStatWire } from "./types";
+import type {
+  PillarCoverageSegmentKind,
+  PillarCoverageWire,
+  PillarStatUnit,
+  PillarStatWire,
+} from "./types";
 
 /**
  * Customer-safe copy for a stat's `unavailableReason` (pillar-summary-
@@ -56,7 +61,42 @@ export function statDisplay(stat: PillarStatWire): { big: string; unavailable: b
       sub: stat.licenseFeature ? `Needs ${stat.licenseFeature}` : reasonCopy,
     };
   }
-  return { big: formatStatValue(stat.value, stat.unit), unavailable: false, sub: null };
+  // Git #4560 — the server's own real sub-caption (design copy, tenant's
+  // number). Null when the check produced no denominator to put in it.
+  return { big: formatStatValue(stat.value, stat.unit), unavailable: false, sub: stat.sub ?? null };
+}
+
+/**
+ * The design's coverage-bar palette and legend wording
+ * (`Pillar Pages.dc.html` → `SEGC` + `covLegend`), one entry per real segment
+ * kind. Copy is the design's, verbatim; every COUNT beside it is the tenant's.
+ */
+export const COVERAGE_SEGMENT_DISPLAY: Record<
+  PillarCoverageSegmentKind,
+  { color: string; label: string }
+> = {
+  ok: { color: "#34d399", label: "observed with data" },
+  gap: { color: "#64748b", label: "licence-gated — your SKUs can't feed them" },
+  blocked: { color: "#fbbf24", label: "errored or can't run" },
+  queued: { color: "#334155", label: "wired, waiting on the first scan" },
+};
+
+/**
+ * The design's blocked-note sentence, built from the tenant's REAL blocked
+ * checks and the REAL Microsoft services that refused — never the design's
+ * hardcoded example prose. Null when nothing is blocked.
+ *
+ * The closing clause is the design's own, verbatim and load-bearing: an
+ * errored check has no data, which is not the same as a measured zero.
+ */
+export function blockedNote(coverage: PillarCoverageWire): string | null {
+  const blocked = coverage.segments.find((s) => s.kind === "blocked");
+  if (!blocked || blocked.count === 0) return null;
+  const checkWord = blocked.count === 1 ? "check" : "checks";
+  const services = coverage.blockedServices.length
+    ? ` ${coverage.blockedServices.join(" and ")} did not answer for this tenant.`
+    : "";
+  return `${blocked.count} ${checkWord} could not run this scan.${services} Errored means no data — never zero.`;
 }
 
 /**

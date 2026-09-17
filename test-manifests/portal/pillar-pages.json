@@ -3,7 +3,6 @@
   "feature": "Pillar pages (#1485/#1621, screen 12) — the six real pillar landing pages in artifacts/portal, wired to the already-built GET /api/portal/pillars (pillar-summary-stats.ts). Real design landed in Design/portal/design_handoff_full_site/screens/Pillar Pages.dc.html; pages live at artifacts/portal/src/pages/pillar.tsx, route /pillars/:pillar, reached from the shell's PillarTabStrip. Scope: pillar summary cards + scores only — the design's full per-check 'block' breakdown and the click-a-finding-for-full-breakdown + SOP/Runbook remediation offer are a real, separate follow-up (#1621's own open architecture questions).",
   "baseUrl": "{{DEPLOY_URL}}",
   "lastVerifiedAgainstCommit": "6aa82fdb6",
-
   "notes": [
     "Git #4557 — NOT live-executed this session, for a real, confirmed-live reason: the serving checkout (C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP) could not fast-forward to this commit. `refresh-main-server.mjs`'s real ff-only merge failed with 'untracked working tree files would be overwritten' against `Bugs/Portal/2026-09-17-1236/...` (the exact QA session that filed #4557) — confirmed real error text, not a guess; filed as its own finding, #4559 (parented under #3707, labeled Shane To-Do since only Shane can clear the blocking directory). Root-cause A (the stale-fetch race) is instead verified by tracing the actual data flow end to end: usePillarPage.ts / usePillarSummary.ts's effects now list `scanPhase` as a dependency, sourced from PortalShell's real `useScanState()` (SSE + adaptive poll) via `scanStateContext.ts`, so a transition into `complete`/`partial` now genuinely re-triggers the fetch that used to fire once at mount. `tsc --noEmit` clean on artifacts/portal confirms the wiring type-checks end to end.",
     "apiTests prove the real, already-built backend contract directly: log in via POST /api/auth/login, extract a bearer token, then exercise GET /api/portal/pillars exactly as usePillarPage.ts's own fetchWithAuth call does.",
@@ -12,88 +11,432 @@
     "ENV VARS required: DEPLOY_URL, TEST_CUSTOMER_EMAIL / TEST_CUSTOMER_PASSWORD — the same Customer testbed account other portal manifests use.",
     "UI steps deliberately assert the honest-state scaffolding (page shell, score hero, findings section) rather than exact score numbers or finding titles, which are real tenant data that changes with every scan run.",
     "Git #4557 — sessionTag '4557-tenant-status-caption' steps assert the TenantStatusCard's cache-cleared outcome body (the exact real text Shane's QA session flagged: 'Showing its stored summary: ... The live log for it is gone.') no longer carries the internal-engineering phrase, and still carries the real check/pass/error counts. This is the deterministic, no-wait-required half of the fix — any fresh page load on a tenant with a prior completed scan but no live-witnessed run this session lands in 'cache-cleared' by construction (useScanState.ts), no scan trigger needed.",
-    "Git #4557's other real bug — usePillarPage/usePillarSummaryShell fetching /api/portal/pillars exactly once on mount, so a pillar page already open when a scan finishes never refreshed until reload — is a race against a real, multi-minute Microsoft Graph scan and is not asserted here as a bounded UI step; it was verified by tracing the actual data flow (usePillarPage.ts's effect now depends on the real useScanState phase via scanStateContext.ts, refetching on any phase transition, not by reproducing the multi-minute race end-to-end in this manifest). See build-journal/4557.md for the full trace."
+    "Git #4557's other real bug — usePillarPage/usePillarSummaryShell fetching /api/portal/pillars exactly once on mount, so a pillar page already open when a scan finishes never refreshed until reload — is a race against a real, multi-minute Microsoft Graph scan and is not asserted here as a bounded UI step; it was verified by tracing the actual data flow (usePillarPage.ts's effect now depends on the real useScanState phase via scanStateContext.ts, refetching on any phase transition, not by reproducing the multi-minute race end-to-end in this manifest). See build-journal/4557.md for the full trace.",
+    "Git #4560 — sessionTag '4560-stat-tiles' covers the real show-stopper: all four Governance stat tiles resolved to unknown_check_key for EVERY tenant because PILLAR_STAT_SPECS pointed at registry metrics whose sourceKeys (compliance:sharepoint-sites, compliance:overshared-sites, copilot:overshare-exposure, compliance:public-channels) name no row in the live monitor_checks catalog. Confirmed live 2026-09-17 that this is long-standing registry drift, NOT a post-database-reset seed gap: monitor_checks rows date back to 2026-07-20 and were never wiped, and all 155 check keys the design (Pillar Pages.dc.html) references DO exist. Tiles now name their check key and value field explicitly ({ kind: \"check\" }), so API1 below asserts the one thing that was actually broken — the governance card's first stat carries a real non-null number.",
+    "Git #4560 — the 'value' assertion on $.pillars[0].stats[0].value is deliberately an 'exists' check, not a pinned number: 26 ownerless groups is real tenant data that changes with every scan. What must never regress is that it is a NUMBER rather than null-with-unknown_check_key, which is exactly what exists proves here."
   ],
-
   "apiTests": [
     {
       "name": "SETUP — log in as the Customer testbed account; extract the bearer.",
       "method": "POST",
       "path": "/api/auth/login",
-      "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_CUSTOMER_EMAIL}}", "password": "{{TEST_CUSTOMER_PASSWORD}}" },
-      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
-      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "email": "{{TEST_CUSTOMER_EMAIL}}",
+        "password": "{{TEST_CUSTOMER_PASSWORD}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.accessToken",
+        "exists": true
+      },
+      "extract": {
+        "as": "authToken",
+        "jsonPath": "$.accessToken"
+      }
     },
     {
       "name": "TEST1 — GET /api/portal/pillars returns all 7 real pillar cards.",
       "method": "GET",
       "path": "/api/portal/pillars",
-      "headers": { "Authorization": "Bearer {{authToken}}" },
-      "expect": { "status": 200, "jsonPath": "$.pillars", "exists": true }
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.pillars",
+        "exists": true
+      }
     },
     {
       "name": "TEST2 — index 0 of that fixed-order list is really 'governance' (PILLAR_SUMMARY_KEYS order, see notes).",
       "method": "GET",
       "path": "/api/portal/pillars",
-      "headers": { "Authorization": "Bearer {{authToken}}" },
-      "expect": { "status": 200, "jsonPath": "$.pillars[0].pillar", "value": "governance" }
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.pillars[0].pillar",
+        "value": "governance"
+      }
     },
     {
       "name": "TEST3 — index 5 is 'security', matching the tab strip / page route order.",
       "method": "GET",
       "path": "/api/portal/pillars",
-      "headers": { "Authorization": "Bearer {{authToken}}" },
-      "expect": { "status": 200, "jsonPath": "$.pillars[5].pillar", "value": "security" }
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.pillars[5].pillar",
+        "value": "security"
+      }
     },
     {
       "name": "TEST4 — every card carries the real evaluation envelope the page's honest evaluation line reads (scored/insufficient_data/not_evaluated).",
       "method": "GET",
       "path": "/api/portal/pillars",
-      "headers": { "Authorization": "Bearer {{authToken}}" },
-      "expect": { "status": 200, "jsonPath": "$.pillars[0].evaluation.status", "exists": true }
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.pillars[0].evaluation.status",
+        "exists": true
+      }
     },
     {
       "name": "TEST5 — the governance card's real stat callouts array is present (the page's stat-tile grid reads this directly).",
       "method": "GET",
       "path": "/api/portal/pillars",
-      "headers": { "Authorization": "Bearer {{authToken}}" },
-      "expect": { "status": 200, "jsonPath": "$.pillars[0].stats", "exists": true }
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.pillars[0].stats",
+        "exists": true
+      }
     },
     {
       "name": "TEST6 — the tenant-wide scanned-check-count the page's 'scanned with' honesty line reads is present.",
       "method": "GET",
       "path": "/api/portal/pillars",
-      "headers": { "Authorization": "Bearer {{authToken}}" },
-      "expect": { "status": 200, "jsonPath": "$.scannedCheckCount", "exists": true }
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.scannedCheckCount",
+        "exists": true
+      }
+    },
+    {
+      "name": "API1 (#4560) — the governance card's FIRST stat tile carries a real number, not the unknown_check_key null every tenant saw.",
+      "method": "GET",
+      "path": "/api/portal/pillars",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.pillars[0].stats[0].value",
+        "exists": true
+      },
+      "sessionTag": "4560-stat-tiles"
+    },
+    {
+      "name": "API2 (#4560) — that tile names the real catalog check it reads (governance:ownerless-groups), not a phantom registry sourceKey.",
+      "method": "GET",
+      "path": "/api/portal/pillars",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.pillars[0].stats[0].checkKey",
+        "value": "governance:ownerless-groups"
+      },
+      "sessionTag": "4560-stat-tiles"
+    },
+    {
+      "name": "API3 (#4560) — the coverage envelope the \"what feeds this score\" panel reads is present on the governance card.",
+      "method": "GET",
+      "path": "/api/portal/pillars",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.pillars[0].coverage.total",
+        "exists": true
+      },
+      "sessionTag": "4560-stat-tiles"
+    },
+    {
+      "name": "API4 (#4560) — coverage carries real segments, so the bar is drawn from observations rather than a client-side tally.",
+      "method": "GET",
+      "path": "/api/portal/pillars",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.pillars[0].coverage.segments[0].kind",
+        "exists": true
+      },
+      "sessionTag": "4560-stat-tiles"
+    },
+    {
+      "name": "API5 (#4560) — the health card's first tile reads a real devices:* check, proving the phantom intune:* domain is gone.",
+      "method": "GET",
+      "path": "/api/portal/pillars",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.pillars[4].stats[0].checkKey",
+        "value": "devices:enrollment-status"
+      },
+      "sessionTag": "4560-stat-tiles"
     }
   ],
-
   "uiSteps": [
-    { "name": "goto the real login page.", "action": "goto", "target": "/portal/login" },
-    { "action": "expect", "selector": "[data-testid='login-email']", "state": "visible", "critical": true },
-    { "action": "input", "selector": "[data-testid='login-email']", "value": "{{TEST_CUSTOMER_EMAIL}}" },
-    { "action": "input", "selector": "[data-testid='login-password']", "value": "{{TEST_CUSTOMER_PASSWORD}}" },
-    { "name": "sign in.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
-
-    { "name": "goto the real Governance pillar page.", "action": "goto", "target": "/portal/pillars/governance" },
-    { "name": "UI1 — the page renders.", "action": "expect", "selector": "[data-testid='pillar-page-governance']", "state": "visible", "critical": true },
-    { "name": "UI2 — the header shows the real pillar label.", "action": "expect", "selector": "[data-testid='pillar-page-governance']", "state": "visible", "textContains": "Governance", "critical": true },
-    { "name": "UI3 — the score hero renders (real score or the honest em dash — never a fixture number).", "action": "expect", "selector": "[data-testid='pillar-score-hero']", "state": "visible", "critical": true },
-    { "name": "UI4 — the findings section always renders, scanned or not.", "action": "expect", "selector": "[data-testid='pillar-findings']", "state": "visible" },
-
-    { "name": "UI5 — the shell's pillar tab strip is reachable from this page too.", "action": "expect", "selector": "[data-testid='pillar-tab-security']", "state": "visible", "critical": true },
-    { "name": "UI6 — selecting the Security tab routes to its own real page.", "action": "click", "selector": "[data-testid='pillar-tab-security']", "critical": true },
-    { "name": "UI7 — the Security pillar page renders.", "action": "expect", "selector": "[data-testid='pillar-page-security']", "state": "visible", "textContains": "Security", "critical": true },
-
-    { "name": "Git #4557 login.", "action": "goto", "target": "/portal/login", "sessionTag": "4557-tenant-status-caption" },
-    { "action": "expect", "selector": "[data-testid='login-email']", "state": "visible", "critical": true, "sessionTag": "4557-tenant-status-caption" },
-    { "action": "input", "selector": "[data-testid='login-email']", "value": "{{TEST_CUSTOMER_EMAIL}}", "sessionTag": "4557-tenant-status-caption" },
-    { "action": "input", "selector": "[data-testid='login-password']", "value": "{{TEST_CUSTOMER_PASSWORD}}", "sessionTag": "4557-tenant-status-caption" },
-    { "name": "sign in.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true, "sessionTag": "4557-tenant-status-caption" },
-
-    { "name": "goto a pillar page — the Tenant Status card mounts in the shell sidebar for every page, this one included.", "action": "goto", "target": "/portal/pillars/governance", "sessionTag": "4557-tenant-status-caption" },
-    { "name": "open the Tenant Status card's outcome (cache-cleared on any fresh session against a previously-scanned tenant, per useScanState.ts).", "action": "expect", "selector": "[data-testid='tenant-status-header']", "state": "visible", "critical": true, "sessionTag": "4557-tenant-status-caption" },
-    { "name": "CAP1 — the caption no longer leaks 'the live log is gone' internal engineering phrasing.", "action": "expect", "selector": "[data-testid='tenant-status-outcome-body']", "state": "visible", "textContains": "checks", "sessionTag": "4557-tenant-status-caption" }
+    {
+      "name": "goto the real login page.",
+      "action": "goto",
+      "target": "/portal/login"
+    },
+    {
+      "action": "expect",
+      "selector": "[data-testid='login-email']",
+      "state": "visible",
+      "critical": true
+    },
+    {
+      "action": "input",
+      "selector": "[data-testid='login-email']",
+      "value": "{{TEST_CUSTOMER_EMAIL}}"
+    },
+    {
+      "action": "input",
+      "selector": "[data-testid='login-password']",
+      "value": "{{TEST_CUSTOMER_PASSWORD}}"
+    },
+    {
+      "name": "sign in.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true
+    },
+    {
+      "name": "goto the real Governance pillar page.",
+      "action": "goto",
+      "target": "/portal/pillars/governance"
+    },
+    {
+      "name": "UI1 — the page renders.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-page-governance']",
+      "state": "visible",
+      "critical": true
+    },
+    {
+      "name": "UI2 — the header shows the real pillar label.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-page-governance']",
+      "state": "visible",
+      "textContains": "Governance",
+      "critical": true
+    },
+    {
+      "name": "UI3 — the score hero renders (real score or the honest em dash — never a fixture number).",
+      "action": "expect",
+      "selector": "[data-testid='pillar-score-hero']",
+      "state": "visible",
+      "critical": true
+    },
+    {
+      "name": "UI4 — the findings section always renders, scanned or not.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-findings']",
+      "state": "visible"
+    },
+    {
+      "name": "UI5 — the shell's pillar tab strip is reachable from this page too.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-tab-security']",
+      "state": "visible",
+      "critical": true
+    },
+    {
+      "name": "UI6 — selecting the Security tab routes to its own real page.",
+      "action": "click",
+      "selector": "[data-testid='pillar-tab-security']",
+      "critical": true
+    },
+    {
+      "name": "UI7 — the Security pillar page renders.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-page-security']",
+      "state": "visible",
+      "textContains": "Security",
+      "critical": true
+    },
+    {
+      "name": "Git #4557 login.",
+      "action": "goto",
+      "target": "/portal/login",
+      "sessionTag": "4557-tenant-status-caption"
+    },
+    {
+      "action": "expect",
+      "selector": "[data-testid='login-email']",
+      "state": "visible",
+      "critical": true,
+      "sessionTag": "4557-tenant-status-caption"
+    },
+    {
+      "action": "input",
+      "selector": "[data-testid='login-email']",
+      "value": "{{TEST_CUSTOMER_EMAIL}}",
+      "sessionTag": "4557-tenant-status-caption"
+    },
+    {
+      "action": "input",
+      "selector": "[data-testid='login-password']",
+      "value": "{{TEST_CUSTOMER_PASSWORD}}",
+      "sessionTag": "4557-tenant-status-caption"
+    },
+    {
+      "name": "sign in.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true,
+      "sessionTag": "4557-tenant-status-caption"
+    },
+    {
+      "name": "goto a pillar page — the Tenant Status card mounts in the shell sidebar for every page, this one included.",
+      "action": "goto",
+      "target": "/portal/pillars/governance",
+      "sessionTag": "4557-tenant-status-caption"
+    },
+    {
+      "name": "open the Tenant Status card's outcome (cache-cleared on any fresh session against a previously-scanned tenant, per useScanState.ts).",
+      "action": "expect",
+      "selector": "[data-testid='tenant-status-header']",
+      "state": "visible",
+      "critical": true,
+      "sessionTag": "4557-tenant-status-caption"
+    },
+    {
+      "name": "CAP1 — the caption no longer leaks 'the live log is gone' internal engineering phrasing.",
+      "action": "expect",
+      "selector": "[data-testid='tenant-status-outcome-body']",
+      "state": "visible",
+      "textContains": "checks",
+      "sessionTag": "4557-tenant-status-caption"
+    },
+    {
+      "name": "Git #4560 login.",
+      "action": "goto",
+      "target": "/portal/login",
+      "sessionTag": "4560-stat-tiles"
+    },
+    {
+      "action": "expect",
+      "selector": "[data-testid='login-email']",
+      "state": "visible",
+      "critical": true,
+      "sessionTag": "4560-stat-tiles"
+    },
+    {
+      "action": "input",
+      "selector": "[data-testid='login-email']",
+      "value": "{{TEST_CUSTOMER_EMAIL}}",
+      "sessionTag": "4560-stat-tiles"
+    },
+    {
+      "action": "input",
+      "selector": "[data-testid='login-password']",
+      "value": "{{TEST_CUSTOMER_PASSWORD}}",
+      "sessionTag": "4560-stat-tiles"
+    },
+    {
+      "name": "sign in.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true,
+      "sessionTag": "4560-stat-tiles"
+    },
+    {
+      "name": "goto the real Governance pillar page — the exact page whose four tiles were blank.",
+      "action": "goto",
+      "target": "/portal/pillars/governance",
+      "sessionTag": "4560-stat-tiles"
+    },
+    {
+      "name": "TILE1 — the stat-tile grid renders at all (it is dropped entirely when a card has no stats).",
+      "action": "expect",
+      "selector": "[data-testid='pillar-stat-tiles']",
+      "state": "visible",
+      "critical": true,
+      "sessionTag": "4560-stat-tiles"
+    },
+    {
+      "name": "TILE2 — the grid shows the real Governance tile captions from the design, not the retired ones.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-stat-tiles']",
+      "state": "visible",
+      "textContains": "groups with no owner",
+      "critical": true,
+      "sessionTag": "4560-stat-tiles"
+    },
+    {
+      "name": "TILE3 — the dormant service principals tile is present too (the fourth of the four that were blank).",
+      "action": "expect",
+      "selector": "[data-testid='pillar-stat-tiles']",
+      "state": "visible",
+      "textContains": "dormant service principals",
+      "sessionTag": "4560-stat-tiles"
+    },
+    {
+      "name": "COV1 — the \"what feeds this score\" coverage panel renders.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-coverage']",
+      "state": "visible",
+      "critical": true,
+      "sessionTag": "4560-stat-tiles"
+    },
+    {
+      "name": "COV2 — its legend carries the real observed-with-data wording from the design.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-coverage']",
+      "state": "visible",
+      "textContains": "observed with data",
+      "sessionTag": "4560-stat-tiles"
+    },
+    {
+      "name": "COV3 — the ok segment of the bar is actually drawn.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-coverage-segment-ok']",
+      "state": "present",
+      "sessionTag": "4560-stat-tiles"
+    },
+    {
+      "name": "HDR1 — the trend checkpoint dots render.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-trend-dots']",
+      "state": "visible",
+      "sessionTag": "4560-stat-tiles"
+    },
+    {
+      "name": "HDR2 — the open-findings severity chips render.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-finding-chips']",
+      "state": "visible",
+      "textContains": "Open findings",
+      "sessionTag": "4560-stat-tiles"
+    },
+    {
+      "name": "HEALTH1 — the Health pillar's tiles are real too (they named the phantom intune:* domain before).",
+      "action": "goto",
+      "target": "/portal/pillars/health",
+      "sessionTag": "4560-stat-tiles"
+    },
+    {
+      "name": "HEALTH2 — its stat-tile grid renders with the design's real captions.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-stat-tiles']",
+      "state": "visible",
+      "textContains": "stale device records",
+      "critical": true,
+      "sessionTag": "4560-stat-tiles"
+    }
   ]
 }

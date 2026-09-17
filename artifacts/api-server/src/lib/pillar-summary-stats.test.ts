@@ -52,14 +52,19 @@ import {
   pillarForRulePillar,
   buildCheckKeyPillarMap,
   statFromMetricResult,
+  statFromCheckObservation,
   refineStatUnavailability,
   PILLAR_STAT_NOT_SCANNED,
   type PillarStat,
   type PillarStatSpec,
+  type PillarStatSource,
 } from "./pillar-summary-stats.ts";
 import type { MetricResult } from "./dashboard-resolvers.ts";
 
 const ALL_SPECS: PillarStatSpec[] = PILLAR_SUMMARY_KEYS.flatMap((p) => [...PILLAR_STAT_SPECS[p]]);
+
+/** A spec narrowed to the #4560 check-backed source, for the cases below. */
+type CheckBackedSpec = PillarStatSpec & { source: Extract<PillarStatSource, { kind: "check" }> };
 
 describe("stat specs cover exactly the 27 producible callouts", () => {
   it("has four stats for every pillar except compliance (three)", () => {
@@ -77,10 +82,13 @@ describe("stat specs cover exactly the 27 producible callouts", () => {
       // live monitor_checks catalog — the same phantom-sourceKey bug class as
       // #441, caught this time by the registry's own not_collected sentinel
       // guard rather than reaching a customer first.
-      const expected = pillar === "compliance" ? 3 : 4;
-      expect(PILLAR_STAT_SPECS[pillar], `pillar ${pillar}`).toHaveLength(expected);
+      // compliance is back to four as of #4560: the design
+      // (`Pillar Pages.dc.html`) specifies four compliance tiles, and the
+      // fourth (`compliance:zero-dlp-policies`) is a real, live catalog check —
+      // not the phantom `compliance:retention-drift` #1103 correctly removed.
+      expect(PILLAR_STAT_SPECS[pillar], `pillar ${pillar}`).toHaveLength(4);
     }
-    expect(ALL_SPECS).toHaveLength(27);
+    expect(ALL_SPECS).toHaveLength(28);
   });
 
   it("gives every stat a unique id", () => {
@@ -101,7 +109,10 @@ describe("stat specs cover exactly the 27 producible callouts", () => {
     // (#1103) — it was always one of the original nine unproducible numbers
     // (see this file's own header), just miscategorized as replaced until the
     // phantom sourceKey was caught.
-    expect(new Set(ALL_SPECS.map((s) => s.replaces)).size).toBe(27);
+    // 28 as of #4560, which added the design's fourth compliance tile. Its
+    // `replaces` names no HERO_PHASE original because there was none — the
+    // fiction had three compliance callouts, the design has four.
+    expect(new Set(ALL_SPECS.map((s) => s.replaces)).size).toBe(28);
   });
 });
 
@@ -423,11 +434,20 @@ const CORE_SECURITY_BASELINE_CHECKS = new Set([
   "onedrive:external-sharing-settings", "appgov:risky-permission-grants",
 ]);
 
-/** The real check key each metric-backed stat needs, via the real registry. */
+/**
+ * The real check key each check-backed stat needs.
+ *
+ * #4560 — a tile now names its check key directly (`{ kind: "check" }`), so
+ * most of these need no registry hop at all. The `metric` branch stays for the
+ * specs that still resolve that way, so this helper keeps meaning "every check
+ * this pillar's tiles depend on" regardless of which source kind carries it.
+ */
 function checkKeysFor(pillar: (typeof PILLAR_SUMMARY_KEYS)[number]): string[] {
-  return PILLAR_STAT_SPECS[pillar]
-    .filter((s) => s.source.kind === "metric")
-    .map((s) => getMetric((s.source as { metricKey: string }).metricKey)!.sourceKey);
+  return PILLAR_STAT_SPECS[pillar].flatMap((s) => {
+    if (s.source.kind === "check") return [s.source.checkKey];
+    if (s.source.kind === "metric") return [getMetric(s.source.metricKey)!.sourceKey];
+    return [];
+  });
 }
 
 function statWith(over: Partial<PillarStat>): PillarStat {
@@ -446,10 +466,10 @@ function statWith(over: Partial<PillarStat>): PillarStat {
 describe("#341 — which pillars CAN have stats under the canonical scan package", () => {
   it("reproduces the reported 2-of-7 split from the real package curation", () => {
     const canProduce = PILLAR_SUMMARY_KEYS.filter((pillar) =>
-      PILLAR_STAT_SPECS[pillar].some((spec) =>
-        spec.source.kind === "pillarScore" ||
-        (spec.source.kind === "metric" &&
-          CORE_SECURITY_BASELINE_CHECKS.has(getMetric(spec.source.metricKey)!.sourceKey)),
+      PILLAR_STAT_SPECS[pillar].some(
+        (spec) =>
+          spec.source.kind === "pillarScore" ||
+          checkKeysFor(pillar).some((k) => CORE_SECURITY_BASELINE_CHECKS.has(k)),
       ),
     );
     // Exactly the two Shane's screenshot showed populated, and the five it
@@ -464,11 +484,17 @@ describe("#341 — which pillars CAN have stats under the canonical scan package
     const overlap = PILLAR_SUMMARY_KEYS
       .flatMap(checkKeysFor)
       .filter((k) => CORE_SECURITY_BASELINE_CHECKS.has(k));
+    // #4560 — all FOUR of the security card's tiles now name a check inside
+    // core:security-baseline, where three did before. `identity:legacy-auth-usage`
+    // left because the design's own security tiles are these four;
+    // `identity:risky-users` stays on the list via the copilot card's
+    // (still metric-backed) risky-user stat, not via a security tile.
     expect([...new Set(overlap)].sort()).toEqual([
+      "identity:ca-policy-count",
       "identity:global-admin-count",
-      "identity:legacy-auth-usage",
       "identity:mfa-registration",
       "identity:risky-users",
+      "security:secure-score",
     ]);
   });
 
@@ -479,13 +505,19 @@ describe("#341 — which pillars CAN have stats under the canonical scan package
     }
   });
 
-  it("still routes the package's own device checks to the health pillar", () => {
-    // The Health card's stats name `intune:*`; the package runs the parallel
-    // `devices:*` checks, whose FINDINGS already land on this card. That gap is
-    // the one place a stat could be made real by re-pointing it, and the reason
-    // that was not done blind is recorded in pillar-summary-stats.ts's header.
+  it("routes the package's own device checks to the health pillar — and the card now NAMES them (#4560)", () => {
+    // This case used to assert the bug: the Health card's stats named `intune:*`
+    // while the package ran the parallel `devices:*` checks, so all four tiles
+    // resolved to `unknown_check_key` for every tenant forever. `intune:` is not
+    // a check-key domain in this catalog and never has been — confirmed live
+    // 2026-09-17 against a `monitor_checks` table whose oldest rows predate the
+    // database reset, so this was long-standing registry drift, not a lost seed.
+    //
+    // The re-point is no longer blind: the design's own health tiles name the
+    // real `devices:*` / `appgov:` / `m365:` checks, all four verified present.
     expect(pillarForCheckKey("devices:compliant-vs-noncompliant")).toBe("health");
-    expect(checkKeysFor("health").every((k) => k.startsWith("intune:"))).toBe(true);
+    expect(checkKeysFor("health").some((k) => k.startsWith("intune:"))).toBe(false);
+    expect(checkKeysFor("health")).toContain("devices:enrollment-status");
   });
 });
 
@@ -571,14 +603,12 @@ describe("#341 — end to end over the real specs and the real package", () => {
     // go dark the same way the other pillars do.
     for (const pillar of ["governance", "licensing", "adoption", "compliance", "health"] as const) {
       const reasons = PILLAR_STAT_SPECS[pillar]
-        .filter((s) => s.source.kind === "metric")
+        .filter((s) => s.source.kind === "check")
         .map((spec) =>
           refineStatUnavailability(
-            statFromMetricResult(spec, getMetric((spec.source as { metricKey: string }).metricKey)!.sourceKey, {
-              metricKey: "x",
-              status: "not_available",
-              reason: "no_data",
-            }),
+            // No observation at all — the shape a tenant whose scans only ever
+            // ran core:security-baseline genuinely produces for these checks.
+            statFromCheckObservation(spec as CheckBackedSpec, undefined),
             CORE_SECURITY_BASELINE_CHECKS,
           ).unavailableReason,
         );
@@ -589,29 +619,86 @@ describe("#341 — end to end over the real specs and the real package", () => {
   it("populates the security card's stats when the real data supports them", () => {
     // The other half of the verify bar: a scanned check with a real number must
     // render as that number, with no unavailability reason attached at all.
-    const values = [96, 14, 3];
-    const stats = PILLAR_STAT_SPECS.security
-      .slice(0, 3)
-      .map((spec, i) =>
-        refineStatUnavailability(
-          statFromMetricResult(spec, getMetric((spec.source as { metricKey: string }).metricKey)!.sourceKey, {
-            metricKey: "x", status: "ok", shape: "scalar", valueType: "count",
-            scope: "customer", data: { value: values[i] },
-          }),
-          CORE_SECURITY_BASELINE_CHECKS,
-        ),
+    // #4560 — asserted through the real `{ kind: "check" }` path, reading the
+    // real `valueField` each spec names off a real observation shape.
+    const values: Record<string, number> = {
+      "identity:ca-policy-count": 0,
+      "identity:global-admin-count": 6,
+      "identity:mfa-registration": 14,
+      "security:secure-score": 150,
+    };
+    const stats = PILLAR_STAT_SPECS.security.map((spec) => {
+      const s = spec as CheckBackedSpec;
+      return refineStatUnavailability(
+        statFromCheckObservation(s, {
+          checkKey: s.source.checkKey,
+          status: "ok",
+          props: { [s.source.valueField]: values[s.source.checkKey] },
+          collectedAt: "2026-09-17T20:28:38.705Z",
+          licenseFeature: null,
+          serviceName: null,
+        }),
+        CORE_SECURITY_BASELINE_CHECKS,
       );
-    expect(stats.map((s) => s.value)).toEqual(values);
+    });
+    expect(stats.map((s) => s.value)).toEqual([0, 6, 14, 150]);
     expect(stats.every((s) => s.unavailableReason === undefined)).toBe(true);
-    // …and the fourth, whose check is genuinely outside the package, is the one
-    // that goes dark — the exact card Shane saw showing three numbers, not four.
-    const fourth = refineStatUnavailability(
-      statFromMetricResult(PILLAR_STAT_SPECS.security[3]!, "copilot:overshare-exposure", {
-        metricKey: "x", status: "not_available", reason: "no_data",
-      }),
-      CORE_SECURITY_BASELINE_CHECKS,
-    );
-    expect(fourth.unavailableReason).toBe(PILLAR_STAT_NOT_SCANNED);
+
+    // A real 0 is a real answer and must survive as 0 — the very first tile
+    // above is one, and it must not read as "no data".
+    expect(stats[0]!.value).toBe(0);
+    expect(stats[0]!.unavailableReason).toBeUndefined();
+  });
+
+  it("keeps the four kinds of nothing apart on a check-backed tile (#4560)", () => {
+    const spec = PILLAR_STAT_SPECS.governance[0] as CheckBackedSpec;
+    const base = {
+      checkKey: spec.source.checkKey,
+      props: {},
+      collectedAt: "2026-09-17T20:28:38.705Z",
+      licenseFeature: null,
+      serviceName: null,
+    };
+
+    // Licence-gated: carries the tenant's OWN feature string, never a guess.
+    const gapped = statFromCheckObservation(spec, {
+      ...base,
+      status: "license_gap",
+      licenseFeature: "Microsoft Entra ID Premium P1",
+    });
+    expect(gapped.unavailableReason).toBe("license_gap");
+    expect(gapped.licenseFeature).toBe("Microsoft Entra ID Premium P1");
+
+    // Service not set up (#1847) — never a zero.
+    expect(
+      statFromCheckObservation(spec, { ...base, status: "service_not_configured" }).unavailableReason,
+    ).toBe("service_not_configured");
+
+    // Errored: nothing was measured, so nothing is reported. Not a 0.
+    const errored = statFromCheckObservation(spec, { ...base, status: "error" });
+    expect(errored.unavailableReason).toBe("check_error");
+    expect(errored.value).toBeNull();
+
+    // Ran, but produced no such field.
+    expect(statFromCheckObservation(spec, { ...base, status: "ok" }).unavailableReason).toBe("no_data");
+  });
+
+  it("builds a tile's sub-caption from a REAL denominator, or drops it (#4560)", () => {
+    const spec = PILLAR_STAT_SPECS.governance[1] as CheckBackedSpec; // public teams, of {value} teams
+    const observed = (props: Record<string, unknown>) =>
+      statFromCheckObservation(spec, {
+        checkKey: spec.source.checkKey,
+        status: "ok",
+        props,
+        collectedAt: null,
+        licenseFeature: null,
+        serviceName: null,
+      });
+
+    expect(observed({ publicTeamCount: 1, teamsScanned: 18 }).sub).toBe("of 18 teams");
+    // Denominator genuinely absent → the caption is dropped, never rendered
+    // with a blank or a zero standing in for a number nobody measured.
+    expect(observed({ publicTeamCount: 1 }).sub).toBeUndefined();
   });
 });
 
