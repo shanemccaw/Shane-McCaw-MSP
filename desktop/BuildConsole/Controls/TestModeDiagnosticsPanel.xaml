@@ -295,6 +295,7 @@
                                             </Button>
                                             <Button x:Name="BtnAddA11yToBug" Style="{StaticResource PrimaryButton}" FontSize="{StaticResource CaptionFontSize}" Padding="8,5" Visibility="Collapsed" Click="BtnAddA11yToBug_Click" Content="+ Add to Bug Report"/>
                                         </WrapPanel>
+                                        <StackPanel x:Name="A11yIssuesContainer" Orientation="Vertical" Margin="0,8,0,0"/>
                                     </StackPanel>
                                 </Border>
 

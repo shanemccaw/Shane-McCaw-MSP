@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
@@ -636,34 +637,28 @@ namespace BuildConsole.Controls
 
             try
             {
-                // Run a lightweight accessibility script
-                string script = @"(function() {
-                    var issues = [];
-                    var images = document.querySelectorAll('img:not([alt])');
-                    images.forEach(function(img) { issues.push('Image missing alt attribute: ' + (img.src || '').substring(0, 50)); });
-                    var emptyBtns = document.querySelectorAll('button:empty');
-                    emptyBtns.forEach(function(b) { issues.push('Button has no label or text'); });
-                    var inputs = document.querySelectorAll('input:not([aria-label]):not([id])');
-                    inputs.forEach(function(inp) { issues.push('Input missing accessible label or ID: ' + (inp.name || inp.type)); });
-                    return JSON.stringify({ issueCount: issues.length, items: issues });
-                })();";
-                string json = await _activeWebView.CoreWebView2.ExecuteScriptAsync(script);
-                using var doc = JsonDocument.Parse(json);
-                int count = 0;
-                if (doc.RootElement.ValueKind == JsonValueKind.String)
+                _lastA11yReport = await VisualTestTrackerTelemetry.RunAccessibilityAuditAsync(_activeWebView);
+
+                // RunAccessibilityAuditAsync returns an empty report (no Timestamp) on failure — same
+                // failure signal PageAutoCheckService checks before persisting (Git #4442).
+                if (string.IsNullOrWhiteSpace(_lastA11yReport.Timestamp))
                 {
-                    using var innerDoc = JsonDocument.Parse(doc.RootElement.GetString() ?? "{}");
-                    if (innerDoc.RootElement.TryGetProperty("issueCount", out var countProp))
-                        count = countProp.GetInt32();
-                }
-                else if (doc.RootElement.TryGetProperty("issueCount", out var countProp))
-                {
-                    count = countProp.GetInt32();
+                    TxtA11ySummary.Text = "Scan failed: the accessibility audit could not run on this page.";
+                    TxtTelemetryA11y.Text = "a11y ?";
+                    BtnAddA11yToBug.Visibility = Visibility.Collapsed;
+                    A11yIssuesContainer.Children.Clear();
+                    return;
                 }
 
-                TxtA11ySummary.Text = count == 0 ? "✓ 0 accessibility issues detected on this page." : $"⚠️ {count} accessibility issue(s) detected.";
+                int count = _lastA11yReport.TotalViolations;
+                TxtA11ySummary.Text = count == 0
+                    ? "✓ 0 accessibility issues detected on this page."
+                    : $"⚠️ {count} accessibility issue(s) detected ({_lastA11yReport.MissingAltCount} missing alt, {_lastA11yReport.ContrastCount} contrast, {_lastA11yReport.AriaCount} ARIA).";
                 TxtTelemetryA11y.Text = $"a11y {count}";
                 BtnAddA11yToBug.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
+                RenderA11yIssues();
+
+                await PersistA11yAuditAsync(_lastA11yReport);
             }
             catch (Exception ex)
             {
@@ -671,9 +666,136 @@ namespace BuildConsole.Controls
             }
         }
 
+        /// <summary>Git #4458 — shares one real record with #4442's navigation auto-check instead of
+        /// each Test Mode surface keeping its own disagreeing count.</summary>
+        private async Task PersistA11yAuditAsync(AccessibilityAuditReport report)
+        {
+            if (string.IsNullOrWhiteSpace(_activeBaseUrl) || string.IsNullOrWhiteSpace(_activePagePath)) return;
+
+            try
+            {
+                if (_bugStatusStore == null)
+                {
+                    var connStr = VisualTestTrackerStore.ResolveConnectionString();
+                    if (string.IsNullOrWhiteSpace(connStr)) return;
+                    _bugStatusStore = new VisualTestTrackerStore(connStr);
+                }
+
+                var page = await _bugStatusStore.GetOrCreatePageAsync(_activeBaseUrl, _activePagePath);
+                await _bugStatusStore.SaveA11yAuditAsync(new VisualTestTrackerA11yAudit
+                {
+                    PageId = page.Id,
+                    BaseUrl = _activeBaseUrl,
+                    PagePath = _activePagePath,
+                    Violations = report.Violations,
+                    LastAuditedAt = DateTime.Now,
+                });
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(VisualTestTrackerStore.Channel, $"Rescan A11y persist failed: {ex.Message}");
+            }
+        }
+
+        private void RenderA11yIssues()
+        {
+            A11yIssuesContainer.Children.Clear();
+
+            foreach (var v in _lastA11yReport.Violations)
+            {
+                var card = new Border
+                {
+                    Background = (System.Windows.Media.Brush)FindResource("Surface0Brush"),
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(5, 3, 5, 3),
+                    Margin = new Thickness(0, 0, 0, 3)
+                };
+
+                var sp = new StackPanel();
+
+                var headerGrid = new Grid();
+                headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var leftSp = new StackPanel { Orientation = Orientation.Horizontal };
+                var badgeColor = v.Category == "MissingAlt" ? "#f97316" : v.Category == "Contrast" ? "#ef4444" : "#a855f7";
+                var tagBlock = new TextBlock
+                {
+                    Text = $"[{v.Category.ToUpperInvariant()}]",
+                    FontSize = 8,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new System.Windows.Media.SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(badgeColor)),
+                    Margin = new Thickness(0, 0, 4, 0)
+                };
+                var ruleBlock = new TextBlock
+                {
+                    Text = v.Rule,
+                    FontSize = 8,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = (System.Windows.Media.Brush)FindResource("TextBrush")
+                };
+                leftSp.Children.Add(tagBlock);
+                leftSp.Children.Add(ruleBlock);
+
+                var viewBtn = new Button
+                {
+                    Content = "🔍 View",
+                    Style = (Style)FindResource("IconButton"),
+                    FontSize = 8,
+                    Padding = new Thickness(3, 0, 3, 0),
+                    Tag = v.Selector
+                };
+                viewBtn.Click += async (s, e) =>
+                {
+                    if (s is Button b && b.Tag is string sel && !string.IsNullOrEmpty(sel))
+                    {
+                        await VisualTestTrackerTelemetry.ScrollToAndHighlightElementAsync(_activeWebView, sel);
+                    }
+                };
+
+                Grid.SetColumn(leftSp, 0);
+                Grid.SetColumn(viewBtn, 1);
+                headerGrid.Children.Add(leftSp);
+                headerGrid.Children.Add(viewBtn);
+                sp.Children.Add(headerGrid);
+
+                var msgBlock = new TextBlock
+                {
+                    Text = v.Message,
+                    FontSize = 8,
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = (System.Windows.Media.Brush)FindResource("Subtext1Brush"),
+                    Margin = new Thickness(0, 1, 0, 0)
+                };
+                sp.Children.Add(msgBlock);
+
+                if (!string.IsNullOrEmpty(v.Selector))
+                {
+                    var selBlock = new TextBlock
+                    {
+                        Text = v.Selector,
+                        FontSize = 8,
+                        FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+                        Foreground = (System.Windows.Media.Brush)FindResource("AccentBrush"),
+                        Margin = new Thickness(0, 1, 0, 0)
+                    };
+                    sp.Children.Add(selBlock);
+                }
+
+                card.Child = sp;
+                A11yIssuesContainer.Children.Add(card);
+            }
+        }
+
         private void BtnAddA11yToBug_Click(object sender, RoutedEventArgs e)
         {
-            AddToNotesRequested?.Invoke($"\n**Accessibility Issues Found**:\n{TxtA11ySummary.Text}");
+            string detail = TxtA11ySummary.Text;
+            if (_lastA11yReport.TotalViolations > 0)
+            {
+                var lines = _lastA11yReport.Violations.Select(v => $"- [{v.Category}] {v.Rule}: {v.Message}" + (string.IsNullOrEmpty(v.Selector) ? "" : $" (`{v.Selector}`)"));
+                detail += "\n" + string.Join("\n", lines);
+            }
+            AddToNotesRequested?.Invoke($"\n**Accessibility Issues Found**:\n{detail}");
         }
 
         // ═══════════════════════════════════════════════════════════════════
