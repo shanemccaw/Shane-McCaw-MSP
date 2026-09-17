@@ -729,10 +729,22 @@ export interface ResolvedBaselineRequest {
 // follow-up) because 105 of the 124 declared rows have no real execution history
 // to verify they'd still pass under a strict gate, and most are destructive writes
 // not safe to fire live just to validate metadata.
+// #4530 — extracted so the Graph pack write path can stamp a template's declared
+// expectStatus (and whether the actual returned status matched it) onto every audit
+// log row, without changing accept-class behavior. This is the shadow-instrumentation
+// half of #4530: it lets real production traffic build a real observed-status dataset
+// (queryable via baseline_action_template_audit_log.after_snapshot) that a future
+// session can use as evidence before narrowing graphAcceptedStatusCodes() to a strict
+// gate. See #4530's plan (build-journal/4530-plan.md) for why a full strict gate isn't
+// safely landable yet: 98/124 declared rows still have zero real execution history.
+export function declaredExpectStatus(successCriteria: Record<string, unknown> | null | undefined): number | undefined {
+  const raw = successCriteria && typeof successCriteria === "object" ? successCriteria["expectStatus"] : undefined;
+  return typeof raw === "number" && Number.isFinite(raw) ? raw : undefined;
+}
+
 export function graphAcceptedStatusCodes(successCriteria: Record<string, unknown> | null | undefined): number[] {
   const defaultClass = [200, 201, 204];
-  const raw = successCriteria && typeof successCriteria === "object" ? successCriteria["expectStatus"] : undefined;
-  const expectStatus = typeof raw === "number" && Number.isFinite(raw) ? raw : undefined;
+  const expectStatus = declaredExpectStatus(successCriteria);
   if (expectStatus === undefined || defaultClass.includes(expectStatus)) return defaultClass;
   return [...defaultClass, expectStatus];
 }
@@ -1652,7 +1664,20 @@ export async function runBaselineTemplateAgainstTenant(
   }
 
   const { graphWriteForTenant } = await import("./graph.ts");
+  const expectStatus = declaredExpectStatus(writeResolved.successCriteria);
   const result = await graphWriteForTenant(tenantId, customerId, endpoint, method, body, graphAcceptedStatusCodes(writeResolved.successCriteria));
+
+  // #4530 — shadow instrumentation only: this NEVER changes result.success/status.
+  // expectStatusMatch is only meaningful (true/false) when the write was accepted as
+  // a success under today's widened class; a write that already failed the widened
+  // class isn't made "more failed" by also missing expectStatus, so this stays null.
+  const expectStatusMatch = expectStatus === undefined || !result.success ? null : result.status === expectStatus;
+  if (expectStatusMatch === false) {
+    log.warn(
+      { templateId, endpoint, method, expectStatus, actualStatus: result.status, tenantId, customerId },
+      "runBaselineTemplateAgainstTenant: write succeeded only via the widened accept class — actual status did not match the template's declared expectStatus (#4530)",
+    );
+  }
 
   let auditLogId: number | undefined;
   try {
@@ -1676,6 +1701,7 @@ export async function runBaselineTemplateAgainstTenant(
         customerId,
         tenantId,
         executedAt: new Date().toISOString(),
+        ...(expectStatus !== undefined ? { expectStatus, expectStatusMatch } : {}),
         ...(source !== undefined ? { source } : {}),
       },
     }).returning({ id: baselineActionTemplateAuditLogTable.id });

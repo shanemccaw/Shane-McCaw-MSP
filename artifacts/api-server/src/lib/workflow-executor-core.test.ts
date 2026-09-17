@@ -200,7 +200,7 @@ vi.mock("fs/promises", () => {
 });
 
 // ── Import after all mocks ─────────────────────────────────────────────────────
-import { executeWorkflowRun, graphAcceptedStatusCodes } from "./workflow-executor.ts";
+import { executeWorkflowRun, graphAcceptedStatusCodes, declaredExpectStatus } from "./workflow-executor.ts";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1245,5 +1245,30 @@ describe("graphAcceptedStatusCodes", () => {
 
   it("ignores a non-numeric expectStatus and falls back to the default class", () => {
     expect(graphAcceptedStatusCodes({ expectStatus: "202" })).toEqual([200, 201, 204]);
+  });
+});
+
+// =============================================================================
+// declaredExpectStatus — #4530: extracted from graphAcceptedStatusCodes so the
+// Graph pack write path can stamp expectStatus/expectStatusMatch onto every audit
+// log row (shadow instrumentation for a future strict gate), without touching
+// accept-class behavior.
+// =============================================================================
+
+describe("declaredExpectStatus", () => {
+  it("returns undefined when successCriteria is empty/absent", () => {
+    expect(declaredExpectStatus({})).toBeUndefined();
+    expect(declaredExpectStatus(null)).toBeUndefined();
+    expect(declaredExpectStatus(undefined)).toBeUndefined();
+  });
+
+  it("returns the declared numeric expectStatus verbatim", () => {
+    expect(declaredExpectStatus({ expectStatus: 202 })).toBe(202);
+    expect(declaredExpectStatus({ expectStatus: 204 })).toBe(204);
+  });
+
+  it("ignores a non-numeric expectStatus", () => {
+    expect(declaredExpectStatus({ expectStatus: "202" })).toBeUndefined();
+    expect(declaredExpectStatus({ expectStatus: NaN })).toBeUndefined();
   });
 });
