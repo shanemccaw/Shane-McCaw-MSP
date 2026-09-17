@@ -15,17 +15,17 @@ const RISK_STATUS_ORDER = ["Open", "Mitigating", "Accepted", "Closed", "Expired"
 const CLOCKS = [
   {
     tag: "RISK",
-    note: "The risk's own state. It can be mitigating with nothing signed, or open again after a revoked signature.",
+    note: "The risk itself. It can still be in progress with nothing signed yet, or reopened if a signature is revoked.",
     className: "text-status-blue border-status-blue/30 bg-status-blue/10",
   },
   {
     tag: "ACCEPTANCE",
-    note: "Your signature. Awaiting yours, signed, or revoked — and never expired, because a signature does not lapse.",
+    note: "Your signature. Waiting on you, signed, or revoked — and it never expires on its own, since a signature doesn't lapse over time.",
     className: "text-status-green border-status-green/30 bg-status-green/10",
   },
   {
     tag: "REVIEW",
-    note: "The review clock. Falling overdue raises a flag; it never invalidates a signature or closes a risk.",
+    note: "The review date. Running late just flags it for a follow-up; it doesn't cancel a signature or close out a risk.",
     className: "text-status-amber border-status-amber/30 bg-status-amber/10",
   },
 ];
@@ -80,7 +80,7 @@ export default function RiskRegisterPage() {
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-bold tracking-tight text-foreground">Risk register</h1>
         <span
-          title="Risks your MSP has recorded against your tenant, and the ones you have signed to accept. Signing transfers the named exposure to you."
+          title="Risks your MSP has identified for your organization, and the ones you've signed to accept. Signing means that named exposure is now yours."
           className="flex size-[17px] cursor-help items-center justify-center rounded-full border border-muted-foreground/35 text-[10px] font-bold text-muted-foreground"
         >
           i
@@ -112,10 +112,10 @@ export default function RiskRegisterPage() {
         <div className="flex gap-2.5 rounded-xl border border-dashed border-status-red/45 bg-status-red/[.06] p-4">
           <AlertTriangle className="mt-0.5 size-4 flex-none text-status-red" />
           <div className="flex flex-col gap-1">
-            <span className="text-[13px] font-semibold text-foreground">Your register could not be read</span>
+            <span className="text-[13px] font-semibold text-foreground">We couldn't load your risk register</span>
             <span className="max-w-[620px] text-xs leading-relaxed text-muted-foreground">
-              This is a failed read, not an empty register. Risks may well stand against your
-              tenant right now, and a signature you have already given is unaffected.
+              This is just a loading problem, not an empty register — you may still have risks on
+              file, and any signature you've already given still stands.
             </span>
             <Button
               variant="link"
@@ -135,13 +135,12 @@ export default function RiskRegisterPage() {
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border p-8 text-center">
           <span className="text-[13.5px] font-semibold text-foreground">No risks recorded</span>
           <span className="max-w-[560px] text-xs leading-relaxed text-muted-foreground">
-            Your MSP has raised nothing against your tenant, and you have signed nothing. Your MSP
-            records risks here; there is no self-service way to add one.
+            Your MSP hasn't logged any risks for your organization, so there's nothing for you to
+            sign yet. Your MSP adds risks here — there's no way to add one yourself.
           </span>
           <span className="max-w-[560px] text-[11.5px] leading-relaxed text-status-amber">
-            One caveat we would rather state than hide: this is also the answer given when your
-            tenant cannot be identified. An empty register and an unreadable tenant look identical
-            from here.
+            One thing worth knowing: this same message also shows if we can't identify your
+            organization's account. We can't yet tell the two cases apart from here.
           </span>
         </div>
       )}
