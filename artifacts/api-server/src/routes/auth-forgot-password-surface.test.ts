@@ -81,6 +81,7 @@ mock.module("@workspace/db", {
     mfaEnrollmentsTable: {},
     webauthnCredentialsTable: {},
     mspAuditLogsTable: {},
+    auditLogsTable: {},
     mspServiceAccountsTable: {},
     clientServicesTable: {},
     servicesTable: {},
