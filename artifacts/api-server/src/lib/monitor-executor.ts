@@ -2046,6 +2046,26 @@ export function isBrandingNotConfiguredError(endpoint: string, status: number, b
   return body.includes('"code":"Request_ResourceNotFound"');
 }
 
+// ── "Site has no default document library" detection (Git #4505) ──────────────
+// GET /sites/{id}/drive[...] 404s with itemNotFound when a site enumerated by
+// /sites/getAllSites was provisioned without ever being given a default
+// document library — the site itself exists (GET /sites/{id} answers 200), it
+// just has nothing to share. Confirmed live on the testbed: site
+// `mccawsoft2.sharepoint.com,cd796d82-2d17-473b-8b39-6177ef842677,df5e6502-…`
+// is a real site ("McCawSoft Apps", /sites/apps, 200 on GET /sites/{id}) that
+// 404s `itemNotFound` on GET /sites/{id}/drive (2026-09-17). Before this,
+// runFanOutCheck counted that 404 as a failed item on every scan of any tenant
+// with such a site, so compliance:eeeu-site-sharing / copilot:data-exposure-risk
+// never read `ok` — every core:premier run of the testbed landed `partial`
+// forever, even with zero real scan errors (#4481 fixed the other 7).
+const SITE_DRIVE_ENDPOINT_PATTERN = /\/sites\/[^/]+\/drive(\/|$)/;
+
+export function isSiteNoDriveError(endpoint: string, status: number, body: string): boolean {
+  if (status !== 404) return false;
+  if (!SITE_DRIVE_ENDPOINT_PATTERN.test(endpoint)) return false;
+  return body.includes('"code":"itemNotFound"');
+}
+
 export async function graphFetchPaginated(
   tenantId: string,
   endpoint: string,
@@ -3418,6 +3438,10 @@ async function runFanOutCheck(opts: {
   let withResults = 0;
   let perItemPageTotal = 0;
   let licenseGapCount = 0;
+  // Git #4505: a per-item 404 itemNotFound on /sites/{id}/drive means the site
+  // has no default document library — nothing to share, not a scan failure.
+  // Tracked separately from `failed` so it stops counting toward `partial`.
+  let excludedNoDrive = 0;
   const sampleErrors: Array<{ itemId: string; message: string }> = [];
   let consentErr: ConsentRevokedError | null = null;
   let licenseErr: LicenseGapError | null = null;
@@ -3479,6 +3503,10 @@ async function runFanOutCheck(opts: {
       }
       const e = o.error;
       if (e instanceof ConsentRevokedError) { consentErr = e; continue; }
+      if (e instanceof GraphPaginatedError && isSiteNoDriveError(e.endpoint, e.status, e.body)) {
+        excludedNoDrive++;
+        continue;
+      }
       if (e instanceof LicenseGapError) {
         licenseErr ??= e;
         licenseGapCount++;
@@ -3516,6 +3544,11 @@ async function runFanOutCheck(opts: {
     sourceItemsScanned: entries.length,
     sourceItemsSucceeded: succeeded,
     sourceItemsFailed: failed,
+    // Git #4505: sites enumerated but confirmed to have no default document
+    // library (404 itemNotFound on /sites/{id}/drive) — real, not a failure.
+    // Present on every fan-out result for the same reason as the filter count
+    // above: a reader shouldn't have to guess whether this exclusion applied.
+    sourceItemsExcludedNoDrive: excludedNoDrive,
     sourceItemsWithResults: withResults,
     combinedItemCount: combinedItems.length,
     licenseGapCount,
@@ -3530,6 +3563,10 @@ async function runFanOutCheck(opts: {
   let status: CheckResult["status"];
   if (entries.length === 0) {
     status = "ok"; // zero eligible items — an honest empty tenant, not a fault
+  } else if (succeeded === 0 && failed === 0 && licenseGapCount === 0) {
+    // Every scanned item was a confirmed no-drive exclusion (#4505) — zero real
+    // failures, just nothing to fan out into. Not "error": nothing actually failed.
+    status = "ok";
   } else if (succeeded === 0) {
     status = "error"; // scanned items, none yielded data (and not the pure-SKU case)
   } else if (failed === 0 && licenseGapCount === 0) {
@@ -3580,7 +3617,7 @@ async function runFanOutCheck(opts: {
     severityLabel: severityMatch?.label ?? null,
     errorMessage: status === "ok"
       ? undefined
-      : `Fan-out coverage: ${succeeded}/${entries.length} ${idField === "id" ? "items" : idField} succeeded, ${failed} failed${licenseGapCount ? `, ${licenseGapCount} license-gapped` : ""}${excludedByFilter ? `, ${excludedByFilter} excluded by filter` : ""}${truncated ? ` (capped at ${maxItems})` : ""}`,
+      : `Fan-out coverage: ${succeeded}/${entries.length} ${idField === "id" ? "items" : idField} succeeded, ${failed} failed${licenseGapCount ? `, ${licenseGapCount} license-gapped` : ""}${excludedByFilter ? `, ${excludedByFilter} excluded by filter` : ""}${excludedNoDrive ? `, ${excludedNoDrive} excluded (no document library)` : ""}${truncated ? ` (capped at ${maxItems})` : ""}`,
     itemCount: combinedItems.length,
     pageCount,
   });
