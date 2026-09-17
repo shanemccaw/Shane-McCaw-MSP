@@ -200,7 +200,7 @@ vi.mock("fs/promises", () => {
 });
 
 // ── Import after all mocks ─────────────────────────────────────────────────────
-import { executeWorkflowRun } from "./workflow-executor.ts";
+import { executeWorkflowRun, graphAcceptedStatusCodes } from "./workflow-executor.ts";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1218,5 +1218,32 @@ describe("update_project_task — task not found (live)", () => {
 
   it("node status is error", () => {
     expect(capturedStatus()).toBe("error");
+  });
+});
+
+// =============================================================================
+// graphAcceptedStatusCodes — #4516: union expectStatus into the default accept
+// class, never narrow it (105/124 declared rows have no execution history to
+// safely verify a strict gate against, and most are destructive Graph writes).
+// =============================================================================
+
+describe("graphAcceptedStatusCodes", () => {
+  it("returns the default class when successCriteria is empty/absent", () => {
+    expect(graphAcceptedStatusCodes({})).toEqual([200, 201, 204]);
+    expect(graphAcceptedStatusCodes(null)).toEqual([200, 201, 204]);
+    expect(graphAcceptedStatusCodes(undefined)).toEqual([200, 201, 204]);
+  });
+
+  it("stays the default class when expectStatus is already within it (no widening needed)", () => {
+    expect(graphAcceptedStatusCodes({ expectStatus: 201 })).toEqual([200, 201, 204]);
+    expect(graphAcceptedStatusCodes({ expectStatus: 204 })).toEqual([200, 201, 204]);
+  });
+
+  it("widens to include a declared expectStatus outside the default class (real case: Teams archive returns 202)", () => {
+    expect(graphAcceptedStatusCodes({ expectStatus: 202 })).toEqual([200, 201, 204, 202]);
+  });
+
+  it("ignores a non-numeric expectStatus and falls back to the default class", () => {
+    expect(graphAcceptedStatusCodes({ expectStatus: "202" })).toEqual([200, 201, 204]);
   });
 });

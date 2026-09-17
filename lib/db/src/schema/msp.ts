@@ -4402,6 +4402,12 @@ export const baselineActionTemplatesTable = pgTable("baseline_action_templates",
     assign: Record<string, string>;
     optional?: boolean;
   }>>().notNull().default([]),
+  // #4516 — the only real key here is `expectStatus` (a Graph HTTP status code, e.g.
+  // 201/204). It is unioned into graphWriteForTenant's accepted-status set (never
+  // narrows it) — see workflow-executor.ts's runBaselineTemplateAgainstTenant. Do NOT
+  // add `captureAs`/`captureField` here: they read as plausible but nothing consumes
+  // them — the real carrier for a step's output flowing into a later step is
+  // config_pack_templates.parameter_mapping (config-pack-graph.ts).
   successCriteria: jsonb("success_criteria").$type<Record<string, unknown>>().notNull().default({}),
   dependsOn: jsonb("depends_on").$type<string[]>().notNull().default([]),
   requiresVerificationGate: boolean("requires_verification_gate").notNull().default(false),

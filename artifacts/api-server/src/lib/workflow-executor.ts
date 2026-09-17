@@ -693,6 +693,26 @@ export interface ResolvedBaselineRequest {
   successCriteria?: Record<string, unknown>;
 }
 
+// #4516 — a template's own declared success_criteria.expectStatus previously had
+// no effect on the Graph pack path at all: graphWriteForTenant was always called
+// with a hard-coded [200,201,204] accept list, so a template whose only correct
+// response is outside that class (e.g. microrem.deactivate-ownerless-team's Teams
+// archive call, which Graph documents as returning 202 Accepted) was permanently
+// reported as a failed write. Union expectStatus into the default accept class
+// rather than replacing it: this only ever WIDENS what counts as success, so it
+// cannot regress a template that is passing today under the default class — a
+// full narrow-to-exact-expectStatus gate was deliberately deferred (see #4516's
+// follow-up) because 105 of the 124 declared rows have no real execution history
+// to verify they'd still pass under a strict gate, and most are destructive writes
+// not safe to fire live just to validate metadata.
+export function graphAcceptedStatusCodes(successCriteria: Record<string, unknown> | null | undefined): number[] {
+  const defaultClass = [200, 201, 204];
+  const raw = successCriteria && typeof successCriteria === "object" ? successCriteria["expectStatus"] : undefined;
+  const expectStatus = typeof raw === "number" && Number.isFinite(raw) ? raw : undefined;
+  if (expectStatus === undefined || defaultClass.includes(expectStatus)) return defaultClass;
+  return [...defaultClass, expectStatus];
+}
+
 /**
  * Resolve a baseline action template's endpoint + body against `payload` WITHOUT
  * executing anything. This is the exact same substitution that
@@ -1470,7 +1490,7 @@ export async function runBaselineTemplateAgainstTenant(
   }
 
   const { graphWriteForTenant } = await import("./graph.ts");
-  const result = await graphWriteForTenant(tenantId, customerId, endpoint, method, body, [200, 201, 204]);
+  const result = await graphWriteForTenant(tenantId, customerId, endpoint, method, body, graphAcceptedStatusCodes(writeResolved.successCriteria));
 
   let auditLogId: number | undefined;
   try {
