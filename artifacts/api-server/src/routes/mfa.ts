@@ -1274,8 +1274,23 @@ export async function sendSmsOtp(phone: string, code: string): Promise<void> {
   const from = process.env.TWILIO_FROM_NUMBER;
 
   if (!accountSid || !authToken || !from) {
-    log.warn({ code }, "Twilio not configured — OTP code not sent (dev mode)");
-    return;
+    // Git #1380 / #4482 — an OTP is a second factor, so a code in a log is a
+    // credential in a log. Surfacing the real code is a LOCAL-DEV-ONLY
+    // convenience, hard-gated on the same stricter `=== "development"` check
+    // #1380 uses for verification-code exposure: only a developer's own box sets
+    // NODE_ENV=development; staging/prod run "production" and even "test" is
+    // excluded. Anywhere else, do NOT log the code and do NOT report success —
+    // throw so every caller surfaces its real "could not send" path (a 502 in
+    // the free-scan routes; a clean 500 via app.ts's top-level handler for the
+    // /auth/* routes) instead of silently claiming a text was sent.
+    if (process.env.NODE_ENV === "development") {
+      log.warn({ code }, "Twilio not configured — OTP code not sent (local dev only)");
+      return;
+    }
+    log.error(
+      "Twilio not configured (TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM_NUMBER) — cannot send SMS OTP",
+    );
+    throw new Error("SMS delivery is not configured.");
   }
 
   try {
