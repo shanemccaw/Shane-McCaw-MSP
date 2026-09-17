@@ -38,9 +38,12 @@ namespace BuildConsole.Services
         /// <summary>The script's own final line for a successful --dry-run.</summary>
         private const string DryRunOkMarker = "--dry-run requested: stopping here. No data was changed.";
 
-        /// <summary>The script prints <c>Backup: &lt;file&gt;</c> at the end of a real run, and
-        /// <c>Taking backup: &lt;file&gt;</c> before it touches any data.</summary>
-        private static readonly Regex BackupLine = new(@"^(?:Taking backup|Backup): (?<path>.+?)\s*$", RegexOptions.Multiline);
+        /// <summary>The script prints this before it touches any data — a backup was only ATTEMPTED
+        /// at this path, not necessarily completed (Git #4437: pg_dump can still fail after this line).</summary>
+        private static readonly Regex TakingBackupLine = new(@"^Taking backup: (?<path>.+?)\s*$", RegexOptions.Multiline);
+        /// <summary>The script prints this only at the very end of a real run, after a successful
+        /// pg_dump + pg_restore --list verification — a completed backup, not a starting marker.</summary>
+        private static readonly Regex CompletedBackupLine = new(@"^Backup: (?<path>.+?)\s*$", RegexOptions.Multiline);
         private static readonly Regex BackupVerifiedLine = new(@"^Backup verified: .+$", RegexOptions.Multiline);
 
         private static readonly TimeSpan PreviewTimeout = TimeSpan.FromMinutes(5);
@@ -171,17 +174,25 @@ namespace BuildConsole.Services
                     await PaletteScriptProcess.RunOnceAsync(repoRoot, scriptPath, "--yes", ExecuteTimeout);
 
                 string output = PaletteScriptProcess.Combine(stdout, stderr);
-                string? backupPath = BackupLine.Matches(output).Select(m => m.Groups["path"].Value).LastOrDefault();
+                string? attemptedPath = TakingBackupLine.Matches(output).Select(m => m.Groups["path"].Value).LastOrDefault();
+                string? completedPath = CompletedBackupLine.Matches(output).Select(m => m.Groups["path"].Value).LastOrDefault();
                 string? backupVerified = BackupVerifiedLine.Match(output) is { Success: true } v ? v.Value.Trim() : null;
+                // Git #4437 — a completed backup requires BOTH the script's own final "Backup: <path>"
+                // summary line AND its "Backup verified: ..." line; "Taking backup: <path>" alone is only
+                // a starting marker printed before pg_dump runs, and pg_dump can still fail after it.
+                bool backupCompleted = completedPath != null && backupVerified != null;
                 bool ok = launchError == null && exitCode == 0;
 
                 ActivityLog.Log("command-palette.dev-reset",
-                    $"REAL reset for msp #{mspId} finished — {(ok ? "exit 0" : launchError ?? $"exit {exitCode}")}; backup: {backupPath ?? "(none reported)"}.");
+                    $"REAL reset for msp #{mspId} finished — {(ok ? "exit 0" : launchError ?? $"exit {exitCode}")}; "
+                    + $"backup: {(backupCompleted ? completedPath : attemptedPath != null ? $"attempted, did not complete ({attemptedPath})" : "(none reported)")}.");
 
                 string header = ok ? "✓ REAL RESET COMPLETED" : $"✗ REAL RESET FAILED ({launchError ?? $"exit {exitCode}"})";
-                string backupText = backupPath != null
-                    ? $"Backup: {backupPath}" + (backupVerified != null ? $"\n{backupVerified}" : "")
-                    : "Backup: none reported — the script did not reach its backup step, so it changed nothing after it.";
+                string backupText = backupCompleted
+                    ? $"Backup: {completedPath}\n{backupVerified}"
+                    : attemptedPath != null
+                        ? $"Backup: attempted at {attemptedPath} — did NOT complete. No usable backup exists at that path."
+                        : "Backup: none reported — the script did not reach its backup step, so it changed nothing after it.";
 
                 // Git #4436 — the whole pane text is redacted, not just the script output (Combine already
                 // redacts that), so a credential in launchError or anything else composed here can't reach it.
