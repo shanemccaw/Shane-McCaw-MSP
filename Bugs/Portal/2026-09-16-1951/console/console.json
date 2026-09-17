@@ -1,0 +1,597 @@
+{
+  "sessionId": "2026-09-16-1951",
+  "capturedAt": "2026-09-16T21:28:38.5134772-04:00",
+  "totalLogs": 98,
+  "errorCount": 24,
+  "warningCount": 2,
+  "logs": [
+    {
+      "Level": "exception",
+      "Message": "Uncaught TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.",
+      "StackTrace": "TypeError: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "Timestamp": "21:23:30.994"
+    },
+    {
+      "Level": "exception",
+      "Message": "Uncaught TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.",
+      "StackTrace": "TypeError: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "Timestamp": "21:23:30.995"
+    },
+    {
+      "Level": "info",
+      "Message": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold",
+      "StackTrace": "",
+      "Timestamp": "21:23:31.548"
+    },
+    {
+      "Level": "error",
+      "Message": "Encountered two children with the same key, \u0060%s\u0060. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted \u2014 the behavior is unsupported and could change in a future version. \u00A72",
+      "StackTrace": "    at http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5749:25\n    at runWithFiberInDEV (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:1485:72)\n    at warnOnInvalidKey (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5748:15)\n    at reconcileChildrenArray (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5789:114)\n    at reconcileChildFibersImpl (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5995:88)",
+      "Timestamp": "21:24:13.344"
+    },
+    {
+      "Level": "error",
+      "Message": "Encountered two children with the same key, \u0060%s\u0060. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted \u2014 the behavior is unsupported and could change in a future version. \u00A72",
+      "StackTrace": "    at http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5749:25\n    at runWithFiberInDEV (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:1485:72)\n    at warnOnInvalidKey (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5748:15)\n    at reconcileChildrenArray (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5773:25)\n    at reconcileChildFibersImpl (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5995:88)",
+      "Timestamp": "21:24:16.303"
+    },
+    {
+      "Level": "error",
+      "Message": "Encountered two children with the same key, \u0060%s\u0060. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted \u2014 the behavior is unsupported and could change in a future version. \u00A71.6",
+      "StackTrace": "    at http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5749:25\n    at runWithFiberInDEV (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:1485:72)\n    at warnOnInvalidKey (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5748:15)\n    at reconcileChildrenArray (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5789:114)\n    at reconcileChildFibersImpl (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5995:88)",
+      "Timestamp": "21:27:03.924"
+    },
+    {
+      "Level": "error",
+      "Message": "Encountered two children with the same key, \u0060%s\u0060. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted \u2014 the behavior is unsupported and could change in a future version. \u00A71.6",
+      "StackTrace": "    at http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5749:25\n    at runWithFiberInDEV (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:1485:72)\n    at warnOnInvalidKey (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5748:15)\n    at reconcileChildrenArray (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5773:25)\n    at reconcileChildFibersImpl (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5995:88)",
+      "Timestamp": "21:27:03.969"
+    },
+    {
+      "Level": "error",
+      "Message": "Encountered two children with the same key, \u0060%s\u0060. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted \u2014 the behavior is unsupported and could change in a future version. \u00A71.6",
+      "StackTrace": "    at http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5749:25\n    at runWithFiberInDEV (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:1485:72)\n    at warnOnInvalidKey (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5748:15)\n    at reconcileChildrenArray (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5773:25)\n    at reconcileChildFibersImpl (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5995:88)",
+      "Timestamp": "21:27:03.975"
+    },
+    {
+      "Level": "error",
+      "Message": "Encountered two children with the same key, \u0060%s\u0060. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted \u2014 the behavior is unsupported and could change in a future version. \u00A76",
+      "StackTrace": "    at http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5749:25\n    at runWithFiberInDEV (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:1485:72)\n    at warnOnInvalidKey (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5748:15)\n    at reconcileChildrenArray (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5789:114)\n    at reconcileChildFibersImpl (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5995:88)",
+      "Timestamp": "21:28:25.923"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:762:10)",
+      "Timestamp": "21:20:38.262"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:53)",
+      "StackTrace": "",
+      "Timestamp": "21:20:39.279"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:762:10)",
+      "Timestamp": "21:20:39.280"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:53)",
+      "StackTrace": "",
+      "Timestamp": "21:20:40.292"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:762:10)",
+      "Timestamp": "21:20:40.292"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:53)",
+      "StackTrace": "",
+      "Timestamp": "21:20:41.272"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:762:10)",
+      "Timestamp": "21:20:41.272"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:53)",
+      "StackTrace": "",
+      "Timestamp": "21:20:42.270"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:762:10)",
+      "Timestamp": "21:20:42.270"
+    },
+    {
+      "Level": "error",
+      "Message": "%s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don\u0027t mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Removing borderColor border",
+      "StackTrace": "",
+      "Timestamp": "21:20:42.312"
+    },
+    {
+      "Level": "error",
+      "Message": "%s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don\u0027t mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Removing borderColor border",
+      "StackTrace": " (:83:31)\r\nsetValueForStyles (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:2265:24)\r\nsetProp (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:12307:12)\r\nupdateProperties (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:12966:44)\r\ncommitUpdate (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:13955:8)\r\nrunWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:1484:71)\r\ncommitHostUpdate (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:8729:10)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9512:96)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9550:12)\r\nflushMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11097:14)\r\ncommitRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11078:10)\r\ncommitRootWhenReady (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:10511:8)\r\nperformWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:10456:16)\r\nperformSyncWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11634:8)\r\nflushSyncWorkAcrossRoots_impl (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11535:121)\r\nprocessRootScheduleInMicrotask (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11557:8)\r\n (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11648:14)",
+      "Timestamp": "21:20:42.313"
+    },
+    {
+      "Level": "info",
+      "Message": "[auth] purchase email address proven [object Object]",
+      "StackTrace": "",
+      "Timestamp": "21:20:42.551"
+    },
+    {
+      "Level": "info",
+      "Message": "[auth] purchase email address proven Object",
+      "StackTrace": " (:83:31)\r\nemit (http://localhost:5173/src/lib/logger.ts:2:16)\r\ninfo (http://localhost:5173/src/lib/logger.ts:7:33)\r\nverifyCode (http://localhost:5173/src/marketing/pages/Buy.tsx:726:14)",
+      "Timestamp": "21:20:42.551"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:53)",
+      "StackTrace": "",
+      "Timestamp": "21:20:43.270"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:762:10)",
+      "Timestamp": "21:20:43.270"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:53)",
+      "StackTrace": "",
+      "Timestamp": "21:20:44.259"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:762:10)",
+      "Timestamp": "21:20:44.259"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:53)",
+      "StackTrace": "",
+      "Timestamp": "21:20:45.268"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:762:10)",
+      "Timestamp": "21:20:45.268"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:53)",
+      "StackTrace": "",
+      "Timestamp": "21:20:46.264"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:762:10)",
+      "Timestamp": "21:20:46.264"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:53)",
+      "StackTrace": "",
+      "Timestamp": "21:20:47.267"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:762:10)",
+      "Timestamp": "21:20:47.267"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:53)",
+      "StackTrace": "",
+      "Timestamp": "21:20:48.262"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:762:10)",
+      "Timestamp": "21:20:48.262"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:53)",
+      "StackTrace": "",
+      "Timestamp": "21:20:49.267"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:762:10)",
+      "Timestamp": "21:20:49.267"
+    },
+    {
+      "Level": "error",
+      "Message": "%s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don\u0027t mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Removing borderColor border",
+      "StackTrace": "",
+      "Timestamp": "21:20:49.690"
+    },
+    {
+      "Level": "error",
+      "Message": "%s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don\u0027t mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Removing borderColor border",
+      "StackTrace": " (:83:31)\r\nsetValueForStyles (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:2265:24)\r\nsetProp (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:12307:12)\r\nupdateProperties (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:12966:44)\r\ncommitUpdate (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:13955:8)\r\nrunWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:1484:71)\r\ncommitHostUpdate (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:8729:10)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9512:96)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9550:12)\r\nflushMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11097:14)\r\ncommitRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11078:10)\r\ncommitRootWhenReady (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:10511:8)\r\nperformWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:10456:16)\r\nperformSyncWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11634:8)\r\nflushSyncWorkAcrossRoots_impl (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11535:121)\r\nprocessRootScheduleInMicrotask (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11557:8)\r\n (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11648:14)",
+      "Timestamp": "21:20:49.690"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:53)",
+      "StackTrace": "",
+      "Timestamp": "21:20:50.267"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:762:10)",
+      "Timestamp": "21:20:50.267"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:53)",
+      "StackTrace": "",
+      "Timestamp": "21:20:51.266"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:762:10)",
+      "Timestamp": "21:20:51.267"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:53)",
+      "StackTrace": "",
+      "Timestamp": "21:20:52.264"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:762:10)",
+      "Timestamp": "21:20:52.264"
+    },
+    {
+      "Level": "error",
+      "Message": "%s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don\u0027t mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Removing borderColor border",
+      "StackTrace": "",
+      "Timestamp": "21:20:52.922"
+    },
+    {
+      "Level": "error",
+      "Message": "%s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don\u0027t mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Removing borderColor border",
+      "StackTrace": " (:83:31)\r\nsetValueForStyles (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:2265:24)\r\nsetProp (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:12307:12)\r\nupdateProperties (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:12966:44)\r\ncommitUpdate (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:13955:8)\r\nrunWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:1484:71)\r\ncommitHostUpdate (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:8729:10)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9512:96)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9550:12)\r\nflushMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11097:14)\r\ncommitRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11078:10)\r\ncommitRootWhenReady (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:10511:8)\r\nperformWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:10456:16)\r\nperformSyncWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11634:8)\r\nflushSyncWorkAcrossRoots_impl (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11535:121)\r\nprocessRootScheduleInMicrotask (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11557:8)\r\n (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11648:14)",
+      "Timestamp": "21:20:52.923"
+    },
+    {
+      "Level": "info",
+      "Message": "[auth] pre-consent purchase account created [object Object]",
+      "StackTrace": "",
+      "Timestamp": "21:20:53.482"
+    },
+    {
+      "Level": "info",
+      "Message": "[auth] pre-consent purchase account created Object",
+      "StackTrace": " (:83:31)\r\nemit (http://localhost:5173/src/lib/logger.ts:2:16)\r\ninfo (http://localhost:5173/src/lib/logger.ts:7:33)\r\nsavePw (http://localhost:5173/src/marketing/pages/Buy.tsx:778:16)",
+      "Timestamp": "21:20:53.483"
+    },
+    {
+      "Level": "error",
+      "Message": "%s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don\u0027t mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Removing borderColor border",
+      "StackTrace": "",
+      "Timestamp": "21:21:38.383"
+    },
+    {
+      "Level": "error",
+      "Message": "%s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don\u0027t mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Removing borderColor border",
+      "StackTrace": " (:83:31)\r\nsetValueForStyles (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:2265:24)\r\nsetProp (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:12307:12)\r\nupdateProperties (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:12966:44)\r\ncommitUpdate (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:13955:8)\r\nrunWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:1484:71)\r\ncommitHostUpdate (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:8729:10)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9512:96)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9550:12)\r\nflushMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11097:14)\r\ncommitRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11078:10)\r\ncommitRootWhenReady (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:10511:8)\r\nperformWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:10456:16)\r\nperformSyncWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11634:8)\r\nflushSyncWorkAcrossRoots_impl (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11535:121)\r\nprocessRootScheduleInMicrotask (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11557:8)\r\n (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11648:14)",
+      "Timestamp": "21:21:38.384"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:53)",
+      "StackTrace": "",
+      "Timestamp": "21:21:40.270"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:762:10)",
+      "Timestamp": "21:21:40.270"
+    },
+    {
+      "Level": "error",
+      "Message": "%s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don\u0027t mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Removing borderColor border",
+      "StackTrace": "",
+      "Timestamp": "21:21:46.066"
+    },
+    {
+      "Level": "error",
+      "Message": "%s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don\u0027t mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Removing borderColor border",
+      "StackTrace": " (:83:31)\r\nsetValueForStyles (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:2265:24)\r\nsetProp (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:12307:12)\r\nupdateProperties (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:12966:44)\r\ncommitUpdate (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:13955:8)\r\nrunWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:1484:71)\r\ncommitHostUpdate (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:8729:10)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9512:96)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9550:12)\r\nflushMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11097:14)\r\ncommitRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11078:10)\r\ncommitRootWhenReady (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:10511:8)\r\nperformWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:10456:16)\r\nperformSyncWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11634:8)\r\nflushSyncWorkAcrossRoots_impl (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11535:121)\r\nprocessRootScheduleInMicrotask (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11557:8)\r\n (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11648:14)",
+      "Timestamp": "21:21:46.067"
+    },
+    {
+      "Level": "info",
+      "Message": "[auth] purchase MFA enrolled (TOTP) [object Object]",
+      "StackTrace": "",
+      "Timestamp": "21:21:46.262"
+    },
+    {
+      "Level": "info",
+      "Message": "[auth] purchase MFA enrolled (TOTP) Object",
+      "StackTrace": " (:83:31)\r\nemit (http://localhost:5173/src/lib/logger.ts:2:16)\r\ninfo (http://localhost:5173/src/lib/logger.ts:7:33)\r\nfinishAccount (http://localhost:5173/src/marketing/pages/Buy.tsx:835:16)",
+      "Timestamp": "21:21:46.262"
+    },
+    {
+      "Level": "info",
+      "Message": "[auth] read consent popup opened [object Object]",
+      "StackTrace": "",
+      "Timestamp": "21:22:07.376"
+    },
+    {
+      "Level": "info",
+      "Message": "[auth] read consent popup opened Object",
+      "StackTrace": " (:83:31)\r\nemit (http://localhost:5173/src/lib/logger.ts:2:16)\r\ninfo (http://localhost:5173/src/lib/logger.ts:7:33)\r\ndoConnect (http://localhost:5173/src/marketing/pages/Buy.tsx:488:14)",
+      "Timestamp": "21:22:07.376"
+    },
+    {
+      "Level": "info",
+      "Message": "[COMPLETION] Completion request succeeded on attempt 1 (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/vendor-datadog-6xNogGuE.js:5)",
+      "StackTrace": "",
+      "Timestamp": "21:22:25.718"
+    },
+    {
+      "Level": "info",
+      "Message": "[COMPLETION] Completion request succeeded on attempt 1",
+      "StackTrace": " (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/vendor-datadog-6xNogGuE.js:4:22090)\r\n (:83:31)\r\ninfo (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/shared-common-mcp-msg-0-Cxq45uOl.js:0:5625)\r\nvp (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/shared-0-BVTPpLOP.js:2:6524)",
+      "Timestamp": "21:22:25.719"
+    },
+    {
+      "Level": "info",
+      "Message": "[COMPLETION] Starting completion request (attempt 1, mode=legacy) (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/vendor-datadog-6xNogGuE.js:5)",
+      "StackTrace": "",
+      "Timestamp": "21:22:26.060"
+    },
+    {
+      "Level": "info",
+      "Message": "[COMPLETION] Starting completion request (attempt 1, mode=legacy)",
+      "StackTrace": " (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/vendor-datadog-6xNogGuE.js:4:22090)\r\n (:83:31)\r\ninfo (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/shared-common-mcp-msg-0-Cxq45uOl.js:0:5625)\r\n (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/shared-0-BVTPpLOP.js:2:6483)",
+      "Timestamp": "21:22:26.060"
+    },
+    {
+      "Level": "info",
+      "Message": "[auth] read consent granted \u2014 tenant connected to this purchase session [object Object]",
+      "StackTrace": "",
+      "Timestamp": "21:22:34.558"
+    },
+    {
+      "Level": "info",
+      "Message": "[auth] read consent granted \u2014 tenant connected to this purchase session Object",
+      "StackTrace": " (:83:31)\r\nemit (http://localhost:5173/src/lib/logger.ts:2:16)\r\ninfo (http://localhost:5173/src/lib/logger.ts:7:33)\r\ndoConnect (http://localhost:5173/src/marketing/pages/Buy.tsx:503:14)",
+      "Timestamp": "21:22:34.558"
+    },
+    {
+      "Level": "warn",
+      "Message": "You may test your Stripe.js integration over HTTP. However, live Stripe.js integrations must use HTTPS.",
+      "StackTrace": "",
+      "Timestamp": "21:22:36.967"
+    },
+    {
+      "Level": "warn",
+      "Message": "You may test your Stripe.js integration over HTTP. However, live Stripe.js integrations must use HTTPS.",
+      "StackTrace": " (:83:31)\r\nvalue (https://js.stripe.com/v3/:0:896146)\r\ne (https://js.stripe.com/v3/:0:834333)\r\nyA (https://js.stripe.com/v3/:0:898674)\r\n (http://localhost:5173/src/components/StripePaymentElement.tsx:412:30)",
+      "Timestamp": "21:22:36.967"
+    },
+    {
+      "Level": "info",
+      "Message": "[billing] payment element mounted [object Object]",
+      "StackTrace": "",
+      "Timestamp": "21:22:36.991"
+    },
+    {
+      "Level": "info",
+      "Message": "[billing] payment element mounted Object",
+      "StackTrace": " (:83:31)\r\nemit (http://localhost:5173/src/lib/logger.ts:2:16)\r\ninfo (http://localhost:5173/src/lib/logger.ts:7:33)\r\n (http://localhost:5173/src/components/StripePaymentElement.tsx:423:12)",
+      "Timestamp": "21:22:36.991"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:53)",
+      "StackTrace": "",
+      "Timestamp": "21:22:40.259"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:762:10)",
+      "Timestamp": "21:22:40.259"
+    },
+    {
+      "Level": "info",
+      "Message": "[COMPLETION] Completion request succeeded on attempt 1 (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/vendor-datadog-6xNogGuE.js:5)",
+      "StackTrace": "",
+      "Timestamp": "21:22:44.954"
+    },
+    {
+      "Level": "info",
+      "Message": "[COMPLETION] Completion request succeeded on attempt 1",
+      "StackTrace": " (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/vendor-datadog-6xNogGuE.js:4:22090)\r\n (:83:31)\r\ninfo (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/shared-common-mcp-msg-0-Cxq45uOl.js:0:5625)\r\nvp (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/shared-0-BVTPpLOP.js:2:6524)",
+      "Timestamp": "21:22:44.955"
+    },
+    {
+      "Level": "info",
+      "Message": "[billing] payment succeeded [object Object]",
+      "StackTrace": "",
+      "Timestamp": "21:23:11.574"
+    },
+    {
+      "Level": "info",
+      "Message": "[billing] payment succeeded Object",
+      "StackTrace": " (:83:31)\r\nemit (http://localhost:5173/src/lib/logger.ts:2:16)\r\ninfo (http://localhost:5173/src/lib/logger.ts:7:33)\r\npay (http://localhost:5173/src/components/StripePaymentElement.tsx:459:10)",
+      "Timestamp": "21:23:11.574"
+    },
+    {
+      "Level": "info",
+      "Message": "[billing] purchase payment confirmed [object Object]",
+      "StackTrace": "",
+      "Timestamp": "21:23:12.925"
+    },
+    {
+      "Level": "info",
+      "Message": "[billing] purchase payment confirmed Object",
+      "StackTrace": " (:83:31)\r\nemit (http://localhost:5173/src/lib/logger.ts:2:16)\r\ninfo (http://localhost:5173/src/lib/logger.ts:7:33)\r\nconfirmPayment (http://localhost:5173/src/marketing/pages/Buy.tsx:621:8)",
+      "Timestamp": "21:23:12.925"
+    },
+    {
+      "Level": "info",
+      "Message": "[auth] portal handoff minted \u2014 signing the buyer in [object Object]",
+      "StackTrace": "",
+      "Timestamp": "21:23:15.156"
+    },
+    {
+      "Level": "info",
+      "Message": "[auth] portal handoff minted \u2014 signing the buyer in Object",
+      "StackTrace": " (:83:31)\r\nemit (http://localhost:5173/src/lib/logger.ts:2:16)\r\ninfo (http://localhost:5173/src/lib/logger.ts:7:33)\r\nopenPortal (http://localhost:5173/src/marketing/pages/Buy.tsx:1041:14)",
+      "Timestamp": "21:23:15.156"
+    },
+    {
+      "Level": "exception",
+      "Message": "TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "StackTrace": " (:15:17)\r\n (:20:2)",
+      "Timestamp": "21:23:15.336"
+    },
+    {
+      "Level": "exception",
+      "Message": "TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "StackTrace": " (:15:17)\r\n (:20:2)",
+      "Timestamp": "21:23:15.336"
+    },
+    {
+      "Level": "exception",
+      "Message": "TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "StackTrace": " (:15:17)\r\n (:20:2)",
+      "Timestamp": "21:23:15.336"
+    },
+    {
+      "Level": "exception",
+      "Message": "TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "StackTrace": " (:15:17)\r\n (:20:2)",
+      "Timestamp": "21:23:31.003"
+    },
+    {
+      "Level": "exception",
+      "Message": "TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "StackTrace": " (:15:17)\r\n (:20:2)",
+      "Timestamp": "21:23:31.003"
+    },
+    {
+      "Level": "exception",
+      "Message": "TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "StackTrace": " (:15:17)\r\n (:20:2)",
+      "Timestamp": "21:23:31.003"
+    },
+    {
+      "Level": "debug",
+      "Message": "[vite] connecting... (http://localhost:5175/portal/@vite/client:733)",
+      "StackTrace": "",
+      "Timestamp": "21:23:31.032"
+    },
+    {
+      "Level": "debug",
+      "Message": "[vite] connecting...",
+      "StackTrace": " (http://localhost:5175/portal/@vite/client:732:8)",
+      "Timestamp": "21:23:31.032"
+    },
+    {
+      "Level": "debug",
+      "Message": "[vite] connected. (http://localhost:5175/portal/@vite/client:827)",
+      "StackTrace": "",
+      "Timestamp": "21:23:31.064"
+    },
+    {
+      "Level": "debug",
+      "Message": "[vite] connected.",
+      "StackTrace": "handleMessage (http://localhost:5175/portal/@vite/client:826:11)\r\n (http://localhost:5175/portal/@vite/client:457:41)\r\ndequeue (http://localhost:5175/portal/@vite/client:479:7)\r\n (http://localhost:5175/portal/@vite/client:471:8)\r\nenqueue (http://localhost:5175/portal/@vite/client:465:9)\r\n (http://localhost:5175/portal/@vite/client:457:27)\r\nonMessage (http://localhost:5175/portal/@vite/client:304:5)\r\n (http://localhost:5175/portal/@vite/client:412:4)",
+      "Timestamp": "21:23:31.064"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:53)",
+      "StackTrace": "",
+      "Timestamp": "21:23:40.259"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:762:10)",
+      "Timestamp": "21:23:40.259"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:53)",
+      "StackTrace": "",
+      "Timestamp": "21:24:40.266"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:762:10)",
+      "Timestamp": "21:24:40.266"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:53)",
+      "StackTrace": "",
+      "Timestamp": "21:25:40.257"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:762:10)",
+      "Timestamp": "21:25:40.257"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:53)",
+      "StackTrace": "",
+      "Timestamp": "21:26:40.270"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:762:10)",
+      "Timestamp": "21:26:40.270"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:53)",
+      "StackTrace": "",
+      "Timestamp": "21:27:40.270"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=dcb28fad37:762:10)",
+      "Timestamp": "21:27:40.270"
+    }
+  ]
+}

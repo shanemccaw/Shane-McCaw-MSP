@@ -1,0 +1,249 @@
+{
+  "schemaVersion": "1.0",
+  "productName": "Portal",
+  "sessionId": "2026-09-16-1951",
+  "timing": {
+    "startedAt": "2026-09-16T19:51:44.165761-04:00",
+    "endedAt": "2026-09-16T21:28:35.7143758-04:00",
+    "durationSeconds": 5811.5,
+    "formattedDuration": "36m 51s"
+  },
+  "environment": {
+    "baseUrl": "localhost:5175/portal/",
+    "activePage": "account-security",
+    "urlsTested": [
+      "http://localhost:5175/portal/account-security"
+    ]
+  },
+  "summary": {
+    "assessment": "Issues Found",
+    "totalBugs": 2,
+    "blockers": 0,
+    "critical": 0,
+    "bugs": 2,
+    "minor": 0,
+    "consoleErrors": 24,
+    "networkFailures": 6,
+    "screenshotsCaptured": 2,
+    "apiCalls": 6
+  },
+  "bugs": [
+    {
+      "index": 1,
+      "id": 19,
+      "uuid": "3bec4b23",
+      "severity": "Bug",
+      "status": "Open",
+      "gitIssueNumber": null,
+      "resolution": null,
+      "resolutionReason": null,
+      "isDesign": false,
+      "title": "",
+      "notes": "If there are no retainers for this customer, why is it showing Retained 8h? Reamining 8h ...\n\n![screenshot](C:\\Users\\Ronnie\\AppData\\Roaming\\BuildConsole\\visual-test-screenshots\\localhost_5175_portal\\my-architect\\2026-09-16_21-26-39-206.png)",
+      "stepsToReproduce": "",
+      "expectedBehavior": "",
+      "actualBehavior": "",
+      "tags": [],
+      "url": "http://localhost:5175/portal/account-security",
+      "pageTitle": "",
+      "browserVersion": "",
+      "osVersion": "",
+      "windowSize": "",
+      "viewportSize": "",
+      "userAgent": "",
+      "createdAt": "2026-09-16T21:26:40.2300772-04:00",
+      "performance": null,
+      "screenshots": [
+        "2026-09-16_21-26-39-206.png"
+      ]
+    },
+    {
+      "index": 2,
+      "id": 20,
+      "uuid": "930dffb9",
+      "severity": "Bug",
+      "status": "Open",
+      "gitIssueNumber": null,
+      "resolution": null,
+      "resolutionReason": null,
+      "isDesign": false,
+      "title": "",
+      "notes": "This is all hard coded and not pulling from a real source at all... This needs a new wire pass.\n\n![screenshot](C:\\Users\\Ronnie\\AppData\\Roaming\\BuildConsole\\visual-test-screenshots\\localhost_5175_portal\\remediation-tracking\\2026-09-16_21-25-05-286.png)",
+      "stepsToReproduce": "",
+      "expectedBehavior": "",
+      "actualBehavior": "",
+      "tags": [],
+      "url": "http://localhost:5175/portal/account-security",
+      "pageTitle": "",
+      "browserVersion": "",
+      "osVersion": "",
+      "windowSize": "",
+      "viewportSize": "",
+      "userAgent": "",
+      "createdAt": "2026-09-16T21:25:07.8906485-04:00",
+      "performance": null,
+      "screenshots": [
+        "2026-09-16_21-25-05-286.png"
+      ]
+    }
+  ],
+  "consoleErrors": [
+    {
+      "Level": "exception",
+      "Message": "Uncaught TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.",
+      "StackTrace": "TypeError: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "Timestamp": "21:23:30.994"
+    },
+    {
+      "Level": "exception",
+      "Message": "Uncaught TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.",
+      "StackTrace": "TypeError: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "Timestamp": "21:23:30.995"
+    },
+    {
+      "Level": "error",
+      "Message": "Encountered two children with the same key, \u0060%s\u0060. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted \u2014 the behavior is unsupported and could change in a future version. \u00A72",
+      "StackTrace": "    at http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5749:25\n    at runWithFiberInDEV (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:1485:72)\n    at warnOnInvalidKey (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5748:15)\n    at reconcileChildrenArray (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5789:114)\n    at reconcileChildFibersImpl (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5995:88)",
+      "Timestamp": "21:24:13.344"
+    },
+    {
+      "Level": "error",
+      "Message": "Encountered two children with the same key, \u0060%s\u0060. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted \u2014 the behavior is unsupported and could change in a future version. \u00A72",
+      "StackTrace": "    at http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5749:25\n    at runWithFiberInDEV (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:1485:72)\n    at warnOnInvalidKey (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5748:15)\n    at reconcileChildrenArray (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5773:25)\n    at reconcileChildFibersImpl (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5995:88)",
+      "Timestamp": "21:24:16.303"
+    },
+    {
+      "Level": "error",
+      "Message": "Encountered two children with the same key, \u0060%s\u0060. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted \u2014 the behavior is unsupported and could change in a future version. \u00A71.6",
+      "StackTrace": "    at http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5749:25\n    at runWithFiberInDEV (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:1485:72)\n    at warnOnInvalidKey (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5748:15)\n    at reconcileChildrenArray (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5789:114)\n    at reconcileChildFibersImpl (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5995:88)",
+      "Timestamp": "21:27:03.924"
+    },
+    {
+      "Level": "error",
+      "Message": "Encountered two children with the same key, \u0060%s\u0060. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted \u2014 the behavior is unsupported and could change in a future version. \u00A71.6",
+      "StackTrace": "    at http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5749:25\n    at runWithFiberInDEV (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:1485:72)\n    at warnOnInvalidKey (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5748:15)\n    at reconcileChildrenArray (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5773:25)\n    at reconcileChildFibersImpl (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5995:88)",
+      "Timestamp": "21:27:03.969"
+    },
+    {
+      "Level": "error",
+      "Message": "Encountered two children with the same key, \u0060%s\u0060. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted \u2014 the behavior is unsupported and could change in a future version. \u00A71.6",
+      "StackTrace": "    at http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5749:25\n    at runWithFiberInDEV (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:1485:72)\n    at warnOnInvalidKey (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5748:15)\n    at reconcileChildrenArray (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5773:25)\n    at reconcileChildFibersImpl (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5995:88)",
+      "Timestamp": "21:27:03.975"
+    },
+    {
+      "Level": "error",
+      "Message": "Encountered two children with the same key, \u0060%s\u0060. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted \u2014 the behavior is unsupported and could change in a future version. \u00A76",
+      "StackTrace": "    at http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5749:25\n    at runWithFiberInDEV (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:1485:72)\n    at warnOnInvalidKey (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5748:15)\n    at reconcileChildrenArray (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5789:114)\n    at reconcileChildFibersImpl (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5995:88)",
+      "Timestamp": "21:28:25.923"
+    },
+    {
+      "Level": "error",
+      "Message": "%s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don\u0027t mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Removing borderColor border",
+      "StackTrace": "",
+      "Timestamp": "21:20:42.312"
+    },
+    {
+      "Level": "error",
+      "Message": "%s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don\u0027t mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Removing borderColor border",
+      "StackTrace": " (:83:31)\r\nsetValueForStyles (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:2265:24)\r\nsetProp (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:12307:12)\r\nupdateProperties (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:12966:44)\r\ncommitUpdate (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:13955:8)\r\nrunWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:1484:71)\r\ncommitHostUpdate (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:8729:10)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9512:96)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9550:12)\r\nflushMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11097:14)\r\ncommitRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11078:10)\r\ncommitRootWhenReady (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:10511:8)\r\nperformWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:10456:16)\r\nperformSyncWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11634:8)\r\nflushSyncWorkAcrossRoots_impl (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11535:121)\r\nprocessRootScheduleInMicrotask (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11557:8)\r\n (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11648:14)",
+      "Timestamp": "21:20:42.313"
+    },
+    {
+      "Level": "error",
+      "Message": "%s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don\u0027t mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Removing borderColor border",
+      "StackTrace": "",
+      "Timestamp": "21:20:49.690"
+    },
+    {
+      "Level": "error",
+      "Message": "%s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don\u0027t mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Removing borderColor border",
+      "StackTrace": " (:83:31)\r\nsetValueForStyles (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:2265:24)\r\nsetProp (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:12307:12)\r\nupdateProperties (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:12966:44)\r\ncommitUpdate (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:13955:8)\r\nrunWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:1484:71)\r\ncommitHostUpdate (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:8729:10)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9512:96)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9550:12)\r\nflushMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11097:14)\r\ncommitRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11078:10)\r\ncommitRootWhenReady (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:10511:8)\r\nperformWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:10456:16)\r\nperformSyncWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11634:8)\r\nflushSyncWorkAcrossRoots_impl (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11535:121)\r\nprocessRootScheduleInMicrotask (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11557:8)\r\n (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11648:14)",
+      "Timestamp": "21:20:49.690"
+    },
+    {
+      "Level": "error",
+      "Message": "%s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don\u0027t mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Removing borderColor border",
+      "StackTrace": "",
+      "Timestamp": "21:20:52.922"
+    },
+    {
+      "Level": "error",
+      "Message": "%s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don\u0027t mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Removing borderColor border",
+      "StackTrace": " (:83:31)\r\nsetValueForStyles (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:2265:24)\r\nsetProp (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:12307:12)\r\nupdateProperties (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:12966:44)\r\ncommitUpdate (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:13955:8)\r\nrunWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:1484:71)\r\ncommitHostUpdate (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:8729:10)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9512:96)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9550:12)\r\nflushMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11097:14)\r\ncommitRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11078:10)\r\ncommitRootWhenReady (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:10511:8)\r\nperformWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:10456:16)\r\nperformSyncWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11634:8)\r\nflushSyncWorkAcrossRoots_impl (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11535:121)\r\nprocessRootScheduleInMicrotask (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11557:8)\r\n (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11648:14)",
+      "Timestamp": "21:20:52.923"
+    },
+    {
+      "Level": "error",
+      "Message": "%s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don\u0027t mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Removing borderColor border",
+      "StackTrace": "",
+      "Timestamp": "21:21:38.383"
+    },
+    {
+      "Level": "error",
+      "Message": "%s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don\u0027t mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Removing borderColor border",
+      "StackTrace": " (:83:31)\r\nsetValueForStyles (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:2265:24)\r\nsetProp (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:12307:12)\r\nupdateProperties (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:12966:44)\r\ncommitUpdate (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:13955:8)\r\nrunWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:1484:71)\r\ncommitHostUpdate (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:8729:10)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9512:96)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9550:12)\r\nflushMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11097:14)\r\ncommitRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11078:10)\r\ncommitRootWhenReady (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:10511:8)\r\nperformWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:10456:16)\r\nperformSyncWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11634:8)\r\nflushSyncWorkAcrossRoots_impl (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11535:121)\r\nprocessRootScheduleInMicrotask (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11557:8)\r\n (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11648:14)",
+      "Timestamp": "21:21:38.384"
+    },
+    {
+      "Level": "error",
+      "Message": "%s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don\u0027t mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Removing borderColor border",
+      "StackTrace": "",
+      "Timestamp": "21:21:46.066"
+    },
+    {
+      "Level": "error",
+      "Message": "%s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don\u0027t mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Removing borderColor border",
+      "StackTrace": " (:83:31)\r\nsetValueForStyles (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:2265:24)\r\nsetProp (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:12307:12)\r\nupdateProperties (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:12966:44)\r\ncommitUpdate (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:13955:8)\r\nrunWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:1484:71)\r\ncommitHostUpdate (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:8729:10)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9512:96)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)\r\nrecursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)\r\ncommitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9550:12)\r\nflushMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11097:14)\r\ncommitRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11078:10)\r\ncommitRootWhenReady (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:10511:8)\r\nperformWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:10456:16)\r\nperformSyncWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11634:8)\r\nflushSyncWorkAcrossRoots_impl (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11535:121)\r\nprocessRootScheduleInMicrotask (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11557:8)\r\n (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11648:14)",
+      "Timestamp": "21:21:46.067"
+    },
+    {
+      "Level": "exception",
+      "Message": "TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "StackTrace": " (:15:17)\r\n (:20:2)",
+      "Timestamp": "21:23:15.336"
+    },
+    {
+      "Level": "exception",
+      "Message": "TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "StackTrace": " (:15:17)\r\n (:20:2)",
+      "Timestamp": "21:23:15.336"
+    },
+    {
+      "Level": "exception",
+      "Message": "TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "StackTrace": " (:15:17)\r\n (:20:2)",
+      "Timestamp": "21:23:15.336"
+    },
+    {
+      "Level": "exception",
+      "Message": "TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "StackTrace": " (:15:17)\r\n (:20:2)",
+      "Timestamp": "21:23:31.003"
+    },
+    {
+      "Level": "exception",
+      "Message": "TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "StackTrace": " (:15:17)\r\n (:20:2)",
+      "Timestamp": "21:23:31.003"
+    },
+    {
+      "Level": "exception",
+      "Message": "TypeError: Failed to execute \u0027observe\u0027 on \u0027MutationObserver\u0027: parameter 1 is not of type \u0027Node\u0027.\n    at \u003Canonymous\u003E:16:18\n    at \u003Canonymous\u003E:21:3",
+      "StackTrace": " (:15:17)\r\n (:20:2)",
+      "Timestamp": "21:23:31.003"
+    }
+  ],
+  "commandsExecuted": [],
+  "screenshots": [
+    "screenshots/screenshot-01.png",
+    "screenshots/screenshot-02.png"
+  ],
+  "artifacts": {
+    "summaryMarkdown": "summary.md",
+    "consoleJson": "console/console.json",
+    "notesMarkdown": "notes/notes.md",
+    "apiDirectory": "api/",
+    "screenshotsDirectory": "screenshots/",
+    "attachmentsDirectory": "attachments/"
+  }
+}
