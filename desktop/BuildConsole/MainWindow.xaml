@@ -723,6 +723,8 @@
                                 <ColumnDefinition Width="Auto"/>  <!-- deploy (Git #3791 — true left edge, excluded from the spring's rightward push) -->
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
                                 <ColumnDefinition Width="Auto"/>  <!-- Git #3864 — global queue counts, mirrors BuildQueuePanel's own QueueStatusCountsText -->
+                                <ColumnDefinition Width="Auto"/>  <!-- sep -->
+                                <ColumnDefinition Width="Auto"/>  <!-- Git #4544 — CPU/Memory resource meters, moved here from the never-opened BottomPanelGrid -->
                                 <ColumnDefinition Width="*"/>     <!-- spring -->
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
                                 <ColumnDefinition Width="Auto"/>  <!-- Claude usage meter (Current Session) — click opens the Weekly · all models popup, Git #3795 -->
@@ -786,6 +788,40 @@
                     </StackPanel>
                 </StatusBarItem>
                 <Separator Grid.Column="3"/>
+                <!-- Git #4544 — real system-wide (not just BuildConsole's own process) CPU
+                     and Memory meters, polled every ~1.5s (see MainWindow.ResourceMonitor.cs).
+                     Moved here from BottomPanelGrid (Visibility="Collapsed" by default, only
+                     shown via Ctrl+`) so real memory pressure is visible without opening a
+                     panel Shane never opens — directly relevant to the #4542/#4543 crash.
+                     Same x:Names retained so ResourceMonitor.cs needed zero code changes. -->
+                <StatusBarItem Grid.Column="4">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,14,0">
+                            <TextBlock Text="CPU" Foreground="{StaticResource Subtext1Brush}"
+                                       FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center" Width="26"/>
+                            <ProgressBar x:Name="CpuMeterBar"
+                                         Style="{StaticResource ResourceMeterBar}"
+                                         Foreground="{StaticResource BlueBrush}"
+                                         Width="60" Margin="4,0"
+                                         VerticalAlignment="Center"/>
+                            <TextBlock x:Name="CpuMeterText" Text="—"
+                                       Foreground="{StaticResource TextBrush}"
+                                       FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center" Width="34"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Memory" Foreground="{StaticResource Subtext1Brush}"
+                                       FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center" Width="42"/>
+                            <ProgressBar x:Name="MemoryMeterBar"
+                                         Style="{StaticResource ResourceMeterBar}"
+                                         Foreground="{StaticResource MauveBrush}"
+                                         Width="60" Margin="4,0"
+                                         VerticalAlignment="Center"/>
+                            <TextBlock x:Name="MemoryMeterText" Text="—"
+                                       Foreground="{StaticResource TextBrush}"
+                                       FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center" Width="110"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StatusBarItem>
                 <!-- Claude usage meter: always-visible percent used, with a smoothly-ticking
                      "resets in Xd Xh Xm" countdown appended only at 85%+. Shows a muted
                      placeholder when the meter can't be read (not logged in / page
@@ -795,7 +831,7 @@
                      permanent Weekly (Primary/Secondary) segments that used to sit beside it
                      are gone. Clicking the text opens UsagePopup below, which shows Current
                      session + Weekly · all models for both accounts. -->
-                <StatusBarItem Grid.Column="5">
+                <StatusBarItem Grid.Column="7">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Ellipse x:Name="UsageDot" Width="8" Height="8"
                                  Fill="{StaticResource Surface2Brush}"
@@ -862,9 +898,9 @@
                         </Popup>
                     </StackPanel>
                 </StatusBarItem>
-                <Separator Grid.Column="6"/>
+                <Separator Grid.Column="8"/>
                 <!-- Claude Service Health Status (source: status.anthropic.com) -->
-                <StatusBarItem Grid.Column="7">
+                <StatusBarItem Grid.Column="9">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Ellipse x:Name="ClaudeOnlineDot" Width="8" Height="8"
                                  Fill="{StaticResource Surface2Brush}"
@@ -881,8 +917,8 @@
                                 Click="BtnClaudeOnlineRefresh_Click"/>
                     </StackPanel>
                 </StatusBarItem>
-                <Separator Grid.Column="8"/>
-                <StatusBarItem Grid.Column="9" Padding="6,0,10,0">
+                <Separator Grid.Column="10"/>
+                <StatusBarItem Grid.Column="11" Padding="6,0,10,0">
                     <TextBlock x:Name="ClockText" Text="00:00:00" VerticalAlignment="Center"/>
                 </StatusBarItem>
             </StatusBar>
@@ -1093,50 +1129,16 @@
                                   Visibility="Collapsed"/>
 
                     <!-- ── Bottom panel (Build Log / Terminal / SQL / Output) ── -->
+                    <!-- Git #4544 — the CPU/Memory meters that used to sit in Grid.Row="0" here
+                         moved to the always-visible primary StatusBar (see above); this grid no
+                         longer needs a row for them. -->
                     <Grid x:Name="BottomPanelGrid" Grid.Row="2" Visibility="Collapsed">
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
 
-                        <!-- Real system-wide (not just BuildConsole's own process) CPU
-                             and Memory meters, polled every ~1.5s. See
-                             MainWindow.ResourceMonitor.cs. -->
-                        <Border Grid.Row="0"
-                                Background="{StaticResource MantleBrush}"
-                                BorderBrush="{StaticResource Surface0Brush}"
-                                BorderThickness="0,1,0,1"
-                                Padding="10,5">
-                            <StackPanel Orientation="Horizontal">
-                                <StackPanel Orientation="Horizontal" Width="180" Margin="0,0,20,0">
-                                    <TextBlock Text="CPU" Foreground="{StaticResource Subtext1Brush}"
-                                               FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center" Width="30"/>
-                                    <ProgressBar x:Name="CpuMeterBar"
-                                                 Style="{StaticResource ResourceMeterBar}"
-                                                 Foreground="{StaticResource BlueBrush}"
-                                                 Width="90" Margin="4,0"
-                                                 VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="CpuMeterText" Text="—"
-                                               Foreground="{StaticResource TextBrush}"
-                                               FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center" Width="34"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Width="260">
-                                    <TextBlock Text="Memory" Foreground="{StaticResource Subtext1Brush}"
-                                               FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center" Width="42"/>
-                                    <ProgressBar x:Name="MemoryMeterBar"
-                                                 Style="{StaticResource ResourceMeterBar}"
-                                                 Foreground="{StaticResource MauveBrush}"
-                                                 Width="90" Margin="4,0"
-                                                 VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="MemoryMeterText" Text="—"
-                                               Foreground="{StaticResource TextBrush}"
-                                               FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center" Width="110"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
-
                     <TabControl x:Name="BottomTabs"
-                                Grid.Row="1"
+                                Grid.Row="0"
                                 BorderThickness="0">
 
                         <TabItem Header="Terminal">
