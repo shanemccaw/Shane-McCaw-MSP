@@ -62,7 +62,6 @@ import { generateSixDigitCode } from "./purchase-account-flow.ts";
 import { encryptTotp, decryptTotp } from "../routes/mfa.ts";
 import {
   checkSmsCode,
-  dummyHash,
   issueSmsCode,
   MAX_CODE_ATTEMPTS,
   passwordMeetsPolicy,
@@ -80,6 +79,17 @@ const RECOVERY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const RECOVERY_RESEND_GAP_MS = 60 * 1000;
 /** How long an operator approval stays usable before the Prospect must ask again. */
 export const MFA_RESET_APPROVAL_TTL_MS = 72 * 60 * 60 * 1000;
+
+let dummyCodeHashPromise: Promise<string> | null = null;
+/**
+ * A bcrypt hash at the SAME cost as a real recovery code (10), so a verify for an
+ * address with no account, or no code outstanding, takes as long as a real one.
+ * (The sign-in dummy is cost 12 and would make a missing account measurably slower.)
+ */
+function dummyCodeHash(): Promise<string> {
+  dummyCodeHashPromise ??= bcrypt.hash("free-scan-account-recovery:no-code", 10);
+  return dummyCodeHashPromise;
+}
 
 // ── Lookup ────────────────────────────────────────────────────────────────────
 
@@ -190,10 +200,13 @@ export type RecoveryCodeCheck =
 export async function checkRecoveryCode(email: string, code: string): Promise<RecoveryCodeCheck> {
   const account = await loadCompleteAccountByEmail(email);
   if (!account || !account.recoveryCodeHash || !account.recoveryCodeExpiresAt) {
-    await bcrypt.compare(code, await dummyHash());
+    await bcrypt.compare(code, await dummyCodeHash());
     return { ok: false, reason: "invalid", account };
   }
-  if (account.recoveryCodeExpiresAt.getTime() < Date.now()) return { ok: false, reason: "invalid", account };
+  if (account.recoveryCodeExpiresAt.getTime() < Date.now()) {
+    await bcrypt.compare(code, await dummyCodeHash());
+    return { ok: false, reason: "invalid", account };
+  }
 
   const t = freeScanAccountsTable;
   const [spent] = await db
