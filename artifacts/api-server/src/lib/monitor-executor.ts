@@ -283,6 +283,57 @@ export interface MappingRule {
    * default branch warns — see KNOWN_TRANSFORMS.
    */
   transform?: string;
+  /**
+   * Opt-in fail-closed guard (#4511). When true and the fetch returned at least
+   * one item, `sourceField` must be PRESENT on at least one of them. If it is
+   * absent from every item — the shape of a Graph property the endpoint never
+   * `$select`ed — the rule is skipped (its targetField is left unset rather than
+   * written as a fabricated 0) and the field is listed under
+   * MISSING_REQUIRED_FIELDS_KEY, which every executor path turns into a check
+   * `error` via assertRequiredFieldsPresent.
+   *
+   * An explicit `null` counts as present: Graph returns `null` for a selected
+   * property with no value, which is a real answer. Zero items is also a real
+   * answer (nothing matched) and is never treated as missing.
+   *
+   * This is the mapping-side counterpart of the null-timestamp rule in
+   * evalClause's olderThanDays/newerThanDays branch: a value that was never
+   * read must not produce a finding — and, where the finding fires on `== 0`,
+   * must not produce a clean result either.
+   */
+  requireField?: boolean;
+}
+
+/** extractedProperties key listing required mapping fields absent from every item (#4511). */
+export const MISSING_REQUIRED_FIELDS_KEY = "_missingRequiredFields";
+
+/**
+ * A mapping rule marked `requireField` read a field that no fetched item carried.
+ * Deliberately a plain `error` (no dedicated status): the check's definition, not
+ * the tenant, is what is wrong, so it must be visible as a failed run.
+ */
+export class MissingRequiredFieldError extends Error {
+  readonly checkKey: string;
+  readonly fields: string[];
+  readonly itemCount: number;
+  constructor(checkKey: string, fields: string[], itemCount: number) {
+    super(
+      `${checkKey}: required field(s) ${fields.map(f => `"${f}"`).join(", ")} absent from all ${itemCount} fetched item(s) — ` +
+      `the endpoint is not returning them (missing $select?), so the check cannot be evaluated. Failing closed rather than reporting 0.`,
+    );
+    this.name = "MissingRequiredFieldError";
+    this.checkKey = checkKey;
+    this.fields = fields;
+    this.itemCount = itemCount;
+  }
+}
+
+/** Throws MissingRequiredFieldError when applyMapping recorded missing required fields. */
+export function assertRequiredFieldsPresent(checkKey: string, extracted: Record<string, unknown>): void {
+  const missing = extracted[MISSING_REQUIRED_FIELDS_KEY];
+  if (Array.isArray(missing) && missing.length > 0) {
+    throw new MissingRequiredFieldError(checkKey, missing.map(String), Number(extracted._itemCount ?? 0));
+  }
 }
 
 /**
@@ -1375,6 +1426,7 @@ export function applyMapping(
     const record = collector.toRecord();
     if (record) evidence[targetField] = record;
   };
+  const missingRequired: string[] = [];
 
   // Raw property extraction (count, first value, etc.)
   for (const prop of properties) {
@@ -1451,6 +1503,16 @@ export function applyMapping(
     const vals = items.map(item => (typeof item === "object" && item !== null
       ? resolvePathInData(sourceField, item as Record<string, unknown>)
       : undefined));
+
+    // #4511 — fail closed on a required field no item carried (see MappingRule.requireField).
+    if (rule.requireField === true && items.length > 0 && vals.every(v => v === undefined)) {
+      missingRequired.push(sourceField);
+      log.warn(
+        { targetField, sourceField, transform: rawTransform, itemCount: items.length },
+        `monitor-executor: required field "${sourceField}" is absent from all ${items.length} items — "${targetField}" left unset and the check fails closed instead of reporting 0. The endpoint is almost certainly missing $select=${sourceField}.`,
+      );
+      continue;
+    }
 
     switch (transform) {
       // The four predicate-over-items counts share one shape: walk `vals`
@@ -1895,6 +1957,7 @@ export function applyMapping(
   }
 
   result._itemCount = items.length;
+  if (missingRequired.length > 0) result[MISSING_REQUIRED_FIELDS_KEY] = missingRequired;
   // #2923 — written ONLY when a count-family rule actually matched something, so
   // the extractedProperties of a check that found nothing is byte-identical to
   // what it was before this change.
@@ -2392,6 +2455,7 @@ async function runPowerShellCheck(opts: {
   const mapping = (check.mapping ?? []) as MappingRule[];
   const properties = (check.properties ?? []) as string[];
   const extracted = applyMapping(items, mapping, properties);
+  assertRequiredFieldsPresent(check.key, extracted);
 
   if (check.outputSchema) {
     const { valid, errors } = validateOutputShape(extracted, check.outputSchema as Record<string, unknown>);
@@ -2610,6 +2674,7 @@ async function runSharePointAdminCheck(opts: {
   const mapping = (check.mapping ?? []) as MappingRule[];
   const properties = (check.properties ?? []) as string[];
   const extracted = applyMapping(items, mapping, properties);
+  assertRequiredFieldsPresent(check.key, extracted);
 
   if (check.outputSchema) {
     const { valid, errors } = validateOutputShape(extracted, check.outputSchema as Record<string, unknown>);
@@ -2819,6 +2884,7 @@ async function runPowerPlatformCheck(opts: {
   const mapping = (check.mapping ?? []) as MappingRule[];
   const properties = (check.properties ?? []) as string[];
   const extracted = applyMapping(items, mapping, properties);
+  assertRequiredFieldsPresent(check.key, extracted);
 
   if (check.outputSchema) {
     const { valid, errors } = validateOutputShape(extracted, check.outputSchema as Record<string, unknown>);
@@ -2994,6 +3060,7 @@ async function runDnsCheck(opts: {
   const mapping = (check.mapping ?? []) as MappingRule[];
   const properties = (check.properties ?? []) as string[];
   const extracted = applyMapping(items, mapping, properties);
+  assertRequiredFieldsPresent(check.key, extracted);
 
   if (check.outputSchema) {
     const { valid, errors } = validateOutputShape(extracted, check.outputSchema as Record<string, unknown>);
@@ -3122,6 +3189,7 @@ async function runAzureRmCheck(opts: {
   const mapping = (check.mapping ?? []) as MappingRule[];
   const properties = (check.properties ?? []) as string[];
   const extracted = applyMapping(items, mapping, properties);
+  assertRequiredFieldsPresent(check.key, extracted);
 
   // Coverage is a first-class part of an ARM answer, not a footnote: a run that
   // read 2 of a customer's 5 subscriptions and got 403 on the rest produced real
@@ -3531,6 +3599,7 @@ async function runFanOutCheck(opts: {
   const mapping = (check.mapping ?? []) as MappingRule[];
   const properties = (check.properties ?? []) as string[];
   const extracted = applyMapping(combinedItems, mapping, properties);
+  assertRequiredFieldsPresent(check.key, extracted);
   extracted._fanOut = {
     source: check.fanOutSource,
     itemIdField: idField,
@@ -3856,6 +3925,7 @@ export async function executeMonitorCheck(opts: {
     const mapping = (check.mapping ?? []) as MappingRule[];
     const properties = (check.properties ?? []) as string[];
     const extracted = applyMapping(items, mapping, properties);
+    assertRequiredFieldsPresent(check.key, extracted);
 
     // 3. Deterministic output schema validation
     if (check.outputSchema) {
