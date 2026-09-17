@@ -219,7 +219,7 @@
 
                     <!-- Notes Box -->
                     <TextBox x:Name="TxtNotesBox" Height="120" AcceptsReturn="True" TextWrapping="Wrap"
-                             VerticalScrollBarVisibility="Auto" Background="{StaticResource AppBackgroundBrush}"
+                             VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" Background="{StaticResource AppBackgroundBrush}"
                              BorderBrush="{StaticResource Surface0Brush}" Foreground="{StaticResource TextBrush}"
                              FontFamily="Segoe UI" FontSize="{StaticResource BodyFontSize}" Padding="8" Margin="0,0,0,4"
                              TextChanged="TxtNotesBox_TextChanged" KeyDown="TxtNotesBox_KeyDown"/>
@@ -274,15 +274,15 @@
                                         <TextBlock Text="Steps to Reproduce:" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource Subtext0Brush}"/>
                                         <Button Content="+ Add Step" Style="{StaticResource IconButton}" FontSize="{StaticResource CaptionFontSize}" HorizontalAlignment="Right" Padding="4,1" Click="BtnAddStep_Click"/>
                                     </Grid>
-                                    <TextBox x:Name="TxtStepsBox" Height="60" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Background="{StaticResource AppBackgroundBrush}"
+                                    <TextBox x:Name="TxtStepsBox" Height="60" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" Background="{StaticResource AppBackgroundBrush}"
                                              BorderBrush="{StaticResource Surface0Brush}" Foreground="{StaticResource TextBrush}" FontSize="{StaticResource BodyFontSize}" Padding="4" Margin="0,0,0,6"/>
 
                                     <TextBlock Text="Expected Result:" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,2"/>
-                                    <TextBox x:Name="TxtExpectedBox" Height="44" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Background="{StaticResource AppBackgroundBrush}"
+                                    <TextBox x:Name="TxtExpectedBox" Height="44" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" Background="{StaticResource AppBackgroundBrush}"
                                              BorderBrush="{StaticResource Surface0Brush}" Foreground="{StaticResource TextBrush}" FontSize="{StaticResource BodyFontSize}" Padding="4" Margin="0,0,0,6"/>
 
                                     <TextBlock Text="Actual Result:" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,2"/>
-                                    <TextBox x:Name="TxtActualBox" Height="44" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Background="{StaticResource AppBackgroundBrush}"
+                                    <TextBox x:Name="TxtActualBox" Height="44" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" Background="{StaticResource AppBackgroundBrush}"
                                              BorderBrush="{StaticResource Surface0Brush}" Foreground="{StaticResource TextBrush}" FontSize="{StaticResource BodyFontSize}" Padding="4"/>
                                 </StackPanel>
                             </Border>

@@ -1,2 +1,2 @@
-# QA Session Notes – Marketing (2026-09-16-1951)
+# QA Session Notes – Portal (2026-09-16-1951)
 

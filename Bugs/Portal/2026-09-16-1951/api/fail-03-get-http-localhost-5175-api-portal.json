@@ -1,11 +1,11 @@
 {
   "index": 3,
   "method": "GET",
-  "url": "http://localhost:5175/api/portal/scan-status",
-  "statusCode": 500,
-  "statusText": "Internal Server Error",
-  "durationMs": 10,
-  "payloadSize": "190 B",
-  "timestamp": "21:48:28.260",
+  "url": "http://localhost:5175/api/portal/offers/sse?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6NDM2NiwiZW1haWwiOiJzaGFuZW1jY2F3K3ByZW1pZXJAb3V0bG9vay5jb20iLCJuYW1lIjoiU2hhbmUgTWNDYXciLCJjb21wYW55IjoiTWNDYXdTb2Z0Iiwicm9sZSI6ImNsaWVudCIsIm1zcFJvbGUiOiJDdXN0b21lciIsIm1zcElkIjoxLCJjdXN0b21lcklkIjoyMDgwLCJtc3BTbHVnIjoic2hhbmUtbWNjYXctY29uc3VsdGluZyIsImlhdCI6MTc4OTYwODIxMSwiZXhwIjoxNzg5NjA5MTExfQ.CvTjZok9O69nWKPwCL4rWHPpd9NvCylBWrdf_HpmDmU",
+  "statusCode": 0,
+  "statusText": "Canceled",
+  "durationMs": 1578,
+  "payloadSize": "",
+  "timestamp": "21:26:48.195",
   "failed": true
 }

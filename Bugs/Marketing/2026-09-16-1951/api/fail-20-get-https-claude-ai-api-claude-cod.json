@@ -1,0 +1,11 @@
+{
+  "index": 20,
+  "method": "GET",
+  "url": "https://claude.ai/api/claude_code/organizations/4713e9d9-1edb-4c9e-a587-275a277248ca/user_settings",
+  "statusCode": 0,
+  "statusText": "Canceled",
+  "durationMs": 239,
+  "payloadSize": "",
+  "timestamp": "21:50:02.495",
+  "failed": true
+}

@@ -1,0 +1,11 @@
+{
+  "index": 17,
+  "method": "GET",
+  "url": "http://localhost:5175/api/portal/scan-status",
+  "statusCode": 0,
+  "statusText": "Canceled",
+  "durationMs": 7,
+  "payloadSize": "",
+  "timestamp": "21:48:52.269",
+  "failed": true
+}

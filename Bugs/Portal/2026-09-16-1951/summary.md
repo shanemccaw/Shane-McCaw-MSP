@@ -1,298 +1,24 @@
-# QA Session Summary – Marketing
+# QA Session Summary – Portal
 
 > **Session ID**: `2026-09-16-1951`  
-> **Date**: 2026-09-16 19:51:44 – 21:51:16  
-> **Duration**: 59m 32s (7172 seconds)  
-> **Overall Assessment**: ⚠️ 22 Issues Requiring Attention  
+> **Date**: 2026-09-16 19:51:44 – 21:28:35  
+> **Duration**: 36m 51s (5812 seconds)  
+> **Overall Assessment**: ⚠️ 2 Issues Requiring Attention  
 
 ## Executive Summary
-Tested page /chat/6120f93c-75e9-4d91-a78d-bbe463817470. Found 22 issues.
+Tested page account-security. Found 2 issues.
 
 ## Pages & Endpoints Tested
-- `https://claude.ai/chat/6120f93c-75e9-4d91-a78d-bbe463817470`
+- `http://localhost:5175/portal/account-security`
 
-## Bugs & Issues Logged (22)
+## Bugs & Issues Logged (2)
 | # | Severity | Status | Title / Description | Steps | Shots |
 |---|---|---|---|---|---|
-| 1 | **Bug** | Open | ![screenshot](C:\Users\Ronnie\AppData\Roam... | No | 1 |
-| 2 | **Bug** | Open | This whole section needs to be removed | Yes | 1 |
-| 3 | **Bug** | Open | ![screenshot](C:\Users\Ronnie\AppData\Roam... | No | 1 |
-| 4 | **Bug** | Open | This whole section needs to be removed | Yes | 1 |
-| 5 | **Bug** | Open | ![screenshot](C:\Users\Ronnie\AppData\Roam... | No | 1 |
-| 6 | **Bug** | Open | This whole section needs to be removed | Yes | 1 |
-| 7 | **Bug** | Open | ![screenshot](C:\Users\Ronnie\AppData\Roam... | No | 1 |
-| 8 | **Bug** | Open | This section needs better verbiage... we a... | Yes | 1 |
-| 9 | **Bug** | Open | ![screenshot](C:\Users\Ronnie\AppData\Roam... | No | 1 |
-| 10 | **Bug** | Open | This whole section needs to be removed | Yes | 1 |
-| 11 | **Bug** | Open | ![screenshot](C:\Users\Ronnie\AppData\Roam... | No | 1 |
-| 12 | **Bug** | Open | This whole section needs to be removed | Yes | 1 |
-| 13 | **Bug** | Open | Change control is not loading | No | 1 |
-| 14 | **Bug** | Open | ![screenshot](C:\Users\Ronnie\AppData\Roam... | No | 4 |
-| 15 | **Bug** | Open | The customer should be able to still see w... | Yes | 1 |
-| 16 | **Bug** | Open | This whole section needs to be removed | Yes | 1 |
-| 17 | **Bug** | Open | This whole section needs to be removed | Yes | 1 |
-| 18 | **Bug** | Open | This whole section needs to be removed | Yes | 1 |
-| 19 | **Bug** | Open | It looks like the scan starts and restarts... | No | 0 |
-| 20 | **Bug** | Open | When I land at portal ... I should just ge... | No | 1 |
-| 21 | **Bug** | Open | If there are no retainers for this custome... | No | 1 |
-| 22 | **Bug** | Open | This is all hard coded and not pulling fro... | No | 1 |
-
-### [BUG] ![screenshot](C:\Users\Ronnie\AppData\Roaming\BuildConsole\visual-test-screenshots\localhost_5175_portal\runbooks\2026-09-16_21-51-09-367.png)
-- **URL**: `https://claude.ai/chat/6120f93c-75e9-4d91-a78d-bbe463817470`
-
-**Notes**:
-![screenshot](C:\Users\Ronnie\AppData\Roaming\BuildConsole\visual-test-screenshots\localhost_5175_portal\runbooks\2026-09-16_21-51-09-367.png)
-
-### [BUG] This whole section needs to be removed
-- **URL**: `https://claude.ai/chat/6120f93c-75e9-4d91-a78d-bbe463817470`
-- **Tags**: `dom-inspector`, `div`
-
-**Notes**:
-This whole section needs to be removed
-
-**Steps to Reproduce**:
-1. Locate and inspect `[data-testid="runbooks-page"] > div.flex.flex-1 > div.flex.flex-col:nth-of-type(3)`
-
-**Expected vs Actual**:
-- **Actual**: Selector: [data-testid="runbooks-page"] > div.flex.flex-1 > div.flex.flex-col:nth-of-type(3)
-Tag: <div>
-Dimensions: 587×557 px
-Classes: flex flex-col gap-[9px] rounded-[14px] border
-Text: "What this page deliberately does not do
-Collapse
-Nothing executes from a decision. Close early, release and prepare-C..."
-
-### [BUG] ![screenshot](C:\Users\Ronnie\AppData\Roaming\BuildConsole\visual-test-screenshots\localhost_5175_portal\remediation-tracking\2026-09-16_21-50-46-074.png)
-- **URL**: `https://claude.ai/chat/6120f93c-75e9-4d91-a78d-bbe463817470`
-
-**Notes**:
-![screenshot](C:\Users\Ronnie\AppData\Roaming\BuildConsole\visual-test-screenshots\localhost_5175_portal\remediation-tracking\2026-09-16_21-50-46-074.png)
-
-### [BUG] This whole section needs to be removed
-- **URL**: `https://claude.ai/chat/6120f93c-75e9-4d91-a78d-bbe463817470`
-- **Tags**: `dom-inspector`, `div`
-
-**Notes**:
-This whole section needs to be removed
-
-**Steps to Reproduce**:
-1. Locate and inspect `[data-testid="remediation-tracking-page"] > div.rounded-lg.border:nth-of-type(3) > div.p-6.flex`
-
-**Expected vs Actual**:
-- **Actual**: Selector: [data-testid="remediation-tracking-page"] > div.rounded-lg.border:nth-of-type(3) > div.p-6.flex
-Tag: <div>
-Dimensions: 646×242 px
-Classes: p-6 flex flex-col gap-2 pt-6
-Text: "What this page does not do
-It never sets a checklist item to accepted-as-risk from a plain status change. That value ..."
-
-### [BUG] ![screenshot](C:\Users\Ronnie\AppData\Roaming\BuildConsole\visual-test-screenshots\localhost_5175_portal\poams\2026-09-16_21-49-56-355.png)
-- **URL**: `https://claude.ai/chat/6120f93c-75e9-4d91-a78d-bbe463817470`
-
-**Notes**:
-![screenshot](C:\Users\Ronnie\AppData\Roaming\BuildConsole\visual-test-screenshots\localhost_5175_portal\poams\2026-09-16_21-49-56-355.png)
-
-### [BUG] This whole section needs to be removed
-- **URL**: `https://claude.ai/chat/6120f93c-75e9-4d91-a78d-bbe463817470`
-- **Tags**: `dom-inspector`, `div`
-
-**Notes**:
-This whole section needs to be removed
-
-**Steps to Reproduce**:
-1. Locate and inspect `div.relative.flex:nth-of-type(2) > div.flex.flex-col > div.rounded-lg.border:nth-of-type(3) > div.p-6.flex`
-
-**Expected vs Actual**:
-- **Actual**: Selector: div.relative.flex:nth-of-type(2) > div.flex.flex-col > div.rounded-lg.border:nth-of-type(3) > div.p-6.flex
-Tag: <div>
-Dimensions: 646×654 px
-Classes: p-6 flex flex-col gap-2.5 pt-6
-Text: "What this page deliberately does not do
-No cancel, complete or convert from here. All three transitions are your MSP'..."
-
-### [BUG] ![screenshot](C:\Users\Ronnie\AppData\Roaming\BuildConsole\visual-test-screenshots\localhost_5175_portal\risk-register\2026-09-16_21-49-37-773.png)
-- **URL**: `https://claude.ai/chat/6120f93c-75e9-4d91-a78d-bbe463817470`
-
-**Notes**:
-![screenshot](C:\Users\Ronnie\AppData\Roaming\BuildConsole\visual-test-screenshots\localhost_5175_portal\risk-register\2026-09-16_21-49-37-773.png)
-
-### [BUG] This section needs better verbiage... we are too technical with customer views.
-- **URL**: `https://claude.ai/chat/6120f93c-75e9-4d91-a78d-bbe463817470`
-- **Tags**: `dom-inspector`, `div`
-
-**Notes**:
-This section needs better verbiage... we are too technical with customer views.
-
-**Steps to Reproduce**:
-1. Locate and inspect `div.relative.flex:nth-of-type(3) > div.relative.flex:nth-of-type(2) > div.flex.flex-col > div.flex.flex-col:nth-of-type(2)`
-
-**Expected vs Actual**:
-- **Actual**: Selector: div.relative.flex:nth-of-type(3) > div.relative.flex:nth-of-type(2) > div.flex.flex-col > div.flex.flex-col:nth-of-type(2)
-Tag: <div>
-Dimensions: 626×178 px
-Classes: flex flex-col items-center gap-2 rounded-xl border border-dashed border-border p-8 text-center
-Text: "No risks recorded
-Your MSP has raised nothing against your tenant, and you have signed nothing. Your MSP records risk..."
-
-### [BUG] ![screenshot](C:\Users\Ronnie\AppData\Roaming\BuildConsole\visual-test-screenshots\localhost_5175_portal\diagnostics\2026-09-16_21-48-22-452.png)
-- **URL**: `https://claude.ai/chat/6120f93c-75e9-4d91-a78d-bbe463817470`
-
-**Notes**:
-![screenshot](C:\Users\Ronnie\AppData\Roaming\BuildConsole\visual-test-screenshots\localhost_5175_portal\diagnostics\2026-09-16_21-48-22-452.png)
-
-### [BUG] This whole section needs to be removed
-- **URL**: `https://claude.ai/chat/6120f93c-75e9-4d91-a78d-bbe463817470`
-- **Tags**: `dom-inspector`, `div`
-
-**Notes**:
-This whole section needs to be removed
-
-**Steps to Reproduce**:
-1. Locate and inspect `[data-testid="diagnostics-ledger"]`
-
-**Expected vs Actual**:
-- **Actual**: Selector: [data-testid="diagnostics-ledger"]
-Tag: <div>
-Dimensions: 595×473 px
-Classes: flex flex-col gap-[9px] rounded-[14px] p-4
-Text: "What this page deliberately does not do
-Collapse
-No "run a scan" button. Scans are triggered by your provider against..."
-
-### [BUG] ![screenshot](C:\Users\Ronnie\AppData\Roaming\BuildConsole\visual-test-screenshots\localhost_5175_portal\scope-and-sla\2026-09-16_21-48-04-402.png)
-- **URL**: `https://claude.ai/chat/6120f93c-75e9-4d91-a78d-bbe463817470`
-
-**Notes**:
-![screenshot](C:\Users\Ronnie\AppData\Roaming\BuildConsole\visual-test-screenshots\localhost_5175_portal\scope-and-sla\2026-09-16_21-48-04-402.png)
-
-### [BUG] This whole section needs to be removed
-- **URL**: `https://claude.ai/chat/6120f93c-75e9-4d91-a78d-bbe463817470`
-- **Tags**: `dom-inspector`, `div`
-
-**Notes**:
-This whole section needs to be removed
-
-**Steps to Reproduce**:
-1. Locate and inspect `[data-testid="scope-and-sla-page"] > div.rounded-lg.border:nth-of-type(4) > div.p-6.flex`
-
-**Expected vs Actual**:
-- **Actual**: Selector: [data-testid="scope-and-sla-page"] > div.rounded-lg.border:nth-of-type(4) > div.p-6.flex
-Tag: <div>
-Dimensions: 646×412 px
-Classes: p-6 flex flex-col gap-2.5 pt-6
-Text: "What this page deliberately does not do
-Collapse
-No per-request breakdown, ticket references, policy names or interna..."
-
-### [BUG] Change control is not loading
-- **URL**: `https://claude.ai/chat/6120f93c-75e9-4d91-a78d-bbe463817470`
-
-**Notes**:
-Change control is not loading
-
-![screenshot](C:\Users\Ronnie\AppData\Roaming\BuildConsole\visual-test-screenshots\localhost_5175_portal\change-control\2026-09-16_21-46-32-908.png)
-
-### [BUG] ![screenshot](C:\Users\Ronnie\AppData\Roaming\BuildConsole\visual-test-screenshots\localhost_5175_portal\my-architect\2026-09-16_21-44-37-330.png)
-- **URL**: `https://claude.ai/chat/6120f93c-75e9-4d91-a78d-bbe463817470`
-
-**Notes**:
-![screenshot](C:\Users\Ronnie\AppData\Roaming\BuildConsole\visual-test-screenshots\localhost_5175_portal\my-architect\2026-09-16_21-44-37-330.png)
-
-![screenshot](C:\Users\Ronnie\AppData\Roaming\BuildConsole\visual-test-screenshots\localhost_5175_portal\status-reports\2026-09-16_21-44-58-506.png)
-
-![screenshot](C:\Users\Ronnie\AppData\Roaming\BuildConsole\visual-test-screenshots\localhost_5175_portal\offers\2026-09-16_21-45-11-904.png)
-
-![screenshot](C:\Users\Ronnie\AppData\Roaming\BuildConsole\visual-test-screenshots\localhost_5175_portal\microsoft-changes\2026-09-16_21-45-56-201.png)
-
-### [BUG] The customer should be able to still see what the announcement is, with a clear pill or something that it has not yet been reviewd.
-- **URL**: `https://claude.ai/chat/6120f93c-75e9-4d91-a78d-bbe463817470`
-- **Tags**: `dom-inspector`, `div`
-
-**Notes**:
-The customer should be able to still see what the announcement is, with a clear pill or something that it has not yet been reviewd.
-
-**Steps to Reproduce**:
-1. Locate and inspect `[data-testid="ms-changes-in-this-wave"] > div.flex.items-center:nth-of-type(2)`
-
-**Expected vs Actual**:
-- **Actual**: Selector: [data-testid="ms-changes-in-this-wave"] > div.flex.items-center:nth-of-type(2)
-Tag: <div>
-Dimensions: 857×34 px
-Classes: flex items-center gap-2.5 rounded-lg border border-dashed px-3 py-2
-Text: "2 announcements · not yet analysed
-tracked, awaiting interpretation"
-
-### [BUG] This whole section needs to be removed
-- **URL**: `https://claude.ai/chat/6120f93c-75e9-4d91-a78d-bbe463817470`
-- **Tags**: `dom-inspector`, `div`
-
-**Notes**:
-This whole section needs to be removed
-
-**Steps to Reproduce**:
-1. Locate and inspect `div.relative.flex:nth-of-type(2) > div.flex.flex-col > div.rounded-lg.border:nth-of-type(3) > div.p-6.flex`
-
-**Expected vs Actual**:
-- **Actual**: Selector: div.relative.flex:nth-of-type(2) > div.flex.flex-col > div.rounded-lg.border:nth-of-type(3) > div.p-6.flex
-Tag: <div>
-Dimensions: 856×471 px
-Classes: p-6 flex flex-col gap-2.5 pt-6
-Text: "What this page deliberately does not do
-One price per offer. The customer read carries only the signal-adjusted price..."
-
-### [BUG] This whole section needs to be removed
-- **URL**: `https://claude.ai/chat/6120f93c-75e9-4d91-a78d-bbe463817470`
-- **Tags**: `dom-inspector`, `div`
-
-**Notes**:
-This whole section needs to be removed
-
-**Steps to Reproduce**:
-1. Locate and inspect `div.relative.flex:nth-of-type(2) > div.flex.flex-col > div.rounded-lg.border:nth-of-type(3) > div.p-6.flex`
-
-**Expected vs Actual**:
-- **Actual**: Selector: div.relative.flex:nth-of-type(2) > div.flex.flex-col > div.rounded-lg.border:nth-of-type(3) > div.p-6.flex
-Tag: <div>
-Dimensions: 856×544 px
-Classes: p-6 flex flex-col gap-2.5 pt-6
-Text: "What this page deliberately does not do
-Collapse
-Drafts never reach this page. The read filters published-only at the..."
-
-### [BUG] This whole section needs to be removed
-- **URL**: `https://claude.ai/chat/6120f93c-75e9-4d91-a78d-bbe463817470`
-- **Tags**: `dom-inspector`, `div`
-
-**Notes**:
-This whole section needs to be removed
-
-**Steps to Reproduce**:
-1. Locate and inspect `div.relative.flex:nth-of-type(2) > div.flex.flex-col > div.rounded-lg.border:nth-of-type(7) > div.p-6.flex`
-
-**Expected vs Actual**:
-- **Actual**: Selector: div.relative.flex:nth-of-type(2) > div.flex.flex-col > div.rounded-lg.border:nth-of-type(7) > div.p-6.flex
-Tag: <div>
-Dimensions: 856×346 px
-Classes: p-6 flex flex-col gap-2.5 pt-6
-Text: "What this page deliberately does not do
-No money. An hourly rate is served on this read and is dropped on the floor: ..."
-
-### [BUG] It looks like the scan starts and restarts every time I login. It sets back to Check 1 of 198
-- **URL**: `https://claude.ai/chat/6120f93c-75e9-4d91-a78d-bbe463817470`
-
-**Notes**:
-It looks like the scan starts and restarts every time I login. It sets back to Check 1 of 198
-
-### [BUG] When I land at portal ... I should just get a sign in page, not told to sign in then click a link to sign in.
-- **URL**: `https://claude.ai/chat/6120f93c-75e9-4d91-a78d-bbe463817470`
-
-**Notes**:
-When I land at portal ... I should just get a sign in page, not told to sign in then click a link to sign in.
-
-![screenshot](C:\Users\Ronnie\AppData\Roaming\BuildConsole\visual-test-screenshots\localhost_5175_portal\_\2026-09-16_21-43-04-273.png)
+| 1 | **Bug** | Open | If there are no retainers for this custome... | No | 1 |
+| 2 | **Bug** | Open | This is all hard coded and not pulling fro... | No | 1 |
 
 ### [BUG] If there are no retainers for this customer, why is it showing Retained 8h? Reamining 8h ...
-- **URL**: `https://claude.ai/chat/6120f93c-75e9-4d91-a78d-bbe463817470`
+- **URL**: `http://localhost:5175/portal/account-security`
 
 **Notes**:
 If there are no retainers for this customer, why is it showing Retained 8h? Reamining 8h ...
@@ -300,7 +26,7 @@ If there are no retainers for this customer, why is it showing Retained 8h? Ream
 ![screenshot](C:\Users\Ronnie\AppData\Roaming\BuildConsole\visual-test-screenshots\localhost_5175_portal\my-architect\2026-09-16_21-26-39-206.png)
 
 ### [BUG] This is all hard coded and not pulling from a real source at all... This needs a new wire pass.
-- **URL**: `https://claude.ai/chat/6120f93c-75e9-4d91-a78d-bbe463817470`
+- **URL**: `http://localhost:5175/portal/account-security`
 
 **Notes**:
 This is all hard coded and not pulling from a real source at all... This needs a new wire pass.
@@ -308,25 +34,126 @@ This is all hard coded and not pulling from a real source at all... This needs a
 ![screenshot](C:\Users\Ronnie\AppData\Roaming\BuildConsole\visual-test-screenshots\localhost_5175_portal\remediation-tracking\2026-09-16_21-25-05-286.png)
 
 ## Console & Script Diagnostics
-- **Errors**: 0
-- **Warnings**: 0
-- **Total Console Logs**: 100
+- **Errors**: 24
+- **Warnings**: 2
+- **Total Console Logs**: 98
+
+### Key Errors Captured:
+- `[21:23:30.994]` Uncaught TypeError: Failed to execute 'observe' on 'MutationObserver': parameter 1 is not of type 'Node'.
+  ```text
+  TypeError: parameter 1 is not of type 'Node'.
+      at <anonymous>:16:18
+      at <anonymous>:21:3
+  ```
+- `[21:23:30.995]` Uncaught TypeError: Failed to execute 'observe' on 'MutationObserver': parameter 1 is not of type 'Node'.
+  ```text
+  TypeError: parameter 1 is not of type 'Node'.
+      at <anonymous>:16:18
+      at <anonymous>:21:3
+  ```
+- `[21:24:13.344]` Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. §2
+  ```text
+      at http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5749:25
+      at runWithFiberInDEV (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:1485:72)
+      at warnOnInvalidKey (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5748:15)
+      at reconcileChildrenArray (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5789:114)
+      at reconcileChildFibersImpl (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5995:88)
+  ```
+- `[21:24:16.303]` Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. §2
+  ```text
+      at http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5749:25
+      at runWithFiberInDEV (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:1485:72)
+      at warnOnInvalidKey (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5748:15)
+      at reconcileChildrenArray (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5773:25)
+      at reconcileChildFibersImpl (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5995:88)
+  ```
+- `[21:27:03.924]` Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. §1.6
+  ```text
+      at http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5749:25
+      at runWithFiberInDEV (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:1485:72)
+      at warnOnInvalidKey (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5748:15)
+      at reconcileChildrenArray (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5789:114)
+      at reconcileChildFibersImpl (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5995:88)
+  ```
+- `[21:27:03.969]` Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. §1.6
+  ```text
+      at http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5749:25
+      at runWithFiberInDEV (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:1485:72)
+      at warnOnInvalidKey (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5748:15)
+      at reconcileChildrenArray (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5773:25)
+      at reconcileChildFibersImpl (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5995:88)
+  ```
+- `[21:27:03.975]` Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. §1.6
+  ```text
+      at http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5749:25
+      at runWithFiberInDEV (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:1485:72)
+      at warnOnInvalidKey (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5748:15)
+      at reconcileChildrenArray (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5773:25)
+      at reconcileChildFibersImpl (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5995:88)
+  ```
+- `[21:28:25.923]` Encountered two children with the same key, `%s`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version. §6
+  ```text
+      at http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5749:25
+      at runWithFiberInDEV (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:1485:72)
+      at warnOnInvalidKey (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5748:15)
+      at reconcileChildrenArray (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5789:114)
+      at reconcileChildFibersImpl (http://localhost:5175/portal/node_modules/.vite/deps/react-dom_client.js?v=2c638c6e:5995:88)
+  ```
+- `[21:20:42.312]` %s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don't mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Removing borderColor border
+- `[21:20:42.313]` %s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don't mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Removing borderColor border
+  ```text
+   (:83:31)
+  setValueForStyles (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:2265:24)
+  setProp (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:12307:12)
+  updateProperties (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:12966:44)
+  commitUpdate (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:13955:8)
+  runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:1484:71)
+  commitHostUpdate (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:8729:10)
+  commitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9512:96)
+  recursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)
+  commitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)
+  recursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)
+  commitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)
+  recursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)
+  commitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)
+  recursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)
+  commitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)
+  recursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)
+  commitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9501:12)
+  recursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)
+  commitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)
+  recursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)
+  commitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9654:12)
+  recursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)
+  commitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)
+  recursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)
+  commitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)
+  recursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)
+  commitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9373:12)
+  recursivelyTraverseMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9364:12)
+  commitMutationEffectsOnFiber (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:9550:12)
+  flushMutationEffects (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11097:14)
+  commitRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11078:10)
+  commitRootWhenReady (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:10511:8)
+  performWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:10456:16)
+  performSyncWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11634:8)
+  flushSyncWorkAcrossRoots_impl (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11535:121)
+  processRootScheduleInMicrotask (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11557:8)
+   (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=c31b848e:11648:14)
+  ```
+- ...and 14 more errors (see `console/console.json`).
 
 ## Network & API Activity
 - **API Calls Executed (Runner)**: 0
-- **Network Failures Captured**: 21
+- **Network Failures Captured**: 6
 
 ### Network Failures / Drops:
-- `GET` `http://localhost:5175/api/portal/scan-status` &rarr; **500 Internal Server Error** (10 ms)
-- `GET` `http://localhost:5175/api/portal/scan-status` &rarr; **0 Canceled** (10 ms)
-- `GET` `http://localhost:5175/api/portal/scan-status` &rarr; **500 Internal Server Error** (10 ms)
-- `GET` `http://localhost:5175/api/portal/scan-status` &rarr; **0 Canceled** (10 ms)
-- `GET` `http://localhost:5175/api/portal/risk-register` &rarr; **500 Internal Server Error** (12 ms)
-- `GET` `http://localhost:5175/api/portal/risk-register` &rarr; **500 Internal Server Error** (8 ms)
-- `GET` `http://localhost:5175/api/portal/scan-status` &rarr; **500 Internal Server Error** (14 ms)
-- `GET` `http://localhost:5175/api/portal/scan-status` &rarr; **0 Canceled** (16 ms)
-- `GET` `http://localhost:5175/api/portal/risk-register` &rarr; **500 Internal Server Error** (7 ms)
-- `GET` `http://localhost:5175/api/portal/scan-status` &rarr; **500 Internal Server Error** (9 ms)
+- `GET` `/api/portal/change-control` &rarr; **402 Payment Required** (22 ms)
+- `GET` `/api/portal/change-control` &rarr; **402 Payment Required** (33 ms)
+- `GET` `http://localhost:5175/api/portal/offers/sse?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6NDM2NiwiZW1haWwiOiJzaGFuZW1jY2F3K3ByZW1pZXJAb3V0bG9vay5jb20iLCJuYW1lIjoiU2hhbmUgTWNDYXciLCJjb21wYW55IjoiTWNDYXdTb2Z0Iiwicm9sZSI6ImNsaWVudCIsIm1zcFJvbGUiOiJDdXN0b21lciIsIm1zcElkIjoxLCJjdXN0b21lcklkIjoyMDgwLCJtc3BTbHVnIjoic2hhbmUtbWNjYXctY29uc3VsdGluZyIsImlhdCI6MTc4OTYwODIxMSwiZXhwIjoxNzg5NjA5MTExfQ.CvTjZok9O69nWKPwCL4rWHPpd9NvCylBWrdf_HpmDmU` &rarr; **0 Canceled** (1578 ms)
+- `GET` `http://localhost:5175/api/portal/offers/sse?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6NDM2NiwiZW1haWwiOiJzaGFuZW1jY2F3K3ByZW1pZXJAb3V0bG9vay5jb20iLCJuYW1lIjoiU2hhbmUgTWNDYXciLCJjb21wYW55IjoiTWNDYXdTb2Z0Iiwicm9sZSI6ImNsaWVudCIsIm1zcFJvbGUiOiJDdXN0b21lciIsIm1zcElkIjoxLCJjdXN0b21lcklkIjoyMDgwLCJtc3BTbHVnIjoic2hhbmUtbWNjYXctY29uc3VsdGluZyIsImlhdCI6MTc4OTYwODIxMSwiZXhwIjoxNzg5NjA5MTExfQ.CvTjZok9O69nWKPwCL4rWHPpd9NvCylBWrdf_HpmDmU` &rarr; **0 Canceled** (1803 ms)
+- `GET` `http://localhost:5175/api/portal/change-control` &rarr; **402 Payment Required** (22 ms)
+- `GET` `http://localhost:5175/api/portal/change-control` &rarr; **402 Payment Required** (33 ms)
 
 ## JavaScript Commands Executed
 - None.

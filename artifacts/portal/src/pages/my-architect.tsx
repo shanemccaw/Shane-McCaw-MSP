@@ -233,53 +233,68 @@ export default function MyArchitectPage() {
                   </div>
                 )}
               </div>
-              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
-                <Figure label="RETAINED" value={data.bucket.retainedHours} note="this period's allotment" />
-                <Figure
-                  label="ROLLED IN"
-                  value={data.bucket.rolledHours}
-                  note={data.bucket.rolledHours ? "unused from last period, once" : "nothing carried from last period"}
-                  muted={!data.bucket.rolledHours}
-                />
-                <Figure
-                  label="USED"
-                  value={data.bucket.usedHours}
-                  note="logged so far, uncapped"
-                  amber={data.bucket.isOverMonth}
-                />
-                <Figure
-                  label="REMAINING"
-                  value={data.bucket.remainingHours}
-                  note={
-                    data.bucket.remainingHours === 0
-                      ? data.bucket.isOverMonth
-                        ? "allotment exceeded"
-                        : "allotment used exactly"
-                      : `of ${data.bucket.retainedHours + data.bucket.rolledHours}h available`
-                  }
-                  green={data.bucket.remainingHours > 0}
-                />
-                <Figure
-                  label="OVER"
-                  value={data.bucket.overHours}
-                  note={data.bucket.isOverMonth ? "a normal, stated state" : "none"}
-                  amber={data.bucket.isOverMonth}
-                  muted={!data.bucket.isOverMonth}
-                />
-              </div>
-              <div className="h-1.5 overflow-hidden rounded-full bg-muted/25">
+              {data.configured ? (
+                <>
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+                    <Figure label="RETAINED" value={data.bucket.retainedHours} note="this period's allotment" />
+                    <Figure
+                      label="ROLLED IN"
+                      value={data.bucket.rolledHours}
+                      note={data.bucket.rolledHours ? "unused from last period, once" : "nothing carried from last period"}
+                      muted={!data.bucket.rolledHours}
+                    />
+                    <Figure
+                      label="USED"
+                      value={data.bucket.usedHours}
+                      note="logged so far, uncapped"
+                      amber={data.bucket.isOverMonth}
+                    />
+                    <Figure
+                      label="REMAINING"
+                      value={data.bucket.remainingHours}
+                      note={
+                        data.bucket.remainingHours === 0
+                          ? data.bucket.isOverMonth
+                            ? "allotment exceeded"
+                            : "allotment used exactly"
+                          : `of ${data.bucket.retainedHours + data.bucket.rolledHours}h available`
+                      }
+                      green={data.bucket.remainingHours > 0}
+                    />
+                    <Figure
+                      label="OVER"
+                      value={data.bucket.overHours}
+                      note={data.bucket.isOverMonth ? "a normal, stated state" : "none"}
+                      amber={data.bucket.isOverMonth}
+                      muted={!data.bucket.isOverMonth}
+                    />
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-muted/25">
+                    <div
+                      className={cn("h-full", data.bucket.isOverMonth ? "bg-status-amber" : "bg-primary")}
+                      style={{
+                        width: `${Math.min(100, data.bucket.retainedHours + data.bucket.rolledHours > 0 ? (data.bucket.usedHours / (data.bucket.retainedHours + data.bucket.rolledHours)) * 100 : 0)}%`,
+                      }}
+                    />
+                  </div>
+                  <span className="max-w-[680px] text-[11px] leading-relaxed text-muted-foreground">
+                    {data.bucket.isOverMonth
+                      ? '"Over" is keyed off the over figure itself, not off remaining hitting zero — a period that lands exactly on its allotment also reads 0h remaining, and is not over.'
+                      : "Figures are computed once, server-side, from the log. The page does not re-add them."}
+                  </span>
+                </>
+              ) : (
                 <div
-                  className={cn("h-full", data.bucket.isOverMonth ? "bg-status-amber" : "bg-primary")}
-                  style={{
-                    width: `${Math.min(100, data.bucket.retainedHours + data.bucket.rolledHours > 0 ? (data.bucket.usedHours / (data.bucket.retainedHours + data.bucket.rolledHours)) * 100 : 0)}%`,
-                  }}
-                />
-              </div>
-              <span className="max-w-[680px] text-[11px] leading-relaxed text-muted-foreground">
-                {data.bucket.isOverMonth
-                  ? '"Over" is keyed off the over figure itself, not off remaining hitting zero — a period that lands exactly on its allotment also reads 0h remaining, and is not over.'
-                  : "Figures are computed once, server-side, from the log. The page does not re-add them."}
-              </span>
+                  data-testid="my-architect-bucket-unconfigured"
+                  className="flex flex-col items-center gap-1 rounded-lg border border-dashed border-border/50 bg-muted/5 px-3 py-5 text-center"
+                >
+                  <span className="text-lg font-bold tracking-tight text-muted-foreground">—h / —h / —h</span>
+                  <span className="max-w-[520px] text-[11px] leading-relaxed text-muted-foreground">
+                    No retainer figures to show. Retained, rolled-in, used, remaining and over hours only
+                    exist once a retainer is configured on your account.
+                  </span>
+                </div>
+              )}
             </CardContent>
           </Card>
 

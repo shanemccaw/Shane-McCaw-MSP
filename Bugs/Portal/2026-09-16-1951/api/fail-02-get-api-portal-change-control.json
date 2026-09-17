@@ -1,11 +1,11 @@
 {
-  "index": 6,
+  "index": 2,
   "method": "GET",
-  "url": "http://localhost:5175/api/portal/change-control",
+  "url": "/api/portal/change-control",
   "statusCode": 402,
   "statusText": "Payment Required",
   "durationMs": 33,
   "payloadSize": "123 B",
-  "timestamp": "21:26:55.541",
+  "timestamp": "21:26:55.540",
   "failed": true
 }

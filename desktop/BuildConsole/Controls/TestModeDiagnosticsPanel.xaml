@@ -338,6 +338,7 @@
                                 <Border x:Name="BodyRunner" Background="{StaticResource CrustBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Padding="10" Visibility="Collapsed">
                                     <StackPanel Orientation="Vertical">
                                         <TextBox x:Name="TxtConsoleCmd" Height="42" TextWrapping="Wrap" AcceptsReturn="True"
+                                                 VerticalContentAlignment="Top"
                                                  Background="{StaticResource AppBackgroundBrush}" BorderBrush="{StaticResource Surface0Brush}"
                                                  Foreground="{StaticResource TextBrush}" FontFamily="{StaticResource MonospaceFontFamily}" FontSize="{StaticResource MonospaceFontSize}"
                                                  Padding="6" Margin="0,0,0,6"

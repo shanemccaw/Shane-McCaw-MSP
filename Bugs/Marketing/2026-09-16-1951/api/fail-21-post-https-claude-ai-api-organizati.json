@@ -1,0 +1,11 @@
+{
+  "index": 21,
+  "method": "POST",
+  "url": "https://claude.ai/api/organizations/4713e9d9-1edb-4c9e-a587-275a277248ca/chat_conversations/025ee9b4-b18e-48b5-aa3d-0eae01f1bb97/completion",
+  "statusCode": 0,
+  "statusText": "Canceled",
+  "durationMs": 168472,
+  "payloadSize": "",
+  "timestamp": "21:50:05.731",
+  "failed": true
+}

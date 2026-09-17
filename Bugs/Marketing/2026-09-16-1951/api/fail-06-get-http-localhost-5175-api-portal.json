@@ -1,0 +1,11 @@
+{
+  "index": 6,
+  "method": "GET",
+  "url": "http://localhost:5175/api/portal/risk-register",
+  "statusCode": 500,
+  "statusText": "Internal Server Error",
+  "durationMs": 8,
+  "payloadSize": "190 B",
+  "timestamp": "21:48:29.777",
+  "failed": true
+}

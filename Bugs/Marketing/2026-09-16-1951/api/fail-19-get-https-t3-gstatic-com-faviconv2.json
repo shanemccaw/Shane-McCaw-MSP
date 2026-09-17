@@ -1,0 +1,11 @@
+{
+  "index": 19,
+  "method": "GET",
+  "url": "https://t3.gstatic.com/faviconV2?client=SOCIAL\u0026type=FAVICON\u0026fallback_opts=TYPE,SIZE,URL\u0026url=http://replit.app\u0026size=64",
+  "statusCode": 404,
+  "statusText": "HTTP Error",
+  "durationMs": 54,
+  "payloadSize": "726 B",
+  "timestamp": "21:49:52.335",
+  "failed": true
+}
