@@ -236,7 +236,7 @@ namespace BuildConsole.Models
         }
         public double ProgressPercent { get; set; }
         public string ProgressText { get; set; } = ""; // e.g. "89% (8/9)"
-        public string Status { get; set; } = "ACTIVE"; // ACTIVE, FOCUS, UNASSIGNED
+        public string Status { get; set; } = "ACTIVE"; // ACTIVE, FOCUS, or "" (no pill)
         public int Count { get; set; } = 1;
         public object? RawData { get; set; }
 

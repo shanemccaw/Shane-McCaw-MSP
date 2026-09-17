@@ -133,7 +133,7 @@ namespace BuildConsole.Controls
 
             buildConsoleEpic.Features.Add(sqlRunnerFeature);
 
-            // Feature 3: Unassigned feature
+            // Feature 3: ordinary feature, neither blocked nor in-flight — no status pill
             buildConsoleEpic.Features.Add(new GitBoardFeatureModel
             {
                 Number = 1215,
@@ -141,7 +141,6 @@ namespace BuildConsole.Controls
                 BlockerBadge = null,
                 ProgressPercent = 0,
                 ProgressText = "0% (0/3)",
-                Status = "UNASSIGNED",
                 Count = 3,
                 IsExpanded = false
             });
@@ -277,7 +276,7 @@ namespace BuildConsole.Controls
                                 Title = fIssue.Title,
                                 ProgressPercent = fIssue.SubIssueCount > 0 ? (double)fIssue.SubIssueCompleted / fIssue.SubIssueCount * 100.0 : 0,
                                 ProgressText = fIssue.SubIssueCount > 0 ? $"{fIssue.SubIssueCompleted}/{fIssue.SubIssueCount}" : "",
-                                Status = fIssue.IsBlocked ? "FOCUS" : (fIssue.IsInFlight ? "ACTIVE" : "UNASSIGNED"),
+                                Status = fIssue.IsBlocked ? "FOCUS" : (fIssue.IsInFlight ? "ACTIVE" : ""),
                                 Count = fIssue.SubIssueCount > 0 ? fIssue.SubIssueCount : 1,
                                 IsExpanded = fIssue.IsBlocked || fIssue.IsInFlight,
                                 RawData = fIssue

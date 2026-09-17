@@ -1,14 +1,16 @@
 <UserControl x:Class="BuildConsole.Controls.GitBoardPanel"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
-             mc:Ignorable="d" 
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:conv="clr-namespace:BuildConsole.Converters"
+             mc:Ignorable="d"
              d:DesignHeight="800" d:DesignWidth="360"
              Background="Transparent">
 
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <conv:StringNonEmptyToVisibilityConverter x:Key="StringNonEmptyToVis"/>
 
         <!-- Hover row style -->
         <Style x:Key="InteractiveRowBorder" TargetType="Border">
@@ -318,8 +320,9 @@
                                                                 <TextBlock Text="{Binding ProgressText}" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}"/>
                                                             </Border>
 
-                                                            <!-- Status Pill (ACTIVE, FOCUS, UNASSIGNED) -->
-                                                            <Border x:Name="PillBorder" Margin="4,0,2,0">
+                                                            <!-- Status Pill (ACTIVE, FOCUS) — collapsed entirely when Status is empty (Git #4457) -->
+                                                            <Border x:Name="PillBorder" Margin="4,0,2,0"
+                                                                    Visibility="{Binding Status, Converter={StaticResource StringNonEmptyToVis}}">
                                                                 <Border.Style>
                                                                     <Style TargetType="Border" BasedOn="{StaticResource StatusPillBase}">
                                                                         <Style.Triggers>
@@ -336,10 +339,6 @@
                                                                                 <Setter Property="Background" Value="#33CBA6F7"/>
                                                                                 <Setter Property="BorderBrush" Value="{StaticResource MauveBrush}"/>
                                                                             </DataTrigger>
-                                                                            <DataTrigger Binding="{Binding Status}" Value="UNASSIGNED">
-                                                                                <Setter Property="Background" Value="{StaticResource Surface0Brush}"/>
-                                                                                <Setter Property="BorderBrush" Value="{StaticResource Surface2Brush}"/>
-                                                                            </DataTrigger>
                                                                         </Style.Triggers>
                                                                     </Style>
                                                                 </Border.Style>
@@ -352,9 +351,6 @@
                                                                                 </DataTrigger>
                                                                                 <DataTrigger Binding="{Binding Status}" Value="FOCUS">
                                                                                     <Setter Property="Foreground" Value="{StaticResource MauveBrush}"/>
-                                                                                </DataTrigger>
-                                                                                <DataTrigger Binding="{Binding Status}" Value="UNASSIGNED">
-                                                                                    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
                                                                                 </DataTrigger>
                                                                             </Style.Triggers>
                                                                         </Style>
