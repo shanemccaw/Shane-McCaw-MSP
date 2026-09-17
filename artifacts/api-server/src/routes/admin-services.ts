@@ -1148,11 +1148,30 @@ router.put("/admin/services/:id/workflow", requireAdmin, async (req: Request, re
 });
 
 // ─── ADMIN: Assign service to client ─────────────────────────────────────────
-router.post("/admin/client-services", requireAdmin, async (req: Request, res: Response) => {
-  const { clientUserId, serviceId, projectId, startDate, nextMilestone, nextMilestoneDate } = req.body as {
-    clientUserId?: number; serviceId?: number; projectId?: number; startDate?: string; nextMilestone?: string; nextMilestoneDate?: string;
-  };
-  if (!clientUserId || !serviceId) { res.status(400).json({ error: "clientUserId and serviceId are required" }); return; }
+// Extracted (#4489) so the AdminV2 Tenant canvas's own DB-only "Package
+// Assignment" swap (admin-active-directory.ts) reuses this exact insert +
+// notification + workflow-template auto-project logic instead of
+// re-deriving it — the only difference between the two callers is which
+// clientUserId the new row is assigned to and what happens to any row it
+// replaces.
+export interface AssignClientServiceActor {
+  id: number;
+  name?: string | null;
+  email: string;
+}
+
+export interface AssignClientServiceParams {
+  clientUserId: number;
+  serviceId: number;
+  projectId?: number | null;
+  startDate?: string | null;
+  nextMilestone?: string | null;
+  nextMilestoneDate?: string | null;
+  actor: AssignClientServiceActor;
+}
+
+export async function assignClientService(params: AssignClientServiceParams) {
+  const { clientUserId, serviceId, projectId, startDate, nextMilestone, nextMilestoneDate, actor } = params;
 
   const [cs] = await db.insert(clientServicesTable).values({
     clientUserId, serviceId, projectId: projectId ?? null,
@@ -1263,8 +1282,8 @@ router.post("/admin/client-services", requireAdmin, async (req: Request, res: Re
   }
 
   void createAuditLog({
-    actorUserId: req.user!.id,
-    actorName: req.user!.name ?? req.user!.email,
+    actorUserId: actor.id,
+    actorName: actor.name ?? actor.email,
     actorRole: "admin",
     actionType: "service_activated",
     entityType: "service",
@@ -1273,12 +1292,26 @@ router.post("/admin/client-services", requireAdmin, async (req: Request, res: Re
     clientId: clientUserId,
   });
 
-  res.status(201).json(cs);
-
   // Re-probe the client's App Registration permissions in the background now that
   // their active services have changed. This keeps permission_check current without
   // requiring the client to re-submit their credentials.
   void reProbeClientPermissionsInBackground(clientUserId);
+
+  return cs;
+}
+
+router.post("/admin/client-services", requireAdmin, async (req: Request, res: Response) => {
+  const { clientUserId, serviceId, projectId, startDate, nextMilestone, nextMilestoneDate } = req.body as {
+    clientUserId?: number; serviceId?: number; projectId?: number; startDate?: string; nextMilestone?: string; nextMilestoneDate?: string;
+  };
+  if (!clientUserId || !serviceId) { res.status(400).json({ error: "clientUserId and serviceId are required" }); return; }
+
+  const cs = await assignClientService({
+    clientUserId, serviceId, projectId, startDate, nextMilestone, nextMilestoneDate,
+    actor: req.user!,
+  });
+
+  res.status(201).json(cs);
 });
 
 export default router;

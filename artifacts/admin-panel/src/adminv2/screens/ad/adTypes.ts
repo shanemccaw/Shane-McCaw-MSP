@@ -277,6 +277,26 @@ export interface AdMonitoringPackage {
   checkCount: number;
 }
 
+/**
+ * GET /api/admin/services row, sliced to what the Customer canvas's #4489
+ * "Package Assignment" picker needs — real `services` rows, not a fixture.
+ * `deliveryType` is what the swap logic groups on: `bundle_subscription`
+ * (Monitoring) and `retainer` (Retainer) are the two assignable categories.
+ */
+export interface AdAssignableService {
+  id: number;
+  name: string;
+  deliveryType: string | null;
+  tier: string | null;
+}
+
+/** POST /admin/active-directory/customer/:id/assign-service response. */
+export interface AdAssignServiceResult {
+  clientService: { id: number; status: string };
+  serviceName: string;
+  completedPreviousIds: number[];
+}
+
 export interface AdCustomerDetail {
   customer: AdCustomerProfile;
   owningMsp: AdCustomerOwningMsp | null;

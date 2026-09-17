@@ -113,9 +113,10 @@ import {
   roleLinkageRequirement,
   type MspOverrideRow,
 } from "../lib/active-directory.ts";
-import { resolveCustomerUserIds } from "../lib/tenant-signals.ts";
+import { resolveCustomerUserIds, resolveDocumentOwnerUserId } from "../lib/tenant-signals.ts";
 import { userEntitlementOverridesTable } from "@workspace/db";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
+import { assignClientService } from "./admin-services.ts";
 
 // Most recent N diagnostic runs shown in the Customer Object pane's summary —
 // a run-history preview, not a full diagnostics browser (Issue #63 scope).
@@ -675,42 +676,162 @@ router.get("/admin/active-directory/customer/:id", requireAdmin, async (req: Req
 });
 
 // ─── PATCH /admin/active-directory/customer/:id ───────────────────────────────
-// #2085 — the ONE editable field this pane offers today: `tenants.business_unit`,
+// #2085 — the ONE editable field this pane offered originally: `tenants.business_unit`,
 // the real backing column for the Security Plan assembly's `businessUnit` scope
 // dimension. Freeform text, nullable, no enum (see the migration/schema comments for
 // why). Trims to null on blank input rather than persisting an empty string.
+//
+// #4489 — also accepts `isTestbed`, same pattern: `tenants.is_testbed` already existed
+// and was already read by GET above, just never editable. Internal-only (this route sits
+// behind requireAdmin already) so Shane can flip a tenant across pricing tiers for his own
+// testing without re-consenting or deleting/recreating it.
 router.patch("/admin/active-directory/customer/:id", requireAdmin, async (req: Request, res: Response) => {
   const customerId = Number(req.params.id);
   if (!Number.isInteger(customerId)) {
     res.status(400).json({ error: "Invalid customer id" });
     return;
   }
-  const { businessUnit } = req.body as { businessUnit?: string | null };
+  const { businessUnit, isTestbed } = req.body as { businessUnit?: string | null; isTestbed?: boolean };
   if (businessUnit !== undefined && businessUnit !== null && typeof businessUnit !== "string") {
     res.status(400).json({ error: "businessUnit must be a string or null" });
+    return;
+  }
+  if (isTestbed !== undefined && typeof isTestbed !== "boolean") {
+    res.status(400).json({ error: "isTestbed must be a boolean" });
     return;
   }
 
   try {
     const actor = req.user!;
-    const normalized = typeof businessUnit === "string" ? (businessUnit.trim() || null) : null;
+    const updates: Partial<typeof tenantsTable.$inferInsert> = { updatedAt: new Date() };
+    if (businessUnit !== undefined) {
+      updates.businessUnit = typeof businessUnit === "string" ? (businessUnit.trim() || null) : null;
+    }
+    if (isTestbed !== undefined) {
+      updates.isTestbed = isTestbed;
+    }
 
     const [updated] = await db
       .update(tenantsTable)
-      .set({ businessUnit: normalized, updatedAt: new Date() })
+      .set(updates)
       .where(eq(tenantsTable.id, customerId))
-      .returning({ id: tenantsTable.id, businessUnit: tenantsTable.businessUnit });
+      .returning({ id: tenantsTable.id, businessUnit: tenantsTable.businessUnit, isTestbed: tenantsTable.isTestbed });
 
     if (!updated) {
       res.status(404).json({ error: "Customer not found" });
       return;
     }
 
-    log.info({ actorUserId: actor.id, customerId, businessUnit: normalized }, "admin.active-directory: tenant business_unit updated");
-    res.json({ id: updated.id, businessUnit: updated.businessUnit });
+    log.info({ actorUserId: actor.id, customerId, businessUnit: updated.businessUnit, isTestbed: updated.isTestbed }, "admin.active-directory: tenant profile updated");
+    res.json({ id: updated.id, businessUnit: updated.businessUnit, isTestbed: updated.isTestbed });
   } catch (err) {
-    log.error({ err, customerId }, "Failed to update tenant business unit");
-    res.status(500).json({ error: "Failed to update business unit" });
+    log.error({ err, customerId }, "Failed to update tenant profile");
+    res.status(500).json({ error: "Failed to update tenant profile" });
+  }
+});
+
+// ─── POST /admin/active-directory/customer/:id/assign-service ────────────────
+// #4489 — manual Monitoring/Retainer package assignment. Internal-only,
+// DB-only (no Stripe involved anywhere in this path), for Shane's own
+// cross-tier testing without re-consenting or deleting/recreating a tenant.
+//
+// "Wipe and start fresh" per Shane's explicit decision: any current `active`
+// client_services row for this tenant whose service shares the target's
+// deliveryType gets marked `completed` — the correct terminal state; no new
+// "cancelled" enum value, and no reversibility mechanism. The new row is then
+// inserted via admin-services.ts's own assignClientService(), reusing its
+// notification + workflow-template auto-project side effects rather than
+// re-deriving them here.
+router.post("/admin/active-directory/customer/:id/assign-service", requireAdmin, async (req: Request, res: Response) => {
+  const customerId = Number(req.params.id);
+  if (!Number.isInteger(customerId)) {
+    res.status(400).json({ error: "Invalid customer id" });
+    return;
+  }
+  const { serviceId } = req.body as { serviceId?: number };
+  if (!Number.isInteger(serviceId)) {
+    res.status(400).json({ error: "serviceId is required" });
+    return;
+  }
+
+  try {
+    const [service] = await db
+      .select({ id: servicesTable.id, name: servicesTable.name, deliveryType: servicesTable.deliveryType })
+      .from(servicesTable)
+      .where(eq(servicesTable.id, serviceId as number))
+      .limit(1);
+    if (!service) {
+      res.status(404).json({ error: "Service not found" });
+      return;
+    }
+    if (service.deliveryType !== "bundle_subscription" && service.deliveryType !== "retainer") {
+      res.status(400).json({ error: "Only Monitoring or Retainer services can be assigned here." });
+      return;
+    }
+
+    const customerUserIds = await resolveCustomerUserIds(customerId);
+    const ownerUserId = await resolveDocumentOwnerUserId(customerId);
+    if (customerUserIds.length === 0 || ownerUserId == null) {
+      res.status(400).json({ error: "This tenant has no users to assign a service to." });
+      return;
+    }
+
+    const priorActiveRows = await db
+      .select({ id: clientServicesTable.id })
+      .from(clientServicesTable)
+      .innerJoin(servicesTable, eq(servicesTable.id, clientServicesTable.serviceId))
+      .where(
+        and(
+          inArray(clientServicesTable.clientUserId, customerUserIds),
+          eq(clientServicesTable.status, "active"),
+          eq(servicesTable.deliveryType, service.deliveryType),
+        ),
+      );
+
+    if (priorActiveRows.length > 0) {
+      await db
+        .update(clientServicesTable)
+        .set({ status: "completed" })
+        .where(inArray(clientServicesTable.id, priorActiveRows.map((r) => r.id)));
+    }
+
+    const actor = req.user!;
+    const clientService = await assignClientService({
+      clientUserId: ownerUserId,
+      serviceId: service.id,
+      actor,
+    });
+
+    await createAuditLog({
+      actorUserId: actor.id,
+      actorName: actor.name ?? actor.email,
+      actorRole: "platform_admin",
+      actionType: "admin_customer_package_assigned",
+      entityType: "tenant",
+      entityId: customerId,
+      entityLabel: service.name,
+      tenantId: customerId,
+    });
+
+    log.info(
+      {
+        actorUserId: actor.id,
+        customerId,
+        serviceId: service.id,
+        deliveryType: service.deliveryType,
+        completedPreviousIds: priorActiveRows.map((r) => r.id),
+      },
+      "admin.active-directory: tenant package assignment swapped",
+    );
+
+    res.status(201).json({
+      clientService,
+      serviceName: service.name,
+      completedPreviousIds: priorActiveRows.map((r) => r.id),
+    });
+  } catch (err) {
+    log.error({ err, customerId, serviceId }, "Failed to assign package to tenant");
+    res.status(500).json({ error: "Failed to assign package" });
   }
 });
 

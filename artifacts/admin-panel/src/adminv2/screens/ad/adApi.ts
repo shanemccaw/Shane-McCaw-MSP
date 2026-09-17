@@ -12,6 +12,8 @@
  */
 
 import type {
+  AdAssignableService,
+  AdAssignServiceResult,
   AdCustomerDetail,
   AdDiagnosticRunSummary,
   AdEntitlementsView,
@@ -98,6 +100,32 @@ export async function updateAdCustomerBusinessUnit(
   businessUnit: string | null,
 ): Promise<{ id: number; businessUnit: string | null }> {
   const res = await patchJson(adminFetch, `/api/admin/active-directory/customer/${id}`, { businessUnit });
+  return json(res);
+}
+
+/** #4489 — internal-only testbed flag, editable the same way businessUnit is. */
+export async function updateAdCustomerTestbed(
+  adminFetch: AdminFetch,
+  id: number,
+  isTestbed: boolean,
+): Promise<{ id: number; isTestbed: boolean }> {
+  const res = await patchJson(adminFetch, `/api/admin/active-directory/customer/${id}`, { isTestbed });
+  return json(res);
+}
+
+/** #4489 — real service catalog for the Package Assignment picker; filter by deliveryType client-side. */
+export async function fetchAdAssignableServices(adminFetch: AdminFetch): Promise<AdAssignableService[]> {
+  const res = await adminFetch("/api/admin/services");
+  return json(res);
+}
+
+/** #4489 — manual Monitoring/Retainer package swap. DB-only, no Stripe. */
+export async function assignAdCustomerPackage(
+  adminFetch: AdminFetch,
+  id: number,
+  serviceId: number,
+): Promise<AdAssignServiceResult> {
+  const res = await postJson(adminFetch, `/api/admin/active-directory/customer/${id}/assign-service`, { serviceId });
   return json(res);
 }
 

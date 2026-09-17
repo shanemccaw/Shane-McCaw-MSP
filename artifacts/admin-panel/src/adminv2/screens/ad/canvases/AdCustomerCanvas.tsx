@@ -16,7 +16,9 @@ import { ACCENT_TEXT, LINE, SURFACE, TEXT } from "../../../theme";
 import { useShell } from "../../../shell/ShellContext";
 import { ContextMenu, useContextMenu } from "../../../shell/ContextMenu";
 import {
+  assignAdCustomerPackage,
   createAdConsentInviteLink,
+  fetchAdAssignableServices,
   fetchAdCustomer,
   fetchAdCustomerMonitoringPackage,
   fetchAdCustomerWriteConsent,
@@ -26,11 +28,12 @@ import {
   runAdCustomerDiagnostics,
   startAdCustomerWriteConsent,
   updateAdCustomerBusinessUnit,
+  updateAdCustomerTestbed,
   type ConsentKey,
 } from "../adApi";
 import { setAdCachedRecord } from "../adNameCache";
 import { onAdRecordAction, requestAdTreeRefresh } from "../adEvents";
-import type { AdConsentStatus, AdCustomerDetail, AdMonitoringPackage, AdWriteConsentStatus } from "../adTypes";
+import type { AdAssignableService, AdConsentStatus, AdCustomerDetail, AdMonitoringPackage, AdWriteConsentStatus } from "../adTypes";
 import { AdRbacOrgRolesPanel } from "../AdRbacPanels";
 import {
   AdArmedButton,
@@ -103,6 +106,20 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
   // Plan assembly's `businessUnit` scope dimension the same way pillar/framework do.
   const [businessUnitDraft, setBusinessUnitDraft] = useState("");
   const [businessUnitSaving, setBusinessUnitSaving] = useState(false);
+
+  // Testbed toggle (#4489) — internal-only flag so Shane can flip a tenant
+  // across pricing tiers for his own testing without re-consenting or
+  // deleting/recreating it. `tenants.is_testbed` already existed and was
+  // already read by the GET, just never surfaced or editable here.
+  const [testbedSaving, setTestbedSaving] = useState(false);
+
+  // Package Assignment (#4489) — manual Monitoring/Retainer swap, DB-only, no
+  // Stripe. `assignableServices` is the real `services` catalog; the picker
+  // filters it client-side by deliveryType into the two assignable categories.
+  const [assignableServices, setAssignableServices] = useState<AdAssignableService[]>([]);
+  const [selectedMonitoringServiceId, setSelectedMonitoringServiceId] = useState("");
+  const [selectedRetainerServiceId, setSelectedRetainerServiceId] = useState("");
+  const [assigningCategory, setAssigningCategory] = useState<"monitoring" | "retainer" | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -196,6 +213,65 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
       setBusinessUnitSaving(false);
     }
   }, [fetchWithAuth, customerId, businessUnitDraft]);
+
+  const toggleTestbed = useCallback(async () => {
+    if (!detail) return;
+    setTestbedSaving(true);
+    setOutcome(null);
+    try {
+      const res = await updateAdCustomerTestbed(fetchWithAuth, customerId, !detail.customer.isTestbed);
+      setDetail((prev) => (prev ? { ...prev, customer: { ...prev.customer, isTestbed: res.isTestbed } } : prev));
+      setOutcome({ tone: "ok", message: `Testbed ${res.isTestbed ? "enabled" : "disabled"} for this tenant.` });
+    } catch (err) {
+      setOutcome({ tone: "error", message: err instanceof Error ? err.message : "Failed to update the testbed flag." });
+    } finally {
+      setTestbedSaving(false);
+    }
+  }, [fetchWithAuth, customerId, detail]);
+
+  // #4489 — the real service catalog for the picker, loaded once per tenant.
+  // A failure here degrades gracefully: both option lists render empty, so
+  // the section shows "No … services in the catalog" instead of blocking.
+  const loadAssignableServices = useCallback(async () => {
+    try {
+      const services = await fetchAdAssignableServices(fetchWithAuth);
+      setAssignableServices(services);
+      const monitoring = services.filter((s) => s.deliveryType === "bundle_subscription");
+      const retainer = services.filter((s) => s.deliveryType === "retainer");
+      setSelectedMonitoringServiceId((prev) => prev || (monitoring[0] ? String(monitoring[0].id) : ""));
+      setSelectedRetainerServiceId((prev) => prev || (retainer[0] ? String(retainer[0].id) : ""));
+    } catch {
+      setAssignableServices([]);
+    }
+  }, [fetchWithAuth]);
+
+  useEffect(() => {
+    void loadAssignableServices();
+  }, [loadAssignableServices]);
+
+  const assignPackage = useCallback(
+    async (category: "monitoring" | "retainer", serviceId: string) => {
+      if (!serviceId) return;
+      setAssigningCategory(category);
+      setOutcome(null);
+      try {
+        const res = await assignAdCustomerPackage(fetchWithAuth, customerId, Number(serviceId));
+        setOutcome({
+          tone: "ok",
+          message:
+            res.completedPreviousIds.length > 0
+              ? `${res.serviceName} assigned. The previous active package was marked completed.`
+              : `${res.serviceName} assigned.`,
+        });
+        await load();
+      } catch (err) {
+        setOutcome({ tone: "error", message: err instanceof Error ? err.message : "Failed to assign the package." });
+      } finally {
+        setAssigningCategory(null);
+      }
+    },
+    [fetchWithAuth, customerId, load],
+  );
 
   const loadWriteConsent = useCallback(async () => {
     setWriteConsentLoading(true);
@@ -307,6 +383,8 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
 
   const { customer, owningMsp, users, purchasedServices, recentDiagnosticRuns } = detail;
   const connected = !!customer.tenantId;
+  const monitoringServiceOptions = assignableServices.filter((s) => s.deliveryType === "bundle_subscription");
+  const retainerServiceOptions = assignableServices.filter((s) => s.deliveryType === "retainer");
 
   return (
     <AdCanvasColumn>
@@ -406,6 +484,46 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
               label="Owning MSP"
               value={owningMsp?.name ?? "—"}
             />
+            <div
+              style={{
+                minWidth: 0,
+                padding: "10px 12px",
+                borderRadius: 7,
+                border: `1px solid ${LINE.base}`,
+                background: SURFACE.card,
+                display: "flex",
+                flexDirection: "column",
+                gap: 3,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 10.5,
+                  letterSpacing: ".05em",
+                  textTransform: "uppercase",
+                  color: TEXT.label,
+                }}
+              >
+                Testbed
+              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span
+                  style={{
+                    fontSize: 16,
+                    fontWeight: 700,
+                    letterSpacing: "-.01em",
+                    color: customer.isTestbed ? ACCENT_TEXT.green : TEXT.primary,
+                  }}
+                >
+                  {customer.isTestbed ? "Yes" : "No"}
+                </span>
+                <AdButton
+                  label={testbedSaving ? "Saving…" : customer.isTestbed ? "Disable" : "Enable"}
+                  onClick={() => void toggleTestbed()}
+                  disabled={testbedSaving}
+                />
+              </div>
+            </div>
           </AdTileGrid>
           {owningMsp && (
             <div>
@@ -514,6 +632,56 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
               ))
             )}
           </AdListRowGroup>
+        </AdSection>
+
+        <AdSection
+          title="Package Assignment"
+          note="Internal-only, DB-only — no Stripe. Assigning a package marks this tenant's current active package of the same type completed; there is no undo."
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 11.5, color: TEXT.label, minWidth: 84 }}>Monitoring</span>
+              {monitoringServiceOptions.length === 0 ? (
+                <span style={{ fontSize: 11.5, color: TEXT.label }}>No Monitoring services in the catalog.</span>
+              ) : (
+                <>
+                  <AdSelect
+                    value={selectedMonitoringServiceId}
+                    onChange={setSelectedMonitoringServiceId}
+                    options={monitoringServiceOptions.map((s) => ({ value: String(s.id), label: s.tier ? `${s.name} (${s.tier})` : s.name }))}
+                    disabled={assigningCategory !== null}
+                  />
+                  <AdArmedButton
+                    label={assigningCategory === "monitoring" ? "Assigning…" : "Assign"}
+                    tone="primary"
+                    onConfirm={() => void assignPackage("monitoring", selectedMonitoringServiceId)}
+                    title="Replaces this tenant's current active Monitoring package, if any."
+                  />
+                </>
+              )}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 11.5, color: TEXT.label, minWidth: 84 }}>Retainer</span>
+              {retainerServiceOptions.length === 0 ? (
+                <span style={{ fontSize: 11.5, color: TEXT.label }}>No Retainer services in the catalog.</span>
+              ) : (
+                <>
+                  <AdSelect
+                    value={selectedRetainerServiceId}
+                    onChange={setSelectedRetainerServiceId}
+                    options={retainerServiceOptions.map((s) => ({ value: String(s.id), label: s.tier ? `${s.name} (${s.tier})` : s.name }))}
+                    disabled={assigningCategory !== null}
+                  />
+                  <AdArmedButton
+                    label={assigningCategory === "retainer" ? "Assigning…" : "Assign"}
+                    tone="primary"
+                    onConfirm={() => void assignPackage("retainer", selectedRetainerServiceId)}
+                    title="Replaces this tenant's current active Retainer package, if any."
+                  />
+                </>
+              )}
+            </div>
+          </div>
         </AdSection>
 
         <AdSection title="Users" note={`${detail.userCount} account${detail.userCount === 1 ? "" : "s"}`}>
