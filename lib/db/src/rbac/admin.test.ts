@@ -30,16 +30,46 @@ import {
 } from "./admin.ts";
 import type { RbacDb } from "./load.ts";
 
-// Real local-dev rows (see ./integrity-check.ts for the same ids).
-const MSP = 1;
-const OTHER_MSP = 1626;
-const TENANT = 1;
-const MSP_USER = 1; // belongs to MSP
-
 class Rollback extends Error {}
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const rootDb = drizzle(pool);
+
+// Real local-dev rows, resolved live rather than hardcoded — same discipline
+// #4413's resolveFixtureIds() already uses in ./integrity-check.ts. A
+// hardcoded tenant/msp/user id is invalidated the moment a dev-database
+// reset reassigns those serial ids (#4474: TENANT = 1 stopped existing).
+async function resolveFixtureIds(): Promise<{
+  MSP: number; OTHER_MSP: number; TENANT: number; MSP_USER: number;
+} | null> {
+  const [mspUserRow] = (await rootDb.execute(sql`
+    SELECT id, msp_id FROM users WHERE msp_id IS NOT NULL AND tenant_id IS NULL ORDER BY id LIMIT 1
+  `)).rows as Array<{ id: number; msp_id: number }>;
+  if (!mspUserRow) return null;
+
+  const [otherMspRow] = (await rootDb.execute(sql`
+    SELECT id FROM msps WHERE id != ${mspUserRow.msp_id} ORDER BY id LIMIT 1
+  `)).rows as Array<{ id: number }>;
+  if (!otherMspRow) return null;
+
+  const [customerUserRow] = (await rootDb.execute(sql`
+    SELECT tenant_id FROM users WHERE tenant_id IS NOT NULL AND msp_role = 'Customer' ORDER BY id LIMIT 1
+  `)).rows as Array<{ tenant_id: number }>;
+  if (!customerUserRow) return null;
+
+  return { MSP: mspUserRow.msp_id, OTHER_MSP: otherMspRow.id, TENANT: customerUserRow.tenant_id, MSP_USER: mspUserRow.id };
+}
+
+const resolved = await resolveFixtureIds();
+if (!resolved) {
+  console.log(
+    "SKIP  admin.test.ts (#2461) — no real msp user (with a second msp to use as the " +
+    "foreign org) plus a real customer-role user (for TENANT) exists in this database " +
+    "right now. Nothing hardcoded to fall back on (see #4413/#4474) — seed a real or " +
+    "vitest-fixture tenant/user first, then re-run.",
+  );
+}
+const { MSP, OTHER_MSP, TENANT, MSP_USER } = resolved ?? { MSP: 0, OTHER_MSP: 0, TENANT: 0, MSP_USER: 0 };
 
 // One transaction for the whole file — every test runs inside it via a nested
 // savepoint transaction, and the outer transaction is rolled back in
@@ -84,7 +114,7 @@ async function withSavepoint<T>(fn: (t: RbacDb) => Promise<T>): Promise<T> {
   return result;
 }
 
-describe("RBAC admin CRUD (#2461)", () => {
+describe.skipIf(!resolved)("RBAC admin CRUD (#2461)", () => {
   it("creates an org-scoped role, lists it alongside platform roles, then deletes it", async () => {
     await withSavepoint(async (t) => {
       const created = await createRole(t, "msp", { orgId: MSP, key: "zz-2461-engineer", name: "Engineer" });
