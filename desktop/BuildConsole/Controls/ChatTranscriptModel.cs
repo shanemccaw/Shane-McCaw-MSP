@@ -36,7 +36,27 @@ namespace BuildConsole.Controls
     {
         public string Text { get; }
         public UserMessageTurn(string text) => Text = text;
+
+        // Git #4547 — where this message actually is. Shane could not tell whether a message typed into Build Watch was
+        // sent, received, or silently lost, so each one now carries an honest delivery line under it.
+        private MessageDelivery _delivery;
+        public MessageDelivery Delivery { get => _delivery; private set => SetProperty(ref _delivery, value); }
+
+        private string _deliveryText = "";
+        /// <summary>Empty hides the line (messages rendered from history, or panes that don't track delivery).</summary>
+        public string DeliveryText { get => _deliveryText; private set => SetProperty(ref _deliveryText, value); }
+
+        public void SetDelivery(MessageDelivery delivery, string text)
+        {
+            Delivery = delivery;
+            DeliveryText = text;
+        }
     }
+
+    /// <summary>Git #4547 — the delivery ladder for one typed message. Each step is set only on real evidence: a successful
+    /// stdin write (Delivered), the CLI's own --replay-user-messages echo of the message (Received), and the first
+    /// assistant output after that echo (Responding).</summary>
+    public enum MessageDelivery { None, Pending, Delivered, Received, Responding, Failed }
 
     /// <summary>
     /// Marker turn rendering just the "CLAUDE" role header (spec: the gradient sparkles tile
@@ -239,6 +259,14 @@ namespace BuildConsole.Controls
         // mode already uses, since OwnsInteractive is always false for an adopted build). Only the
         // live-stdin path (branch 1 of that continuation) is actually unavailable in this mode.
         public bool CanSend => (Mode is ComposerMode.Interactive or ComposerMode.Terminal or ComposerMode.AdoptedReadOnly) && !string.IsNullOrWhiteSpace(Draft);
+
+        // Git #4547 — one-click answers while Claude is waiting on a reply (the "ask question" pause). They send through the
+        // exact same path as typed text; QuickReplyPrompt is the line shown beside them.
+        private bool _showQuickReplies;
+        public bool ShowQuickReplies { get => _showQuickReplies; set => SetProperty(ref _showQuickReplies, value); }
+
+        private string _quickReplyPrompt = "";
+        public string QuickReplyPrompt { get => _quickReplyPrompt; set => SetProperty(ref _quickReplyPrompt, value); }
 
         private string _placeholderText = "Reply to Claude — Shift+Enter for a new line";
         public string PlaceholderText { get => _placeholderText; set => SetProperty(ref _placeholderText, value); }

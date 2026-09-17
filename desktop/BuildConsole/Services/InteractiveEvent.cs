@@ -11,6 +11,10 @@ namespace BuildConsole.Services
         ToolResult,
         /// <summary>The turn-ending "result" event — the "done" marker plus the final result text.</summary>
         TurnResult,
+        /// <summary>Git #4547 — the CLI read a user message off stdin: the <c>isReplay:true</c> type:"user" echo that
+        /// <c>--replay-user-messages</c> emits. <see cref="InteractiveEvent.Text"/> is the message text it read. This is the
+        /// real "Claude received it" receipt behind the Build Watch composer's delivery state; nothing is rendered for it.</summary>
+        UserMessageAck,
     }
 
     /// <summary>

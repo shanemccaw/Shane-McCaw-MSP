@@ -268,6 +268,21 @@ namespace BuildConsole.Controls
             SendRequested?.Invoke(text);
         }
 
+        /// <summary>Git #4547 — Yes / No quick reply: sends the button's word exactly as if it were typed.</summary>
+        private void QuickReply_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.Tag is not string reply) return;
+            if (ViewModel.Mode is not (ComposerMode.Interactive or ComposerMode.Terminal or ComposerMode.AdoptedReadOnly)) return;
+            ViewModel.ShowQuickReplies = false;
+            SendRequested?.Invoke(reply);
+        }
+
+        /// <summary>Git #4547 — puts text back in the composer (a message that was not sent, so nothing typed is lost).</summary>
+        public void RestoreDraft(string text)
+        {
+            if (string.IsNullOrWhiteSpace(ViewModel.Draft)) ViewModel.Draft = text;
+        }
+
         private void ComposerBox_PreviewKeyDown(object sender, KeyEventArgs e)
         {
             if (_autoCompletePopup?.IsOpen == true && _autoCompleteList != null && _autoCompleteList.Items.Count > 0)

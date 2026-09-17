@@ -48,6 +48,33 @@
                     <TextBlock Text="{Binding Text}" Foreground="{StaticResource ChatPane.Text1}" TextWrapping="Wrap" LineHeight="26"
                                ContextMenu="{StaticResource CopyTextMenu}"
                                FontSize="{Binding ActualWidth, ElementName=Root, Converter={StaticResource Fluid}, ConverterParameter='12.5,17.5'}"/>
+                    <!-- Git #4547 — honest delivery state for this message (sending → sent → received → Claude responding, or not delivered). -->
+                    <TextBlock Text="{Binding DeliveryText}" TextWrapping="Wrap" Margin="0,8,0,0" FontWeight="SemiBold"
+                               Visibility="{Binding DeliveryText, Converter={StaticResource NonEmptyVis}}"
+                               FontSize="{Binding ActualWidth, ElementName=Root, Converter={StaticResource Fluid}, ConverterParameter='10,13'}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{StaticResource ChatPane.Muted5}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Delivery}" Value="Pending">
+                                        <Setter Property="Foreground" Value="{StaticResource ChatPane.Warning}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Delivery}" Value="Delivered">
+                                        <Setter Property="Foreground" Value="{StaticResource ChatPane.AccentText2}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Delivery}" Value="Received">
+                                        <Setter Property="Foreground" Value="{StaticResource ChatPane.Success}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Delivery}" Value="Responding">
+                                        <Setter Property="Foreground" Value="{StaticResource ChatPane.Success}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Delivery}" Value="Failed">
+                                        <Setter Property="Foreground" Value="{StaticResource ChatPane.Danger}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                 </StackPanel>
             </Border>
         </DataTemplate>
@@ -551,6 +578,40 @@
                 <Border MaxWidth="800" HorizontalAlignment="Stretch"
                         Padding="{Binding ActualWidth, ElementName=Root, Converter={StaticResource FluidPad}, ConverterParameter='14,36'}">
                     <StackPanel>
+
+                        <!-- Git #4547 — Claude is waiting on an answer: one-click Yes / No, sent through the same path as typed text. -->
+                        <Grid Margin="2,0,2,8" Visibility="{Binding ShowQuickReplies, Converter={StaticResource BoolVis}}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{Binding QuickReplyPrompt}" TextWrapping="Wrap" VerticalAlignment="Center"
+                                       Foreground="{StaticResource ChatPane.Warning}" FontWeight="SemiBold" FontSize="{StaticResource BodyFontSize}"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="10,0,0,0" VerticalAlignment="Center">
+                                <Button x:Name="QuickYesButton" Click="QuickReply_Click" Tag="Yes" Height="30" Padding="16,0" Margin="0,0,6,0"
+                                        Background="{StaticResource ChatPane.Primary}" BorderThickness="0" Cursor="Hand">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                    <TextBlock Text="Yes" Foreground="White" FontWeight="SemiBold" FontSize="{StaticResource BodyFontSize}"/>
+                                </Button>
+                                <Button x:Name="QuickNoButton" Click="QuickReply_Click" Tag="No" Height="30" Padding="16,0"
+                                        Background="{StaticResource ChatPane.Surface}" BorderBrush="{StaticResource ChatPane.BorderStrong}" BorderThickness="1" Cursor="Hand">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                    <TextBlock Text="No" Foreground="{StaticResource ChatPane.Text1}" FontWeight="SemiBold" FontSize="{StaticResource BodyFontSize}"/>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
 
                         <!-- Interactive / Continuation / Git #2095 AdoptedReadOnly: real input shell remains
                              available — for AdoptedReadOnly, OwnsInteractive is always false, so Send here

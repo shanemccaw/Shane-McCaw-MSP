@@ -57,6 +57,10 @@ namespace BuildConsole.Controls
         private StatusLineTurn? _buildStatusLine;
         private bool _buildInAssistantRun;
         private readonly Dictionary<string, ToolDetailLine> _buildToolCallsById = new();
+        /// <summary>Git #4547 — messages written to the build pane's session whose --replay-user-messages receipt hasn't arrived.</summary>
+        private readonly List<UserMessageTurn> _buildAwaitingAck = new();
+        /// <summary>Git #4547 — true while a typed message is stopping/resuming the session; a second Send is refused, never a second launch.</summary>
+        private bool _buildContinuationInFlight;
         private int _buildPaneInteractiveCursor;
 
         private static readonly System.Text.RegularExpressions.Regex ToolTokenRegex = new(@"\[tool:\s*([^\]]+)\]", System.Text.RegularExpressions.RegexOptions.Compiled);
@@ -2141,144 +2145,126 @@ namespace BuildConsole.Controls
             }
         }
 
+        /// <summary>
+        /// Git #4547 — same guarantees as Build Watch's composer: a live writable stdin gets the message directly; otherwise
+        /// QueueWatcherService.LaunchContinuationAsync stops any still-alive process for this build (confirmed exit) BEFORE
+        /// resuming the session, so a message can never start a second copy of a running build. Every message shows where it is.
+        /// </summary>
         private async void HandleBuildSend(string text)
         {
-            if (string.IsNullOrWhiteSpace(text) || _buildPaneItemId == 0) return;
+            if (string.IsNullOrWhiteSpace(text) || _buildPaneItemId == 0 || _buildPane == null) return;
 
             QueueWatcherService? watcher = null;
-            BuildQueuePostgresClient? db = null;
-            BuildTrackerApiClient? api = null;
-            if (Application.Current.MainWindow is MainWindow mw)
+            if (Application.Current.MainWindow is MainWindow mw) watcher = mw.QueueWatcher;
+
+            var turn = new UserMessageTurn(text.Trim());
+            _buildPane.ViewModel.Turns.Add(turn);
+
+            if (watcher == null)
             {
-                watcher = mw.QueueWatcher;
-                db = mw.QueueDb;
-                api = mw.BuildTrackerApi;
+                turn.SetDelivery(MessageDelivery.Failed, "Not sent — the queue watcher isn't running");
+                _buildPane.RestoreDraft(text);
+                return;
             }
-
-            if (watcher == null) return;
-
-            // Git #1327 — only treat it as a live stdin send if SendInput actually delivered
-            // to an open pipe. It can fail (returning false) even when still owned and not-yet
-            // HasExited — e.g. the 15s idle auto-finalize closed stdin as the user typed. On
-            // false, fall through to the --resume continuation so the guidance still lands
-            // instead of being silently dropped while shown as sent.
-            bool isLive = watcher.OwnsInteractive(_buildPaneItemId) && !watcher.HasExited(_buildPaneItemId, out _);
-            if (isLive && watcher.SendInput(_buildPaneItemId, text))
+            if (_buildContinuationInFlight)
             {
-                _buildPane?.ViewModel.Turns.Add(new UserMessageTurn(text));
+                turn.SetDelivery(MessageDelivery.Failed, "Not sent — this build's session is still resuming from your last message. Send again once it's running.");
+                _buildPane.RestoreDraft(text);
                 return;
             }
 
-            string? sessionId = _buildPaneSessionId ?? watcher.GetSessionId(_buildPaneItemId);
-            ActivityLog.Log(Channel, $"Resuming build #{_buildPaneItemId} (session: {sessionId ?? "fresh"}): {text}");
-
-            if (_buildPane != null)
+            // Git #1327 — only a live stdin send if SendInput genuinely delivered to an open pipe.
+            if (watcher.OwnsInteractive(_buildPaneItemId) && !watcher.HasExited(_buildPaneItemId, out _)
+                && watcher.SendInput(_buildPaneItemId, text))
             {
-                _buildPane.ViewModel.Mode = ComposerMode.Interactive;
-                _buildPane.ViewModel.CanStop = true;
-                _buildPane.ViewModel.PlaceholderText = "Continuation launching...";
-                _buildPane.ViewModel.Turns.Add(new UserMessageTurn($"[Resuming with guidance]: {text}"));
+                turn.SetDelivery(MessageDelivery.Delivered, "Sent to the running session — waiting for Claude to read it");
+                _buildAwaitingAck.Add(turn);
+                return;
             }
 
-            try
+            if (watcher.IsProcessAlive(_buildPaneItemId)
+                && watcher.GetInteractiveState(_buildPaneItemId) is not (InteractiveInputState.WaitingForInput or InteractiveInputState.Stopped))
             {
-                string model = _associatedBuild?.Model ?? "claude-sonnet-5";
-                string effort = _associatedBuild?.Effort ?? "normal";
-                string? cwd = _associatedBuild?.Cwd ?? BuildTrackerConfig.FindRepoRoot();
-                if (string.IsNullOrEmpty(cwd))
+                var answer = MessageBox.Show(
+                    "This build is still working, but it can't take typed input.\n\n" +
+                    "Sending will stop that process and resume the same session with your message, so only one copy ever runs.\n\nStop it and send?",
+                    "Send to a running build", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (answer != MessageBoxResult.Yes)
                 {
-                    // Git #1985 — an empty cwd here is not "run in the current directory",
-                    // it's "queue a resumed build against an unresolved working directory."
-                    // Fail closed rather than silently launching against cwd="". FindRepoRoot()
-                    // already logged + toasted the underlying resolution failure (BuildTrackerConfig
-                    // SurfaceRepoRootFailure) — this just refuses to proceed on top of it rather than
-                    // adding a second competing warning path for the same condition.
-                    ActivityLog.Log(Channel, "Continuation aborted: repo root could not be resolved (cwd would be empty).");
-                    if (_buildPane != null)
-                        _buildPane.ViewModel.PlaceholderText = "Could not resume — repo root unresolved. See toast.";
+                    turn.SetDelivery(MessageDelivery.Failed, "Not sent — the running build was left alone (your text is back in the box)");
+                    _buildPane.RestoreDraft(text);
                     return;
                 }
-                List<int>? blockedBy = _associatedBuild?.BlockedByNumbers;
+            }
 
-                int newQueueId = 0;
-                if (db != null)
+            string? cwd = _associatedBuild?.Cwd ?? BuildTrackerConfig.FindRepoRoot();
+            if (string.IsNullOrEmpty(cwd))
+            {
+                // Git #1985 — an empty cwd is "queue a resumed build against an unresolved working directory". Fail closed;
+                // FindRepoRoot() already logged + toasted the underlying resolution failure.
+                ActivityLog.Log(Channel, "Continuation aborted: repo root could not be resolved (cwd would be empty).");
+                turn.SetDelivery(MessageDelivery.Failed, "Not sent — repo root unresolved. See toast.");
+                _buildPane.RestoreDraft(text);
+                return;
+            }
+
+            int originalId = _buildPaneItemId;
+            ActivityLog.Log(Channel, $"Resuming build #{originalId} (session: {watcher.GetSessionId(originalId) ?? _buildPaneSessionId ?? "fresh"}; live process: {watcher.IsProcessAlive(originalId)}): {text}");
+            _buildContinuationInFlight = true;
+            turn.SetDelivery(MessageDelivery.Pending, "Sending…");
+            _buildPane.ViewModel.CanStop = false;
+            _buildPane.ViewModel.PlaceholderText = "Resuming the session with your message…";
+
+            QueueWatcherService.ContinuationResult result;
+            try
+            {
+                result = await watcher.LaunchContinuationAsync(new QueueWatcherService.ContinuationRequest
                 {
-                    var queued = await db.QueueBuildAsync(
-                        // Git #3728 — shared prefix so Retry can recognise this row as resume-only.
-                        ResumeOnlyQueueRows.ContinueTitlePrefix + (_associatedBuild?.Title ?? "Build"),
-                        text,
-                        model,
-                        effort,
-                        cwd,
-                        _loadedIssue?.IssueNumber,
-                        blockedBy,
-                        resumeSessionId: sessionId,
-                        buildSet: _associatedBuild?.BuildSet, cli: _associatedBuild?.Cli, account: _associatedBuild?.Account);
-                    newQueueId = queued.Id;
-
-                    // Git #2120 — same fix as #2119's Reply flow: resolve the ORIGINAL
-                    // _buildPaneItemId row so it doesn't sit stuck showing stale active status
-                    // forever while the resumed work runs under this new "Continue: …" row
-                    // (originals here are typically verifying/queued, which
-                    // MarkSupersededByReplyAsync's guard already allows).
-                    if (_buildPaneItemId > 0)
-                    {
-                        try
-                        {
-                            await db.MarkSupersededByReplyAsync(_buildPaneItemId, newQueueId);
-                        }
-                        catch (Exception ex)
-                        {
-                            ActivityLog.Log(Channel, $"Couldn't mark original #{_buildPaneItemId} superseded by continuation #{newQueueId}: {ex.Message}");
-                        }
-                    }
-
-                    // Git #4542 — a continuation is a manual launch bounded by the HARD cap. Reserve the
-                    // slot before force-claiming; if the real total is already at the hard ceiling, leave
-                    // the new "Continue: …" row queued for the auto-dispatcher instead of forcing it into
-                    // a stuck 'running' state.
-                    if (!watcher.TryReserveManualSlot(newQueueId))
-                    {
-                        ActivityLog.Log(Channel, $"Continuation #{newQueueId} left queued — real total at the hard cap ({watcher.RunningCount}/{watcher.HardCap}); it will start when a slot frees.");
-                    }
-                    else
-                    {
-                        try
-                        {
-                            var claimed = await db.ForceClaimAsync(newQueueId);
-                            watcher.LaunchItemExplicit(claimed); // slot already reserved above → launches
-                        }
-                        catch (Exception ex)
-                        {
-                            watcher.ReleaseReservation(newQueueId); // claim/launch failed — give the slot back
-                            ActivityLog.Log(Channel, $"Force claim/launch failed: {ex.Message}");
-                        }
-                    }
-                }
-                else if (api != null)
-                {
-                    var res = await api.QueueBuildAsync(
-                        // Git #3728 — shared prefix so Retry can recognise this row as resume-only.
-                        ResumeOnlyQueueRows.ContinueTitlePrefix + (_associatedBuild?.Title ?? "Build"),
-                        text,
-                        model,
-                        effort,
-                        cwd,
-                        _loadedIssue?.IssueNumber,
-                        blockedBy,
-                        resumeSessionId: sessionId,
-                        buildSet: _associatedBuild?.BuildSet, cli: _associatedBuild?.Cli, account: _associatedBuild?.Account);
-                }
-
-                if (newQueueId > 0)
-                {
-                    StartBuildTailing(newQueueId, sessionId);
-                }
+                    OriginalQueueId = originalId,
+                    Title = _associatedBuild?.Title ?? "Build",
+                    Text = text,
+                    Model = _associatedBuild?.Model ?? "claude-sonnet-5",
+                    Effort = _associatedBuild?.Effort ?? "normal",
+                    Cwd = cwd,
+                    GithubNumber = _loadedIssue?.IssueNumber,
+                    BlockedByNumbers = _associatedBuild?.BlockedByNumbers,
+                    FallbackSessionId = _buildPaneSessionId,
+                    BuildSet = _associatedBuild?.BuildSet,
+                    Cli = _associatedBuild?.Cli,
+                    Account = _associatedBuild?.Account,
+                }, phase => turn.SetDelivery(MessageDelivery.Pending, phase));
             }
             catch (Exception ex)
             {
                 ActivityLog.Log(Channel, $"Continuation failed: {ex.Message}");
+                result = new QueueWatcherService.ContinuationResult { QueueId = originalId, FailureReason = ex.Message };
             }
+            finally
+            {
+                _buildContinuationInFlight = false;
+            }
+
+            if (result.QueuedAtHardCap)
+            {
+                // Git #4542 — every slot is taken; the resume row is queued with this message and starts when one frees.
+                turn.SetDelivery(MessageDelivery.Pending, "Queued — " + result.FailureReason + ". The session resumes with your message when a slot frees.");
+                return;
+            }
+            if (!result.Launched)
+            {
+                turn.SetDelivery(MessageDelivery.Failed, "Not delivered — " + (result.FailureReason ?? "the resumed session didn't start") + " (your text is back in the box)");
+                _buildPane?.RestoreDraft(text);
+                return;
+            }
+
+            // A fresh pane for the resumed run's event stream (it starts from zero, even under a reused queue id); carry this
+            // message over so its delivery line keeps updating there.
+            StartBuildTailing(result.QueueId, result.SessionId);
+            turn.SetDelivery(MessageDelivery.Delivered, result.StoppedLiveProcess
+                ? "Old process stopped; resumed session started with your message — waiting for Claude to read it"
+                : "Resumed session started with your message — waiting for Claude to read it");
+            _buildPane?.ViewModel.Turns.Add(turn);
+            _buildAwaitingAck.Add(turn);
         }
 
         private void HandleBuildStop()
@@ -2550,6 +2536,18 @@ namespace BuildConsole.Controls
                 case InteractiveEventKind.ToolResult:
                     FillToolResult(ev);
                     break;
+                case InteractiveEventKind.UserMessageAck:
+                    {
+                        // Git #4547 — the CLI's own receipt for a message it read off stdin; matched by content.
+                        var ack = (ev.Text ?? "").Trim();
+                        var turn = ack.Length == 0 ? null : _buildAwaitingAck.FirstOrDefault(t => t.Text.Length > 0 && ack.Contains(t.Text, StringComparison.Ordinal));
+                        if (turn != null)
+                        {
+                            _buildAwaitingAck.Remove(turn);
+                            turn.SetDelivery(MessageDelivery.Received, "Received by Claude");
+                        }
+                        break;
+                    }
                 case InteractiveEventKind.TurnResult:
                     {
                         var dur = ev.DurationMs.HasValue ? $" ({ev.DurationMs}ms)" : "";

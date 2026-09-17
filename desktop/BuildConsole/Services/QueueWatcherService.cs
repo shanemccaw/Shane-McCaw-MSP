@@ -176,6 +176,14 @@ namespace BuildConsole.Services
             public CancellationTokenSource? TailCts;
             /// <summary>The owned stdin writer — null for legacy builds. Guarded by <see cref="InputLock"/> for writes.</summary>
             public StreamWriter? Stdin;
+            /// <summary>Git #4547 — set when the idle auto-finalize closed <see cref="Stdin"/>. Closing stdin does NOT end the
+            /// process: a build with background work kept running for an hour after it (queue #2957, 2026-09-15). While this is
+            /// true the process is alive but can never take typed input again, so <see cref="OwnsInteractive"/> reports false.</summary>
+            public volatile bool StdinClosed;
+            /// <summary>Git #4547 — set just before this process is killed so a Build Watch message can resume its session
+            /// instead. The reap loop drops a flagged entry silently: no completion is reported and nothing post-build fires,
+            /// because the queue row is handed straight to the continuation that replaces it.</summary>
+            public volatile bool HandedOffToContinuation;
             public readonly object InputLock = new();
             public readonly object LogLock = new();
 
@@ -2107,6 +2115,14 @@ namespace BuildConsole.Services
                 var entry = _running[id];
                 if (!entry.Process.HasExited) continue;
                 int exitCode = entry.Process.ExitCode;
+                if (entry.HandedOffToContinuation)
+                {
+                    // Git #4547 — killed on purpose so a Build Watch message could resume its session. The queue row
+                    // now belongs to that continuation: reporting this exit would mark it failed/Crashed and fire the
+                    // post-build pipeline for a build that isn't finished.
+                    ReleaseHandedOffEntry(id, entry);
+                    continue;
+                }
                 ActivityLog.Log("watcher", $"Finished: {entry.Title} (exit {exitCode})");
 
                 // Session-limit auto-restart: a build whose output hit the CLI's
@@ -2963,6 +2979,10 @@ namespace BuildConsole.Services
                 // a stream-json user message on stdin below.
                 args.Add("--input-format");
                 args.Add("stream-json");
+                // Git #4547 — `claude --help` (2.1.274): "--replay-user-messages  Re-emit user messages from stdin back
+                // on stdout for acknowledgment". Live capture: each message read comes back as a type:"user" line with
+                // "isReplay":true. That echo is the real "Claude received it" signal the Build Watch composer shows.
+                if (exeToRun == _claudeExe) args.Add("--replay-user-messages");
             }
             args.Add("--output-format");
             args.Add("stream-json");
@@ -3440,7 +3460,8 @@ namespace BuildConsole.Services
             foreach (var ev in events)
             {
                 AppendEvent(entry, ev);
-                hadRenderable = true;
+                // Git #4547 — a replay receipt is not the agent doing anything; it must not move the working/waiting state.
+                if (ev.Kind != InteractiveEventKind.UserMessageAck) hadRenderable = true;
                 // Git #1990 — track each tool call's command and detect permission/interrupt
                 // rejections so a refused tool is both logged now (with the command) and can force
                 // a distinct exit at reap. Runs after AppendEvent so the command map is populated
@@ -3782,7 +3803,18 @@ namespace BuildConsole.Services
         /// retained builds so their output keeps streaming.
         /// </summary>
         public bool OwnsInteractive(int id) =>
-            _running.TryGetValue(id, out var e) && e.Interactive && e.Stdin != null;
+            _running.TryGetValue(id, out var e) && e.Interactive && e.Stdin != null && !e.StdinClosed;
+
+        /// <summary>Git #4547 — true while this instance tracks a process for this queue id that has not exited, whether or
+        /// not it can still take input (launched, adopted, or stdin already closed by the idle auto-finalize). This, not
+        /// <see cref="OwnsInteractive"/>, is what must be false before a --resume continuation of the same session launches.</summary>
+        public bool IsProcessAlive(int id) =>
+            _running.TryGetValue(id, out var e) && !e.Process.HasExited;
+
+        /// <summary>Git #4547 — true for a live interactive process whose stdin is gone (closed by the idle auto-finalize, or
+        /// never re-attached after adoption): it is still running, but typed input cannot reach it.</summary>
+        public bool IsInputClosed(int id) =>
+            _running.TryGetValue(id, out var e) && e.Interactive && !e.Process.HasExited && (e.Stdin == null || e.StdinClosed);
 
         /// <summary>
         /// Git #1839 — whether this queue id can render from the interactive structured stream
@@ -3896,6 +3928,210 @@ namespace BuildConsole.Services
             return true;
         }
 
+        // ── Git #4547 — one process per session: the guarded message → --resume continuation ──────────────
+
+        /// <summary>Git #4547 — what a Build Watch / Git detail composer needs to re-queue a build as a --resume
+        /// continuation carrying the typed message as its prompt.</summary>
+        public sealed class ContinuationRequest
+        {
+            public int OriginalQueueId { get; init; }
+            public string Title { get; init; } = "";
+            public string Text { get; init; } = "";
+            public string? Model { get; init; }
+            public string? Effort { get; init; }
+            public string? Cwd { get; init; }
+            public int? GithubNumber { get; init; }
+            public List<int>? BlockedByNumbers { get; init; }
+            /// <summary>The composer's own remembered session id — used only when this instance has no live/retained entry to read it from.</summary>
+            public string? FallbackSessionId { get; init; }
+            public string? BuildSet { get; init; }
+            public string? Cli { get; init; }
+            public string? Account { get; init; }
+        }
+
+        public sealed class ContinuationResult
+        {
+            public bool Launched { get; init; }
+            /// <summary>The queue row the continuation runs under — the original id when its row was reused.</summary>
+            public int QueueId { get; init; }
+            public string? SessionId { get; init; }
+            /// <summary>True when a live process had to be stopped first (its input channel was closed or never re-attached).</summary>
+            public bool StoppedLiveProcess { get; init; }
+            /// <summary>Git #4542 — not launched only because every slot is taken: the resume row is queued with the message and starts when one frees.</summary>
+            public bool QueuedAtHardCap { get; init; }
+            /// <summary>Plain-language reason nothing was launched; null when <see cref="Launched"/>.</summary>
+            public string? FailureReason { get; init; }
+        }
+
+        private static readonly TimeSpan ContinuationStopTimeout = TimeSpan.FromSeconds(20);
+        /// <summary>Worktree provisioning alone has taken 94s live (q2976, 2026-09-15), so a loop-claimed launch gets a generous bound.</summary>
+        private static readonly TimeSpan ContinuationLoopClaimWait = TimeSpan.FromMinutes(3);
+
+        /// <summary>
+        /// Git #4547 — THE path a typed message takes when it cannot go to a live stdin. Before it, Build Watch and the Git
+        /// detail pane each queued a --resume continuation without checking whether the original process was still alive.
+        /// Confirmed live on 2026-09-15: the idle auto-finalize closed queue #2957's stdin, the process kept running, Send's
+        /// write failed, and the fallback launched #2976 on the same session — then #2976's stdin closed and a third launched,
+        /// all resuming session c4180db4 at once until they were stopped by hand. This method guarantees the order:
+        ///   1. a live process for the id is killed and CONFIRMED exited (bounded wait) — or nothing launches at all;
+        ///   2. only then is the row re-queued (reused in place when a process was stopped, so the same worktree and slot
+        ///      carry on), force-claimed and launched, and the launch is awaited so the caller knows whether it started.
+        /// UI thread only (it mutates <see cref="_running"/>). The caller owns asking Shane before interrupting a build that
+        /// is actively working.
+        /// </summary>
+        public async Task<ContinuationResult> LaunchContinuationAsync(ContinuationRequest req, Action<string>? onPhase = null)
+        {
+            if (_db == null)
+                return new ContinuationResult { QueueId = req.OriginalQueueId, FailureReason = "no direct queue database connection — can't resume from here" };
+
+            int originalId = req.OriginalQueueId;
+            // The live entry's captured id is the session actually being continued; the composer's copy can be stale.
+            string? sessionId = GetSessionId(originalId) ?? req.FallbackSessionId;
+            bool stopped = false;
+            bool reserved = false;
+
+            if (IsProcessAlive(originalId))
+            {
+                onPhase?.Invoke("Stopping the old process first — it can't take typed input, and two copies must never run…");
+                // Reserve the row as launching so the phantom-running sweep can't fail it in the gap between this kill and
+                // the re-queue below. LaunchItem's own finally releases it once the continuation launch completes.
+                lock (_launchGate) _launching.Add(originalId);
+                reserved = true;
+                if (!await StopForContinuationAsync(originalId))
+                {
+                    lock (_launchGate) _launching.Remove(originalId);
+                    return new ContinuationResult
+                    {
+                        QueueId = originalId, SessionId = sessionId,
+                        FailureReason = $"the old process didn't exit within {ContinuationStopTimeout.TotalSeconds:0}s, so nothing was launched (no duplicate)",
+                    };
+                }
+                stopped = true;
+            }
+
+            onPhase?.Invoke("Resuming the session with your message…");
+            QueueItem claimed;
+            QueueItem? queued = null;
+            bool slotReserved = false;
+            try
+            {
+                var title = req.Title.StartsWith(ResumeOnlyQueueRows.ContinueTitlePrefix, StringComparison.Ordinal)
+                    ? req.Title // Git #4547 — no more "Continue: Continue: Continue: …" titles on repeat messages
+                    : ResumeOnlyQueueRows.ContinueTitlePrefix + req.Title;
+                queued = await _db.QueueBuildAsync(title, req.Text, req.Model, req.Effort, req.Cwd, req.GithubNumber, req.BlockedByNumbers,
+                    resumeSessionId: sessionId, buildSet: req.BuildSet, cli: req.Cli, account: req.Account,
+                    reuseRowId: stopped ? originalId : null);
+
+                if (queued.Id != originalId)
+                {
+                    // Git #2120 — resolve the ORIGINAL row so it doesn't sit showing stale active status forever.
+                    try { await _db.MarkSupersededByReplyAsync(originalId, queued.Id); }
+                    catch (Exception ex) { ActivityLog.Log("build-watch", $"Couldn't mark original #{originalId} superseded by continuation #{queued.Id}: {ex.Message}"); }
+                }
+
+                // Git #4542 — a continuation relaunches a real process, so it is a manual launch bounded by the HARD cap.
+                // Reserve before force-claiming; at the ceiling the row stays queued (with the message as its prompt) for the
+                // auto-dispatcher. A stopped process's row already holds its reservation, so this is idempotent for it.
+                if (!TryReserveManualSlot(queued.Id))
+                {
+                    if (reserved && queued.Id != originalId) ReleaseReservation(originalId);
+                    ActivityLog.Log("build-watch", $"Git #4547 continuation #{queued.Id} left queued — real total at the hard cap ({OccupiedSlots}/{_hardCap}); it starts with the message when a slot frees.");
+                    return new ContinuationResult
+                    {
+                        QueueId = queued.Id, SessionId = sessionId, StoppedLiveProcess = stopped, QueuedAtHardCap = true,
+                        FailureReason = $"every build slot is taken ({OccupiedSlots}/{_hardCap})",
+                    };
+                }
+                slotReserved = true;
+                claimed = await _db.ForceClaimAsync(queued.Id);
+            }
+            catch (InvalidOperationException) when (queued != null)
+            {
+                // The periodic pickup loop claimed the 'queued' row in the instant before ForceClaimAsync — it is launching it
+                // itself (one launch, not two). Wait, bounded, for that launch to register instead of reporting a false failure.
+                // The id's reservation is shared with that launch (same _launching entry), which clears it in its own finally.
+                if (reserved && queued.Id != originalId) ReleaseReservation(originalId);
+                _retained.TryGetValue(queued.Id, out var retainedAtClaim);
+                bool NewRun() => IsProcessAlive(queued.Id) || (_retained.TryGetValue(queued.Id, out var r) && !ReferenceEquals(r, retainedAtClaim));
+                var until = DateTime.UtcNow + ContinuationLoopClaimWait;
+                while (DateTime.UtcNow < until && !NewRun())
+                    await Task.Delay(500);
+                bool loopStarted = NewRun();
+                ActivityLog.Log("build-watch", $"Git #4547 continuation of queue #{originalId}: row #{queued.Id} was claimed by the pickup loop first — {(loopStarted ? "it launched there" : $"no launch seen within {ContinuationLoopClaimWait.TotalSeconds:0}s")}.");
+                return new ContinuationResult
+                {
+                    Launched = loopStarted, QueueId = queued.Id, SessionId = sessionId, StoppedLiveProcess = stopped,
+                    FailureReason = loopStarted ? null : "the queue picked the resume up itself but it hasn't started yet — watch the Build Queue",
+                };
+            }
+            catch (Exception ex)
+            {
+                if (slotReserved) ReleaseReservation(queued!.Id);
+                if (reserved) ReleaseReservation(originalId);
+                ActivityLog.Log("build-watch", $"Git #4547 continuation of queue #{originalId} not launched: {ex.Message}");
+                return new ContinuationResult { QueueId = originalId, SessionId = sessionId, StoppedLiveProcess = stopped, FailureReason = ex.Message };
+            }
+
+            ActivityLog.Log("build-watch", $"Git #4547 launching continuation of queue #{originalId} as #{claimed.Id} (session {sessionId ?? "fresh"}{(stopped ? ", after stopping its input-closed process" : "")}).");
+            _running.TryGetValue(claimed.Id, out var runningBefore);
+            _retained.TryGetValue(claimed.Id, out var retainedBefore);
+            await SafeLaunch(claimed, isForced: true);
+            if (reserved && claimed.Id != originalId) ReleaseReservation(originalId);
+
+            // Started = a NEW entry was registered for the id (it may already have exited and been reaped into _retained).
+            bool started = (_running.TryGetValue(claimed.Id, out var runningAfter) && !ReferenceEquals(runningBefore, runningAfter))
+                || (_retained.TryGetValue(claimed.Id, out var retainedAfter) && !ReferenceEquals(retainedBefore, retainedAfter));
+            return new ContinuationResult
+            {
+                Launched = started,
+                QueueId = claimed.Id,
+                SessionId = sessionId,
+                StoppedLiveProcess = stopped,
+                FailureReason = started ? null : "the resumed session didn't start — see the activity log (watcher channel)",
+            };
+        }
+
+        /// <summary>Git #4547 — kills a live process so its session can be resumed, and waits (bounded) for the exit to be
+        /// real before returning true. Flags the entry first so the reap loop hands the row over instead of completing it.</summary>
+        private async Task<bool> StopForContinuationAsync(int id)
+        {
+            if (!_running.TryGetValue(id, out var entry)) return true;
+            entry.HandedOffToContinuation = true;
+            lock (_gate) CancelAutoFinalize(entry);
+            if (!entry.Process.HasExited)
+            {
+                try { entry.Process.Kill(entireProcessTree: true); }
+                catch (Exception ex) { ActivityLog.Log("interactive-build", $"Git #4547 kill for queue #{id} threw: {ex.Message} — Job Object backstop next."); }
+                CloseBuildJob(entry);
+            }
+
+            var deadline = DateTime.UtcNow + ContinuationStopTimeout;
+            while (!entry.Process.HasExited && DateTime.UtcNow < deadline)
+                await Task.Delay(100);
+
+            if (!entry.Process.HasExited)
+            {
+                // Leave it flagged-off: a later natural exit must still complete the row normally.
+                entry.HandedOffToContinuation = false;
+                ActivityLog.Log("interactive-build", $"Git #4547 queue #{id} ({entry.Title}) did not exit within {ContinuationStopTimeout.TotalSeconds:0}s of the kill — continuation NOT launched, so no second process runs.");
+                return false;
+            }
+
+            ReleaseHandedOffEntry(id, entry);
+            return true;
+        }
+
+        /// <summary>Git #4547 — drops a handed-off (killed-for-continuation) entry from tracking without reporting a completion.
+        /// Idempotent: called by whichever of <see cref="StopForContinuationAsync"/> and the reap loop sees the exit first.</summary>
+        private void ReleaseHandedOffEntry(int id, RunningEntry entry)
+        {
+            if (!_running.TryGetValue(id, out var current) || !ReferenceEquals(current, entry)) return;
+            _running.Remove(id);
+            entry.TailCts?.Cancel();
+            CloseBuildJob(entry);
+            ActivityLog.Log("interactive-build", $"Git #4547 stopped queue #{id} ({entry.Title}, exit {entry.Process.ExitCode}) so a typed message can resume its session — no completion reported; the row passes to the continuation.");
+        }
+
         /// <summary>Approximate current context-window token usage for a live or just-exited (retained) interactive build — real numbers read from the CLI's own stream-json `usage` field, or null if unknown/not an interactive build/nothing seen yet.</summary>
         public long? GetContextTokens(int id)
         {
@@ -3994,6 +4230,11 @@ namespace BuildConsole.Services
                 ActivityLog.Log("interactive-build", $"live stdin unavailable — process for queue #{id} already exited (caller will resume the session instead)");
                 return false;
             }
+            if (entry.Stdin == null || entry.StdinClosed)
+            {
+                ActivityLog.Log("interactive-build", $"live stdin unavailable — queue #{id} is still running but its stdin is closed (caller must stop it before resuming the session)");
+                return false;
+            }
 
             // Cancel any pending idle auto-finalize FIRST, before touching stdin: a nudge
             // arriving inside the 15s idle window must keep the pipe open rather than race
@@ -4065,7 +4306,7 @@ namespace BuildConsole.Services
             bool alreadyStopping;
             lock (_gate) alreadyStopping = entry.StopRequestedUtc != null;
 
-            if (!entry.Interactive || entry.Stdin == null || alreadyStopping)
+            if (!entry.Interactive || entry.Stdin == null || entry.StdinClosed || alreadyStopping)
             {
                 HardKill(entry, id, "stop (hard kill)");
                 return;
@@ -4376,7 +4617,7 @@ namespace BuildConsole.Services
                     default:
                         return;
                 }
-                try { lock (entry.InputLock) entry.Stdin?.Close(); } catch { }
+                try { lock (entry.InputLock) { entry.StdinClosed = true; entry.Stdin?.Close(); } } catch { }
                 ActivityLog.Log("interactive-build", $"auto-finalizing idle interactive build (closing stdin so it exits): {entry.Title} (queue #{id})");
             }, TaskScheduler.Default);
         }
@@ -4657,6 +4898,27 @@ namespace BuildConsole.Services
                         break;
 
                     case "user":
+                        // Git #4547 — the --replay-user-messages echo of a message the CLI read off stdin (real shape:
+                        // {"type":"user","message":{"role":"user","content":"<text>"},…,"isReplay":true}). A receipt, not output.
+                        if (root.TryGetProperty("isReplay", out var replay) && replay.ValueKind == JsonValueKind.True)
+                        {
+                            string ackText = "";
+                            if (root.TryGetProperty("message", out var rmsg) && rmsg.TryGetProperty("content", out var rcontent))
+                            {
+                                if (rcontent.ValueKind == JsonValueKind.String) ackText = rcontent.GetString() ?? "";
+                                else if (rcontent.ValueKind == JsonValueKind.Array)
+                                {
+                                    var sb = new StringBuilder();
+                                    foreach (var part in rcontent.EnumerateArray())
+                                        if (part.ValueKind == JsonValueKind.Object && part.TryGetProperty("type", out var rpt) && rpt.GetString() == "text"
+                                            && part.TryGetProperty("text", out var rtx))
+                                            sb.Append(rtx.GetString());
+                                    ackText = sb.ToString();
+                                }
+                            }
+                            events.Add(new InteractiveEvent { Kind = InteractiveEventKind.UserMessageAck, Text = ackText });
+                            break;
+                        }
                         // tool_result blocks are carried on the message.content array of a type:"user" event.
                         if (root.TryGetProperty("message", out var umsg) && umsg.TryGetProperty("content", out var ucontent) && ucontent.ValueKind == JsonValueKind.Array)
                         {

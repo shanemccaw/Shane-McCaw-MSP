@@ -95,6 +95,18 @@ namespace BuildConsole
             /// <summary>True while a background-priority render pump is already scheduled for this slot — the guard that stops overlapping pumps from stacking up per poll.</summary>
             public bool RenderPumpScheduled;
 
+            // ── Git #4547 — message delivery tracking ──
+            /// <summary>Messages written to a live session (stdin, or as a continuation's prompt) whose --replay-user-messages receipt hasn't arrived yet.</summary>
+            public readonly List<UserMessageTurn> AwaitingAck = new();
+            /// <summary>Messages Claude has received (receipt seen) but hasn't produced any output for yet.</summary>
+            public readonly List<UserMessageTurn> AwaitingResponse = new();
+            /// <summary>True from the moment a message starts a --resume continuation until that launch has finished — a second Send in this window is held, never a second launch.</summary>
+            public bool ContinuationInFlight;
+            /// <summary>Messages typed while <see cref="ContinuationInFlight"/>; delivered to the resumed session's stdin once it is running.</summary>
+            public readonly List<(UserMessageTurn Turn, string Text)> HeldSends = new();
+            /// <summary>The last real assistant prose rendered — lets a finished build whose final message asks a question still offer Yes / No.</summary>
+            public string? LastAssistantText;
+
             // Transcript bookkeeping
             /// <summary>The trailing live status turn while this slot is running (removed on any terminal state); mutated in place rather than re-created each poll.</summary>
             public StatusLineTurn? StatusLine;
@@ -633,10 +645,85 @@ namespace BuildConsole
             AddTurn(slot, new AssistantTurnStartTurn());
         }
 
-        private void AddUserMessage(BuildWatchSlot slot, string text)
+        private UserMessageTurn AddUserMessage(BuildWatchSlot slot, string text)
         {
             slot.InAssistantRun = false;
-            AddTurn(slot, new UserMessageTurn(text.Trim()));
+            var turn = new UserMessageTurn(text.Trim());
+            AddTurn(slot, turn);
+            return turn;
+        }
+
+        // ── Git #4547 — message delivery states ─────────────────────────────────
+
+        private static void ResetDeliveryTracking(BuildWatchSlot slot)
+        {
+            slot.AwaitingAck.Clear();
+            slot.AwaitingResponse.Clear();
+            slot.HeldSends.Clear();
+            slot.ContinuationInFlight = false;
+            slot.LastAssistantText = null;
+            slot.Pane.ViewModel.ShowQuickReplies = false;
+        }
+
+        private static void MarkSentToLiveSession(BuildWatchSlot slot, UserMessageTurn turn, string text)
+        {
+            turn.SetDelivery(MessageDelivery.Delivered, text);
+            slot.AwaitingAck.Add(turn);
+        }
+
+        /// <summary>The CLI echoed a message it read off stdin (--replay-user-messages). Matched by content, never by position, so the
+        /// build's own launch prompt or an older message's echo can't mark the wrong one received.</summary>
+        private static void AcknowledgeDelivery(BuildWatchSlot slot, string? ackText)
+        {
+            if (slot.AwaitingAck.Count == 0) return;
+            var ack = (ackText ?? "").Replace("\r\n", "\n").Trim();
+            if (ack.Length == 0) return;
+            var turn = slot.AwaitingAck.FirstOrDefault(t => t.Text.Length > 0 && ack.Contains(t.Text.Replace("\r\n", "\n"), StringComparison.Ordinal));
+            if (turn == null) return;
+            slot.AwaitingAck.Remove(turn);
+            turn.SetDelivery(MessageDelivery.Received, "Received by Claude");
+            slot.AwaitingResponse.Add(turn);
+        }
+
+        /// <summary>First assistant output after a receipt: Claude is acting on the message.</summary>
+        private static void MarkResponding(BuildWatchSlot slot)
+        {
+            if (slot.AwaitingResponse.Count == 0) return;
+            foreach (var t in slot.AwaitingResponse) t.SetDelivery(MessageDelivery.Responding, "Received — Claude is responding");
+            slot.AwaitingResponse.Clear();
+        }
+
+        /// <summary>A slot went terminal: any message still waiting for its receipt was never confirmed. Skipped while this instance
+        /// still has a live process for the id (a Done/Running flap is not the session ending).</summary>
+        private void SettleUnconfirmedDeliveries(BuildWatchSlot slot)
+        {
+            if (slot.AwaitingAck.Count == 0 || slot.ContinuationInFlight) return;
+            if (_watcher != null && _watcher.IsProcessAlive(slot.QueueItemId)) return;
+            foreach (var t in slot.AwaitingAck)
+                t.SetDelivery(MessageDelivery.Failed, "Not confirmed — the session ended before Claude read this. Send it again to resume with it.");
+            slot.AwaitingAck.Clear();
+        }
+
+        /// <summary>Yes / No quick replies. Shown only on real signals: the live build is waiting for input, or the build has
+        /// finished and its last assistant message ends in a question.</summary>
+        private static void UpdateQuickReplies(BuildWatchSlot slot, bool waitingForInput)
+        {
+            var vm = slot.Pane.ViewModel;
+            if (slot.ContinuationInFlight || vm.Mode is not (ComposerMode.Interactive or ComposerMode.Terminal or ComposerMode.AdoptedReadOnly))
+            {
+                vm.ShowQuickReplies = false;
+                return;
+            }
+            if (waitingForInput)
+            {
+                vm.QuickReplyPrompt = "Claude is waiting on your reply — answer here or type below.";
+                vm.ShowQuickReplies = true;
+                return;
+            }
+            bool terminal = slot.State is SlotState.Done or SlotState.Failed or SlotState.Stalled or SlotState.Stale;
+            bool endsWithQuestion = !string.IsNullOrWhiteSpace(slot.LastAssistantText) && slot.LastAssistantText!.TrimEnd().EndsWith("?", StringComparison.Ordinal);
+            vm.QuickReplyPrompt = "Claude's last message asked a question — answering resumes the session.";
+            vm.ShowQuickReplies = terminal && endsWithQuestion;
         }
 
         /// <summary>Appends one turn, keeping the live StatusLine (if present) pinned as the LAST item, and trims from the front once over MaxCardsPerSlot.</summary>
@@ -722,11 +809,22 @@ namespace BuildConsole
                     {
                         var text = (ev.Text ?? "").TrimEnd();
                         if (text.Length == 0) return;
-                        AddParagraph(slot, text, (ev.IsError || LooksLikeError(text)) ? ParagraphKind.Error : ParagraphKind.Normal);
+                        bool isError = ev.IsError || LooksLikeError(text);
+                        AddParagraph(slot, text, isError ? ParagraphKind.Error : ParagraphKind.Normal);
+                        if (!isError)
+                        {
+                            slot.LastAssistantText = text;
+                            MarkResponding(slot);
+                        }
                         break;
                     }
                 case InteractiveEventKind.ToolCall:
                     AddInteractiveToolCall(slot, ev);
+                    MarkResponding(slot);
+                    break;
+                case InteractiveEventKind.UserMessageAck:
+                    // Git #4547 — a receipt, not content: the user message itself is already in the transcript.
+                    AcknowledgeDelivery(slot, ev.Text);
                     break;
                 case InteractiveEventKind.ToolResult:
                     FillToolResult(slot, ev);
@@ -738,6 +836,7 @@ namespace BuildConsole
                         if (!string.IsNullOrWhiteSpace(ev.Text))
                         {
                             AddParagraph(slot, ev.Text!.Trim(), ParagraphKind.Normal);
+                            slot.LastAssistantText = ev.Text!.Trim();
                         }
                         break;
                     }
@@ -1093,6 +1192,7 @@ namespace BuildConsole
                         slot.LastInteractiveState = null;
                         if (slot.State == SlotState.Running)
                             UpdateThinkingText(slot, slot.Verifying); // refresh activity line / roll the easter egg
+                        UpdateQuickReplies(slot, waitingForInput: false); // Git #4547 — finished build whose last message asks a question
                     }
                 }
 
@@ -1183,7 +1283,11 @@ namespace BuildConsole
             // its content isn't lost — the raw-run case normally closes on the next non-diff
             // line, but a build can go terminal/stale without one ever arriving.
             if (newState is SlotState.Done or SlotState.Failed or SlotState.Stale or SlotState.Stalled)
+            {
                 FinishDiff(slot);
+                // Git #4547 — a message still waiting for its receipt when the session ends was never confirmed; say so.
+                SettleUnconfirmedDeliveries(slot);
+            }
 
             switch (newState)
             {
@@ -1469,6 +1573,7 @@ namespace BuildConsole
             slot.DiffLines = null;
             slot.InDiffFence = false;
             slot.StatusLine = null;
+            ResetDeliveryTracking(slot);
 
             var vm = slot.Pane.ViewModel;
             if (!string.IsNullOrEmpty(slot.BuildSet))
@@ -1584,6 +1689,7 @@ namespace BuildConsole
             slot.ToolCallsById.Clear();
             slot.StatusLine = null;
             slot.InAssistantRun = false;
+            ResetDeliveryTracking(slot);
 
             var vm = slot.Pane.ViewModel;
             vm.ChatBackground = null;
@@ -1857,7 +1963,11 @@ namespace BuildConsole
             slot.Pane.ViewModel.CanStop = adopted || state == InteractiveInputState.Working;
             EnsureStatusLine(slot);
 
-            if (slot.LastInteractiveState == state) return; // no visual churn on an unchanged state
+            if (slot.LastInteractiveState == state)
+            {
+                ApplyComposerInputHints(slot, state, adopted); // stdin can close without the sub-state changing
+                return; // no visual churn on an unchanged state
+            }
             slot.LastInteractiveState = state;
 
             switch (state)
@@ -1893,31 +2003,57 @@ namespace BuildConsole
                     break;
             }
 
-            // Git #2095 — the switch above writes wording tuned for the LIVE-stdin case ("goes
-            // straight to its stdin"). Adopted has no live stdin at all: typed text always becomes
-            // a fresh --resume continuation, never a mid-task nudge. Override with wording that
-            // matches what Send will actually do here.
-            if (adopted)
-                slot.Pane.ViewModel.PlaceholderText = "Type instructions and Send to resume with them — Shift+Enter for new line";
+            ApplyComposerInputHints(slot, state, adopted);
         }
 
-        /// <summary>Send clicked / Enter pressed (raised by ChatSessionPane.SendRequested) — handles live stdin input or launches a seamless continuation build with --resume.</summary>
+        /// <summary>
+        /// Placeholder wording that matches what Send will actually do, plus the Yes / No quick replies.
+        /// Git #2095 — the state switch writes wording tuned for the LIVE-stdin case ("goes straight to its stdin"). Adopted has no
+        /// live stdin at all: typed text always becomes a fresh --resume continuation, never a mid-task nudge.
+        /// Git #4547 — same for a live process whose stdin the idle auto-finalize already closed: Send stops it first, then resumes.
+        /// </summary>
+        private void ApplyComposerInputHints(BuildWatchSlot slot, InteractiveInputState state, bool adopted)
+        {
+            var vm = slot.Pane.ViewModel;
+            if (adopted)
+                vm.PlaceholderText = "Type instructions and Send to resume with them — Shift+Enter for new line";
+            else if (_watcher != null && _watcher.IsInputClosed(slot.QueueItemId))
+                vm.PlaceholderText = "Wrapping up — its input is closed. Send stops it, then resumes the session with your message.";
+            UpdateQuickReplies(slot, waitingForInput: state == InteractiveInputState.WaitingForInput);
+        }
+
+        /// <summary>
+        /// Send clicked / Enter pressed / Yes-No quick reply (raised by ChatSessionPane.SendRequested).
+        /// Git #4547 — exactly one process per session, and an honest delivery line under every message:
+        ///   1. a live, writable stdin gets the message directly (Sent → Received → Claude responding);
+        ///   2. otherwise the watcher's guarded continuation stops any still-alive process for this build FIRST (confirmed exit)
+        ///      and only then resumes the session with the message — before this, the fallback launched a --resume while the
+        ///      original was still running (the idle auto-finalize closes stdin without ending the process), which is how
+        ///      2–3 copies of one build ended up running at once;
+        ///   3. a message typed while that continuation is still starting is held and handed to the resumed session's stdin,
+        ///      never a second launch.
+        /// </summary>
         private async void SendSlotInput(BuildWatchSlot slot, string text)
         {
             if (string.IsNullOrWhiteSpace(text)) return;
-            AddUserMessage(slot, text);
+            var turn = AddUserMessage(slot, text);
+            slot.Pane.ViewModel.ShowQuickReplies = false;
 
-            // 1. If the interactive process is actively running and alive, send straight to stdin.
-            //    Git #1327 — SendInput now returns whether the message genuinely reached a live
-            //    stdin. It can fail even while we still "own" the id and HasExited hasn't flipped
-            //    yet — most often when the 15s idle auto-finalize closed the pipe the instant
-            //    before Shane typed a nudge into a waiting/"stuck" build. In that case DON'T
-            //    pretend it was delivered (the old code swallowed the write exception, leaving the
-            //    message shown-but-lost); fall through to the --resume continuation below so the
-            //    guidance still lands on the real session.
-            if (_watcher != null && _watcher.OwnsInteractive(slot.QueueItemId) && !_watcher.HasExited(slot.QueueItemId, out _)
-                && _watcher.SendInput(slot.QueueItemId, text))
+            if (slot.ContinuationInFlight)
             {
+                slot.HeldSends.Add((turn, text));
+                turn.SetDelivery(MessageDelivery.Pending, "Held — the resumed session is starting; this goes to it as soon as it's running");
+                return;
+            }
+
+            int queueId = slot.QueueItemId;
+            turn.SetDelivery(MessageDelivery.Pending, "Sending…");
+
+            // 1. Live, writable stdin. Git #1327 — SendInput returns whether the write genuinely reached the pipe.
+            if (_watcher != null && _watcher.OwnsInteractive(queueId) && !_watcher.HasExited(queueId, out _)
+                && _watcher.SendInput(queueId, text))
+            {
+                MarkSentToLiveSession(slot, turn, "Sent to the running session — waiting for Claude to read it");
                 // Reflect immediately: back to working; force a re-apply next poll.
                 slot.State = SlotState.Running;
                 slot.CompletedAtUtc = null;
@@ -1935,95 +2071,134 @@ namespace BuildConsole
                 return;
             }
 
-            // 2. The process has exited (Done / Failed / Stale), wasn't owned as interactive, OR
-            // a live stdin send just failed (pipe closed by auto-finalize / mid-exit — Git #1327).
-            // Resume / continue the session seamlessly with Shane's directions!
-            string? sessionId = slot.SessionId ?? _watcher?.GetSessionId(slot.QueueItemId);
-            ActivityLog.Log("build-watch", $"Sending continuation/follow-up to queue #{slot.QueueItemId} (session: {sessionId ?? "fresh"}): {text}");
+            if (_watcher == null)
+            {
+                turn.SetDelivery(MessageDelivery.Failed, "Not sent — the queue watcher isn't running, so nothing can resume this build from here");
+                slot.Pane.RestoreDraft(text);
+                return;
+            }
 
+            // 2. No writable stdin. If a process is still alive and actively working, stopping it interrupts real work — ask first.
+            if (_watcher.IsProcessAlive(queueId))
+            {
+                var live = _watcher.GetInteractiveState(queueId);
+                if (live is not (InteractiveInputState.WaitingForInput or InteractiveInputState.Stopped))
+                {
+                    string why = _watcher.IsAdopted(queueId)
+                        ? "its input channel was lost when BuildConsole restarted"
+                        : "its input was closed when it went idle, but it is still running";
+                    var answer = MessageBox.Show(this,
+                        $"\"{slot.Title}\" is still working, but it can't take typed input — {why}.\n\n" +
+                        "Sending will stop that process and resume the same session with your message, so only one copy ever runs.\n\n" +
+                        "Stop it and send?",
+                        "Send to a running build", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                    if (answer != MessageBoxResult.Yes)
+                    {
+                        turn.SetDelivery(MessageDelivery.Failed, "Not sent — the running build was left alone (your text is back in the box)");
+                        slot.Pane.RestoreDraft(text);
+                        return;
+                    }
+                }
+            }
+
+            ActivityLog.Log("build-watch", $"Sending continuation/follow-up to queue #{queueId} (session: {_watcher.GetSessionId(queueId) ?? slot.SessionId ?? "fresh"}; live process: {_watcher.IsProcessAlive(queueId)}): {text}");
+
+            slot.ContinuationInFlight = true;
             slot.State = SlotState.Running;
             slot.CompletedAtUtc = null;
             slot.Pane.ViewModel.Mode = ComposerMode.Interactive;
-            slot.Pane.ViewModel.CanStop = true;
-            slot.Pane.ViewModel.PlaceholderText = "Working — continuation in progress…";
+            slot.Pane.ViewModel.CanStop = false; // nothing of ours is running to stop until the continuation has launched
+            slot.Pane.ViewModel.PlaceholderText = "Resuming — anything you type now goes to the resumed session once it starts…";
             slot.Container.BorderBrush = _emptyBorder;
             slot.Container.BorderThickness = new Thickness(1);
             ApplySlotGlow(slot); // state is Running again → restore the blue aura (clears any stale green)
-            ApplyPillTone(slot, "Running", "RESUMING…", "Launching continuation with your instructions…", pulsing: true);
+            ApplyPillTone(slot, "Running", "RESUMING…", "Resuming this build's session with your message…", pulsing: true);
             EnsureStatusLine(slot);
-            slot.StatusLine!.ActivityText = "launching continuation…";
+            slot.StatusLine!.ActivityText = "resuming session…";
             slot.StatusLine!.Spinning = true;
 
-            if (_db != null)
+            Services.QueueWatcherService.ContinuationResult result;
+            try
             {
-                try
+                result = await _watcher.LaunchContinuationAsync(new Services.QueueWatcherService.ContinuationRequest
                 {
-                    int originalQueueId = slot.QueueItemId;
-                    var queued = await _db.QueueBuildAsync(
-                        // Git #3728 — shared prefix, so BuildQueuePanel's Retry can recognise this
-                        // row as resume-only and carry its session forward instead of nulling it.
-                        ResumeOnlyQueueRows.ContinueTitlePrefix + slot.Title,
-                        text,
-                        slot.Model,
-                        slot.Effort,
-                        slot.Cwd,
-                        slot.GithubNumber,
-                        slot.BlockedByNumbers,
-                        resumeSessionId: sessionId,
-                        buildSet: slot.BuildSet, cli: slot.Cli, account: slot.Account);
+                    OriginalQueueId = queueId,
+                    Title = slot.Title,
+                    Text = text,
+                    Model = slot.Model,
+                    Effort = slot.Effort,
+                    Cwd = slot.Cwd,
+                    GithubNumber = slot.GithubNumber,
+                    BlockedByNumbers = slot.BlockedByNumbers,
+                    FallbackSessionId = slot.SessionId,
+                    BuildSet = slot.BuildSet,
+                    Cli = slot.Cli,
+                    Account = slot.Account,
+                }, phase => turn.SetDelivery(MessageDelivery.Pending, phase));
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("build-watch", $"Continuation exception: {ex.Message}");
+                result = new Services.QueueWatcherService.ContinuationResult { QueueId = queueId, FailureReason = ex.Message };
+            }
 
-                    int newQueueId = queued.Id;
-                    // Git #2120 — same fix as #2119's Reply flow: resolve the ORIGINAL slot row so
-                    // it doesn't sit stuck showing stale active status forever while the resumed
-                    // work runs under this new "Continue: …" row (originals here are typically
-                    // verifying/queued, which MarkSupersededByReplyAsync's guard already allows).
-                    try
-                    {
-                        await _db.MarkSupersededByReplyAsync(originalQueueId, newQueueId);
-                    }
-                    catch (Exception ex)
-                    {
-                        ActivityLog.Log("build-watch", $"Couldn't mark original #{originalQueueId} superseded by continuation #{newQueueId}: {ex.Message}");
-                    }
-                    slot.QueueItemId = newQueueId;
-                    slot.Pane.SetChecklistBuild(newQueueId);
-                    slot.InteractiveCursor = 0;
-                    slot.LastOutputUtc = DateTime.UtcNow;
+            // The slot may have been dismissed or re-occupied while the launch ran.
+            if (!slot.Occupied || slot.QueueItemId != queueId)
+            {
+                slot.ContinuationInFlight = false;
+                return;
+            }
 
-                    if (_watcher != null)
-                    {
-                        // Git #4542 — a continuation relaunches a fresh process into a real slot, so it
-                        // is bounded by the HARD cap like any manual launch. Reserve the slot before
-                        // force-claiming; if the real total is already at the hard ceiling, leave the
-                        // new "Continue: …" row queued (the auto-dispatcher starts it when a slot frees)
-                        // rather than force-claiming it into a stuck 'running' state.
-                        if (!_watcher.TryReserveManualSlot(newQueueId))
-                        {
-                            ActivityLog.Log("build-watch", $"Continuation #{newQueueId} left queued — real total at the hard cap ({_watcher.RunningCount}/{_watcher.HardCap}); it will start when a slot frees.");
-                            slot.StatusLine!.ActivityText = $"queued — at hard cap ({_watcher.RunningCount}/{_watcher.HardCap}), will start when a slot frees";
-                        }
-                        else
-                        {
-                            try
-                            {
-                                var claimed = await _db.ForceClaimAsync(newQueueId);
-                                _watcher.LaunchItemExplicit(claimed); // slot already reserved above → launches
-                                slot.InteractiveBound = _watcher.IsInteractiveRenderable(newQueueId);
-                            }
-                            catch (Exception ex)
-                            {
-                                _watcher.ReleaseReservation(newQueueId); // claim/launch failed — give the slot back
-                                ActivityLog.Log("build-watch", $"Couldn't force-launch continuation #{newQueueId}: {ex.Message}");
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
+            if (!string.IsNullOrWhiteSpace(result.SessionId)) slot.SessionId = result.SessionId;
+            if (result.QueueId != slot.QueueItemId)
+            {
+                slot.QueueItemId = result.QueueId;
+                slot.Pane.SetChecklistBuild(result.QueueId);
+            }
+            slot.InteractiveCursor = 0; // a new process's event stream starts from zero, even under a reused queue id
+            slot.PendingRender.Clear();
+            slot.LastOutputUtc = DateTime.UtcNow;
+            slot.InteractiveBound = _watcher.IsInteractiveRenderable(slot.QueueItemId);
+            slot.LastInteractiveState = null;
+            slot.ContinuationInFlight = false;
+
+            var held = slot.HeldSends.ToList();
+            slot.HeldSends.Clear();
+
+            if (result.Launched)
+            {
+                MarkSentToLiveSession(slot, turn, result.StoppedLiveProcess
+                    ? "Old process stopped; resumed session started with your message — waiting for Claude to read it"
+                    : "Resumed session started with your message — waiting for Claude to read it");
+                slot.Pane.ViewModel.CanStop = true;
+                foreach (var (heldTurn, heldText) in held)
                 {
-                    ActivityLog.Log("build-watch", $"Continuation exception: {ex.Message}");
-                    slot.StatusLine!.ActivityText = $"error: {ex.Message}";
-                    slot.StatusLine!.Spinning = false;
+                    if (_watcher.OwnsInteractive(slot.QueueItemId) && _watcher.SendInput(slot.QueueItemId, heldText))
+                        MarkSentToLiveSession(slot, heldTurn, "Sent to the resumed session — waiting for Claude to read it");
+                    else
+                        heldTurn.SetDelivery(MessageDelivery.Failed, "Not delivered — the resumed session couldn't take it. Send it again.");
                 }
+            }
+            else if (result.QueuedAtHardCap)
+            {
+                // Git #4542 — nothing launched only because every slot is taken; the resume row is queued with this message.
+                MarkSentToLiveSession(slot, turn, "Queued — " + result.FailureReason + ". The session resumes with your message when a slot frees.");
+                foreach (var (heldTurn, _) in held)
+                    heldTurn.SetDelivery(MessageDelivery.Failed, "Not sent — the resume is waiting for a free slot. Send it again once it's running.");
+                ApplyPillTone(slot, "Warning", "QUEUED", "Every build slot is taken — this resume starts with your message when one frees.", pulsing: false);
+                slot.StatusLine!.ActivityText = "queued — waiting for a free slot";
+                slot.StatusLine!.Spinning = false;
+            }
+            else
+            {
+                string reason = result.FailureReason ?? "the resumed session didn't start";
+                turn.SetDelivery(MessageDelivery.Failed, "Not delivered — " + reason + " (your text is back in the box)");
+                slot.Pane.RestoreDraft(text);
+                foreach (var (heldTurn, _) in held)
+                    heldTurn.SetDelivery(MessageDelivery.Failed, "Not delivered — the resumed session didn't start. Send it again.");
+                ApplyPillTone(slot, "Error", "NOT SENT", "Your message did not reach Claude: " + reason, pulsing: false);
+                slot.StatusLine!.ActivityText = "not sent: " + reason;
+                slot.StatusLine!.Spinning = false;
             }
         }
 
