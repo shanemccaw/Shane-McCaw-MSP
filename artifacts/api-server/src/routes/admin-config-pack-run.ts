@@ -67,6 +67,11 @@ const ERROR_STATUS: Record<ConfigPackError["code"], number> = {
   // #4510 — the materialized graph could never execute as a whole (duplicate
   // node ids / self-loop). A builder defect, not a caller error.
   graph_structurally_invalid: 500,
+  // #4513 — tenant preconditions: a step needs a license the tenant does not
+  // hold (the same 409 Launch Control returns), or the pack would remove
+  // Security Defaults without an enforcing replacement. Nothing was written.
+  license_required: 409,
+  security_defaults_replacement_not_enforcing: 422,
 };
 
 /**

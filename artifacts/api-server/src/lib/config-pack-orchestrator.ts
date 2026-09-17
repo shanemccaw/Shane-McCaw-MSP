@@ -19,18 +19,21 @@ import {
   configPackTemplatesTable,
   tenantsTable,
   wfDefinitionsTable,
+  writeActionCatalogTable,
   wfVersionsTable,
   type ConfigPack,
   type TenantConsentMap,
   type WfGraph,
 } from "@workspace/db";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { generateStrongPassword } from "../routes/break-glass-verification.ts";
 import { fireWorkflowForDefinition, GENERATED_SECRET_REFS_FIELD } from "./workflow-executor.ts";
 // Type-only — the store is imported dynamically so the Azure SDK is loaded only
 // on a run that actually mints a credential (#1911).
 import type { GeneratedSecretRef } from "./generated-secret-store.ts";
 import { graphFetchForTenant } from "./graph.ts";
+import { getSubscribedSkuPartNumbersForTenant } from "./license-gate.ts";
+import { evaluateConfigPackPreconditions, type PackPreconditionStep } from "./config-pack-preconditions.ts";
 import {
   bindChangeRequestToRun,
   claimChangeRequestForWrite,
@@ -308,6 +311,78 @@ export interface ConfigPackRunContext {
   /** Required variables with NO source at all — the run endpoint refuses on
    *  these, and the dry-run reports them as not-self-executable. */
   missingVariables: string[];
+  /** #4513 — the tenant precondition this pack fails (license_required, or
+   *  security_defaults_replacement_not_enforcing), or null. Resolved here, once,
+   *  against the tenant's live /subscribedSkus; runConfigPackForCustomer throws
+   *  it before anything is authorized, persisted or fired, and the dry-run
+   *  reports it as not executable. */
+  preconditionRefusal: ConfigPackError | null;
+}
+
+/**
+ * #4513 — load what the tenant preconditions need for the pack's template steps
+ * (method/endpoint/body, and every catalog-recorded license requirement), read
+ * the tenant's live SKU set once if any step carries a requirement, and evaluate.
+ */
+async function resolvePreconditionRefusal(
+  packKey: string,
+  ordered: PackTemplateResolved[],
+  tenantId: string,
+  payload: Record<string, unknown>,
+): Promise<ConfigPackError | null> {
+  const templateIds = [...new Set(ordered.map((t) => t.templateId).filter((id): id is string => !!id))];
+  if (templateIds.length === 0) return null;
+
+  const [templateRows, catalogRows] = await Promise.all([
+    db
+      .select({
+        templateId: baselineActionTemplatesTable.templateId,
+        method: baselineActionTemplatesTable.method,
+        endpoint: baselineActionTemplatesTable.endpoint,
+        bodyTemplate: baselineActionTemplatesTable.bodyTemplate,
+      })
+      .from(baselineActionTemplatesTable)
+      .where(inArray(baselineActionTemplatesTable.templateId, templateIds)),
+    db
+      .select({
+        templateId: writeActionCatalogTable.templateId,
+        requiredLicenseSkus: writeActionCatalogTable.requiredLicenseSkus,
+      })
+      .from(writeActionCatalogTable)
+      .where(inArray(writeActionCatalogTable.templateId, templateIds)),
+  ]);
+
+  const licenseListsByTemplate = new Map<string, string[][]>();
+  for (const row of catalogRows) {
+    const skus = Array.isArray(row.requiredLicenseSkus)
+      ? (row.requiredLicenseSkus as unknown[]).filter((s): s is string => typeof s === "string")
+      : [];
+    if (!row.templateId || skus.length === 0) continue;
+    const lists = licenseListsByTemplate.get(row.templateId) ?? [];
+    lists.push(skus);
+    licenseListsByTemplate.set(row.templateId, lists);
+  }
+
+  const steps: PackPreconditionStep[] = templateRows.map((r) => ({
+    templateId: r.templateId,
+    method: r.method,
+    endpoint: r.endpoint,
+    bodyTemplate: (r.bodyTemplate ?? {}) as Record<string, unknown>,
+    requiredLicenseSkuLists: licenseListsByTemplate.get(r.templateId) ?? [],
+  }));
+
+  const tenantSkus = steps.some((s) => s.requiredLicenseSkuLists.length > 0)
+    ? await getSubscribedSkuPartNumbersForTenant(tenantId)
+    : null;
+
+  const refusal = evaluateConfigPackPreconditions({ packKey, steps, payload, tenantSkus });
+  if (refusal) {
+    log.warn(
+      { packKey, tenantId, code: refusal.code, details: refusal.details },
+      "config-pack-orchestrator: tenant precondition not met — the pack will not run",
+    );
+  }
+  return refusal;
 }
 
 /**
@@ -417,6 +492,8 @@ export async function prepareConfigPackRun(opts: {
     (v) => !midRunProvided.has(v) && (payload[v] === undefined || payload[v] === ""),
   );
 
+  const preconditionRefusal = await resolvePreconditionRefusal(packKey, ordered, customer.tenantId, payload);
+
   return {
     pack,
     templates,
@@ -427,6 +504,7 @@ export async function prepareConfigPackRun(opts: {
     payload,
     midRunProvided,
     missingVariables,
+    preconditionRefusal,
   };
 }
 
@@ -485,6 +563,30 @@ export async function runConfigPackForCustomer(opts: {
   // msps.is_testbed — an MSP-level testbed flag must never authorize a write
   // against a production tenant), so a tenant created by any path that doesn't
   // set it explicitly fails CLOSED into the stricter branches here.
+  //
+  // B and C are pure checks and run first; A CLAIMS the CR, so it runs last —
+  // after the #4513 tenant preconditions, which must refuse before any claim.
+  if (!opts.changeRequestAuthorization && !customer.isTestbed) {
+    if (!opts.purchaseAuthorization) {
+      throw new ConfigPackError(
+        "customer_not_testbed",
+        `Customer ${customerId} is not a testbed customer — config pack runs write to the live tenant and require a testbed customer, an approved change request, or an authorizing purchase session`,
+      );
+    }
+    if (customer.consent?.writeBack?.status !== "granted") {
+      throw new ConfigPackError(
+        "customer_write_consent_missing",
+        `Customer ${customerId} has not granted write-back consent — a purchase-authorized pack run requires a granted write consent`,
+      );
+    }
+  }
+
+  // #4513 — tenant preconditions: every step's recorded license is held, and
+  // Security Defaults is only turned off alongside a licensed, ENFORCING CA
+  // replacement. Refused here under every authorization path (testbed included),
+  // before any CR claim, vault write, or run.
+  if (ctx.preconditionRefusal) throw ctx.preconditionRefusal;
+
   let claimedChangeRequestId: number | null = null;
   let claimedMspId: number | null = null;
   if (opts.changeRequestAuthorization) {
@@ -515,19 +617,6 @@ export async function runConfigPackForCustomer(opts: {
     }
     claimedChangeRequestId = claim.changeRequestId;
     claimedMspId = tenantRow.mspId;
-  } else if (!customer.isTestbed) {
-    if (!opts.purchaseAuthorization) {
-      throw new ConfigPackError(
-        "customer_not_testbed",
-        `Customer ${customerId} is not a testbed customer — config pack runs write to the live tenant and require a testbed customer, an approved change request, or an authorizing purchase session`,
-      );
-    }
-    if (customer.consent?.writeBack?.status !== "granted") {
-      throw new ConfigPackError(
-        "customer_write_consent_missing",
-        `Customer ${customerId} has not granted write-back consent — a purchase-authorized pack run requires a granted write consent`,
-      );
-    }
   }
 
   // From here a CR may already be CLAIMED (in_progress). Any failure before the

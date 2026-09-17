@@ -78,9 +78,13 @@ export interface ConfigPackDryRun {
   gated: boolean;
   /** True when the pack's every required variable has a source (derived,
    *  generated, or produced mid-run) — i.e. execution would not be refused by
-   *  the orchestrator's missing-variables guard. */
+   *  the orchestrator's missing-variables guard — and no tenant precondition
+   *  refuses it (#4513). */
   executable: boolean;
   missingOperatorVariables: string[];
+  /** #4513 — the tenant precondition the orchestrator would refuse this pack on
+   *  (license_required / security_defaults_replacement_not_enforcing), or null. */
+  refusal: { code: string; message: string; details: Record<string, unknown> | null } | null;
   actions: ConfigPackDryRunAction[];
   readAt: string;
 }
@@ -230,8 +234,9 @@ export async function buildConfigPackDryRun(
       packKey,
       customerId,
       actionCount: actions.length,
-      executable: ctx.missingVariables.length === 0,
+      executable: ctx.missingVariables.length === 0 && !ctx.preconditionRefusal,
       missingOperatorVariables: ctx.missingVariables,
+      refusalCode: ctx.preconditionRefusal?.code ?? null,
     },
     "config-pack-dry-run: built real dry-run from live tenant state",
   );
@@ -240,8 +245,15 @@ export async function buildConfigPackDryRun(
     packKey,
     label: ctx.pack.label,
     gated: ctx.gatedTemplateId !== null,
-    executable: ctx.missingVariables.length === 0,
+    executable: ctx.missingVariables.length === 0 && !ctx.preconditionRefusal,
     missingOperatorVariables: ctx.missingVariables,
+    refusal: ctx.preconditionRefusal
+      ? {
+          code: ctx.preconditionRefusal.code,
+          message: ctx.preconditionRefusal.message,
+          details: ctx.preconditionRefusal.details ?? null,
+        }
+      : null,
     actions,
     readAt: new Date().toISOString(),
   };

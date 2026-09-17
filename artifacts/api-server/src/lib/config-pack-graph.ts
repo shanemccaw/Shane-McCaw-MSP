@@ -97,7 +97,15 @@ export type ConfigPackErrorCode =
   // #4510 — the materialized graph has duplicate node ids or a self-loop edge.
   // The executor would never queue the affected nodes and record the run as
   // "completed" having written nothing, so the run is refused instead.
-  | "graph_structurally_invalid";
+  | "graph_structurally_invalid"
+  // #4513 — a step's catalog row records required_license_skus the tenant does
+  // not hold (or its licenses could not be read). Refused before any write, so a
+  // run never gets part-way through and then 403s on a license gap.
+  | "license_required"
+  // #4513 — the pack turns Security Defaults off but does not also create a
+  // licensed, enforcing (state "enabled") MFA Conditional Access policy for all
+  // users. Security Defaults is never removed without a real replacement.
+  | "security_defaults_replacement_not_enforcing";
 
 export class ConfigPackError extends Error {
   readonly code: ConfigPackErrorCode;

@@ -87,8 +87,19 @@ afterAll(async () => {
   }
 });
 
-function mockTenantReads() {
+// #4513 — the tenant's live license set. Default: the testbed tenant's real SKUs
+// (tenant-scans/2026-09-17-testbed-full-scan.json) — no Entra ID P1.
+const TESTBED_SKUS = ["FLOW_FREE", "ENTERPRISEPACK", "POWER_BI_STANDARD", "Power_Pages_vTrial_for_Makers"];
+
+function mockTenantReads(skuPartNumbers: string[] = TESTBED_SKUS) {
   mockGraphFetchForTenant.mockReset().mockImplementation(async (_tenantId: string, path: string) => {
+    if (path.startsWith("/subscribedSkus")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ value: skuPartNumbers.map((skuPartNumber) => ({ skuPartNumber, capabilityStatus: "Enabled" })) }),
+      };
+    }
     if (path.startsWith("/policies/identitySecurityDefaultsEnforcementPolicy")) {
       return { ok: true, status: 200, json: async () => ({ isEnabled: true }) };
     }
@@ -128,8 +139,15 @@ describe("buildConfigPackDryRun (real tenant state, real substitution)", () => {
     const dry = await buildConfigPackDryRun("quickstart-v1", consentedCustomerId);
 
     expect(dry.packKey).toBe("quickstart-v1");
-    expect(dry.executable).toBe(true);
+    // #4513 — every variable is derivable, but the seeded CA step records an
+    // Entra ID P1/P2 requirement this tenant does not hold: not executable, and
+    // the preview says exactly why.
     expect(dry.missingOperatorVariables).toEqual([]);
+    expect(dry.executable).toBe(false);
+    expect(dry.refusal?.code).toBe("license_required");
+    expect(dry.refusal?.details).toMatchObject({
+      unlicensedTemplateIds: ["quickstart-v1.create-ca-baseline-policy"],
+    });
     expect(dry.gated).toBe(true);
     expect(dry.actions).toHaveLength(8);
 
@@ -166,6 +184,17 @@ describe("buildConfigPackDryRun (real tenant state, real substitution)", () => {
     // An update the tenant already satisfies — the live mayBeSatisfied.
     const guest = byId.get("quickstart-v1.restrict-guest-access")!;
     expect(guest.alreadySatisfied).toBe(true);
+  });
+
+  it("#4513: on a P1 tenant, refuses quickstart-v1 because its CA replacement is report-only (live seeded rows)", async () => {
+    // A tenant the license cache has not seen yet, so this read is really served.
+    mockTenantReads(["ENTERPRISEPACK", "AAD_PREMIUM"]);
+    const dry = await buildConfigPackDryRun("quickstart-v1", readOnlyCustomerId);
+    expect(dry.executable).toBe(false);
+    expect(dry.refusal?.code).toBe("security_defaults_replacement_not_enforcing");
+    expect(dry.refusal?.details).toMatchObject({
+      securityDefaultsTemplateIds: ["quickstart-v1.disable-security-defaults"],
+    });
   });
 
   it("reports a per-entity pack as not self-executable instead of guessing values", async () => {
