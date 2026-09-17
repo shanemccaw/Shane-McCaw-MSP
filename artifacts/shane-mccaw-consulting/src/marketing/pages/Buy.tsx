@@ -381,7 +381,11 @@ export default function Buy() {
   const debugFillAccount = () =>
     set({
       fullName: "Dev Tester",
-      email: `dev.${Date.now()}@example.com`,
+      // A real, deliverable Outlook.com mailbox Shane owns — plus-addressing
+      // routes the real verification-code email to shanemccaw@outlook.com,
+      // filterable by the "+dev..." tag. example.com is RFC 2606 reserved and
+      // can never receive mail, which silently ate every debug verification.
+      email: `shanemccaw+dev${Date.now()}@outlook.com`,
       company: "Dev Test Co",
       agreed: true,
     });
@@ -391,6 +395,36 @@ export default function Buy() {
   // real code present — never a fabricated value.
   const debugFillCode = () => {
     if (st.devCode) set({ codeInput: st.devCode });
+  };
+  // Stripe's own published test card — safe to hardcode, not a secret.
+  const STRIPE_TEST_CARD = "4242424242424242";
+  const DEBUG_M365_PW_KEY = "debugM365Password";
+  const [copiedCard, setCopiedCard] = useState(false);
+  const [copiedM365, setCopiedM365] = useState(false);
+  const [m365PwEditing, setM365PwEditing] = useState(false);
+  const [m365PwDraft, setM365PwDraft] = useState("");
+  const [m365PwStored, setM365PwStored] = useState<string>(() =>
+    isLocalhost ? window.localStorage.getItem(DEBUG_M365_PW_KEY) || "" : "",
+  );
+  const debugCopyStripeCard = async () => {
+    await navigator.clipboard.writeText(STRIPE_TEST_CARD);
+    setCopiedCard(true);
+    setTimeout(() => setCopiedCard(false), 1000);
+  };
+  const debugOpenM365PwEditor = () => {
+    setM365PwDraft(m365PwStored);
+    setM365PwEditing(true);
+  };
+  const debugSaveM365Pw = () => {
+    window.localStorage.setItem(DEBUG_M365_PW_KEY, m365PwDraft);
+    setM365PwStored(m365PwDraft);
+    setM365PwEditing(false);
+  };
+  const debugCopyM365Pw = async () => {
+    if (!m365PwStored) return;
+    await navigator.clipboard.writeText(m365PwStored);
+    setCopiedM365(true);
+    setTimeout(() => setCopiedM365(false), 1000);
   };
 
   // Git #1316: a REAL checkout session id (the stage machine's own st.sessionId
@@ -4655,6 +4689,75 @@ export default function Buy() {
             >
               {st.devCode ? "Fill verification code" : "Code (send it first)"}
             </button>
+            <button
+              type="button"
+              onClick={debugCopyStripeCard}
+              data-testid="buy-debug-copy-stripe-card"
+              style={debugBtnStyle}
+            >
+              {copiedCard ? "Copied!" : "Copy Stripe test card"}
+            </button>
+            {m365PwEditing ? (
+              <div style={{ display: "flex", gap: 6 }}>
+                <input
+                  type="password"
+                  autoFocus
+                  value={m365PwDraft}
+                  onChange={(e) => setM365PwDraft(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && debugSaveM365Pw()}
+                  data-testid="buy-debug-m365-password-input"
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    padding: "6px 8px",
+                    borderRadius: 8,
+                    border: "1px solid rgba(245,158,11,.45)",
+                    background: "rgba(0,0,0,.3)",
+                    color: "#fde68a",
+                    fontSize: 11.5,
+                    fontFamily: "inherit",
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={debugSaveM365Pw}
+                  data-testid="buy-debug-m365-password-save"
+                  style={{ ...debugBtnStyle, width: "auto", padding: "6px 9px" }}
+                >
+                  Save
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={debugCopyM365Pw}
+                  disabled={!m365PwStored}
+                  data-testid="buy-debug-copy-m365-password"
+                  style={{
+                    ...debugBtnStyle,
+                    flex: 1,
+                    opacity: m365PwStored ? 1 : 0.45,
+                    cursor: m365PwStored ? "pointer" : "not-allowed",
+                  }}
+                >
+                  {copiedM365
+                    ? "Copied!"
+                    : m365PwStored
+                      ? "Copy M365 password"
+                      : "Set M365 password"}
+                </button>
+                <button
+                  type="button"
+                  onClick={debugOpenM365PwEditor}
+                  aria-label="Set M365 password"
+                  data-testid="buy-debug-m365-password-cog"
+                  style={{ ...debugBtnStyle, width: "auto", padding: "6px 9px" }}
+                >
+                  ⚙
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
