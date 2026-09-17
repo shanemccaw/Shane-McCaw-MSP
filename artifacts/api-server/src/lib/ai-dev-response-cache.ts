@@ -14,7 +14,7 @@
  * ---------
  * `isAiDevResponseCacheEnabled()` fails closed: only an affirmative
  * NODE_ENV === "development" or "test" enables it (same allow-list
- * convention as admin-active-directory.ts's assertNonProductionEnvironment()
+ * convention as admin-msp-directory.ts's assertNonProductionEnvironment()
  * — not merely `!== "production"`, so an unset or unexpected NODE_ENV value
  * blocks rather than allows). There is no override flag of any kind, so
  * there is no way to enable this in production short of a deploy actually

@@ -1,5 +1,5 @@
 /**
- * Active Directory — screen registration.
+ * MSP Directory — screen registration.
  *
  * MSPs → Tenants (Customers) → Users, RBAC Groups, and OU placeholders, as a
  * real directory browser over the platform's own `msps`/`tenants`/`users`
@@ -38,13 +38,13 @@ import { ACCENT } from "../../theme";
 import { registerScreen } from "../../registry/registry";
 import { getShellApi } from "../../shell/ShellContext";
 import type { CommandItem, ContextualTabSpec } from "../../registry/types";
-import { AdCanvas } from "./AdCanvas";
-import { AdExplorerTree } from "./AdExplorerTree";
-import { AdProperties } from "./AdProperties";
-import { getAdAdminFetch } from "./adAuthBridge";
-import { createAdMsp, createAdOu } from "./adApi";
-import { getAdCacheSize, getAdCachedRecord, getAllAdCachedRecords, type AdCacheKind } from "./adNameCache";
-import { requestAdRecordAction, requestAdTreeRefresh } from "./adEvents";
+import { DirCanvas } from "./DirCanvas";
+import { DirExplorerTree } from "./DirExplorerTree";
+import { DirProperties } from "./DirProperties";
+import { getDirAdminFetch } from "./dirAuthBridge";
+import { createDirMsp, createDirOu } from "./dirApi";
+import { getDirCacheSize, getDirCachedRecord, getAllDirCachedRecords, type DirCacheKind } from "./dirNameCache";
+import { requestDirRecordAction, requestDirTreeRefresh } from "./dirEvents";
 
 function toneHex(tone: "good" | "warn" | "bad" | undefined): string | undefined {
   if (tone === "good") return ACCENT.greenSoft;
@@ -53,13 +53,13 @@ function toneHex(tone: "good" | "warn" | "bad" | undefined): string | undefined 
   return undefined;
 }
 
-function openAdRecord(kind: AdCacheKind, id: string, label: string) {
-  getShellApi()?.navigate("/ad");
-  getShellApi()?.openDoc({ kind, id, screenId: "ad", label });
+function openDirRecord(kind: DirCacheKind, id: string, label: string) {
+  getShellApi()?.navigate("/msp-directory");
+  getShellApi()?.openDoc({ kind, id, screenId: "msp-directory", label });
 }
 
 async function onNewMsp() {
-  const adminFetch = getAdAdminFetch();
+  const adminFetch = getDirAdminFetch();
   if (!adminFetch) return;
   const name = window.prompt("New MSP name:");
   if (!name?.trim()) return;
@@ -68,49 +68,49 @@ async function onNewMsp() {
   if (!slug?.trim()) return;
   const domain = window.prompt("Primary domain (optional):", "") ?? undefined;
   try {
-    const msp = await createAdMsp(adminFetch, { name: name.trim(), slug: slug.trim(), domain: domain?.trim() || undefined });
-    requestAdTreeRefresh();
-    openAdRecord("msp", String(msp.id), msp.name);
+    const msp = await createDirMsp(adminFetch, { name: name.trim(), slug: slug.trim(), domain: domain?.trim() || undefined });
+    requestDirTreeRefresh();
+    openDirRecord("msp", String(msp.id), msp.name);
   } catch (err) {
     window.alert(err instanceof Error ? err.message : "Failed to create the MSP.");
   }
 }
 
 async function onNewOu() {
-  const adminFetch = getAdAdminFetch();
+  const adminFetch = getDirAdminFetch();
   if (!adminFetch) return;
   const name = window.prompt("New organizational unit name:");
   if (!name?.trim()) return;
   try {
-    const ou = await createAdOu(adminFetch, name.trim());
-    requestAdTreeRefresh();
-    openAdRecord("ou", String(ou.id), ou.name);
+    const ou = await createDirOu(adminFetch, name.trim());
+    requestDirTreeRefresh();
+    openDirRecord("ou", String(ou.id), ou.name);
   } catch (err) {
     window.alert(err instanceof Error ? err.message : "Failed to create the OU.");
   }
 }
 
 registerScreen({
-  id: "ad",
-  title: "Active Directory",
-  area: "ad",
+  id: "msp-directory",
+  title: "MSP Directory",
+  area: "msp-directory",
   icon: Users,
-  route: "/ad",
-  render: (ctx) => <AdCanvas {...ctx} />,
-  left: { title: "Explorer", render: () => <AdExplorerTree /> },
-  right: { title: "Properties", render: () => <AdProperties /> },
+  route: "/msp-directory",
+  render: (ctx) => <DirCanvas {...ctx} />,
+  left: { title: "Explorer", render: () => <DirExplorerTree /> },
+  right: { title: "Properties", render: () => <DirProperties /> },
 
   ribbon: [
     {
-      tab: "ad",
+      tab: "msp-directory",
       group: {
-        label: "Active Directory",
+        label: "MSP Directory",
         large: [
           {
-            label: "Open Active Directory",
+            label: "Open MSP Directory",
             icon: Users,
             intent: "open",
-            onSelect: () => getShellApi()?.navigate("/ad"),
+            onSelect: () => getShellApi()?.navigate("/msp-directory"),
           },
         ],
         small: [
@@ -127,7 +127,7 @@ registerScreen({
 
     if (ctx.kind === "customer") {
       return {
-        id: "ad-tenant-tools",
+        id: "dir-tenant-tools",
         label: "Tenant Tools",
         groups: [
           {
@@ -137,7 +137,7 @@ registerScreen({
                 label: "Run scan",
                 icon: ShieldCheck,
                 intent: "record",
-                onSelect: () => requestAdRecordAction({ action: "run-scan", kind: "customer", id }),
+                onSelect: () => requestDirRecordAction({ action: "run-scan", kind: "customer", id }),
               },
             ],
             small: [
@@ -146,13 +146,13 @@ registerScreen({
                 icon: ShieldOff,
                 intent: "record",
                 color: ACCENT.danger,
-                onSelect: () => requestAdRecordAction({ action: "revoke-graph-consent", kind: "customer", id }),
+                onSelect: () => requestDirRecordAction({ action: "revoke-graph-consent", kind: "customer", id }),
               },
               {
                 label: "Copy re-consent link",
                 icon: LinkIcon,
                 intent: "record",
-                onSelect: () => requestAdRecordAction({ action: "copy-reconsent-link", kind: "customer", id }),
+                onSelect: () => requestDirRecordAction({ action: "copy-reconsent-link", kind: "customer", id }),
               },
             ],
           },
@@ -162,7 +162,7 @@ registerScreen({
 
     if (ctx.kind === "user") {
       return {
-        id: "ad-account-tools",
+        id: "dir-account-tools",
         label: "Account Tools",
         groups: [
           {
@@ -172,7 +172,7 @@ registerScreen({
                 label: "Impersonate",
                 icon: LogIn,
                 intent: "record",
-                onSelect: () => requestAdRecordAction({ action: "impersonate", kind: "user", id }),
+                onSelect: () => requestDirRecordAction({ action: "impersonate", kind: "user", id }),
               },
             ],
             small: [
@@ -180,14 +180,14 @@ registerScreen({
                 label: "Force password reset",
                 icon: KeyRound,
                 intent: "record",
-                onSelect: () => requestAdRecordAction({ action: "force-password-reset", kind: "user", id }),
+                onSelect: () => requestDirRecordAction({ action: "force-password-reset", kind: "user", id }),
               },
               {
                 label: "Reset MFA",
                 icon: ShieldOff,
                 intent: "record",
                 color: ACCENT.amber,
-                onSelect: () => requestAdRecordAction({ action: "reset-mfa", kind: "user", id }),
+                onSelect: () => requestDirRecordAction({ action: "reset-mfa", kind: "user", id }),
               },
             ],
           },
@@ -196,10 +196,10 @@ registerScreen({
     }
 
     if (ctx.kind === "msp") {
-      const cached = getAdCachedRecord("msp", id);
+      const cached = getDirCachedRecord("msp", id);
       const suspended = cached?.tag === "suspended";
       return {
-        id: "ad-msp-tools",
+        id: "dir-msp-tools",
         label: "MSP Tools",
         groups: [
           {
@@ -211,7 +211,7 @@ registerScreen({
                 intent: "record",
                 color: suspended ? ACCENT.green : ACCENT.danger,
                 onSelect: () =>
-                  requestAdRecordAction({ action: suspended ? "reactivate-msp" : "suspend-msp", kind: "msp", id }),
+                  requestDirRecordAction({ action: suspended ? "reactivate-msp" : "suspend-msp", kind: "msp", id }),
               },
             ],
             small: [
@@ -219,7 +219,7 @@ registerScreen({
                 label: "Impersonate",
                 icon: LogIn,
                 intent: "record",
-                onSelect: () => requestAdRecordAction({ action: "impersonate", kind: "msp", id }),
+                onSelect: () => requestDirRecordAction({ action: "impersonate", kind: "msp", id }),
               },
             ],
           },
@@ -232,7 +232,7 @@ registerScreen({
 
   peeks: {
     msp: (id) => {
-      const c = getAdCachedRecord("msp", id);
+      const c = getDirCachedRecord("msp", id);
       if (!c) return null;
       return {
         kind: "msp",
@@ -242,11 +242,11 @@ registerScreen({
         tone: ACCENT.info,
         tag: c.tag,
         tagTone: toneHex(c.tagTone),
-        open: () => openAdRecord("msp", id, c.title),
+        open: () => openDirRecord("msp", id, c.title),
       };
     },
     customer: (id) => {
-      const c = getAdCachedRecord("customer", id);
+      const c = getDirCachedRecord("customer", id);
       if (!c) return null;
       return {
         kind: "customer",
@@ -256,11 +256,11 @@ registerScreen({
         tone: ACCENT.info,
         tag: c.tag,
         tagTone: toneHex(c.tagTone),
-        open: () => openAdRecord("customer", id, c.title),
+        open: () => openDirRecord("customer", id, c.title),
       };
     },
     user: (id) => {
-      const c = getAdCachedRecord("user", id);
+      const c = getDirCachedRecord("user", id);
       if (!c) return null;
       return {
         kind: "user",
@@ -270,11 +270,11 @@ registerScreen({
         tone: ACCENT.info,
         tag: c.tag,
         tagTone: toneHex(c.tagTone),
-        open: () => openAdRecord("user", id, c.title),
+        open: () => openDirRecord("user", id, c.title),
       };
     },
     group: (id) => {
-      const c = getAdCachedRecord("group", id);
+      const c = getDirCachedRecord("group", id);
       if (!c) return null;
       return {
         kind: "group",
@@ -282,18 +282,18 @@ registerScreen({
         sub: c.sub,
         icon: ShieldCheck,
         tone: ACCENT.info,
-        open: () => openAdRecord("group", id, c.title),
+        open: () => openDirRecord("group", id, c.title),
       };
     },
     ou: (id) => {
-      const c = getAdCachedRecord("ou", id);
+      const c = getDirCachedRecord("ou", id);
       if (!c) return null;
       return {
         kind: "ou",
         title: c.title,
         icon: FolderPlus,
         tone: ACCENT.info,
-        open: () => openAdRecord("ou", id, c.title),
+        open: () => openDirRecord("ou", id, c.title),
       };
     },
   },
@@ -306,7 +306,7 @@ registerScreen({
         kind: "run",
         name: "New MSP",
         sub: "Creates an empty MSP",
-        area: "ad",
+        area: "msp-directory",
         run: () => void onNewMsp(),
       },
       {
@@ -315,28 +315,28 @@ registerScreen({
         kind: "run",
         name: "New organizational unit",
         sub: "Placeholder container, no policy yet",
-        area: "ad",
+        area: "msp-directory",
         run: () => void onNewOu(),
       },
       {
         id: "ans:ad-msp-count",
         type: "answer",
         name: "MSPs in the directory",
-        live: String(getAdCacheSize("msp")),
-        area: "ad",
-        run: () => getShellApi()?.navigate("/ad"),
+        live: String(getDirCacheSize("msp")),
+        area: "msp-directory",
+        run: () => getShellApi()?.navigate("/msp-directory"),
       },
       {
         id: "ans:ad-tenant-count",
         type: "answer",
         name: "Tenants in the directory",
-        live: String(getAdCacheSize("customer")),
-        area: "ad",
-        run: () => getShellApi()?.navigate("/ad"),
+        live: String(getDirCacheSize("customer")),
+        area: "msp-directory",
+        run: () => getShellApi()?.navigate("/msp-directory"),
       },
     ];
 
-    for (const { id, record } of getAllAdCachedRecords("msp")) {
+    for (const { id, record } of getAllDirCachedRecords("msp")) {
       items.push({
         id: `rec:ad-msp-${id}`,
         type: "record",
@@ -344,11 +344,11 @@ registerScreen({
         name: record.title,
         sub: record.sub,
         tag: record.tag,
-        area: "ad",
-        run: () => openAdRecord("msp", id, record.title),
+        area: "msp-directory",
+        run: () => openDirRecord("msp", id, record.title),
       });
     }
-    for (const { id, record } of getAllAdCachedRecords("customer")) {
+    for (const { id, record } of getAllDirCachedRecords("customer")) {
       items.push({
         id: `rec:ad-customer-${id}`,
         type: "record",
@@ -356,30 +356,30 @@ registerScreen({
         name: record.title,
         sub: record.sub,
         tag: record.tag,
-        area: "ad",
-        run: () => openAdRecord("customer", id, record.title),
+        area: "msp-directory",
+        run: () => openDirRecord("customer", id, record.title),
       });
     }
-    for (const { id, record } of getAllAdCachedRecords("user")) {
+    for (const { id, record } of getAllDirCachedRecords("user")) {
       items.push({
         id: `rec:ad-user-${id}`,
         type: "record",
         kind: "user",
         name: record.title,
         sub: record.sub,
-        area: "ad",
-        run: () => openAdRecord("user", id, record.title),
+        area: "msp-directory",
+        run: () => openDirRecord("user", id, record.title),
       });
     }
-    for (const { id, record } of getAllAdCachedRecords("group")) {
+    for (const { id, record } of getAllDirCachedRecords("group")) {
       items.push({
         id: `rec:ad-group-${id}`,
         type: "record",
         kind: "group",
         name: `${record.title} (role)`,
         sub: record.sub,
-        area: "ad",
-        run: () => openAdRecord("group", id, record.title),
+        area: "msp-directory",
+        run: () => openDirRecord("group", id, record.title),
       });
     }
 

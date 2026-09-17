@@ -300,7 +300,7 @@ describe("deriveEntitlements", () => {
 
 // Git #3681 — msp_overrides (feature flags + allowance overrides) had a real,
 // fully-wired CRUD surface with zero read-side enforcement. These tests cover
-// the merge that now wires it into both the AdMspCanvas entitlements view
+// the merge that now wires it into both the DirMspCanvas entitlements view
 // (deriveEntitlements) and the actual runtime gate (msp-entitlement.ts's
 // loadTier(), which reuses applyMspOverride() directly).
 describe("isOverrideActive", () => {

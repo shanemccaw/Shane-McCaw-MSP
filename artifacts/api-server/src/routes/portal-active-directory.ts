@@ -67,7 +67,7 @@ import { z } from "zod";
 
 import { requireCapability } from "../middlewares/requireAuth.ts";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope.ts";
-import { resolveGraphUserByUpn } from "./admin-active-directory.ts";
+import { resolveGraphUserByUpn } from "./admin-active-directory-ou.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 

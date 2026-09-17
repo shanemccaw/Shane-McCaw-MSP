@@ -28,7 +28,7 @@
  * `tenant-scope-coverage.live-db.test.ts` re-runs source 1 on every test run and fails if
  * anything it finds is neither declared below nor explicitly exempted with a reason. That
  * test — not a promise to keep this file updated — is what stops it rotting the way the
- * dev-only hard-delete roster in `routes/admin-active-directory.ts` did.
+ * dev-only hard-delete roster in `routes/admin-msp-directory.ts` did.
  */
 
 import { sql } from "drizzle-orm";
@@ -586,7 +586,7 @@ export const identityPurger: TenantDataPurgerDeclaration = {
     run: async (tx, scope) => {
       let destroyed = 0;
       for (const userId of scope.userIds) {
-        // The SAME cascade DELETE /admin/active-directory/user/:id runs, with a real
+        // The SAME cascade DELETE /admin/msp-directory/user/:id runs, with a real
         // system actor rather than a synthetic user id invented for an audit line.
         const result = await hardDeleteUserWithinTx(tx, userId, {
           kind: "system",

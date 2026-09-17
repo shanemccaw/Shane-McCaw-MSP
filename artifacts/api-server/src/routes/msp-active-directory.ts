@@ -3,7 +3,7 @@
  *
  * Git #2148: #1952 built the manual OU-membership override
  * (`active_directory_ou_assignments`) admin-only, gated by `requireAdmin`
- * (`admin-active-directory.ts`), and explicitly left "should this be
+ * (`admin-active-directory-ou.ts`), and explicitly left "should this be
  * MSP/customer self-service instead?" as an open finding. Shane's real
  * decision on #2148 (2026-09-03): OU-based policy assignment is set by the
  * MSP, through the MSP Portal — not admin-panel's AdminV2-only surface, and
@@ -14,7 +14,7 @@
  * same real-Graph-verification-at-assign-time discipline, same resolution
  * order in policy-compliance-graph.ts (manual assignment first, then the
  * department-match guess). It does not replace or weaken the admin-only
- * routes in admin-active-directory.ts, which stay exactly as they are for
+ * routes in admin-active-directory-ou.ts, which stay exactly as they are for
  * Shane/platform-admin access — this only adds a second, narrower path onto
  * the same data.
  *
@@ -74,7 +74,7 @@ import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
 import { createAuditLog, auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
-import { resolveAssignmentCustomer, resolveGraphUserByUpn } from "./admin-active-directory.ts";
+import { resolveAssignmentCustomer, resolveGraphUserByUpn } from "./admin-active-directory-ou.ts";
 
 const router: IRouter = Router();
 const log = logger.child({ channel: "tenant.active-directory" });

@@ -12,7 +12,7 @@
  * Four record kinds under one route (`alert` `exception` `incident` `dlq`), so
  * `render` reads `ctx.kind` as well as `ctx.recordId` — alert rule 7 and
  * incident 7 are different records, and `recordId` alone cannot tell them
- * apart. That is the same reason `screens/ad/` needs it.
+ * apart. That is the same reason `screens/directory/` needs it.
  *
  * The Watch tab's large button carries a live count — SHELL.md section 1 calls
  * `watch` "the one place a live count belongs", and this is the screen behind

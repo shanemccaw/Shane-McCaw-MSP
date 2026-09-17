@@ -17,58 +17,58 @@ import { ACCENT, ACCENT_TEXT, LINE, SURFACE, TEXT } from "../../../theme";
 import { useShell } from "../../../shell/ShellContext";
 import { ContextMenu, useContextMenu } from "../../../shell/ContextMenu";
 import {
-  assignAdCustomerPackage,
-  createAdConsentInviteLink,
-  fetchAdAssignableServices,
-  fetchAdCustomer,
-  fetchAdCustomerDiagnosticRuns,
-  fetchAdCustomerMonitoringPackage,
-  fetchAdCustomerWriteConsent,
-  fetchAdDiagnosticRunFindings,
-  fetchAdMonitoringPackageChecks,
-  fetchAdMonitoringPackages,
-  fetchAdSimulatorAssessments,
-  hardDeleteAdCustomer,
-  revokeAdTenantConsent,
-  runAdCustomerDiagnostics,
-  setAdMonitoringPackageChecks,
-  startAdCustomerWriteConsent,
-  updateAdCustomerBusinessUnit,
-  updateAdCustomerTestbed,
+  assignDirCustomerPackage,
+  createDirConsentInviteLink,
+  fetchDirAssignableServices,
+  fetchDirCustomer,
+  fetchDirCustomerDiagnosticRuns,
+  fetchDirCustomerMonitoringPackage,
+  fetchDirCustomerWriteConsent,
+  fetchDirDiagnosticRunFindings,
+  fetchDirMonitoringPackageChecks,
+  fetchDirMonitoringPackages,
+  fetchDirSimulatorAssessments,
+  hardDeleteDirCustomer,
+  revokeDirTenantConsent,
+  runDirCustomerDiagnostics,
+  setDirMonitoringPackageChecks,
+  startDirCustomerWriteConsent,
+  updateDirCustomerBusinessUnit,
+  updateDirCustomerTestbed,
   type ConsentKey,
-} from "../adApi";
-import { setAdCachedRecord } from "../adNameCache";
-import { onAdRecordAction, requestAdTreeRefresh } from "../adEvents";
+} from "../dirApi";
+import { setDirCachedRecord } from "../dirNameCache";
+import { onDirRecordAction, requestDirTreeRefresh } from "../dirEvents";
 import type {
-  AdAssignableService,
-  AdConsentStatus,
-  AdCustomerDetail,
-  AdDiagnosticFinding,
-  AdDiagnosticRunFindingsResponse,
-  AdMonitoringPackage,
-  AdWriteConsentStatus,
-} from "../adTypes";
-import { AdRbacOrgRolesPanel } from "../AdRbacPanels";
+  DirAssignableService,
+  DirConsentStatus,
+  DirCustomerDetail,
+  DirDiagnosticFinding,
+  DirDiagnosticRunFindingsResponse,
+  DirMonitoringPackage,
+  DirWriteConsentStatus,
+} from "../dirTypes";
+import { DirRbacOrgRolesPanel } from "../DirRbacPanels";
 import { FailureCategoryChip, SimulatorFailureClassification } from "../../../../components/SimulatorFailureClassification";
 import { simulatorStudioCheckPath } from "../../../../components/simulatorDeepLink";
 import {
-  AdArmedButton,
-  AdButton,
-  AdCanvasBody,
-  AdCanvasColumn,
-  AdCanvasHeader,
-  AdChip,
-  AdEmptyRow,
-  AdListRow,
-  AdListRowGroup,
-  AdLoadError,
-  AdLoading,
-  AdOutcome,
-  AdSection,
-  AdSelect,
-  AdTile,
-  AdTileGrid,
-} from "../adKit";
+  DirArmedButton,
+  DirButton,
+  DirCanvasBody,
+  DirCanvasColumn,
+  DirCanvasHeader,
+  DirChip,
+  DirEmptyRow,
+  DirListRow,
+  DirListRowGroup,
+  DirLoadError,
+  DirLoading,
+  DirOutcome,
+  DirSection,
+  DirSelect,
+  DirTile,
+  DirTileGrid,
+} from "../dirKit";
 
 function fmtDate(v: string | null): string {
   if (!v) return "—";
@@ -76,7 +76,7 @@ function fmtDate(v: string | null): string {
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-const CONSENT_ROWS: Array<{ key: ConsentKey; label: string; get: (d: AdCustomerDetail) => AdConsentStatus | null }> = [
+const CONSENT_ROWS: Array<{ key: ConsentKey; label: string; get: (d: DirCustomerDetail) => DirConsentStatus | null }> = [
   { key: "graph", label: "Microsoft Graph", get: (d) => d.graphConsent },
   { key: "sharepoint", label: "SharePoint sites", get: (d) => d.sharePointConsent },
   { key: "writeBack", label: "Write-back", get: (d) => d.writeConsent },
@@ -84,10 +84,10 @@ const CONSENT_ROWS: Array<{ key: ConsentKey; label: string; get: (d: AdCustomerD
 
 // ── Diagnostic run findings (#371/#374/#378/#379) — ported from the legacy
 // ActiveDirectoryCustomerPane.tsx's own proven data-fetching/business logic.
-// Only the rendering below is new (adKit.tsx primitives / inline theme tokens
+// Only the rendering below is new (dirKit.tsx primitives / inline theme tokens
 // instead of the legacy pane's Tailwind/inline-styled JSX).
 
-const FINDING_SEVERITY_RANK: Record<AdDiagnosticFinding["severity"], number> = {
+const FINDING_SEVERITY_RANK: Record<DirDiagnosticFinding["severity"], number> = {
   critical: 0,
   warning: 1,
   info: 2,
@@ -96,7 +96,7 @@ const FINDING_SEVERITY_RANK: Record<AdDiagnosticFinding["severity"], number> = {
 
 // Errors surface first regardless of severity — the use case is diagnosing
 // what went wrong, not reading an alphabetical/severity-only list.
-function sortFindings(findings: AdDiagnosticFinding[]): AdDiagnosticFinding[] {
+function sortFindings(findings: DirDiagnosticFinding[]): DirDiagnosticFinding[] {
   return [...findings].sort((a, b) => {
     const aErr = a.checkStatus === "error" ? 0 : 1;
     const bErr = b.checkStatus === "error" ? 0 : 1;
@@ -114,7 +114,7 @@ function extractRawGraphError(extractedProperties: Record<string, unknown> | nul
   return typeof raw === "string" && raw.length > 0 ? raw : null;
 }
 
-function findingSeverityColor(finding: AdDiagnosticFinding): string {
+function findingSeverityColor(finding: DirDiagnosticFinding): string {
   if (finding.checkStatus === "error" || finding.severity === "critical") return ACCENT_TEXT.danger;
   if (finding.severity === "warning") return ACCENT.amber;
   if (finding.severity === "ok") return ACCENT_TEXT.green;
@@ -125,7 +125,7 @@ function findingSeverityColor(finding: AdDiagnosticFinding): string {
 // filter over data already fetched by toggleRunExpanded, no new backend
 // route). extractedProperties is stringified rather than read field-by-field
 // so it also catches endpoint/URL text buried inside a raw Graph error.
-function findingMatchesSearch(finding: AdDiagnosticFinding, term: string): boolean {
+function findingMatchesSearch(finding: DirDiagnosticFinding, term: string): boolean {
   if (!term) return true;
   const needle = term.toLowerCase();
   const haystacks = [
@@ -161,10 +161,10 @@ function HighlightMatch({ text, term }: { text: string; term: string }) {
   return <>{parts}</>;
 }
 
-export function AdCustomerCanvas({ customerId }: { customerId: number }) {
+export function DirCustomerCanvas({ customerId }: { customerId: number }) {
   const { fetchWithAuth } = useAuth();
   const shell = useShell();
-  const [detail, setDetail] = useState<AdCustomerDetail | null>(null);
+  const [detail, setDetail] = useState<DirCustomerDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<{ tone: "ok" | "error"; message: string } | null>(null);
@@ -176,14 +176,14 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
   // used only to pre-select the picker so one-click behavior is unchanged
   // when the default is what the operator wants. The picker itself only
   // opens when there is a genuine choice to make (more than one package).
-  const [packages, setPackages] = useState<AdMonitoringPackage[]>([]);
+  const [packages, setPackages] = useState<DirMonitoringPackage[]>([]);
   const [defaultPackageKey, setDefaultPackageKey] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selectedPackageKey, setSelectedPackageKey] = useState("");
 
   // Write-back consent (admin) — Git #1672, rehomed from the archived
   // msp-portal customer-detail.tsx's WriteBackConsentCard.
-  const [writeConsentStatus, setWriteConsentStatus] = useState<AdWriteConsentStatus | null>(null);
+  const [writeConsentStatus, setWriteConsentStatus] = useState<DirWriteConsentStatus | null>(null);
   const [writeConsentLoading, setWriteConsentLoading] = useState(true);
   const [writeConsentGenerating, setWriteConsentGenerating] = useState(false);
 
@@ -198,7 +198,7 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   // #378 — search is scoped to whichever run is currently expanded.
   const [findingsSearch, setFindingsSearch] = useState("");
-  const [runFindings, setRunFindings] = useState<Record<string, AdDiagnosticRunFindingsResponse | "loading" | "error">>({});
+  const [runFindings, setRunFindings] = useState<Record<string, DirDiagnosticRunFindingsResponse | "loading" | "error">>({});
 
   // #376 — "Remove from scan package" on a finding row. Shared-package
   // detection reuses the same GET /api/admin/simulator/assessments filter
@@ -235,7 +235,7 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
   // Package Assignment (#4489) — manual Monitoring/Retainer swap, DB-only, no
   // Stripe. `assignableServices` is the real `services` catalog; the picker
   // filters it client-side by deliveryType into the two assignable categories.
-  const [assignableServices, setAssignableServices] = useState<AdAssignableService[]>([]);
+  const [assignableServices, setAssignableServices] = useState<DirAssignableService[]>([]);
   const [selectedMonitoringServiceId, setSelectedMonitoringServiceId] = useState("");
   const [selectedRetainerServiceId, setSelectedRetainerServiceId] = useState("");
   const [assigningCategory, setAssigningCategory] = useState<"monitoring" | "retainer" | null>(null);
@@ -244,10 +244,10 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchAdCustomer(fetchWithAuth, customerId);
+      const data = await fetchDirCustomer(fetchWithAuth, customerId);
       setDetail(data);
       setBusinessUnitDraft(data.customer.businessUnit ?? "");
-      setAdCachedRecord("customer", String(customerId), {
+      setDirCachedRecord("customer", String(customerId), {
         title: data.customer.name,
         sub: data.customer.domain ?? data.owningMsp?.name,
         tag: data.customer.status,
@@ -277,8 +277,8 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
   const loadPackages = useCallback(async () => {
     try {
       const [pkgs, resolved] = await Promise.all([
-        fetchAdMonitoringPackages(fetchWithAuth),
-        fetchAdCustomerMonitoringPackage(fetchWithAuth, customerId),
+        fetchDirMonitoringPackages(fetchWithAuth),
+        fetchDirCustomerMonitoringPackage(fetchWithAuth, customerId),
       ]);
       setPackages(pkgs);
       setDefaultPackageKey(resolved.packageKey);
@@ -307,7 +307,7 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
       setScanning(true);
       setOutcome(null);
       try {
-        await runAdCustomerDiagnostics(fetchWithAuth, customerId, packageKey);
+        await runDirCustomerDiagnostics(fetchWithAuth, customerId, packageKey);
         setOutcome({ tone: "ok", message: "Scan started. It runs in the background — reopen this tenant in a minute to see results." });
       } catch (err) {
         setOutcome({ tone: "error", message: err instanceof Error ? err.message : "Failed to start the scan." });
@@ -322,7 +322,7 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
     setBusinessUnitSaving(true);
     setOutcome(null);
     try {
-      const res = await updateAdCustomerBusinessUnit(fetchWithAuth, customerId, businessUnitDraft.trim() || null);
+      const res = await updateDirCustomerBusinessUnit(fetchWithAuth, customerId, businessUnitDraft.trim() || null);
       setBusinessUnitDraft(res.businessUnit ?? "");
       setDetail((prev) => (prev ? { ...prev, customer: { ...prev.customer, businessUnit: res.businessUnit } } : prev));
       setOutcome({ tone: "ok", message: "Business unit saved." });
@@ -338,7 +338,7 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
     setTestbedSaving(true);
     setOutcome(null);
     try {
-      const res = await updateAdCustomerTestbed(fetchWithAuth, customerId, !detail.customer.isTestbed);
+      const res = await updateDirCustomerTestbed(fetchWithAuth, customerId, !detail.customer.isTestbed);
       setDetail((prev) => (prev ? { ...prev, customer: { ...prev.customer, isTestbed: res.isTestbed } } : prev));
       setOutcome({ tone: "ok", message: `Testbed ${res.isTestbed ? "enabled" : "disabled"} for this tenant.` });
     } catch (err) {
@@ -353,7 +353,7 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
   // the section shows "No … services in the catalog" instead of blocking.
   const loadAssignableServices = useCallback(async () => {
     try {
-      const services = await fetchAdAssignableServices(fetchWithAuth);
+      const services = await fetchDirAssignableServices(fetchWithAuth);
       setAssignableServices(services);
       const monitoring = services.filter((s) => s.deliveryType === "bundle_subscription");
       const retainer = services.filter((s) => s.deliveryType === "retainer");
@@ -374,7 +374,7 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
       setAssigningCategory(category);
       setOutcome(null);
       try {
-        const res = await assignAdCustomerPackage(fetchWithAuth, customerId, Number(serviceId));
+        const res = await assignDirCustomerPackage(fetchWithAuth, customerId, Number(serviceId));
         setOutcome({
           tone: "ok",
           message:
@@ -395,7 +395,7 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
   const loadWriteConsent = useCallback(async () => {
     setWriteConsentLoading(true);
     try {
-      const data = await fetchAdCustomerWriteConsent(fetchWithAuth, customerId);
+      const data = await fetchDirCustomerWriteConsent(fetchWithAuth, customerId);
       setWriteConsentStatus(data);
     } catch {
       setWriteConsentStatus(null);
@@ -412,7 +412,7 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
     setWriteConsentGenerating(true);
     setOutcome(null);
     try {
-      const { consentUrl } = await startAdCustomerWriteConsent(fetchWithAuth, customerId);
+      const { consentUrl } = await startDirCustomerWriteConsent(fetchWithAuth, customerId);
       window.open(consentUrl, "_blank", "noopener,noreferrer");
       setOutcome({ tone: "ok", message: "Write-back consent link opened in a new tab." });
     } catch (err) {
@@ -427,7 +427,7 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
       if (!detail?.customer.tenantId) return;
       setOutcome(null);
       try {
-        await revokeAdTenantConsent(fetchWithAuth, detail.customer.tenantId, key);
+        await revokeDirTenantConsent(fetchWithAuth, detail.customer.tenantId, key);
         setOutcome({ tone: "ok", message: `${label} consent revoked. Checks that depend on it stop until the tenant re-consents.` });
         await load();
       } catch (err) {
@@ -440,7 +440,7 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
   const copyReconsentLink = useCallback(async () => {
     setOutcome(null);
     try {
-      const link = await createAdConsentInviteLink(fetchWithAuth, {
+      const link = await createDirConsentInviteLink(fetchWithAuth, {
         customerId,
         tenantId: detail?.customer.tenantId ?? undefined,
       });
@@ -455,9 +455,9 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
     setDeleteBusy(true);
     setOutcome(null);
     try {
-      const res = await hardDeleteAdCustomer(fetchWithAuth, customerId);
+      const res = await hardDeleteDirCustomer(fetchWithAuth, customerId);
       setDeleted(true);
-      requestAdTreeRefresh();
+      requestDirTreeRefresh();
       setOutcome({
         tone: "ok",
         message: `${res.deletedCustomerName} and ${res.usersDeleted} user${res.usersDeleted === 1 ? "" : "s"} permanently removed. There is no undo.`,
@@ -476,7 +476,7 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
     setRefreshingRuns(true);
     setRefreshRunsError(null);
     try {
-      const body = await fetchAdCustomerDiagnosticRuns(fetchWithAuth, customerId);
+      const body = await fetchDirCustomerDiagnosticRuns(fetchWithAuth, customerId);
       setDetail((prev) => (prev ? { ...prev, recentDiagnosticRuns: body.recentDiagnosticRuns } : prev));
     } catch (err) {
       setRefreshRunsError(err instanceof Error ? err.message : "Failed to refresh diagnostic runs.");
@@ -498,7 +498,7 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
       if (runFindings[runId]) return;
       setRunFindings((prev) => ({ ...prev, [runId]: "loading" }));
       try {
-        const body = await fetchAdDiagnosticRunFindings(fetchWithAuth, customerId, runId);
+        const body = await fetchDirDiagnosticRunFindings(fetchWithAuth, customerId, runId);
         setRunFindings((prev) => ({ ...prev, [runId]: body }));
       } catch {
         setRunFindings((prev) => ({ ...prev, [runId]: "error" }));
@@ -515,9 +515,9 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
       const inFlightKey = `${runId}:${checkKey}`;
       setRemovingKey(inFlightKey);
       try {
-        const current = await fetchAdMonitoringPackageChecks(fetchWithAuth, packageKey);
+        const current = await fetchDirMonitoringPackageChecks(fetchWithAuth, packageKey);
         const remainingKeys = current.checks.map((c) => c.checkKey).filter((k) => k !== checkKey);
-        await setAdMonitoringPackageChecks(fetchWithAuth, packageKey, remainingKeys);
+        await setDirMonitoringPackageChecks(fetchWithAuth, packageKey, remainingKeys);
         setRunFindings((prev) => {
           const existing = prev[runId];
           if (!existing || existing === "loading" || existing === "error") return prev;
@@ -546,7 +546,7 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
   const handleRemoveClick = useCallback(
     async (runId: string, packageKey: string, checkKey: string) => {
       try {
-        const data = await fetchAdSimulatorAssessments(fetchWithAuth);
+        const data = await fetchDirSimulatorAssessments(fetchWithAuth);
         const sharedWith = data.assessments.filter((a) => a.packageKey === packageKey);
         if (sharedWith.length > 0) {
           setRemoveConfirm({ runId, packageKey, checkKey, sharedNames: sharedWith.map((a) => a.name) });
@@ -563,7 +563,7 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
 
   useEffect(
     () =>
-      onAdRecordAction("customer", String(customerId), (action) => {
+      onDirRecordAction("customer", String(customerId), (action) => {
         if (action === "run-scan") void runScan();
         if (action === "revoke-graph-consent") void revoke("graph", "Microsoft Graph");
         if (action === "copy-reconsent-link") void copyReconsentLink();
@@ -572,23 +572,23 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
   );
 
   if (loading) return (
-    <AdCanvasColumn>
-      <AdLoading />
-    </AdCanvasColumn>
+    <DirCanvasColumn>
+      <DirLoading />
+    </DirCanvasColumn>
   );
   if (error || !detail) return (
-    <AdCanvasColumn>
-      <AdLoadError message={error ?? "This tenant could not be loaded."} />
-    </AdCanvasColumn>
+    <DirCanvasColumn>
+      <DirLoadError message={error ?? "This tenant could not be loaded."} />
+    </DirCanvasColumn>
   );
 
   if (deleted) {
     return (
-      <AdCanvasColumn>
+      <DirCanvasColumn>
         <div style={{ padding: 24, fontSize: 12.5, color: ACCENT_TEXT.green }}>
           This tenant and everything tied to it was permanently deleted. Close this tab — it no longer exists.
         </div>
-      </AdCanvasColumn>
+      </DirCanvasColumn>
     );
   }
 
@@ -598,21 +598,21 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
   const retainerServiceOptions = assignableServices.filter((s) => s.deliveryType === "retainer");
 
   return (
-    <AdCanvasColumn>
-      <AdCanvasHeader
+    <DirCanvasColumn>
+      <DirCanvasHeader
         icon={Users}
         name={customer.name}
         kindLabel="Tenant"
         chips={
           <>
-            <AdChip label={connected ? "connected" : "not connected"} tone={connected ? "good" : "warn"} />
-            {customer.domain && <AdChip label={customer.domain} />}
+            <DirChip label={connected ? "connected" : "not connected"} tone={connected ? "good" : "warn"} />
+            {customer.domain && <DirChip label={customer.domain} />}
           </>
         }
-        actions={<AdButton label={scanning ? "Scanning…" : "Run scan"} tone="primary" onClick={() => void runScan()} disabled={scanning || !connected} title={connected ? undefined : "Tenant is not connected — nothing to scan."} />}
+        actions={<DirButton label={scanning ? "Scanning…" : "Run scan"} tone="primary" onClick={() => void runScan()} disabled={scanning || !connected} title={connected ? undefined : "Tenant is not connected — nothing to scan."} />}
       />
 
-      {outcome && <AdOutcome tone={outcome.tone} message={outcome.message} onDismiss={() => setOutcome(null)} />}
+      {outcome && <DirOutcome tone={outcome.tone} message={outcome.message} onDismiss={() => setOutcome(null)} />}
 
       {pickerOpen && (
         <div
@@ -627,7 +627,7 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
           }}
         >
           <span style={{ fontSize: 11.5, color: TEXT.label }}>Package to run:</span>
-          <AdSelect
+          <DirSelect
             value={selectedPackageKey}
             onChange={setSelectedPackageKey}
             options={packages.map((p) => ({
@@ -636,17 +636,17 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
             }))}
             disabled={scanning}
           />
-          <AdButton label={scanning ? "Scanning…" : "Run"} tone="primary" onClick={() => void runScan(selectedPackageKey)} disabled={scanning || !selectedPackageKey} />
-          <AdButton label="Cancel" onClick={() => setPickerOpen(false)} disabled={scanning} />
+          <DirButton label={scanning ? "Scanning…" : "Run"} tone="primary" onClick={() => void runScan(selectedPackageKey)} disabled={scanning || !selectedPackageKey} />
+          <DirButton label="Cancel" onClick={() => setPickerOpen(false)} disabled={scanning} />
         </div>
       )}
 
-      <AdCanvasBody>
-        <AdSection title="Profile">
-          <AdTileGrid>
-            <AdTile label="Tenant GUID" value={customer.tenantId ? `${customer.tenantId.slice(0, 8)}…` : "none"} accent={customer.tenantId ? undefined : ACCENT_TEXT.danger} hint={customer.tenantUrl ?? undefined} copyValue={customer.tenantId ?? undefined} />
-            <AdTile label="Industry" value={customer.industry ?? "—"} />
-            <AdTile label="Status" value={customer.status} />
+      <DirCanvasBody>
+        <DirSection title="Profile">
+          <DirTileGrid>
+            <DirTile label="Tenant GUID" value={customer.tenantId ? `${customer.tenantId.slice(0, 8)}…` : "none"} accent={customer.tenantId ? undefined : ACCENT_TEXT.danger} hint={customer.tenantUrl ?? undefined} copyValue={customer.tenantId ?? undefined} />
+            <DirTile label="Industry" value={customer.industry ?? "—"} />
+            <DirTile label="Status" value={customer.status} />
             <div
               style={{
                 minWidth: 0,
@@ -687,11 +687,11 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
                   }}
                 />
                 {businessUnitDraft.trim() !== (customer.businessUnit ?? "").trim() && (
-                  <AdButton label={businessUnitSaving ? "Saving…" : "Save"} tone="primary" onClick={() => void saveBusinessUnit()} disabled={businessUnitSaving} />
+                  <DirButton label={businessUnitSaving ? "Saving…" : "Save"} tone="primary" onClick={() => void saveBusinessUnit()} disabled={businessUnitSaving} />
                 )}
               </div>
             </div>
-            <AdTile
+            <DirTile
               label="Owning MSP"
               value={owningMsp?.name ?? "—"}
             />
@@ -728,31 +728,31 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
                 >
                   {customer.isTestbed ? "Yes" : "No"}
                 </span>
-                <AdButton
+                <DirButton
                   label={testbedSaving ? "Saving…" : customer.isTestbed ? "Disable" : "Enable"}
                   onClick={() => void toggleTestbed()}
                   disabled={testbedSaving}
                 />
               </div>
             </div>
-          </AdTileGrid>
+          </DirTileGrid>
           {owningMsp && (
             <div>
-              <AdButton
+              <DirButton
                 label={`Open ${owningMsp.name}`}
-                onClick={() => shell.openDoc({ kind: "msp", id: String(owningMsp.id), screenId: "ad", label: owningMsp.name })}
+                onClick={() => shell.openDoc({ kind: "msp", id: String(owningMsp.id), screenId: "msp-directory", label: owningMsp.name })}
               />
             </div>
           )}
-        </AdSection>
+        </DirSection>
 
-        <AdSection title="Consent" note={connected ? undefined : "This tenant has never completed Graph consent — scanning is unavailable."}>
-          <AdListRowGroup>
+        <DirSection title="Consent" note={connected ? undefined : "This tenant has never completed Graph consent — scanning is unavailable."}>
+          <DirListRowGroup>
             {CONSENT_ROWS.map(({ key, label, get }) => {
               const status = get(detail);
               const granted = status?.consentStatus === "granted";
               return (
-                <AdListRow
+                <DirListRow
                   key={key}
                   label={label}
                   detail={status ? `${status.consentStatus}${status.adminEmail ? ` · ${status.adminEmail}` : ""}` : "never asked"}
@@ -760,31 +760,31 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
                   dot={granted ? "#6ccb96" : status ? "#e9b949" : "#6d6b69"}
                   actions={
                     granted ? (
-                      <AdArmedButton label="Revoke" tone="danger" onConfirm={() => void revoke(key, label)} title={`Every check depending on ${label} stops for ${customer.name}.`} />
+                      <DirArmedButton label="Revoke" tone="danger" onConfirm={() => void revoke(key, label)} title={`Every check depending on ${label} stops for ${customer.name}.`} />
                     ) : undefined
                   }
                 />
               );
             })}
-          </AdListRowGroup>
+          </DirListRowGroup>
           <div style={{ display: "flex", gap: 8 }}>
-            <AdButton label="Copy re-consent link" onClick={() => void copyReconsentLink()} />
+            <DirButton label="Copy re-consent link" onClick={() => void copyReconsentLink()} />
           </div>
-        </AdSection>
+        </DirSection>
 
-        <AdSection
+        <DirSection
           title="Write-back consent (admin)"
           note="Admin consent for the dedicated write app — separate from the read-only tenant consent above."
         >
-          <AdListRowGroup>
+          <DirListRowGroup>
             {writeConsentLoading ? (
-              <AdEmptyRow label="Loading…" />
+              <DirEmptyRow label="Loading…" />
             ) : (
               (() => {
                 const wcStatus = writeConsentStatus?.writeConsent?.consentStatus ?? null;
                 const granted = wcStatus === "granted";
                 return (
-                  <AdListRow
+                  <DirListRow
                     label="Write app"
                     detail={
                       writeConsentStatus?.tenantId == null
@@ -799,9 +799,9 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
                 );
               })()
             )}
-          </AdListRowGroup>
+          </DirListRowGroup>
           <div style={{ display: "flex", gap: 8 }}>
-            <AdButton
+            <DirButton
               label={
                 writeConsentGenerating
                   ? "Generating…"
@@ -813,12 +813,12 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
               disabled={writeConsentGenerating || writeConsentLoading || writeConsentStatus?.tenantId == null}
             />
           </div>
-        </AdSection>
+        </DirSection>
 
-        <AdSection
+        <DirSection
           title="Recent scans"
           actions={
-            <AdButton
+            <DirButton
               label={refreshingRuns ? "Refreshing…" : "Refresh"}
               onClick={() => void refreshRuns()}
               disabled={refreshingRuns}
@@ -827,16 +827,16 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
           }
         >
           {refreshRunsError && <span style={{ fontSize: 11.5, color: ACCENT_TEXT.danger }}>{refreshRunsError}</span>}
-          <AdListRowGroup>
+          <DirListRowGroup>
             {recentDiagnosticRuns.length === 0 ? (
-              <AdEmptyRow label={connected ? "No scans have run yet." : "No scan has ever run against this tenant."} />
+              <DirEmptyRow label={connected ? "No scans have run yet." : "No scan has ever run against this tenant."} />
             ) : (
               recentDiagnosticRuns.map((r) => {
                 const expanded = expandedRunId === r.runId;
                 const state = runFindings[r.runId];
                 return (
                   <div key={r.runId}>
-                    <AdListRow
+                    <DirListRow
                       label={r.packageKey}
                       detail={r.status}
                       meta={r.completedAt ? fmtDate(r.completedAt) : r.startedAt ? `started ${fmtDate(r.startedAt)}` : undefined}
@@ -951,13 +951,13 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
                                               from all of them?
                                             </span>
                                             <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-                                              <AdButton
+                                              <DirButton
                                                 label={removingKey === removeKey ? "Removing…" : "Remove from all"}
                                                 tone="danger"
                                                 disabled={removingKey === removeKey}
                                                 onClick={() => void removeCheckFromPackage(r.runId, r.packageKey, f.checkKey, removeConfirm.sharedNames.length)}
                                               />
-                                              <AdButton label="Cancel" disabled={removingKey === removeKey} onClick={() => setRemoveConfirm(null)} />
+                                              <DirButton label="Cancel" disabled={removingKey === removeKey} onClick={() => setRemoveConfirm(null)} />
                                             </div>
                                           </div>
                                         )}
@@ -1015,22 +1015,22 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
                 );
               })
             )}
-          </AdListRowGroup>
-        </AdSection>
+          </DirListRowGroup>
+        </DirSection>
 
-        <AdSection title="Purchased services">
-          <AdListRowGroup>
+        <DirSection title="Purchased services">
+          <DirListRowGroup>
             {purchasedServices.length === 0 ? (
-              <AdEmptyRow label="No services purchased." />
+              <DirEmptyRow label="No services purchased." />
             ) : (
               purchasedServices.map((s) => (
-                <AdListRow key={s.id} label={s.serviceName} detail={s.billingInterval} meta={s.status} dot={s.status === "active" ? "#6ccb96" : "#8a8886"} />
+                <DirListRow key={s.id} label={s.serviceName} detail={s.billingInterval} meta={s.status} dot={s.status === "active" ? "#6ccb96" : "#8a8886"} />
               ))
             )}
-          </AdListRowGroup>
-        </AdSection>
+          </DirListRowGroup>
+        </DirSection>
 
-        <AdSection
+        <DirSection
           title="Package Assignment"
           note="Internal-only, DB-only — no Stripe. Assigning a package marks this tenant's current active package of the same type completed; there is no undo."
         >
@@ -1041,13 +1041,13 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
                 <span style={{ fontSize: 11.5, color: TEXT.label }}>No Monitoring services in the catalog.</span>
               ) : (
                 <>
-                  <AdSelect
+                  <DirSelect
                     value={selectedMonitoringServiceId}
                     onChange={setSelectedMonitoringServiceId}
                     options={monitoringServiceOptions.map((s) => ({ value: String(s.id), label: s.tier ? `${s.name} (${s.tier})` : s.name }))}
                     disabled={assigningCategory !== null}
                   />
-                  <AdArmedButton
+                  <DirArmedButton
                     label={assigningCategory === "monitoring" ? "Assigning…" : "Assign"}
                     tone="primary"
                     onConfirm={() => void assignPackage("monitoring", selectedMonitoringServiceId)}
@@ -1062,13 +1062,13 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
                 <span style={{ fontSize: 11.5, color: TEXT.label }}>No Retainer services in the catalog.</span>
               ) : (
                 <>
-                  <AdSelect
+                  <DirSelect
                     value={selectedRetainerServiceId}
                     onChange={setSelectedRetainerServiceId}
                     options={retainerServiceOptions.map((s) => ({ value: String(s.id), label: s.tier ? `${s.name} (${s.tier})` : s.name }))}
                     disabled={assigningCategory !== null}
                   />
-                  <AdArmedButton
+                  <DirArmedButton
                     label={assigningCategory === "retainer" ? "Assigning…" : "Assign"}
                     tone="primary"
                     onConfirm={() => void assignPackage("retainer", selectedRetainerServiceId)}
@@ -1078,27 +1078,27 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
               )}
             </div>
           </div>
-        </AdSection>
+        </DirSection>
 
-        <AdSection title="Users" note={`${detail.userCount} account${detail.userCount === 1 ? "" : "s"}`}>
-          <AdListRowGroup>
+        <DirSection title="Users" note={`${detail.userCount} account${detail.userCount === 1 ? "" : "s"}`}>
+          <DirListRowGroup>
             {users.length === 0 ? (
-              <AdEmptyRow label="No users yet." />
+              <DirEmptyRow label="No users yet." />
             ) : (
               users.map((u) => (
-                <AdListRow
+                <DirListRow
                   key={u.id}
                   label={u.name || u.email}
                   detail={`${u.email} · ${u.mspRole}`}
                   meta={u.isActive ? "active" : "disabled"}
                   metaAccent={u.isActive ? undefined : ACCENT_TEXT.danger}
                   dot={u.isActive ? "#6ccb96" : "#e57a7a"}
-                  onClick={() => shell.openDoc({ kind: "user", id: String(u.id), screenId: "ad", label: u.name || u.email })}
+                  onClick={() => shell.openDoc({ kind: "user", id: String(u.id), screenId: "msp-directory", label: u.name || u.email })}
                   onContextMenu={(e) =>
                     openMenu(
                       e,
                       [
-                        { label: "Open", onSelect: () => shell.openDoc({ kind: "user", id: String(u.id), screenId: "ad", label: u.name || u.email }) },
+                        { label: "Open", onSelect: () => shell.openDoc({ kind: "user", id: String(u.id), screenId: "msp-directory", label: u.name || u.email }) },
                         { label: "Copy email", onSelect: () => void navigator.clipboard.writeText(u.email).catch(() => {}) },
                       ],
                       `Actions for ${u.name || u.email}`,
@@ -1107,18 +1107,18 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
                 />
               ))
             )}
-          </AdListRowGroup>
-        </AdSection>
+          </DirListRowGroup>
+        </DirSection>
 
-        <AdRbacOrgRolesPanel system="customer" orgId={customerId} />
+        <DirRbacOrgRolesPanel system="customer" orgId={customerId} />
 
-        <AdSection
+        <DirSection
           title="Delete"
           note="Revokes all consent, then removes every user under this tenant and everything tied to it — there is no undo. The server refuses this outside a non-production environment."
         >
           {!deleteArmed ? (
             <div>
-              <AdButton label="Permanently delete this tenant" tone="danger" onClick={() => setDeleteArmed(true)} />
+              <DirButton label="Permanently delete this tenant" tone="danger" onClick={() => setDeleteArmed(true)} />
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 360 }}>
@@ -1139,19 +1139,19 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
                 }}
               />
               <div style={{ display: "flex", gap: 8 }}>
-                <AdButton
+                <DirButton
                   label={deleteBusy ? "Deleting…" : "Delete permanently"}
                   tone="danger"
                   disabled={deleteBusy || deleteConfirmText !== customer.name}
                   onClick={() => void runHardDelete()}
                 />
-                <AdButton label="Cancel" onClick={() => { setDeleteArmed(false); setDeleteConfirmText(""); }} disabled={deleteBusy} />
+                <DirButton label="Cancel" onClick={() => { setDeleteArmed(false); setDeleteConfirmText(""); }} disabled={deleteBusy} />
               </div>
             </div>
           )}
-        </AdSection>
-      </AdCanvasBody>
+        </DirSection>
+      </DirCanvasBody>
       <ContextMenu menu={menu} onClose={closeMenu} />
-    </AdCanvasColumn>
+    </DirCanvasColumn>
   );
 }

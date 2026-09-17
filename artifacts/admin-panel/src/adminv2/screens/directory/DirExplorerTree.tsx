@@ -1,11 +1,11 @@
 /**
- * Active Directory — Explorer tree (the screen's `left` panel).
+ * MSP Directory — Explorer tree (the screen's `left` panel).
  *
- * OU=MSPs (every real MSP, expandable to its real nested Tenants, each
+ * MSPs (every real MSP, expandable to its real nested Tenants, each
  * expandable to its real nested Users) + Groups (one node per RBAC role) +
- * OU=Placeholders (Phase 5's creatable/browsable stub), plus a universal
+ * Placeholders (Phase 5's creatable/browsable stub), plus a universal
  * search box across all four. Mirrors `ActiveDirectoryTree.tsx`'s data model
- * and endpoints exactly (same `/admin/active-directory/tree` /`/search`
+ * and endpoints exactly (same `/admin/msp-directory/tree` /`/search`
  * calls) — only the chrome changes, from the old panel's own tree widget to
  * this shell's `openDoc`-driven tab/trail model.
  *
@@ -34,10 +34,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { LINE, SURFACE, TEXT } from "../../theme";
 import { useShell } from "../../shell/ShellContext";
 import { ContextMenu, useContextMenu, type ContextMenuItem } from "../../shell/ContextMenu";
-import { createAdOu, deleteAdOu, fetchAdTree, renameAdOu, searchAdDirectory } from "./adApi";
-import { primeAdNameCacheFromTree } from "./adNameCache";
-import type { AdSearchResult, AdTree, AdTreeCustomer, AdTreeMsp, AdTreeOu, DirectoryGroupRole } from "./adTypes";
-import { AD_TREE_REFRESH_EVENT } from "./adEvents";
+import { createDirOu, deleteDirOu, fetchDirTree, renameDirOu, searchDirDirectory } from "./dirApi";
+import { primeDirNameCacheFromTree } from "./dirNameCache";
+import type { DirSearchResult, DirTree, DirTreeCustomer, DirTreeMsp, DirTreeOu, DirectoryGroupRole } from "./dirTypes";
+import { DIR_TREE_REFRESH_EVENT } from "./dirEvents";
 
 type OpenMenu = (event: React.MouseEvent, items: ContextMenuItem[], ariaLabel: string) => void;
 
@@ -78,14 +78,14 @@ const sectionRowStyle = (): React.CSSProperties => ({
   color: TEXT.dimmer,
 });
 
-export function AdExplorerTree() {
+export function DirExplorerTree() {
   const { fetchWithAuth } = useAuth();
   const shell = useShell();
   const activeDoc = shell.state.docs.find((d) => d.id === shell.state.activeDocId);
   const activeKind = activeDoc && activeDoc.kind !== "screen" ? activeDoc.kind : null;
   const activeId = activeDoc?.recordId;
 
-  const [tree, setTree] = useState<AdTree | null>(null);
+  const [tree, setTree] = useState<DirTree | null>(null);
   const [loading, setLoading] = useState(false);
   const [mspsOpen, setMspsOpen] = useState(true);
   const [groupsOpen, setGroupsOpen] = useState(false);
@@ -97,9 +97,9 @@ export function AdExplorerTree() {
   const loadTree = async () => {
     setLoading(true);
     try {
-      const data = await fetchAdTree(fetchWithAuth);
+      const data = await fetchDirTree(fetchWithAuth);
       setTree(data);
-      primeAdNameCacheFromTree(data);
+      primeDirNameCacheFromTree(data);
     } catch {
       // Tree stays as it was on a transient failure — Refresh lets the operator retry.
     } finally {
@@ -114,15 +114,15 @@ export function AdExplorerTree() {
 
   useEffect(() => {
     const handler = () => void loadTree();
-    window.addEventListener(AD_TREE_REFRESH_EVENT, handler);
-    return () => window.removeEventListener(AD_TREE_REFRESH_EVENT, handler);
+    window.addEventListener(DIR_TREE_REFRESH_EVENT, handler);
+    return () => window.removeEventListener(DIR_TREE_REFRESH_EVENT, handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Universal search ────────────────────────────────────────────────────
   const [query, setQuery] = useState("");
   const isSearching = query.trim().length > 0;
-  const [results, setResults] = useState<AdSearchResult | null>(null);
+  const [results, setResults] = useState<DirSearchResult | null>(null);
   const debounceRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -133,7 +133,7 @@ export function AdExplorerTree() {
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
     debounceRef.current = window.setTimeout(async () => {
       try {
-        setResults(await searchAdDirectory(fetchWithAuth, query));
+        setResults(await searchDirDirectory(fetchWithAuth, query));
       } catch {
         // Leave previous results visible on a transient failure.
       }
@@ -145,33 +145,33 @@ export function AdExplorerTree() {
   }, [query, isSearching]);
 
   function open(kind: "msp" | "customer" | "user" | "group" | "ou", id: string | number, label: string) {
-    shell.openDoc({ kind, id: String(id), screenId: "ad", label });
+    shell.openDoc({ kind, id: String(id), screenId: "msp-directory", label });
   }
 
   async function onCreateOu() {
     const name = window.prompt("New organizational unit name:");
     if (!name?.trim()) return;
     try {
-      await createAdOu(fetchWithAuth, name.trim());
+      await createDirOu(fetchWithAuth, name.trim());
       await loadTree();
     } catch (err) {
       window.alert(err instanceof Error ? err.message : "Failed to create the OU.");
     }
   }
-  async function onRenameOu(ou: AdTreeOu) {
+  async function onRenameOu(ou: DirTreeOu) {
     const name = window.prompt("Rename organizational unit:", ou.name);
     if (!name?.trim() || name.trim() === ou.name) return;
     try {
-      await renameAdOu(fetchWithAuth, ou.id, name.trim());
+      await renameDirOu(fetchWithAuth, ou.id, name.trim());
       await loadTree();
     } catch (err) {
       window.alert(err instanceof Error ? err.message : "Failed to rename the OU.");
     }
   }
-  async function onDeleteOu(ou: AdTreeOu) {
+  async function onDeleteOu(ou: DirTreeOu) {
     if (!window.confirm(`Delete organizational unit "${ou.name}"?`)) return;
     try {
-      await deleteAdOu(fetchWithAuth, ou.id);
+      await deleteDirOu(fetchWithAuth, ou.id);
       await loadTree();
     } catch (err) {
       window.alert(err instanceof Error ? err.message : "Failed to delete the OU.");
@@ -345,17 +345,17 @@ export function AdExplorerTree() {
           )
         ) : (
           <div>
-            {/* OU=MSPs */}
+            {/* MSPs */}
             <div onClick={() => setMspsOpen((v) => !v)} style={sectionRowStyle()}>
               {mspsOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
               <Building2 size={13} />
-              <span style={{ flex: 1 }}>OU=MSPs</span>
+              <span style={{ flex: 1 }}>MSPs</span>
               <span style={{ fontSize: 9.5, color: TEXT.meta }}>{tree?.msps.length ?? 0}</span>
             </div>
             {mspsOpen && (
               <div>
                 {!tree ? (
-                  <AdEmptyLeaf label={loading ? "Loading…" : "No MSPs"} depth={2} />
+                  <DirEmptyLeaf label={loading ? "Loading…" : "No MSPs"} depth={2} />
                 ) : (
                   tree.msps.map((msp) => (
                     <MspBranch
@@ -420,17 +420,17 @@ export function AdExplorerTree() {
               </div>
             )}
 
-            {/* OU=Placeholders */}
+            {/* Placeholders */}
             <div
               style={sectionRowStyle()}
               onContextMenu={(e) =>
-                openMenu(e, [{ label: "New organizational unit", onSelect: () => void onCreateOu() }], "Actions for OU=Placeholders")
+                openMenu(e, [{ label: "New organizational unit", onSelect: () => void onCreateOu() }], "Actions for Placeholders")
               }
             >
               <span onClick={() => setOusOpen((v) => !v)} style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
                 {ousOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                 <FolderCog size={13} />
-                <span style={{ flex: 1 }}>OU=Placeholders</span>
+                <span style={{ flex: 1 }}>Placeholders</span>
               </span>
               <span style={{ fontSize: 9.5, color: TEXT.meta }}>{tree?.ous.length ?? 0}</span>
               <button
@@ -447,7 +447,7 @@ export function AdExplorerTree() {
             {ousOpen && (
               <div>
                 {(tree?.ous ?? []).length === 0 ? (
-                  <AdEmptyLeaf label={loading ? "Loading…" : "No OUs — click + to create one"} depth={2} />
+                  <DirEmptyLeaf label={loading ? "Loading…" : "No OUs — click + to create one"} depth={2} />
                 ) : (
                   tree!.ous.map((ou) => (
                     <div
@@ -462,13 +462,13 @@ export function AdExplorerTree() {
                             { label: "Rename", onSelect: () => void onRenameOu(ou) },
                             { label: "Delete", danger: true, onSelect: () => void onDeleteOu(ou) },
                           ],
-                          `Actions for OU=${ou.name}`,
+                          `Actions for ${ou.name}`,
                         )
                       }
                       style={{ ...rowBase(2, activeKind === "ou" && activeId === String(ou.id)), fontFamily: "monospace" }}
                     >
                       <FolderCog size={12} />
-                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>OU={ou.name}</span>
+                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ou.name}</span>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -513,7 +513,7 @@ function MspBranch({
   onOpen,
   openMenu,
 }: {
-  msp: AdTreeMsp;
+  msp: DirTreeMsp;
   expanded: boolean;
   onToggle: () => void;
   expandedCustomer: Set<number>;
@@ -555,7 +555,7 @@ function MspBranch({
       </div>
       {expanded &&
         (msp.customers.length === 0 ? (
-          <AdEmptyLeaf label="No tenants" depth={3} />
+          <DirEmptyLeaf label="No tenants" depth={3} />
         ) : (
           msp.customers.map((customer) => (
             <CustomerBranch
@@ -583,7 +583,7 @@ function CustomerBranch({
   onOpen,
   openMenu,
 }: {
-  customer: AdTreeCustomer;
+  customer: DirTreeCustomer;
   expanded: boolean;
   onToggle: () => void;
   activeKind: string | null;
@@ -622,7 +622,7 @@ function CustomerBranch({
       </div>
       {expanded &&
         (customer.users.length === 0 ? (
-          <AdEmptyLeaf label="No users" depth={4} />
+          <DirEmptyLeaf label="No users" depth={4} />
         ) : (
           customer.users.map((user) => (
             <div
@@ -653,7 +653,7 @@ function CustomerBranch({
   );
 }
 
-function AdEmptyLeaf({ label, depth }: { label: string; depth: number }) {
+function DirEmptyLeaf({ label, depth }: { label: string; depth: number }) {
   return (
     <div style={{ padding: `4px 8px 4px ${depth * 12 + 8}px`, fontSize: 11, fontStyle: "italic", color: TEXT.faint }}>
       {label}

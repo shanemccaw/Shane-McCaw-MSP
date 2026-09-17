@@ -1,8 +1,8 @@
 /**
  * WHAT DELETING ONE USER MEANS — the single shared implementation (Git #2984, EPIC #1944).
  *
- * This cascade was written for `DELETE /admin/active-directory/user/:id` (Issue #69) and
- * lived inside `routes/admin-active-directory.ts`, where it was reachable only from a
+ * This cascade was written for `DELETE /admin/msp-directory/user/:id` (Issue #69) and
+ * lived inside `routes/admin-msp-directory.ts`, where it was reachable only from a
  * request carrying a human actor. #2984 settled that the 7-year post-termination purge
  * destroys the customer's `users` rows too — "full purge, users included… no point in
  * being hoarders" (#1944 part 7), with no cold-storage exception for identity or
@@ -12,8 +12,8 @@
  *
  * There is still exactly ONE implementation. Three callers share it:
  *
- *   1. `DELETE /admin/active-directory/user/:id`         — a PlatformAdmin, dev-only.
- *   2. `DELETE /admin/active-directory/customer/:id`     — the same admin, every user
+ *   1. `DELETE /admin/msp-directory/user/:id`         — a PlatformAdmin, dev-only.
+ *   2. `DELETE /admin/msp-directory/customer/:id`     — the same admin, every user
  *                                                          under one tenant, dev-only.
  *   3. `retention/purgers/modules.ts` → `identityPurger` — the scheduled 7-year purge,
  *                                                          no human actor, NOT dev-gated.

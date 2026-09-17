@@ -25,7 +25,7 @@
  * `registerTenantDataPurger()` in `registry.ts` — each module declares how its own data
  * is destroyed, rather than this file carrying a hardcoded roster of every tenant-scoped
  * table. See that registry's own comment for why (short version: the dev-only hard-delete
- * route in `admin-active-directory.ts` is the worked example of such a roster rotting).
+ * route in `admin-msp-directory.ts` is the worked example of such a roster rotting).
  *
  * **THE REGISTRY SHIPS EMPTY**, exactly as #1947's record-type registry does, and this
  * module treats that as a REFUSAL rather than a completed no-op — see

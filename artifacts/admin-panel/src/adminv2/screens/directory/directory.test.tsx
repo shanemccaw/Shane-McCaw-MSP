@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Active Directory's own contract + interaction coverage. `Shell.test.tsx`
+ * MSP Directory's own contract + interaction coverage. `Shell.test.tsx`
  * already covers shell-chrome integration; this file covers what's specific
  * to this screen: registration legality, the per-kind contextual tab
  * (customer/user/msp get real "record"-intent groups, group/ou get none),
@@ -12,10 +12,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { auditFixedTabIntents, getScreen, resetRegistry } from "../../registry/registry";
-import { AdCanvas } from "./AdCanvas";
-import { AdExplorerTree } from "./AdExplorerTree";
-import { resetAdNameCacheForTest } from "./adNameCache";
-import type { AdTree } from "./adTypes";
+import { DirCanvas } from "./DirCanvas";
+import { DirExplorerTree } from "./DirExplorerTree";
+import { resetDirNameCacheForTest } from "./dirNameCache";
+import type { DirTree } from "./dirTypes";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const fetchWithAuth = vi.fn();
@@ -31,7 +31,7 @@ vi.mock("../../shell/ShellContext", () => ({
   getShellApi: () => ({ navigate: vi.fn(), openDoc }),
 }));
 
-const sampleTree: AdTree = {
+const sampleTree: DirTree = {
   msps: [
     {
       id: 1,
@@ -63,7 +63,7 @@ beforeEach(() => {
     value: { writeText: clipboardWrite },
     configurable: true,
   });
-  resetAdNameCacheForTest();
+  resetDirNameCacheForTest();
 });
 
 afterEach(cleanup);
@@ -75,19 +75,19 @@ describe("registration", () => {
     // against the same module instance "./index" registers into.
     await import("./index");
 
-    const screenModule = getScreen("ad");
+    const screenModule = getScreen("msp-directory");
     expect(screenModule).toBeTruthy();
-    expect(screenModule?.route).toBe("/ad");
+    expect(screenModule?.route).toBe("/msp-directory");
 
     const tabs = new Set(screenModule?.ribbon?.map((r) => r.tab));
-    expect(tabs).toEqual(new Set(["ad"]));
+    expect(tabs).toEqual(new Set(["msp-directory"]));
     for (const contribution of screenModule!.ribbon!) {
       expect(auditFixedTabIntents(contribution)).toEqual([]);
     }
   });
 
   it("contextualTab returns null with no record open, and a record-intent group per record kind", () => {
-    const screenModule = getScreen("ad")!;
+    const screenModule = getScreen("msp-directory")!;
     const spec = screenModule.contextualTab as (ctx: { recordId?: string; kind?: string }) => unknown;
 
     expect(spec({})).toBeNull();
@@ -108,7 +108,7 @@ describe("registration", () => {
   });
 
   it("every peek resolver is null before the tree is cached and a real model after", async () => {
-    const screenModule = getScreen("ad")!;
+    const screenModule = getScreen("msp-directory")!;
 
     expect(screenModule.peeks?.msp?.("1")).toBeNull();
     expect(screenModule.peeks?.customer?.("10")).toBeNull();
@@ -116,7 +116,7 @@ describe("registration", () => {
     expect(screenModule.peeks?.group?.(LEGACY_ROLE.platformAdmin)).toBeNull();
     expect(screenModule.peeks?.ou?.("5")).toBeNull();
 
-    render(<AdExplorerTree />);
+    render(<DirExplorerTree />);
     await screen.findByText("Northline IT");
 
     expect(screenModule.peeks?.msp?.("1")?.title).toBe("Northline IT");
@@ -127,19 +127,19 @@ describe("registration", () => {
   });
 });
 
-describe("AdExplorerTree", () => {
+describe("DirExplorerTree", () => {
   it("loads the real tree and opens an MSP as a doc tab on click", async () => {
-    render(<AdExplorerTree />);
+    render(<DirExplorerTree />);
 
     const row = await screen.findByText("Northline IT");
     fireEvent.click(row);
 
-    expect(openDoc).toHaveBeenCalledWith({ kind: "msp", id: "1", screenId: "ad", label: "Northline IT" });
-    expect(fetchWithAuth).toHaveBeenCalledWith("/api/admin/active-directory/tree");
+    expect(openDoc).toHaveBeenCalledWith({ kind: "msp", id: "1", screenId: "msp-directory", label: "Northline IT" });
+    expect(fetchWithAuth).toHaveBeenCalledWith("/api/admin/msp-directory/tree");
   });
 
   it("right-clicking an MSP row offers Open / Copy name / Copy slug, replacing the browser menu", async () => {
-    render(<AdExplorerTree />);
+    render(<DirExplorerTree />);
     const row = await screen.findByText("Northline IT");
 
     fireEvent.contextMenu(row);
@@ -152,11 +152,11 @@ describe("AdExplorerTree", () => {
 
     fireEvent.contextMenu(row);
     fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
-    expect(openDoc).toHaveBeenCalledWith({ kind: "msp", id: "1", screenId: "ad", label: "Northline IT" });
+    expect(openDoc).toHaveBeenCalledWith({ kind: "msp", id: "1", screenId: "msp-directory", label: "Northline IT" });
   });
 
   it("right-clicking a nested customer/user row offers Open + copy, reached by expanding the MSP branch", async () => {
-    render(<AdExplorerTree />);
+    render(<DirExplorerTree />);
     const mspRow = await screen.findByText("Northline IT");
     // The chevron toggle is the row's first child span, separate from the
     // name span (which opens the record instead) — same row, two onClicks.
@@ -181,7 +181,7 @@ describe("AdExplorerTree", () => {
   });
 
   it("right-clicking a Group row offers Open / Copy role name", async () => {
-    render(<AdExplorerTree />);
+    render(<DirExplorerTree />);
     fireEvent.click(await screen.findByText("Groups"));
 
     const groupRow = await screen.findByText(LEGACY_ROLE.platformAdmin);
@@ -199,12 +199,12 @@ describe("AdExplorerTree", () => {
       if (url.includes("/ou/5")) return Promise.resolve({ ok: true, status: 204, json: async () => ({}) });
       return Promise.resolve({ ok: true, json: async () => sampleTree });
     });
-    render(<AdExplorerTree />);
-    fireEvent.click(await screen.findByText("OU=Placeholders"));
+    render(<DirExplorerTree />);
+    fireEvent.click(await screen.findByText("Placeholders"));
 
-    const ouRow = await screen.findByText("OU=Managed Service Providers");
+    const ouRow = await screen.findByText("Managed Service Providers");
     fireEvent.contextMenu(ouRow);
-    expect(screen.getByRole("menu", { name: "Actions for OU=Managed Service Providers" })).toBeTruthy();
+    expect(screen.getByRole("menu", { name: "Actions for Managed Service Providers" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
     await waitFor(() =>
@@ -213,9 +213,9 @@ describe("AdExplorerTree", () => {
   });
 });
 
-describe("AdCanvas", () => {
+describe("DirCanvas", () => {
   it("shows the empty state when no record is open", () => {
-    render(<AdCanvas />);
+    render(<DirCanvas />);
     expect(screen.getByText("Nothing selected")).toBeTruthy();
   });
 });

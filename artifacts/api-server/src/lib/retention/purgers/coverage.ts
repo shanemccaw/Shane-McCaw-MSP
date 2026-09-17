@@ -3,7 +3,7 @@
  *
  * `../registry.ts` explains why the purge is a per-module registry and not one hardcoded
  * roster of tenant-scoped tables: the dev-only customer hard-delete in
- * `routes/admin-active-directory.ts` is the worked example of such a roster rotting, its
+ * `routes/admin-msp-directory.ts` is the worked example of such a roster rotting, its
  * own comments recording ~30 auxiliary tables that may not even exist in a given database.
  *
  * A registry alone does not actually fix that. It moves the roster instead of removing it:

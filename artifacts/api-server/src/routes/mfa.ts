@@ -265,7 +265,7 @@ export function verifyMfaToken(token: string): { userId: number; methods: string
 //
 //   • self-service  — DELETE /auth/mfa/{totp,sms,passkey}  (unchanged behaviour)
 //   • admin-gated   — POST  /auth/mfa/admin/reset/:userId   (below), and
-//                     POST  /admin/active-directory/user/:id/mfa-reset, which
+//                     POST  /admin/msp-directory/user/:id/mfa-reset, which
 //                     imports adminResetMfa() directly rather than duplicating it.
 //
 // There is deliberately no second implementation: adminResetMfa() is a thin

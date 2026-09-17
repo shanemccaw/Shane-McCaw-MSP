@@ -25,7 +25,7 @@ import { screenForRoute } from "./registry/registry";
 
 // Screens register themselves at import time — see SHELL.md.
 import "./screens/live-scan";
-import "./screens/ad";
+import "./screens/directory";
 import "./screens/crm";
 import "./screens/inbox";
 import "./screens/money";
@@ -52,9 +52,10 @@ import { FloatingSqlConsole } from "./screens/sql/FloatingSqlConsole";
 // Same reasoning as FloatingSqlConsole, for the CRM screen's fetch bridge
 // — see CrmFetchBridge.tsx's doc comment.
 import { CrmFetchBridge } from "./screens/crm/CrmFetchBridge";
-// Same reasoning again, for the AD screen's two Home-tab ribbon buttons
-// ("New MSP", "New organizational unit") — see adAuthBridge.tsx's doc comment.
-import { AdAuthBridge } from "./screens/ad/adAuthBridge";
+// Same reasoning again, for the MSP Directory screen's two Home-tab ribbon
+// buttons ("New MSP", "New organizational unit") — see dirAuthBridge.tsx's
+// doc comment.
+import { DirAuthBridge } from "./screens/directory/dirAuthBridge";
 // Same reasoning again, for the Money tab's own ribbon label (real profit,
 // not the word "Money") — see MoneyFetchBridge.tsx's doc comment.
 import { MoneyFetchBridge } from "./screens/money/MoneyFetchBridge";
@@ -199,7 +200,7 @@ function AdminShell() {
       <ActiveScreen />
       <FloatingSqlConsole />
       <CrmFetchBridge />
-      <AdAuthBridge />
+      <DirAuthBridge />
       <MoneyFetchBridge />
       <ObservabilityFetchBridge />
       <EndpointsFetchBridge />

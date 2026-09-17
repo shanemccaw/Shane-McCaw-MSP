@@ -3,7 +3,7 @@
  *
  * Every function takes `adminFetch` (AuthContext's `fetchWithAuth`, surfaced
  * via `useAdminFetch()`) as its first argument, same convention as
- * `screens/ad/adApi.ts`, so both real components and `sqlStore`'s
+ * `screens/directory/adApi.ts`, so both real components and `sqlStore`'s
  * module-scope calls (ribbon closures run outside React — see
  * `sqlStore.ts`'s doc comment) can use the same client.
  *

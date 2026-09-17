@@ -69,7 +69,7 @@ vi.mock("../lib/audit.ts", () => ({
 }));
 
 const mockResolveGraphUserByUpn = vi.fn();
-vi.mock("./admin-active-directory.ts", () => ({
+vi.mock("./admin-active-directory-ou.ts", () => ({
   resolveGraphUserByUpn: (...args: unknown[]) => mockResolveGraphUserByUpn(...args),
 }));
 

@@ -3,7 +3,7 @@
 // Pure, DB-free logic backing the Active Directory admin surface (Phase 1):
 // building the OU=MSPs -> nested-Customers tree, the Groups (RBAC role) node
 // list, and the universal cross-property search predicate. Kept separate from
-// the route file (admin-active-directory.ts) so the tree-building query shape
+// the route file (admin-msp-directory.ts) so the tree-building query shape
 // and the search predicate can be unit-tested against plain fixture arrays,
 // without a database.
 
@@ -292,7 +292,7 @@ export interface MspEntitlements {
 // mspOverridesTable, `artifacts/api-server/src/routes/msp-admin-settings.ts`)
 // grant feature flags or custom allowances outside the MSP's plan tier. Both
 // the read-only entitlements view below (deriveEntitlements/buildMspDetail,
-// shown on AdMspCanvas) and the actual runtime gate (msp-entitlement.ts's
+// shown on DirMspCanvas) and the actual runtime gate (msp-entitlement.ts's
 // loadTier()/requirePlanFeature()) merge through the same applyMspOverride()
 // so an override that's active in one place is active everywhere.
 
@@ -762,7 +762,7 @@ export function buildUserDetail(params: {
 // old msp_users table they were a linkage-free floor tier, but the constraint
 // now requires them to sit under a tenant like any other customer-side role.
 // ("customer" means tenant linkage; the wire/field name customerId is kept
-// deliberately — see admin-active-directory.ts's header.)
+// deliberately — see admin-msp-directory.ts's header.)
 
 export type RoleLinkageRequirement = "none" | "msp" | "customer";
 

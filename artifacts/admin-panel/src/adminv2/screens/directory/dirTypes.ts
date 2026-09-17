@@ -1,7 +1,7 @@
 import type { LegacyRole } from "@workspace/db/rbac/legacy-ladder";
 import type { FailureClassification } from "../../../components/SimulatorFailureClassification";
 /**
- * Active Directory — wire types.
+ * MSP Directory — wire types.
  *
  * Mirrors the real payload shapes from `artifacts/api-server/src/lib/active-directory.ts`
  * and `admin-active-directory.ts`. Dates travel as ISO strings over JSON, unlike
@@ -16,12 +16,12 @@ import type { FailureClassification } from "../../../components/SimulatorFailure
  *
  * #2459 (part of #1696) — the `DIRECTORY_GROUP_ROLES` runtime array that sat
  * beside this is gone. It was a transcription of the server's own list, and
- * `AdUserCanvas` rendered the role buttons from it; that list now comes from
- * `GET /admin/active-directory/roles` via `@/lib/useDirectoryRoles`, so the
+ * `DirUserCanvas` rendered the role buttons from it; that list now comes from
+ * `GET /admin/msp-directory/roles` via `@/lib/useDirectoryRoles`, so the
  * console cannot offer a role the server does not have (or miss one it does).
  *
  * The TYPE stays on purpose: it is the wire shape of a field the server sends, and
- * `setAdUserRole` takes it as an argument. That is describing a payload, not making
+ * `setDirUserRole` takes it as an argument. That is describing a payload, not making
  * an authorization decision from a literal — which is the distinction #2459 is
  * actually about.
  *
@@ -34,9 +34,9 @@ import type { FailureClassification } from "../../../components/SimulatorFailure
  */
 export type DirectoryGroupRole = LegacyRole;
 
-// ── Tree (GET /admin/active-directory/tree) ──────────────────────────────────
+// ── Tree (GET /admin/msp-directory/tree) ──────────────────────────────────
 
-export interface AdTreeUser {
+export interface DirTreeUser {
   id: number;
   email: string;
   name: string | null;
@@ -44,41 +44,41 @@ export interface AdTreeUser {
   isActive: boolean;
 }
 
-export interface AdTreeCustomer {
+export interface DirTreeCustomer {
   id: number;
   name: string;
   domain: string | null;
   tenantId: string | null;
   status: string;
-  users: AdTreeUser[];
+  users: DirTreeUser[];
 }
 
-export interface AdTreeMsp {
+export interface DirTreeMsp {
   id: number;
   name: string;
   slug: string;
   domain: string | null;
   status: string;
-  customers: AdTreeCustomer[];
+  customers: DirTreeCustomer[];
 }
 
-export interface AdTreeGroup {
+export interface DirTreeGroup {
   role: DirectoryGroupRole;
   count: number;
 }
 
-export interface AdTreeOu {
+export interface DirTreeOu {
   id: number;
   name: string;
 }
 
-export interface AdTree {
-  msps: AdTreeMsp[];
-  groups: AdTreeGroup[];
-  ous: AdTreeOu[];
+export interface DirTree {
+  msps: DirTreeMsp[];
+  groups: DirTreeGroup[];
+  ous: DirTreeOu[];
 }
 
-export interface AdSearchResult {
+export interface DirSearchResult {
   msps: Array<{ id: number; name: string; slug: string }>;
   customers: Array<{ id: number; name: string; mspId: number; mspName: string | null }>;
   users: Array<{
@@ -92,9 +92,9 @@ export interface AdSearchResult {
   roles: DirectoryGroupRole[];
 }
 
-// ── MSP detail (GET /admin/active-directory/msp/:id) ─────────────────────────
+// ── MSP detail (GET /admin/msp-directory/msp/:id) ─────────────────────────
 
-export interface AdMspProfile {
+export interface DirMspProfile {
   id: number;
   name: string;
   slug: string;
@@ -118,7 +118,7 @@ export interface AdMspProfile {
   createdAt: string;
 }
 
-export interface AdMspSubscription {
+export interface DirMspSubscription {
   status: string;
   tierName: string;
   billingInterval: string;
@@ -130,14 +130,14 @@ export interface AdMspSubscription {
   contactEmail: string | null;
 }
 
-export interface AdMspEntitlements {
+export interface DirMspEntitlements {
   tenantAllowance: number | null;
   aiCreditAllowance: number | null;
   overageRateCents: number | null;
   tierCapabilities: Record<string, boolean>;
 }
 
-export interface AdMspDetailCustomer {
+export interface DirMspDetailCustomer {
   id: number;
   name: string;
   domain: string | null;
@@ -145,7 +145,7 @@ export interface AdMspDetailCustomer {
   status: string;
 }
 
-export interface AdMspDetailUser {
+export interface DirMspDetailUser {
   id: number;
   email: string;
   name: string | null;
@@ -154,28 +154,28 @@ export interface AdMspDetailUser {
   lastLoginAt: string | null;
 }
 
-export interface AdMspAgreementAcceptance {
+export interface DirMspAgreementAcceptance {
   agreementVersion: string;
   acceptedAt: string;
   checkboxConfirmed: boolean;
 }
 
-export interface AdMspDetail {
-  msp: AdMspProfile;
-  subscription: AdMspSubscription | null;
-  entitlements: AdMspEntitlements | null;
-  customers: AdMspDetailCustomer[];
+export interface DirMspDetail {
+  msp: DirMspProfile;
+  subscription: DirMspSubscription | null;
+  entitlements: DirMspEntitlements | null;
+  customers: DirMspDetailCustomer[];
   customerCount: number;
-  users: AdMspDetailUser[];
+  users: DirMspDetailUser[];
   userCount: number;
-  agreementAcceptances: AdMspAgreementAcceptance[];
+  agreementAcceptances: DirMspAgreementAcceptance[];
   currentAgreementVersion: string | null;
   hasAcceptedCurrentAgreement: boolean;
 }
 
 // ── Audit log (GET /api/msp/audit?mspId=) ─────────────────────────────────────
 
-export interface AdMspAuditEntry {
+export interface DirMspAuditEntry {
   id: number;
   eventId: string;
   actorEmail: string | null;
@@ -188,16 +188,16 @@ export interface AdMspAuditEntry {
   createdAt: string;
 }
 
-export interface AdMspAuditLogPage {
-  entries: AdMspAuditEntry[];
+export interface DirMspAuditLogPage {
+  entries: DirMspAuditEntry[];
   total: number;
   page: number;
   limit: number;
 }
 
-// ── Group detail (GET /admin/active-directory/group/:role) ───────────────────
+// ── Group detail (GET /admin/msp-directory/group/:role) ───────────────────
 
-export interface AdGroupMember {
+export interface DirGroupMember {
   id: number;
   email: string;
   name: string | null;
@@ -209,15 +209,15 @@ export interface AdGroupMember {
   lastLoginAt: string | null;
 }
 
-export interface AdGroupDetail {
+export interface DirGroupDetail {
   role: DirectoryGroupRole;
-  members: AdGroupMember[];
+  members: DirGroupMember[];
   memberCount: number;
 }
 
-// ── Customer detail (GET /admin/active-directory/customer/:id) ───────────────
+// ── Customer detail (GET /admin/msp-directory/customer/:id) ───────────────
 
-export interface AdCustomerProfile {
+export interface DirCustomerProfile {
   id: number;
   mspId: number;
   name: string;
@@ -232,13 +232,13 @@ export interface AdCustomerProfile {
   createdAt: string;
 }
 
-export interface AdCustomerOwningMsp {
+export interface DirCustomerOwningMsp {
   id: number;
   name: string;
   slug: string;
 }
 
-export interface AdCustomerDetailUser {
+export interface DirCustomerDetailUser {
   id: number;
   email: string;
   name: string | null;
@@ -247,7 +247,7 @@ export interface AdCustomerDetailUser {
   lastLoginAt: string | null;
 }
 
-export interface AdConsentStatus {
+export interface DirConsentStatus {
   tenantId: string;
   consentStatus: string;
   consentedAt: string | null;
@@ -255,7 +255,7 @@ export interface AdConsentStatus {
   adminEmail: string | null;
 }
 
-export interface AdPurchasedService {
+export interface DirPurchasedService {
   id: number;
   serviceName: string;
   status: string;
@@ -263,7 +263,7 @@ export interface AdPurchasedService {
   purchasedAt: string;
 }
 
-export interface AdDiagnosticRunSummary {
+export interface DirDiagnosticRunSummary {
   runId: string;
   packageKey: string;
   status: string;
@@ -272,7 +272,7 @@ export interface AdDiagnosticRunSummary {
 }
 
 /** GET /api/msp/monitoring-packages row — #1770's run-scan package picker. */
-export interface AdMonitoringPackage {
+export interface DirMonitoringPackage {
   key: string;
   label: string;
   checkCount: number;
@@ -284,15 +284,15 @@ export interface AdMonitoringPackage {
  * `deliveryType` is what the swap logic groups on: `bundle_subscription`
  * (Monitoring) and `retainer` (Retainer) are the two assignable categories.
  */
-export interface AdAssignableService {
+export interface DirAssignableService {
   id: number;
   name: string;
   deliveryType: string | null;
   tier: string | null;
 }
 
-/** POST /admin/active-directory/customer/:id/assign-service response. */
-export interface AdAssignServiceResult {
+/** POST /admin/msp-directory/customer/:id/assign-service response. */
+export interface DirAssignServiceResult {
   clientService: { id: number; status: string };
   serviceName: string;
   completedPreviousIds: number[];
@@ -302,7 +302,7 @@ export interface AdAssignServiceResult {
 // Mirrors the legacy ActiveDirectoryCustomerPane.tsx's own wire shape for this
 // route — same route, same server response, ported rather than redesigned.
 
-export interface AdDiagnosticRunCounts {
+export interface DirDiagnosticRunCounts {
   checksTotal: number;
   checksOk: number;
   checksError: number;
@@ -310,7 +310,7 @@ export interface AdDiagnosticRunCounts {
   checksLicenseGap: number;
 }
 
-export interface AdDiagnosticFinding {
+export interface DirDiagnosticFinding {
   findingId: string;
   runId: string;
   checkKey: string;
@@ -324,36 +324,36 @@ export interface AdDiagnosticFinding {
   classification?: FailureClassification | null;
 }
 
-export interface AdDiagnosticRunFindingsResponse {
-  run: AdDiagnosticRunCounts;
-  findings: AdDiagnosticFinding[];
+export interface DirDiagnosticRunFindingsResponse {
+  run: DirDiagnosticRunCounts;
+  findings: DirDiagnosticFinding[];
 }
 
 // ── Monitoring package ↔ check assignments (GET/PUT /admin/monitoring-packages/:key/checks) ──
 // #376 — "Remove from scan package" reads/writes this same route the legacy
 // pane already uses.
 
-export interface AdMonitoringPackageCheckLink {
+export interface DirMonitoringPackageCheckLink {
   packageKey: string;
   checkKey: string;
   sortOrder: number;
 }
 
-export interface AdCustomerDetail {
-  customer: AdCustomerProfile;
-  owningMsp: AdCustomerOwningMsp | null;
-  users: AdCustomerDetailUser[];
+export interface DirCustomerDetail {
+  customer: DirCustomerProfile;
+  owningMsp: DirCustomerOwningMsp | null;
+  users: DirCustomerDetailUser[];
   userCount: number;
-  graphConsent: AdConsentStatus | null;
-  sharePointConsent: AdConsentStatus | null;
-  writeConsent: AdConsentStatus | null;
-  purchasedServices: AdPurchasedService[];
-  recentDiagnosticRuns: AdDiagnosticRunSummary[];
+  graphConsent: DirConsentStatus | null;
+  sharePointConsent: DirConsentStatus | null;
+  writeConsent: DirConsentStatus | null;
+  purchasedServices: DirPurchasedService[];
+  recentDiagnosticRuns: DirDiagnosticRunSummary[];
 }
 
-// ── User detail (GET /admin/active-directory/user/:id) ───────────────────────
+// ── User detail (GET /admin/msp-directory/user/:id) ───────────────────────
 
-export interface AdUserProfile {
+export interface DirUserProfile {
   id: number;
   email: string;
   name: string | null;
@@ -363,7 +363,7 @@ export interface AdUserProfile {
   createdAt: string;
 }
 
-export interface AdUserLinkage {
+export interface DirUserLinkage {
   mspId: number | null;
   mspName: string | null;
   mspSlug: string | null;
@@ -377,7 +377,7 @@ export interface AdUserLinkage {
   lastLoginAt: string | null;
 }
 
-export interface AdUserSessionSummary {
+export interface DirUserSessionSummary {
   activeSessionCount: number;
   totalSessionCount: number;
   mostRecentSession: {
@@ -392,20 +392,20 @@ export interface AdUserSessionSummary {
   } | null;
 }
 
-export interface AdUserMfaStatus {
+export interface DirUserMfaStatus {
   enrolled: boolean;
   methods: Array<{ method: string; createdAt: string }>;
 }
 
-export interface AdUserDetail {
-  profile: AdUserProfile;
-  linkage: AdUserLinkage | null;
-  entitlements: AdMspEntitlements | null;
-  sessions: AdUserSessionSummary;
-  mfa: AdUserMfaStatus;
+export interface DirUserDetail {
+  profile: DirUserProfile;
+  linkage: DirUserLinkage | null;
+  entitlements: DirMspEntitlements | null;
+  sessions: DirUserSessionSummary;
+  mfa: DirUserMfaStatus;
 }
 
-export interface AdEntitlementOverride {
+export interface DirEntitlementOverride {
   capabilityKey: string;
   enabled: boolean;
   grantedByUserId: number | null;
@@ -413,24 +413,24 @@ export interface AdEntitlementOverride {
   updatedAt: string;
 }
 
-export interface AdEntitlementsView {
-  inherited: AdMspEntitlements | null;
-  overrides: AdEntitlementOverride[];
-  effective: AdMspEntitlements | null;
+export interface DirEntitlementsView {
+  inherited: DirMspEntitlements | null;
+  overrides: DirEntitlementOverride[];
+  effective: DirMspEntitlements | null;
 }
 
 // ── Write-back consent (GET /admin/customers/:id/write-consent[/start]) ──────
 // Git #1672 — rehomed from the archived msp-portal customer-detail.tsx's
 // WriteBackConsentCard, the one genuinely admin-scoped piece of that page.
 
-export interface AdWriteConsentStatus {
+export interface DirWriteConsentStatus {
   tenantId: string | null;
   writeConsent: { consentStatus: string; consentedAt: string | null; revokedAt: string | null } | null;
 }
 
 // ── OU (POST/PATCH/DELETE /admin/active-directory/ou) ────────────────────────
 
-export interface AdOu {
+export interface DirOu {
   id: number;
   name: string;
   createdAt: string;

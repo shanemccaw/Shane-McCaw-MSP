@@ -1149,7 +1149,7 @@ router.put("/admin/services/:id/workflow", requireAdmin, async (req: Request, re
 
 // ─── ADMIN: Assign service to client ─────────────────────────────────────────
 // Extracted (#4489) so the AdminV2 Tenant canvas's own DB-only "Package
-// Assignment" swap (admin-active-directory.ts) reuses this exact insert +
+// Assignment" swap (admin-msp-directory.ts) reuses this exact insert +
 // notification + workflow-template auto-project logic instead of
 // re-deriving it — the only difference between the two callers is which
 // clientUserId the new row is assigned to and what happens to any row it

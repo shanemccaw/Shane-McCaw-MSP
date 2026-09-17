@@ -6,7 +6,7 @@ import jwt from "jsonwebtoken";
 /**
  * HTTP-level tests for Active Directory Phase 9 (Issue #69): the
  * dev-environment-only cascading hard delete,
- * DELETE /admin/active-directory/user/:id. Proves the three acceptance-
+ * DELETE /admin/msp-directory/user/:id. Proves the three acceptance-
  * criteria behaviors:
  *
  *  (a) the non-production gate blocks the route in a prod-like config
@@ -25,7 +25,7 @@ import jwt from "jsonwebtoken";
  * moment of the logger call).
  *
  * Mocks @workspace/db with the same queueable chain as
- * admin-active-directory-user-actions.test.ts, extended with a
+ * admin-msp-directory-user-actions.test.ts, extended with a
  * db.transaction wrapper that tracks committed/rolled-back state and an
  * operation record of every select/delete and which table it targeted.
  */
@@ -208,14 +208,14 @@ vi.mock("@workspace/db", () => {
   };
 });
 
-import router from "./admin-active-directory.ts";
+import router from "./admin-msp-directory.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const app = express();
 app.use(express.json());
 app.use("/api", router);
 
-const JWT_SECRET = "admin-active-directory-delete-test-secret";
+const JWT_SECRET = "admin-msp-directory-delete-test-secret";
 process.env.JWT_SECRET = JWT_SECRET;
 
 function adminToken(): string {
@@ -334,10 +334,10 @@ afterEach(() => {
   else process.env.NODE_ENV = ORIGINAL_NODE_ENV;
 });
 
-describe("DELETE /admin/active-directory/user/:id — non-production gate (acceptance a)", () => {
+describe("DELETE /admin/msp-directory/user/:id — non-production gate (acceptance a)", () => {
   it("403s with NODE_ENV=production before opening a transaction or touching any table", async () => {
     process.env.NODE_ENV = "production";
-    const res = await request(app).delete("/api/admin/active-directory/user/42").set("Authorization", `Bearer ${adminToken()}`);
+    const res = await request(app).delete("/api/admin/msp-directory/user/42").set("Authorization", `Bearer ${adminToken()}`);
     expect(res.status).toBe(403);
     expect(res.body.error).toMatch(/dev environment/i);
     expect(h.opRecords).toHaveLength(0);
@@ -347,7 +347,7 @@ describe("DELETE /admin/active-directory/user/:id — non-production gate (accep
 
   it("fails CLOSED — 403s when NODE_ENV is unset entirely", async () => {
     delete process.env.NODE_ENV;
-    const res = await request(app).delete("/api/admin/active-directory/user/42").set("Authorization", `Bearer ${adminToken()}`);
+    const res = await request(app).delete("/api/admin/msp-directory/user/42").set("Authorization", `Bearer ${adminToken()}`);
     expect(res.status).toBe(403);
     expect(res.body.error).toMatch(/unset/i);
     expect(h.opRecords).toHaveLength(0);
@@ -355,27 +355,27 @@ describe("DELETE /admin/active-directory/user/:id — non-production gate (accep
 
   it("fails CLOSED — 403s on an unrecognized NODE_ENV value", async () => {
     process.env.NODE_ENV = "staging";
-    const res = await request(app).delete("/api/admin/active-directory/user/42").set("Authorization", `Bearer ${adminToken()}`);
+    const res = await request(app).delete("/api/admin/msp-directory/user/42").set("Authorization", `Bearer ${adminToken()}`);
     expect(res.status).toBe(403);
     expect(h.opRecords).toHaveLength(0);
   });
 
   it("401s without an admin token (requireAdmin) even in a dev environment", async () => {
-    const res = await request(app).delete("/api/admin/active-directory/user/42");
+    const res = await request(app).delete("/api/admin/msp-directory/user/42");
     expect(res.status).toBe(401);
     expect(h.opRecords).toHaveLength(0);
   });
 });
 
-describe("DELETE /admin/active-directory/user/:id — validation", () => {
+describe("DELETE /admin/msp-directory/user/:id — validation", () => {
   it("400s a non-integer id", async () => {
-    const res = await request(app).delete("/api/admin/active-directory/user/abc").set("Authorization", `Bearer ${adminToken()}`);
+    const res = await request(app).delete("/api/admin/msp-directory/user/abc").set("Authorization", `Bearer ${adminToken()}`);
     expect(res.status).toBe(400);
     expect(h.opRecords).toHaveLength(0);
   });
 
   it("400s a self-delete of the acting admin", async () => {
-    const res = await request(app).delete("/api/admin/active-directory/user/1").set("Authorization", `Bearer ${adminToken()}`);
+    const res = await request(app).delete("/api/admin/msp-directory/user/1").set("Authorization", `Bearer ${adminToken()}`);
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/own account/i);
     expect(h.opRecords).toHaveLength(0);
@@ -383,13 +383,13 @@ describe("DELETE /admin/active-directory/user/:id — validation", () => {
 
   it("404s an account that doesn't exist (transaction opened, nothing deleted)", async () => {
     h.queue.push([]); // target user lookup — no row
-    const res = await request(app).delete("/api/admin/active-directory/user/42").set("Authorization", `Bearer ${adminToken()}`);
+    const res = await request(app).delete("/api/admin/msp-directory/user/42").set("Authorization", `Bearer ${adminToken()}`);
     expect(res.status).toBe(404);
     expect(deletedTables()).toHaveLength(0);
   });
 });
 
-describe("DELETE /admin/active-directory/user/:id — successful full wipe (acceptance b)", () => {
+describe("DELETE /admin/msp-directory/user/:id — successful full wipe (acceptance b)", () => {
   it("deletes from every audited explicit table in dependency-safe order, users last, and never touches DB-handled tables", async () => {
     h.queue.push(
       [TARGET_ROW], // target user
@@ -400,7 +400,7 @@ describe("DELETE /admin/active-directory/user/:id — successful full wipe (acce
       // Every subsequent select (the ~59 census counts) falls back to [] → 0.
     );
 
-    const res = await request(app).delete("/api/admin/active-directory/user/42").set("Authorization", `Bearer ${adminToken()}`);
+    const res = await request(app).delete("/api/admin/msp-directory/user/42").set("Authorization", `Bearer ${adminToken()}`);
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
     expect(res.body.deletedUserId).toBe(42);
@@ -436,7 +436,7 @@ describe("DELETE /admin/active-directory/user/:id — successful full wipe (acce
   it("logs the FULL pre-delete state to the audit channel BEFORE the transaction commits", async () => {
     h.queue.push([TARGET_ROW], [{ id: 7, tenantGuid: "aad-guid-123" }], [{ id: 100 }], [{ id: 200 }], [{ runId: "run-1" }]);
 
-    const res = await request(app).delete("/api/admin/active-directory/user/42").set("Authorization", `Bearer ${adminToken()}`);
+    const res = await request(app).delete("/api/admin/msp-directory/user/42").set("Authorization", `Bearer ${adminToken()}`);
     expect(res.status).toBe(200);
 
     const preState = h.auditInfoCalls.find((c) => c.payload.actionType === "user.hard_delete.pre_state");
@@ -473,7 +473,7 @@ describe("DELETE /admin/active-directory/user/:id — successful full wipe (acce
       [], // diagnostic run ids — none
     );
 
-    const res = await request(app).delete("/api/admin/active-directory/user/42").set("Authorization", `Bearer ${adminToken()}`);
+    const res = await request(app).delete("/api/admin/msp-directory/user/42").set("Authorization", `Bearer ${adminToken()}`);
     expect(res.status).toBe(200);
 
     const deleted = deletedTables();
@@ -490,7 +490,7 @@ describe("DELETE /admin/active-directory/user/:id — successful full wipe (acce
   });
 });
 
-describe("DELETE /admin/active-directory/user/:id — rollback (acceptance c)", () => {
+describe("DELETE /admin/msp-directory/user/:id — rollback (acceptance c)", () => {
   it("rolls back the whole transaction on a mid-flight failure: 500, no users delete, no post-commit audit row", async () => {
     h.queue.push(
       [TARGET_ROW],
@@ -498,7 +498,7 @@ describe("DELETE /admin/active-directory/user/:id — rollback (acceptance c)", 
       new Error("simulated mid-transaction failure"), // projects lookup blows up
     );
 
-    const res = await request(app).delete("/api/admin/active-directory/user/42").set("Authorization", `Bearer ${adminToken()}`);
+    const res = await request(app).delete("/api/admin/msp-directory/user/42").set("Authorization", `Bearer ${adminToken()}`);
     expect(res.status).toBe(500);
     expect(res.body.error).toMatch(/rolled back/i);
 
@@ -522,7 +522,7 @@ describe("DELETE /admin/active-directory/user/:id — rollback (acceptance c)", 
     for (let i = 0; i < 64; i++) h.queue.push([{ n: 0 }]);
     h.queue.push(new Error("simulated delete failure"));
 
-    const res = await request(app).delete("/api/admin/active-directory/user/42").set("Authorization", `Bearer ${adminToken()}`);
+    const res = await request(app).delete("/api/admin/msp-directory/user/42").set("Authorization", `Bearer ${adminToken()}`);
     expect(res.status).toBe(500);
     expect(h.txState.rolledBack).toBe(true);
     expect(h.txState.committed).toBe(false);

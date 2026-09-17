@@ -62,7 +62,7 @@ so a mistake is a startup failure rather than a silent no-op.
 `ctx.recordId`. Most screens own one record kind and never need it (the
 example above ignores it, same as `recordId` alone always used to be enough).
 A screen that owns *more than one* record kind under a single route needs
-it to disambiguate — e.g. `screens/ad/`'s Active Directory screen renders an
+it to disambiguate — e.g. `screens/directory/`'s Active Directory screen renders an
 MSP, a tenant, a user, a group or an OU through the one `"ad"` screen, and an
 MSP id 5 is not the same record as a tenant id 5. `ctx.kind` is `undefined`
 when no record is open (a plain screen doc, or nothing open at all).

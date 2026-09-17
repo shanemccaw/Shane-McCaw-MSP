@@ -10,10 +10,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ACCENT_TEXT, LINE, SURFACE, TEXT } from "../../../theme";
 import { useShell } from "../../../shell/ShellContext";
 import { ContextMenu, useContextMenu } from "../../../shell/ContextMenu";
-import { fetchAdGroup } from "../adApi";
-import { setAdCachedRecord } from "../adNameCache";
-import type { AdGroupDetail, DirectoryGroupRole } from "../adTypes";
-import { AdCanvasBody, AdCanvasColumn, AdCanvasHeader, AdChip, AdEmptyRow, AdListRow, AdListRowGroup, AdLoadError, AdLoading, AdSection, AdTile, AdTileGrid } from "../adKit";
+import { fetchDirGroup } from "../dirApi";
+import { setDirCachedRecord } from "../dirNameCache";
+import type { DirGroupDetail, DirectoryGroupRole } from "../dirTypes";
+import { DirCanvasBody, DirCanvasColumn, DirCanvasHeader, DirChip, DirEmptyRow, DirListRow, DirListRowGroup, DirLoadError, DirLoading, DirSection, DirTile, DirTileGrid } from "../dirKit";
 
 function fmtDateTime(v: string | null): string {
   if (!v) return "—";
@@ -21,10 +21,10 @@ function fmtDateTime(v: string | null): string {
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-export function AdGroupCanvas({ role }: { role: DirectoryGroupRole }) {
+export function DirGroupCanvas({ role }: { role: DirectoryGroupRole }) {
   const { fetchWithAuth } = useAuth();
   const shell = useShell();
-  const [detail, setDetail] = useState<AdGroupDetail | null>(null);
+  const [detail, setDetail] = useState<DirGroupDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -36,9 +36,9 @@ export function AdGroupCanvas({ role }: { role: DirectoryGroupRole }) {
       setLoading(true);
       setError(null);
       try {
-        const data = await fetchAdGroup(fetchWithAuth, role, query);
+        const data = await fetchDirGroup(fetchWithAuth, role, query);
         setDetail(data);
-        setAdCachedRecord("group", role, { title: role, sub: `${data.memberCount} member${data.memberCount === 1 ? "" : "s"}` });
+        setDirCachedRecord("group", role, { title: role, sub: `${data.memberCount} member${data.memberCount === 1 ? "" : "s"}` });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load this group.");
       } finally {
@@ -60,30 +60,30 @@ export function AdGroupCanvas({ role }: { role: DirectoryGroupRole }) {
   }
 
   if (loading && !detail) return (
-    <AdCanvasColumn>
-      <AdLoading />
-    </AdCanvasColumn>
+    <DirCanvasColumn>
+      <DirLoading />
+    </DirCanvasColumn>
   );
   if (error && !detail) return (
-    <AdCanvasColumn>
-      <AdLoadError message={error} />
-    </AdCanvasColumn>
+    <DirCanvasColumn>
+      <DirLoadError message={error} />
+    </DirCanvasColumn>
   );
   if (!detail) return null;
 
   return (
-    <AdCanvasColumn>
-      <AdCanvasHeader icon={ShieldCheck} name={role} kindLabel="RBAC group" chips={<AdChip label={`${detail.memberCount} member${detail.memberCount === 1 ? "" : "s"}`} />} />
+    <DirCanvasColumn>
+      <DirCanvasHeader icon={ShieldCheck} name={role} kindLabel="RBAC group" chips={<DirChip label={`${detail.memberCount} member${detail.memberCount === 1 ? "" : "s"}`} />} />
 
-      <AdCanvasBody>
-        <AdSection title="Role">
-          <AdTileGrid>
-            <AdTile label="Role key" value={role} />
-            <AdTile label="Live member count" value={String(detail.memberCount)} accent={ACCENT_TEXT.green} />
-          </AdTileGrid>
-        </AdSection>
+      <DirCanvasBody>
+        <DirSection title="Role">
+          <DirTileGrid>
+            <DirTile label="Role key" value={role} />
+            <DirTile label="Live member count" value={String(detail.memberCount)} accent={ACCENT_TEXT.green} />
+          </DirTileGrid>
+        </DirSection>
 
-        <AdSection title="Members">
+        <DirSection title="Members">
           <input
             value={q}
             onChange={(e) => onQueryChange(e.target.value)}
@@ -99,24 +99,24 @@ export function AdGroupCanvas({ role }: { role: DirectoryGroupRole }) {
               maxWidth: 320,
             }}
           />
-          <AdListRowGroup>
+          <DirListRowGroup>
             {detail.members.length === 0 ? (
-              <AdEmptyRow label={q ? "No members match this search." : "No accounts hold this role."} />
+              <DirEmptyRow label={q ? "No members match this search." : "No accounts hold this role."} />
             ) : (
               detail.members.map((m) => (
-                <AdListRow
+                <DirListRow
                   key={m.id}
                   label={m.name || m.email}
                   detail={`${m.email}${m.mspName ? ` · ${m.mspName}` : m.customerName ? ` · ${m.customerName}` : ""}`}
                   meta={m.isActive ? fmtDateTime(m.lastLoginAt) : "disabled"}
                   metaAccent={m.isActive ? undefined : ACCENT_TEXT.danger}
                   dot={m.isActive ? "#6ccb96" : "#e57a7a"}
-                  onClick={() => shell.openDoc({ kind: "user", id: String(m.id), screenId: "ad", label: m.name || m.email })}
+                  onClick={() => shell.openDoc({ kind: "user", id: String(m.id), screenId: "msp-directory", label: m.name || m.email })}
                   onContextMenu={(e) =>
                     openMenu(
                       e,
                       [
-                        { label: "Open", onSelect: () => shell.openDoc({ kind: "user", id: String(m.id), screenId: "ad", label: m.name || m.email }) },
+                        { label: "Open", onSelect: () => shell.openDoc({ kind: "user", id: String(m.id), screenId: "msp-directory", label: m.name || m.email }) },
                         { label: "Copy email", onSelect: () => void navigator.clipboard.writeText(m.email).catch(() => {}) },
                       ],
                       `Actions for ${m.name || m.email}`,
@@ -125,10 +125,10 @@ export function AdGroupCanvas({ role }: { role: DirectoryGroupRole }) {
                 />
               ))
             )}
-          </AdListRowGroup>
-        </AdSection>
-      </AdCanvasBody>
+          </DirListRowGroup>
+        </DirSection>
+      </DirCanvasBody>
       <ContextMenu menu={menu} onClose={closeMenu} />
-    </AdCanvasColumn>
+    </DirCanvasColumn>
   );
 }

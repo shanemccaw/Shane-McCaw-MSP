@@ -275,7 +275,7 @@ router.get("/admin/projects/:id", requireCapability("ladder.msp-operator"), asyn
 // The Kanban "Create Project" form needs a real clientUserId to POST /admin/projects
 // with (see below) — MyArchitect's Tenant model carries no clientUserId of its own
 // (#4303's own note), so this resolves the real candidate users for a tenant the
-// same way admin-active-directory.ts's Customer Object pane does, just scoped to
+// same way admin-msp-directory.ts's Customer Object pane does, just scoped to
 // this file's own MSP-ownership model instead of requireAdmin.
 router.get("/admin/projects/client-users", requireCapability("ladder.msp-operator"), async (req: Request, res: Response) => {
   const customerId = parseInt(String(req.query.customerId ?? ""), 10);

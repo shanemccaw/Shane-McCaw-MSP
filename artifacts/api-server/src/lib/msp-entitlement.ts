@@ -57,7 +57,7 @@ export class OverageError extends Error {
  * can't be modeled as a second base subscription), overlaid last with any
  * still-active `msp_overrides` row for this specific MSP (Git #3681) via
  * applyMspOverride() — the same merge active-directory.ts's
- * deriveEntitlements() (AdMspCanvas's read-only Entitlements panel) uses, so
+ * deriveEntitlements() (DirMspCanvas's read-only Entitlements panel) uses, so
  * what an operator sees there matches what's enforced here. msp_overrides
  * wins last because it's the explicit, ad hoc, single-MSP override the Admin
  * Panel's own copy warns "bypasses plan tier gating" — it's meant to override

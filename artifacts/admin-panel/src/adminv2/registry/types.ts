@@ -50,7 +50,7 @@ export const FIXED_TAB_IDS = [
   "inbox",
   "money",
   "watch",
-  "ad",
+  "msp-directory",
   "crm",
   "catalog",
   "automation",
@@ -66,7 +66,7 @@ export const FIXED_TAB_LABELS: Record<FixedTabId, string> = {
   money: "Money",
   /** The "what needs me" tab: exceptions, alerts, dead letters, unrun migrations, overdue invoices. */
   watch: "Watch",
-  ad: "Active Directory",
+  "msp-directory": "MSP Directory",
   crm: "CRM",
   /** Endpoints, Monitoring Packages, Services — the sell-able catalog hierarchy. */
   catalog: "Catalog",
@@ -87,7 +87,7 @@ export const MAIN_TAB_IDS: readonly FixedTabId[] = [
   "inbox",
   "money",
   "watch",
-  "ad",
+  "msp-directory",
   "crm",
   "catalog",
   "automation",
@@ -258,7 +258,7 @@ export interface ContextualTabSpec {
  * The record kinds the peek overlay knows how to open.
  *
  * `msp`, `user`, `group` and `ou` were added for the Active Directory screen
- * (`screens/ad/`) — an MSP, a portal user account, an RBAC group, and an
+ * (`screens/directory/`) — an MSP, a portal user account, an RBAC group, and an
  * organizational-unit placeholder are each a real, openable record, the same
  * as `customer` (which AD reuses for a tenant) already was. Unlike
  * `FIXED_TAB_IDS`, this list is not closed: a screen introducing a genuinely
@@ -651,8 +651,8 @@ export interface ScreenRenderContext {
    * The record's peek kind, alongside `recordId`. Undefined for a plain
    * screen doc (no record open) — mirrors `OpenDoc.kind` excluding
    * `"screen"`. Needed by any screen that owns more than one record kind
-   * (e.g. Active Directory: msp/customer/user/group/ou all render through
-   * the one "ad" screen) — `recordId` alone cannot disambiguate an MSP id 5
+   * (e.g. MSP Directory: msp/customer/user/group/ou all render through
+   * the one "msp-directory" screen) — `recordId` alone cannot disambiguate an MSP id 5
    * from a customer id 5.
    */
   kind?: PeekKind;

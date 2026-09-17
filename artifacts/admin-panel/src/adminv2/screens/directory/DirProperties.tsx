@@ -1,10 +1,10 @@
 /**
- * Active Directory — Properties (the screen's `right` panel).
+ * MSP Directory — Properties (the screen's `right` panel).
  *
  * `right: { render: () => ReactNode }` gets no `ctx` argument (SHELL.md /
  * `registry/types.ts`'s `PanelSpec`) — a panel derives what it needs from
  * `useShell()` itself, the same way `ActiveScreen` does in AdminV2.tsx. This
- * reads purely from `adNameCache`, never an independent fetch: the cache is
+ * reads purely from `dirNameCache`, never an independent fetch: the cache is
  * already populated the instant the Explorer tree loads (every name/status
  * this panel shows comes straight out of the one `/tree` response), so
  * Properties updates the moment you click a row — before the canvas's own
@@ -15,9 +15,9 @@
 
 import { TEXT } from "../../theme";
 import { useShell } from "../../shell/ShellContext";
-import { getAdCachedRecord, type AdCacheKind } from "./adNameCache";
+import { getDirCachedRecord, type DirCacheKind } from "./dirNameCache";
 
-const KIND_LABEL: Record<AdCacheKind, string> = {
+const KIND_LABEL: Record<DirCacheKind, string> = {
   msp: "MSP",
   customer: "Tenant",
   user: "User",
@@ -25,13 +25,13 @@ const KIND_LABEL: Record<AdCacheKind, string> = {
   ou: "Organizational unit",
 };
 
-const AD_KINDS = new Set<string>(["msp", "customer", "user", "group", "ou"]);
+const DIR_KINDS = new Set<string>(["msp", "customer", "user", "group", "ou"]);
 
-export function AdProperties() {
+export function DirProperties() {
   const shell = useShell();
   const activeDoc = shell.state.docs.find((d) => d.id === shell.state.activeDocId);
 
-  if (!activeDoc || activeDoc.kind === "screen" || !AD_KINDS.has(activeDoc.kind)) {
+  if (!activeDoc || activeDoc.kind === "screen" || !DIR_KINDS.has(activeDoc.kind)) {
     return (
       <div style={{ padding: 16, fontSize: 12, color: TEXT.caption, textWrap: "pretty" } as React.CSSProperties}>
         Select a record in the Explorer to see it here.
@@ -39,8 +39,8 @@ export function AdProperties() {
     );
   }
 
-  const kind = activeDoc.kind as AdCacheKind;
-  const record = getAdCachedRecord(kind, activeDoc.recordId);
+  const kind = activeDoc.kind as DirCacheKind;
+  const record = getDirCachedRecord(kind, activeDoc.recordId);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: 14 }}>

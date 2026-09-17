@@ -190,7 +190,7 @@ export function setCategory(category: string): void {
 
 /**
  * Prompts for a name and a slug, the same `window.prompt` flow
- * `screens/ad/index.tsx`'s `onNewMsp` uses — this shell has no generic
+ * `screens/directory/index.tsx`'s `onNewMsp` uses — this shell has no generic
  * creation dialog, and a two-field prompt is honest about how little a new
  * catalog row needs before it can be opened and filled in properly.
  */

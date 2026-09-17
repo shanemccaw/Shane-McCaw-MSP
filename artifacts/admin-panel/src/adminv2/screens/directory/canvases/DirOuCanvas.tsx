@@ -9,15 +9,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { FolderCog } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { deleteAdOu, fetchAdTree, renameAdOu } from "../adApi";
-import { setAdCachedRecord } from "../adNameCache";
-import { requestAdTreeRefresh } from "../adEvents";
-import type { AdTreeOu } from "../adTypes";
-import { AdArmedButton, AdButton, AdCanvasBody, AdCanvasColumn, AdCanvasHeader, AdLoadError, AdLoading, AdOutcome, AdSection } from "../adKit";
+import { deleteDirOu, fetchDirTree, renameDirOu } from "../dirApi";
+import { setDirCachedRecord } from "../dirNameCache";
+import { requestDirTreeRefresh } from "../dirEvents";
+import type { DirTreeOu } from "../dirTypes";
+import { DirArmedButton, DirButton, DirCanvasBody, DirCanvasColumn, DirCanvasHeader, DirLoadError, DirLoading, DirOutcome, DirSection } from "../dirKit";
 
-export function AdOuCanvas({ ouId }: { ouId: number }) {
+export function DirOuCanvas({ ouId }: { ouId: number }) {
   const { fetchWithAuth } = useAuth();
-  const [ou, setOu] = useState<AdTreeOu | null>(null);
+  const [ou, setOu] = useState<DirTreeOu | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<{ tone: "ok" | "error"; message: string } | null>(null);
@@ -27,14 +27,14 @@ export function AdOuCanvas({ ouId }: { ouId: number }) {
     setLoading(true);
     setError(null);
     try {
-      const tree = await fetchAdTree(fetchWithAuth);
+      const tree = await fetchDirTree(fetchWithAuth);
       const found = tree.ous.find((o) => o.id === ouId);
       if (!found) {
         setError("This organizational unit no longer exists.");
         return;
       }
       setOu(found);
-      setAdCachedRecord("ou", String(ouId), { title: found.name });
+      setDirCachedRecord("ou", String(ouId), { title: found.name });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load this organizational unit.");
     } finally {
@@ -53,8 +53,8 @@ export function AdOuCanvas({ ouId }: { ouId: number }) {
     const name = window.prompt("Rename organizational unit:", ou.name);
     if (!name?.trim() || name.trim() === ou.name) return;
     try {
-      await renameAdOu(fetchWithAuth, ou.id, name.trim());
-      requestAdTreeRefresh();
+      await renameDirOu(fetchWithAuth, ou.id, name.trim());
+      requestDirTreeRefresh();
       setOutcome({ tone: "ok", message: "Renamed." });
       await load();
     } catch (err) {
@@ -65,8 +65,8 @@ export function AdOuCanvas({ ouId }: { ouId: number }) {
   async function onDelete() {
     if (!ou) return;
     try {
-      await deleteAdOu(fetchWithAuth, ou.id);
-      requestAdTreeRefresh();
+      await deleteDirOu(fetchWithAuth, ou.id);
+      requestDirTreeRefresh();
       setDeleted(true);
     } catch (err) {
       setOutcome({ tone: "error", message: err instanceof Error ? err.message : "Failed to delete." });
@@ -74,43 +74,43 @@ export function AdOuCanvas({ ouId }: { ouId: number }) {
   }
 
   if (loading) return (
-    <AdCanvasColumn>
-      <AdLoading />
-    </AdCanvasColumn>
+    <DirCanvasColumn>
+      <DirLoading />
+    </DirCanvasColumn>
   );
   if (deleted) return (
-    <AdCanvasColumn>
+    <DirCanvasColumn>
       <div style={{ padding: 24, fontSize: 12.5 }}>Deleted. Close this tab.</div>
-    </AdCanvasColumn>
+    </DirCanvasColumn>
   );
   if (error || !ou) return (
-    <AdCanvasColumn>
-      <AdLoadError message={error ?? "Not found."} />
-    </AdCanvasColumn>
+    <DirCanvasColumn>
+      <DirLoadError message={error ?? "Not found."} />
+    </DirCanvasColumn>
   );
 
   return (
-    <AdCanvasColumn>
-      <AdCanvasHeader
+    <DirCanvasColumn>
+      <DirCanvasHeader
         icon={FolderCog}
-        name={`OU=${ou.name}`}
+        name={ou.name}
         kindLabel="Organizational unit"
         actions={
           <>
-            <AdButton label="Rename" onClick={() => void onRename()} />
-            <AdArmedButton label="Delete" tone="danger" onConfirm={() => void onDelete()} />
+            <DirButton label="Rename" onClick={() => void onRename()} />
+            <DirArmedButton label="Delete" tone="danger" onConfirm={() => void onDelete()} />
           </>
         }
       />
-      {outcome && <AdOutcome tone={outcome.tone} message={outcome.message} onDismiss={() => setOutcome(null)} />}
-      <AdCanvasBody>
-        <AdSection
+      {outcome && <DirOutcome tone={outcome.tone} message={outcome.message} onDismiss={() => setOutcome(null)} />}
+      <DirCanvasBody>
+        <DirSection
           title="Placeholder object"
           note="A real, persisted container node with no policy semantics yet — reserved for a future version. It carries no members and enforces nothing today."
         >
           <div />
-        </AdSection>
-      </AdCanvasBody>
-    </AdCanvasColumn>
+        </DirSection>
+      </DirCanvasBody>
+    </DirCanvasColumn>
   );
 }

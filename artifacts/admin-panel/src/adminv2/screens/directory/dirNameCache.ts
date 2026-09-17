@@ -1,10 +1,10 @@
 /**
- * Synchronous name/fact cache for Active Directory records.
+ * Synchronous name/fact cache for MSP Directory records.
  *
  * `PeekResolver` is synchronous (`(id) => PeekModel | null`) but every real
  * record here comes from an async fetch — so peek resolvers (and, through
  * them, `docLabel()` for tab titles and the Back group) can only ever read a
- * cache, never fetch on demand. `AdExplorerTree` populates this the moment
+ * cache, never fetch on demand. `DirExplorerTree` populates this the moment
  * the tree loads, which already carries every MSP/customer/user name, group
  * role and OU name in one shot — everything `docLabel` needs to show a real
  * name instead of a bare id. Canvases additionally enrich an entry with a
@@ -18,9 +18,9 @@
  * subscription.
  */
 
-import type { AdTree } from "./adTypes";
+import type { DirTree } from "./dirTypes";
 
-export interface AdCachedRecord {
+export interface DirCachedRecord {
   title: string;
   sub?: string;
   tag?: string;
@@ -28,40 +28,40 @@ export interface AdCachedRecord {
 }
 
 const cache = {
-  msp: new Map<string, AdCachedRecord>(),
-  customer: new Map<string, AdCachedRecord>(),
-  user: new Map<string, AdCachedRecord>(),
-  group: new Map<string, AdCachedRecord>(),
-  ou: new Map<string, AdCachedRecord>(),
+  msp: new Map<string, DirCachedRecord>(),
+  customer: new Map<string, DirCachedRecord>(),
+  user: new Map<string, DirCachedRecord>(),
+  group: new Map<string, DirCachedRecord>(),
+  ou: new Map<string, DirCachedRecord>(),
 };
 
-export type AdCacheKind = keyof typeof cache;
+export type DirCacheKind = keyof typeof cache;
 
 /** Test seam. Not used by the app. */
-export function resetAdNameCacheForTest(): void {
-  for (const kind of Object.keys(cache) as AdCacheKind[]) cache[kind].clear();
+export function resetDirNameCacheForTest(): void {
+  for (const kind of Object.keys(cache) as DirCacheKind[]) cache[kind].clear();
 }
 
-export function getAdCachedRecord(kind: AdCacheKind, id: string): AdCachedRecord | null {
+export function getDirCachedRecord(kind: DirCacheKind, id: string): DirCachedRecord | null {
   return cache[kind].get(id) ?? null;
 }
 
 /** Cheap live counts for the palette's `?` answer rows — reads the same cache, never fetches. */
-export function getAdCacheSize(kind: AdCacheKind): number {
+export function getDirCacheSize(kind: DirCacheKind): number {
   return cache[kind].size;
 }
 
 /** Every cached record of one kind, for building palette `#` record rows without a second fetch. */
-export function getAllAdCachedRecords(kind: AdCacheKind): Array<{ id: string; record: AdCachedRecord }> {
+export function getAllDirCachedRecords(kind: DirCacheKind): Array<{ id: string; record: DirCachedRecord }> {
   return [...cache[kind].entries()].map(([id, record]) => ({ id, record }));
 }
 
-export function setAdCachedRecord(kind: AdCacheKind, id: string, record: AdCachedRecord): void {
+export function setDirCachedRecord(kind: DirCacheKind, id: string, record: DirCachedRecord): void {
   cache[kind].set(id, record);
 }
 
 /** Populated once per tree load — the single cheapest source for every name this screen needs. */
-export function primeAdNameCacheFromTree(tree: AdTree): void {
+export function primeDirNameCacheFromTree(tree: DirTree): void {
   for (const msp of tree.msps) {
     cache.msp.set(String(msp.id), {
       title: msp.name,

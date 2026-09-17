@@ -143,7 +143,7 @@ export function __resetRetainedRecordTypesForTest(): void {
 //
 // WHY A REGISTRY AND NOT A LIST OF TABLES. A hardcoded roster of every tenant-scoped table
 // is precisely the shape #1944 was filed to end, and this codebase already has the
-// evidence: the dev-only customer hard-delete in `admin-active-directory.ts` carries a
+// evidence: the dev-only customer hard-delete in `admin-msp-directory.ts` carries a
 // hand-maintained list of ~30 auxiliary tables, several of which its own comments record
 // as possibly not existing in a given database because their migrations predate a
 // refactor. A list like that silently rots, and a purge that silently misses a table is a

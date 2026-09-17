@@ -5,7 +5,7 @@
  * reassignment, entitlement grant/revoke, forced password reset, admin MFA
  * reset, impersonation launch into /portal/, and the dev-only cascading
  * hard delete. Every action posts straight to the same
- * `/admin/active-directory/user/:id/*` routes `ActiveDirectoryUserPane.tsx`
+ * `/admin/msp-directory/user/:id/*` routes `ActiveDirectoryUserPane.tsx`
  * already uses — same endpoints, same request shapes, new shell chrome.
  */
 
@@ -16,39 +16,39 @@ import { ACCENT_TEXT, LINE, SURFACE, TEXT } from "../../../theme";
 import { useShell } from "../../../shell/ShellContext";
 import { ContextMenu, useContextMenu } from "../../../shell/ContextMenu";
 import {
-  fetchAdUser,
-  fetchAdUserEntitlements,
-  forceAdPasswordReset,
-  hardDeleteAdUser,
-  impersonateAdUser,
-  resetAdUserMfa,
-  searchAdDirectory,
-  setAdUserAssignment,
-  setAdUserEntitlement,
-  setAdUserRole,
-} from "../adApi";
-import { setAdCachedRecord } from "../adNameCache";
-import { onAdRecordAction, requestAdTreeRefresh } from "../adEvents";
-import type { AdEntitlementsView, AdSearchResult, AdUserDetail, DirectoryGroupRole } from "../adTypes";
+  fetchDirUser,
+  fetchDirUserEntitlements,
+  forceDirPasswordReset,
+  hardDeleteDirUser,
+  impersonateDirUser,
+  resetDirUserMfa,
+  searchDirDirectory,
+  setDirUserAssignment,
+  setDirUserEntitlement,
+  setDirUserRole,
+} from "../dirApi";
+import { setDirCachedRecord } from "../dirNameCache";
+import { onDirRecordAction, requestDirTreeRefresh } from "../dirEvents";
+import type { DirEntitlementsView, DirSearchResult, DirUserDetail, DirectoryGroupRole } from "../dirTypes";
 import { useDirectoryRoles } from "@/lib/useDirectoryRoles";
-import { AdRbacUserRolesSection } from "../AdRbacPanels";
+import { DirRbacUserRolesSection } from "../DirRbacPanels";
 import {
-  AdArmedButton,
-  AdButton,
-  AdCanvasBody,
-  AdCanvasColumn,
-  AdCanvasHeader,
-  AdChip,
-  AdEmptyRow,
-  AdListRow,
-  AdListRowGroup,
-  AdLoadError,
-  AdLoading,
-  AdOutcome,
-  AdSection,
-  AdTile,
-  AdTileGrid,
-} from "../adKit";
+  DirArmedButton,
+  DirButton,
+  DirCanvasBody,
+  DirCanvasColumn,
+  DirCanvasHeader,
+  DirChip,
+  DirEmptyRow,
+  DirListRow,
+  DirListRowGroup,
+  DirLoadError,
+  DirLoading,
+  DirOutcome,
+  DirSection,
+  DirTile,
+  DirTileGrid,
+} from "../dirKit";
 
 function fmtDateTime(v: string | null): string {
   if (!v) return "—";
@@ -72,16 +72,16 @@ function REASSIGN_RESULT_ROW_STYLE(busy: boolean): CSSProperties {
 
 // #2459 (part of #1696) — the local `roleLinkageRequirement()` copy that used to
 // sit here, and the `DIRECTORY_GROUP_ROLES` literal list it ran over, are gone.
-// Both are read from `GET /admin/active-directory/roles` via `useDirectoryRoles`,
+// Both are read from `GET /admin/msp-directory/roles` via `useDirectoryRoles`,
 // which is generated from the server's own rule. See that hook's header for the
 // real drift this closed between this canvas and the v1 pane.
 
-export function AdUserCanvas({ userId }: { userId: number }) {
+export function DirUserCanvas({ userId }: { userId: number }) {
   const { fetchWithAuth } = useAuth();
   const { roles: directoryRoles, linkageRequirementFor } = useDirectoryRoles(fetchWithAuth);
   const shell = useShell();
-  const [detail, setDetail] = useState<AdUserDetail | null>(null);
-  const [entitlements, setEntitlements] = useState<AdEntitlementsView | null>(null);
+  const [detail, setDetail] = useState<DirUserDetail | null>(null);
+  const [entitlements, setEntitlements] = useState<DirEntitlementsView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<{ tone: "ok" | "error"; message: string } | null>(null);
@@ -90,7 +90,7 @@ export function AdUserCanvas({ userId }: { userId: number }) {
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [deleted, setDeleted] = useState(false);
   const [reassignQuery, setReassignQuery] = useState("");
-  const [reassignResults, setReassignResults] = useState<AdSearchResult | null>(null);
+  const [reassignResults, setReassignResults] = useState<DirSearchResult | null>(null);
   const [reassignBusy, setReassignBusy] = useState(false);
   const reassignDebounceRef = useRef<number | null>(null);
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
@@ -100,12 +100,12 @@ export function AdUserCanvas({ userId }: { userId: number }) {
     setError(null);
     try {
       const [data, ent] = await Promise.all([
-        fetchAdUser(fetchWithAuth, userId),
-        fetchAdUserEntitlements(fetchWithAuth, userId).catch(() => null),
+        fetchDirUser(fetchWithAuth, userId),
+        fetchDirUserEntitlements(fetchWithAuth, userId).catch(() => null),
       ]);
       setDetail(data);
       setEntitlements(ent);
-      setAdCachedRecord("user", String(userId), {
+      setDirCachedRecord("user", String(userId), {
         title: data.profile.name || data.profile.email,
         sub: data.linkage?.mspRole,
         tag: data.linkage?.isActive === false ? "disabled" : undefined,
@@ -128,8 +128,8 @@ export function AdUserCanvas({ userId }: { userId: number }) {
     void load();
   }, [load]);
 
-  // Reassignment picker — same debounced universal search AdExplorerTree.tsx
-  // uses (`searchAdDirectory`), scoped here to whichever target type the
+  // Reassignment picker — same debounced universal search DirExplorerTree.tsx
+  // uses (`searchDirDirectory`), scoped here to whichever target type the
   // account's current role actually requires.
   useEffect(() => {
     if (!reassignQuery.trim()) {
@@ -139,7 +139,7 @@ export function AdUserCanvas({ userId }: { userId: number }) {
     if (reassignDebounceRef.current) window.clearTimeout(reassignDebounceRef.current);
     reassignDebounceRef.current = window.setTimeout(async () => {
       try {
-        setReassignResults(await searchAdDirectory(fetchWithAuth, reassignQuery));
+        setReassignResults(await searchDirDirectory(fetchWithAuth, reassignQuery));
       } catch {
         // Leave previous results visible on a transient failure.
       }
@@ -154,11 +154,11 @@ export function AdUserCanvas({ userId }: { userId: number }) {
       setOutcome(null);
       setReassignBusy(true);
       try {
-        await setAdUserAssignment(fetchWithAuth, userId, target);
+        await setDirUserAssignment(fetchWithAuth, userId, target);
         setOutcome({ tone: "ok", message: `Reassigned to ${targetLabel}. Takes effect at their next JWT refresh.` });
         setReassignQuery("");
         setReassignResults(null);
-        requestAdTreeRefresh();
+        requestDirTreeRefresh();
         await load();
       } catch (err) {
         setOutcome({ tone: "error", message: err instanceof Error ? err.message : "Failed to reassign this account." });
@@ -173,9 +173,9 @@ export function AdUserCanvas({ userId }: { userId: number }) {
     async (role: DirectoryGroupRole) => {
       setOutcome(null);
       try {
-        await setAdUserRole(fetchWithAuth, userId, role);
+        await setDirUserRole(fetchWithAuth, userId, role);
         setOutcome({ tone: "ok", message: `Role changed to ${role}. Takes effect at their next page load.` });
-        requestAdTreeRefresh();
+        requestDirTreeRefresh();
         await load();
       } catch (err) {
         setOutcome({ tone: "error", message: err instanceof Error ? err.message : "Failed to change the role." });
@@ -187,7 +187,7 @@ export function AdUserCanvas({ userId }: { userId: number }) {
   const runForcePasswordReset = useCallback(async () => {
     setOutcome(null);
     try {
-      const res = await forceAdPasswordReset(fetchWithAuth, userId);
+      const res = await forceDirPasswordReset(fetchWithAuth, userId);
       setOutcome({
         tone: "ok",
         message: `${res.flow === "account_setup" ? "Account-setup" : "Password reset"} link emailed to ${res.emailedTo}. ${res.revokedSessionCount} session${res.revokedSessionCount === 1 ? "" : "s"} invalidated.`,
@@ -201,7 +201,7 @@ export function AdUserCanvas({ userId }: { userId: number }) {
   const runMfaReset = useCallback(async () => {
     setOutcome(null);
     try {
-      const res = await resetAdUserMfa(fetchWithAuth, userId);
+      const res = await resetDirUserMfa(fetchWithAuth, userId);
       setOutcome({
         tone: "ok",
         message: res.clearedMethods.length ? `MFA reset — un-enrolled: ${res.clearedMethods.join(", ")}.` : "This account had no enrolled MFA methods to clear.",
@@ -215,7 +215,7 @@ export function AdUserCanvas({ userId }: { userId: number }) {
   const runImpersonate = useCallback(async () => {
     setOutcome(null);
     try {
-      const res = await impersonateAdUser(fetchWithAuth, userId);
+      const res = await impersonateDirUser(fetchWithAuth, userId);
       const params = new URLSearchParams({ impersonation_token: res.token });
       if (res.targetSlug) params.set("target_slug", res.targetSlug);
       window.open(`${window.location.origin}/portal/?${params.toString()}`, "_blank", "noopener");
@@ -234,7 +234,7 @@ export function AdUserCanvas({ userId }: { userId: number }) {
     async (capabilityKey: string, enabled: boolean | null) => {
       setOutcome(null);
       try {
-        const view = await setAdUserEntitlement(fetchWithAuth, userId, capabilityKey, enabled);
+        const view = await setDirUserEntitlement(fetchWithAuth, userId, capabilityKey, enabled);
         setEntitlements(view);
         setOutcome({ tone: "ok", message: "Entitlement override saved." });
       } catch (err) {
@@ -247,9 +247,9 @@ export function AdUserCanvas({ userId }: { userId: number }) {
   const runHardDelete = useCallback(async () => {
     setOutcome(null);
     try {
-      await hardDeleteAdUser(fetchWithAuth, userId);
+      await hardDeleteDirUser(fetchWithAuth, userId);
       setDeleted(true);
-      requestAdTreeRefresh();
+      requestDirTreeRefresh();
       setOutcome({ tone: "ok", message: "Account and every related row removed. There is no undo." });
     } catch (err) {
       setOutcome({ tone: "error", message: err instanceof Error ? err.message : "Failed to delete the account." });
@@ -258,7 +258,7 @@ export function AdUserCanvas({ userId }: { userId: number }) {
 
   useEffect(
     () =>
-      onAdRecordAction("user", String(userId), (action) => {
+      onDirRecordAction("user", String(userId), (action) => {
         if (action === "impersonate") void runImpersonate();
         if (action === "force-password-reset") void runForcePasswordReset();
         if (action === "reset-mfa") void runMfaReset();
@@ -267,23 +267,23 @@ export function AdUserCanvas({ userId }: { userId: number }) {
   );
 
   if (loading) return (
-    <AdCanvasColumn>
-      <AdLoading />
-    </AdCanvasColumn>
+    <DirCanvasColumn>
+      <DirLoading />
+    </DirCanvasColumn>
   );
   if (error || !detail) return (
-    <AdCanvasColumn>
-      <AdLoadError message={error ?? "This user could not be loaded."} />
-    </AdCanvasColumn>
+    <DirCanvasColumn>
+      <DirLoadError message={error ?? "This user could not be loaded."} />
+    </DirCanvasColumn>
   );
 
   if (deleted) {
     return (
-      <AdCanvasColumn>
+      <DirCanvasColumn>
         <div style={{ padding: 24, fontSize: 12.5, color: ACCENT_TEXT.green }}>
           This account was permanently deleted. Close this tab — it no longer exists.
         </div>
-      </AdCanvasColumn>
+      </DirCanvasColumn>
     );
   }
 
@@ -291,54 +291,54 @@ export function AdUserCanvas({ userId }: { userId: number }) {
   const linkageRequirement = linkage ? linkageRequirementFor(linkage.mspRole) : "none";
 
   return (
-    <AdCanvasColumn>
-      <AdCanvasHeader
+    <DirCanvasColumn>
+      <DirCanvasHeader
         icon={UserCircle}
         name={profile.name || profile.email}
         kindLabel="User"
         chips={
           <>
-            {linkage && <AdChip label={linkage.isActive ? "enabled" : "disabled"} tone={linkage.isActive ? "good" : "bad"} />}
-            {linkage && <AdChip label={linkage.mspRole} />}
-            <AdChip label={mfa.enrolled ? `${mfa.methods.length} MFA method${mfa.methods.length === 1 ? "" : "s"}` : "no MFA"} tone={mfa.enrolled ? "good" : "warn"} />
+            {linkage && <DirChip label={linkage.isActive ? "enabled" : "disabled"} tone={linkage.isActive ? "good" : "bad"} />}
+            {linkage && <DirChip label={linkage.mspRole} />}
+            <DirChip label={mfa.enrolled ? `${mfa.methods.length} MFA method${mfa.methods.length === 1 ? "" : "s"}` : "no MFA"} tone={mfa.enrolled ? "good" : "warn"} />
           </>
         }
         actions={
           <>
-            <AdButton label="Impersonate" tone="primary" onClick={() => void runImpersonate()} />
-            <AdButton label="Force password reset" onClick={() => void runForcePasswordReset()} />
+            <DirButton label="Impersonate" tone="primary" onClick={() => void runImpersonate()} />
+            <DirButton label="Force password reset" onClick={() => void runForcePasswordReset()} />
           </>
         }
       />
 
-      {outcome && <AdOutcome tone={outcome.tone} message={outcome.message} onDismiss={() => setOutcome(null)} />}
+      {outcome && <DirOutcome tone={outcome.tone} message={outcome.message} onDismiss={() => setOutcome(null)} />}
 
-      <AdCanvasBody>
-        <AdSection title="Identity">
-          <AdTileGrid>
-            <AdTile label="Email" value={profile.email} />
-            <AdTile label="Belongs to" value={(linkage?.mspName ?? linkage?.customerName) ?? "—"} />
-            <AdTile label="Last sign-in" value={fmtDateTime(linkage?.lastLoginAt ?? null)} />
-            <AdTile label="Created" value={fmtDateTime(profile.createdAt)} />
-          </AdTileGrid>
+      <DirCanvasBody>
+        <DirSection title="Identity">
+          <DirTileGrid>
+            <DirTile label="Email" value={profile.email} />
+            <DirTile label="Belongs to" value={(linkage?.mspName ?? linkage?.customerName) ?? "—"} />
+            <DirTile label="Last sign-in" value={fmtDateTime(linkage?.lastLoginAt ?? null)} />
+            <DirTile label="Created" value={fmtDateTime(profile.createdAt)} />
+          </DirTileGrid>
           {(linkage?.mspId != null || linkage?.customerId != null) && (
             <div>
-              <AdButton
+              <DirButton
                 label={`Open ${linkage.mspName ?? linkage.customerName}`}
                 onClick={() =>
                   linkage.mspId != null
-                    ? shell.openDoc({ kind: "msp", id: String(linkage.mspId), screenId: "ad", label: linkage.mspName ?? "" })
-                    : shell.openDoc({ kind: "customer", id: String(linkage.customerId), screenId: "ad", label: linkage.customerName ?? "" })
+                    ? shell.openDoc({ kind: "msp", id: String(linkage.mspId), screenId: "msp-directory", label: linkage.mspName ?? "" })
+                    : shell.openDoc({ kind: "customer", id: String(linkage.customerId), screenId: "msp-directory", label: linkage.customerName ?? "" })
                 }
               />
             </div>
           )}
-        </AdSection>
+        </DirSection>
 
-        <AdSection title="Role" note="Reassigning role/linkage takes effect at the account's next JWT refresh.">
+        <DirSection title="Role" note="Reassigning role/linkage takes effect at the account's next JWT refresh.">
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {directoryRoles.map(({ role }) => (
-              <AdButton
+              <DirButton
                 key={role}
                 label={role}
                 tone={linkage?.mspRole === role ? "primary" : "default"}
@@ -420,38 +420,38 @@ export function AdUserCanvas({ userId }: { userId: number }) {
               </div>
             </div>
           )}
-        </AdSection>
+        </DirSection>
 
         {linkage && (
-          <AdRbacUserRolesSection userId={userId} system={linkageRequirement === "customer" ? "customer" : "msp"} />
+          <DirRbacUserRolesSection userId={userId} system={linkageRequirement === "customer" ? "customer" : "msp"} />
         )}
 
-        <AdSection title="Credential ops" note="Every action here is written to the audit log with your name against it.">
-          <AdListRowGroup>
+        <DirSection title="Credential ops" note="Every action here is written to the audit log with your name against it.">
+          <DirListRowGroup>
             {(mfa.methods.length ? mfa.methods : [{ method: "No methods enrolled", createdAt: "" }]).map((m) => (
-              <AdListRow key={m.method} label={m.method} detail={mfa.methods.length ? undefined : "This account can sign in with a password alone."} dot={mfa.methods.length ? "#6ccb96" : "#e9b949"} />
+              <DirListRow key={m.method} label={m.method} detail={mfa.methods.length ? undefined : "This account can sign in with a password alone."} dot={mfa.methods.length ? "#6ccb96" : "#e9b949"} />
             ))}
-          </AdListRowGroup>
+          </DirListRowGroup>
           <div style={{ display: "flex", gap: 8 }}>
-            <AdArmedButton label="Reset all MFA" tone="danger" onConfirm={() => void runMfaReset()} />
+            <DirArmedButton label="Reset all MFA" tone="danger" onConfirm={() => void runMfaReset()} />
           </div>
-        </AdSection>
+        </DirSection>
 
-        <AdSection title="Access overrides" note="Overrides sit on top of whatever the plan grants — they follow the user, not the tenant.">
-          <AdListRowGroup>
+        <DirSection title="Access overrides" note="Overrides sit on top of whatever the plan grants — they follow the user, not the tenant.">
+          <DirListRowGroup>
             {!entitlements || entitlements.overrides.length === 0 ? (
-              <AdEmptyRow label="No overrides — this account gets exactly what its plan grants." />
+              <DirEmptyRow label="No overrides — this account gets exactly what its plan grants." />
             ) : (
               entitlements.overrides.map((o) => (
-                <AdListRow
+                <DirListRow
                   key={o.capabilityKey}
                   label={o.capabilityKey}
                   detail={o.enabled ? "granted by override" : "withheld by override"}
                   dot={o.enabled ? "#6ccb96" : "#e57a7a"}
                   actions={
                     <>
-                      <AdButton label={o.enabled ? "Withhold" : "Grant"} onClick={() => void toggleEntitlement(o.capabilityKey, !o.enabled)} />
-                      <AdButton label="Clear" onClick={() => void toggleEntitlement(o.capabilityKey, null)} />
+                      <DirButton label={o.enabled ? "Withhold" : "Grant"} onClick={() => void toggleEntitlement(o.capabilityKey, !o.enabled)} />
+                      <DirButton label="Clear" onClick={() => void toggleEntitlement(o.capabilityKey, null)} />
                     </>
                   }
                   onContextMenu={(e) =>
@@ -470,7 +470,7 @@ export function AdUserCanvas({ userId }: { userId: number }) {
                 />
               ))
             )}
-          </AdListRowGroup>
+          </DirListRowGroup>
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
             <input
               value={newCapabilityKey}
@@ -488,7 +488,7 @@ export function AdUserCanvas({ userId }: { userId: number }) {
                 minWidth: 180,
               }}
             />
-            <AdButton
+            <DirButton
               label="Grant override"
               disabled={!newCapabilityKey.trim()}
               onClick={() => {
@@ -497,20 +497,20 @@ export function AdUserCanvas({ userId }: { userId: number }) {
               }}
             />
           </div>
-        </AdSection>
+        </DirSection>
 
-        <AdSection title="Session">
-          <AdTileGrid>
-            <AdTile label="Active sessions" value={String(sessions.activeSessionCount)} />
-            <AdTile label="Total sessions" value={String(sessions.totalSessionCount)} />
-            <AdTile label="Last activity" value={fmtDateTime(sessions.mostRecentSession?.lastActiveAt ?? null)} />
-          </AdTileGrid>
-        </AdSection>
+        <DirSection title="Session">
+          <DirTileGrid>
+            <DirTile label="Active sessions" value={String(sessions.activeSessionCount)} />
+            <DirTile label="Total sessions" value={String(sessions.totalSessionCount)} />
+            <DirTile label="Last activity" value={fmtDateTime(sessions.mostRecentSession?.lastActiveAt ?? null)} />
+          </DirTileGrid>
+        </DirSection>
 
-        <AdSection title="Delete" note="Removes the account and every row tied to it. There is no undo — the server refuses this outside a non-production environment.">
+        <DirSection title="Delete" note="Removes the account and every row tied to it. There is no undo — the server refuses this outside a non-production environment.">
           {!deleteArmed ? (
             <div>
-              <AdButton label="Permanently delete" tone="danger" onClick={() => setDeleteArmed(true)} />
+              <DirButton label="Permanently delete" tone="danger" onClick={() => setDeleteArmed(true)} />
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 360 }}>
@@ -531,14 +531,14 @@ export function AdUserCanvas({ userId }: { userId: number }) {
                 }}
               />
               <div style={{ display: "flex", gap: 8 }}>
-                <AdButton label="Delete permanently" tone="danger" disabled={deleteConfirmText !== profile.email} onClick={() => void runHardDelete()} />
-                <AdButton label="Cancel" onClick={() => { setDeleteArmed(false); setDeleteConfirmText(""); }} />
+                <DirButton label="Delete permanently" tone="danger" disabled={deleteConfirmText !== profile.email} onClick={() => void runHardDelete()} />
+                <DirButton label="Cancel" onClick={() => { setDeleteArmed(false); setDeleteConfirmText(""); }} />
               </div>
             </div>
           )}
-        </AdSection>
-      </AdCanvasBody>
+        </DirSection>
+      </DirCanvasBody>
       <ContextMenu menu={menu} onClose={closeMenu} />
-    </AdCanvasColumn>
+    </DirCanvasColumn>
   );
 }

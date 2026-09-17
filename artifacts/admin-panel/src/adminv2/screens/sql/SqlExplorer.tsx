@@ -13,7 +13,7 @@
  * uses), nothing new invented here. Renaming/recategorizing a script and
  * toggling its destructive flag are still edit-field-only, reached through
  * the record's contextual "Script Tools" tab or its peek — same split
- * `AdExplorerTree.tsx` uses for its own tree vs. `contextualTab`.
+ * `DirExplorerTree.tsx` uses for its own tree vs. `contextualTab`.
  */
 
 import { useState, useSyncExternalStore, type CSSProperties } from "react";

@@ -17,7 +17,7 @@
  * Every fixed-tab command here is `open`/`create`/`global` per the audited
  * rule (`SHELL.md` section 1) — Rename/Delete/Run-a-specific-script are all
  * `record`-scoped and live on the two per-kind contextual tabs below
- * ("Script Tools", "Migration Tools"), matching `screens/ad/index.tsx`'s
+ * ("Script Tools", "Migration Tools"), matching `screens/directory/index.tsx`'s
  * per-`ctx.kind` pattern. `PEEK_KINDS` (`registry/types.ts`) gained
  * `"migration"` for this screen — a migration file is a genuinely different
  * record shape from a saved script (no name/category to edit, no delete, an
@@ -28,7 +28,7 @@
  * is wired onto the Watch tab for unrun migrations, even though the design
  * names that as a canonical Watch example. Doing that honestly needs a
  * background poll independent of whether anyone has opened this screen —
- * out of scope here, same reasoning `screens/ad/index.tsx` gives for MSPs
+ * out of scope here, same reasoning `screens/directory/index.tsx` gives for MSPs
  * past due.
  */
 

@@ -75,14 +75,14 @@ vi.mock("../lib/audit.ts", () => ({
   },
 }));
 
-import router from "./admin-active-directory.ts";
+import router from "./admin-msp-directory.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const app = express();
 app.use(express.json());
 app.use("/api", router);
 
-const JWT_SECRET = "admin-active-directory-user-actions-test-secret";
+const JWT_SECRET = "admin-msp-directory-user-actions-test-secret";
 process.env.JWT_SECRET = JWT_SECRET;
 
 function adminToken(): string {
@@ -96,12 +96,12 @@ beforeEach(() => {
   auditLogSpy.mockClear();
 });
 
-// ── PATCH /admin/active-directory/user/:id/role ──────────────────────────────
+// ── PATCH /admin/msp-directory/user/:id/role ──────────────────────────────
 
-describe("PATCH /admin/active-directory/user/:id/role", () => {
+describe("PATCH /admin/msp-directory/user/:id/role", () => {
   it("400s an invalid mspRole", async () => {
     const res = await request(app)
-      .patch("/api/admin/active-directory/user/100/role")
+      .patch("/api/admin/msp-directory/user/100/role")
       .set("Authorization", `Bearer ${adminToken()}`)
       .send({ mspRole: "SuperAdmin" });
     expect(res.status).toBe(400);
@@ -110,7 +110,7 @@ describe("PATCH /admin/active-directory/user/:id/role", () => {
   it("404s when the account has no msp_users linkage row", async () => {
     mockResultQueue = [[]]; // current row lookup returns nothing
     const res = await request(app)
-      .patch("/api/admin/active-directory/user/100/role")
+      .patch("/api/admin/msp-directory/user/100/role")
       .set("Authorization", `Bearer ${adminToken()}`)
       .send({ mspRole: LEGACY_ROLE.mspAdmin });
     expect(res.status).toBe(404);
@@ -119,7 +119,7 @@ describe("PATCH /admin/active-directory/user/:id/role", () => {
   it("400s an invalid transition — Customer target with no customer linkage (acceptance-criteria rejection case)", async () => {
     mockResultQueue = [[{ mspRole: LEGACY_ROLE.mspAdmin, mspId: 1, customerId: null }]];
     const res = await request(app)
-      .patch("/api/admin/active-directory/user/100/role")
+      .patch("/api/admin/msp-directory/user/100/role")
       .set("Authorization", `Bearer ${adminToken()}`)
       .send({ mspRole: LEGACY_ROLE.customer });
     expect(res.status).toBe(400);
@@ -134,7 +134,7 @@ describe("PATCH /admin/active-directory/user/:id/role", () => {
       [], // createAuditLog's insert() (unused since createAuditLog is mocked, but harmless if consumed)
     ];
     const res = await request(app)
-      .patch("/api/admin/active-directory/user/100/role")
+      .patch("/api/admin/msp-directory/user/100/role")
       .set("Authorization", `Bearer ${adminToken()}`)
       .send({ mspRole: LEGACY_ROLE.mspOperator });
     expect(res.status).toBe(200);
@@ -147,13 +147,13 @@ describe("PATCH /admin/active-directory/user/:id/role", () => {
   });
 });
 
-// ── PATCH /admin/active-directory/user/:id/assignment ────────────────────────
+// ── PATCH /admin/msp-directory/user/:id/assignment ────────────────────────
 
-describe("PATCH /admin/active-directory/user/:id/assignment", () => {
+describe("PATCH /admin/msp-directory/user/:id/assignment", () => {
   it("404s when the account has no msp_users linkage row", async () => {
     mockResultQueue = [[]];
     const res = await request(app)
-      .patch("/api/admin/active-directory/user/100/assignment")
+      .patch("/api/admin/msp-directory/user/100/assignment")
       .set("Authorization", `Bearer ${adminToken()}`)
       .send({ mspId: 5 });
     expect(res.status).toBe(404);
@@ -165,7 +165,7 @@ describe("PATCH /admin/active-directory/user/:id/assignment", () => {
       [], // target MSP lookup — not found
     ];
     const res = await request(app)
-      .patch("/api/admin/active-directory/user/100/assignment")
+      .patch("/api/admin/msp-directory/user/100/assignment")
       .set("Authorization", `Bearer ${adminToken()}`)
       .send({ mspId: 999 });
     expect(res.status).toBe(404);
@@ -178,7 +178,7 @@ describe("PATCH /admin/active-directory/user/:id/assignment", () => {
       [{ mspId: 7 }], // target customer lookup resolves (but is the wrong field for this role)
     ];
     const res = await request(app)
-      .patch("/api/admin/active-directory/user/100/assignment")
+      .patch("/api/admin/msp-directory/user/100/assignment")
       .set("Authorization", `Bearer ${adminToken()}`)
       .send({ customerId: 42 });
     expect(res.status).toBe(400);
@@ -194,7 +194,7 @@ describe("PATCH /admin/active-directory/user/:id/assignment", () => {
       [], // createAuditLog insert
     ];
     const res = await request(app)
-      .patch("/api/admin/active-directory/user/100/assignment")
+      .patch("/api/admin/msp-directory/user/100/assignment")
       .set("Authorization", `Bearer ${adminToken()}`)
       .send({ customerId: 42 });
     expect(res.status).toBe(200);
@@ -210,7 +210,7 @@ describe("PATCH /admin/active-directory/user/:id/assignment", () => {
       [{ id: 3 }], // target MSP lookup (since bodyMspId is also provided)
     ];
     const res = await request(app)
-      .patch("/api/admin/active-directory/user/100/assignment")
+      .patch("/api/admin/msp-directory/user/100/assignment")
       .set("Authorization", `Bearer ${adminToken()}`)
       .send({ mspId: 3, customerId: 42 });
     expect(res.status).toBe(400);
@@ -219,16 +219,16 @@ describe("PATCH /admin/active-directory/user/:id/assignment", () => {
   });
 });
 
-// ── GET/PATCH /admin/active-directory/user/:id/entitlements ──────────────────
+// ── GET/PATCH /admin/msp-directory/user/:id/entitlements ──────────────────
 
-describe("GET /admin/active-directory/user/:id/entitlements", () => {
+describe("GET /admin/msp-directory/user/:id/entitlements", () => {
   it("returns inherited/overrides/effective for an account with no MSP linkage (no subscription query issued)", async () => {
     mockResultQueue = [
       [], // usersTable lookup — no mspId
       [{ capabilityKey: "betaFeature", enabled: true, grantedByUserId: 1, createdAt: new Date(), updatedAt: new Date() }], // overrides
     ];
     const res = await request(app)
-      .get("/api/admin/active-directory/user/100/entitlements")
+      .get("/api/admin/msp-directory/user/100/entitlements")
       .set("Authorization", `Bearer ${adminToken()}`);
     expect(res.status).toBe(200);
     expect(res.body.inherited).toBeNull();
@@ -236,10 +236,10 @@ describe("GET /admin/active-directory/user/:id/entitlements", () => {
   });
 });
 
-describe("PATCH /admin/active-directory/user/:id/entitlements", () => {
+describe("PATCH /admin/msp-directory/user/:id/entitlements", () => {
   it("400s a missing capabilityKey", async () => {
     const res = await request(app)
-      .patch("/api/admin/active-directory/user/100/entitlements")
+      .patch("/api/admin/msp-directory/user/100/entitlements")
       .set("Authorization", `Bearer ${adminToken()}`)
       .send({ enabled: true });
     expect(res.status).toBe(400);
@@ -247,7 +247,7 @@ describe("PATCH /admin/active-directory/user/:id/entitlements", () => {
 
   it("400s an invalid enabled value", async () => {
     const res = await request(app)
-      .patch("/api/admin/active-directory/user/100/entitlements")
+      .patch("/api/admin/msp-directory/user/100/entitlements")
       .set("Authorization", `Bearer ${adminToken()}`)
       .send({ capabilityKey: "copilot", enabled: "yes" });
     expect(res.status).toBe(400);
@@ -261,7 +261,7 @@ describe("PATCH /admin/active-directory/user/:id/entitlements", () => {
       [{ capabilityKey: "copilot", enabled: true, grantedByUserId: 1, createdAt: new Date(), updatedAt: new Date() }], // overrides
     ];
     const res = await request(app)
-      .patch("/api/admin/active-directory/user/100/entitlements")
+      .patch("/api/admin/msp-directory/user/100/entitlements")
       .set("Authorization", `Bearer ${adminToken()}`)
       .send({ capabilityKey: "copilot", enabled: true });
     expect(res.status).toBe(200);
@@ -278,7 +278,7 @@ describe("PATCH /admin/active-directory/user/:id/entitlements", () => {
       [], // overrides — now empty
     ];
     const res = await request(app)
-      .patch("/api/admin/active-directory/user/100/entitlements")
+      .patch("/api/admin/msp-directory/user/100/entitlements")
       .set("Authorization", `Bearer ${adminToken()}`)
       .send({ capabilityKey: "copilot", enabled: null });
     expect(res.status).toBe(200);

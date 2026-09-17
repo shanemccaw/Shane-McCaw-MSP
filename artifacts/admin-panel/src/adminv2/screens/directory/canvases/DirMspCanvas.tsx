@@ -15,28 +15,28 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ACCENT_TEXT, LINE, SURFACE, TEXT } from "../../../theme";
 import { useShell } from "../../../shell/ShellContext";
 import { ContextMenu, useContextMenu } from "../../../shell/ContextMenu";
-import { fetchAdMsp, fetchAdMspAuditLog, impersonateAdMsp, reactivateAdMsp, suspendAdMsp, updateAdMspProfile } from "../adApi";
-import { setAdCachedRecord } from "../adNameCache";
-import { onAdRecordAction, requestAdTreeRefresh } from "../adEvents";
-import type { AdMspAuditEntry, AdMspDetail } from "../adTypes";
-import { AdRbacOrgRolesPanel } from "../AdRbacPanels";
+import { fetchDirMsp, fetchDirMspAuditLog, impersonateDirMsp, reactivateDirMsp, suspendDirMsp, updateDirMspProfile } from "../dirApi";
+import { setDirCachedRecord } from "../dirNameCache";
+import { onDirRecordAction, requestDirTreeRefresh } from "../dirEvents";
+import type { DirMspAuditEntry, DirMspDetail } from "../dirTypes";
+import { DirRbacOrgRolesPanel } from "../DirRbacPanels";
 import {
-  AdArmedButton,
-  AdButton,
-  AdCanvasBody,
-  AdCanvasColumn,
-  AdCanvasHeader,
-  AdChip,
-  AdEmptyRow,
-  AdListRow,
-  AdListRowGroup,
-  AdLoadError,
-  AdLoading,
-  AdOutcome,
-  AdSection,
-  AdTile,
-  AdTileGrid,
-} from "../adKit";
+  DirArmedButton,
+  DirButton,
+  DirCanvasBody,
+  DirCanvasColumn,
+  DirCanvasHeader,
+  DirChip,
+  DirEmptyRow,
+  DirListRow,
+  DirListRowGroup,
+  DirLoadError,
+  DirLoading,
+  DirOutcome,
+  DirSection,
+  DirTile,
+  DirTileGrid,
+} from "../dirKit";
 
 function fmtDate(v: string | null): string {
   if (!v) return "—";
@@ -67,7 +67,7 @@ const fieldStyle = {
   boxSizing: "border-box" as const,
 };
 
-function AdEditField({
+function DirEditField({
   label,
   value,
   onChange,
@@ -92,10 +92,10 @@ function AdEditField({
   );
 }
 
-export function AdMspCanvas({ mspId }: { mspId: number }) {
+export function DirMspCanvas({ mspId }: { mspId: number }) {
   const { fetchWithAuth } = useAuth();
   const shell = useShell();
-  const [detail, setDetail] = useState<AdMspDetail | null>(null);
+  const [detail, setDetail] = useState<DirMspDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<{ tone: "ok" | "error"; message: string } | null>(null);
@@ -123,7 +123,7 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
   // Real per-MSP audit trail (Git #1747) — GET /api/msp/audit?mspId=, backed by
   // mspAuditLogsTable. Loaded independently of the profile fetch so a slow audit
   // query never blocks the rest of the canvas from rendering.
-  const [auditEntries, setAuditEntries] = useState<AdMspAuditEntry[]>([]);
+  const [auditEntries, setAuditEntries] = useState<DirMspAuditEntry[]>([]);
   const [auditLoading, setAuditLoading] = useState(true);
   const [auditError, setAuditError] = useState<string | null>(null);
 
@@ -131,7 +131,7 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
     setAuditLoading(true);
     setAuditError(null);
     try {
-      const data = await fetchAdMspAuditLog(fetchWithAuth, mspId);
+      const data = await fetchDirMspAuditLog(fetchWithAuth, mspId);
       setAuditEntries(data.entries);
     } catch (err) {
       setAuditError(err instanceof Error ? err.message : "Failed to load activity for this MSP.");
@@ -148,9 +148,9 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchAdMsp(fetchWithAuth, mspId);
+      const data = await fetchDirMsp(fetchWithAuth, mspId);
       setDetail(data);
-      setAdCachedRecord("msp", String(mspId), {
+      setDirCachedRecord("msp", String(mspId), {
         title: data.msp.name,
         sub: data.msp.domain ?? data.msp.slug,
         tag: data.msp.status,
@@ -172,9 +172,9 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
     setBusy(true);
     setOutcome(null);
     try {
-      await suspendAdMsp(fetchWithAuth, mspId);
+      await suspendDirMsp(fetchWithAuth, mspId);
       setOutcome({ tone: "ok", message: "MSP suspended. Every user under it loses portal access immediately." });
-      requestAdTreeRefresh();
+      requestDirTreeRefresh();
       await load();
     } catch (err) {
       setOutcome({ tone: "error", message: err instanceof Error ? err.message : "Failed to suspend the MSP." });
@@ -187,9 +187,9 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
     setBusy(true);
     setOutcome(null);
     try {
-      await reactivateAdMsp(fetchWithAuth, mspId);
+      await reactivateDirMsp(fetchWithAuth, mspId);
       setOutcome({ tone: "ok", message: "MSP reactivated." });
-      requestAdTreeRefresh();
+      requestDirTreeRefresh();
       await load();
     } catch (err) {
       setOutcome({ tone: "error", message: err instanceof Error ? err.message : "Failed to reactivate the MSP." });
@@ -220,7 +220,7 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
     setSaving(true);
     setSaveError(null);
     try {
-      await updateAdMspProfile(fetchWithAuth, mspId, {
+      await updateDirMspProfile(fetchWithAuth, mspId, {
         name: editForm.name.trim(),
         domain: editForm.domain.trim() || null,
         isTestbed: editForm.isTestbed,
@@ -231,7 +231,7 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
         notes: editForm.notes.trim() || null,
         entraTenantId: editForm.entraTenantId.trim() || null,
       });
-      requestAdTreeRefresh();
+      requestDirTreeRefresh();
       setEditing(false);
       await load();
     } catch (err) {
@@ -244,7 +244,7 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
   const runImpersonate = useCallback(async () => {
     setOutcome(null);
     try {
-      const res = await impersonateAdMsp(fetchWithAuth, mspId);
+      const res = await impersonateDirMsp(fetchWithAuth, mspId);
       const params = new URLSearchParams({ impersonation_token: res.token, target_slug: res.targetSlug });
       window.open(`${window.location.origin}/portal/?${params.toString()}`, "_blank", "noopener");
       setOutcome({ tone: "ok", message: `Impersonation session opened in a new tab as ${res.msp.name}'s MSPAdmin (expires in 30 minutes).` });
@@ -255,7 +255,7 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
 
   useEffect(
     () =>
-      onAdRecordAction("msp", String(mspId), (action) => {
+      onDirRecordAction("msp", String(mspId), (action) => {
         if (action === "suspend-msp") void runSuspend();
         if (action === "reactivate-msp") void runReactivate();
         if (action === "impersonate") void runImpersonate();
@@ -264,76 +264,76 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
   );
 
   if (loading) return (
-    <AdCanvasColumn>
-      <AdLoading />
-    </AdCanvasColumn>
+    <DirCanvasColumn>
+      <DirLoading />
+    </DirCanvasColumn>
   );
   if (error || !detail) return (
-    <AdCanvasColumn>
-      <AdLoadError message={error ?? "This MSP could not be loaded."} />
-    </AdCanvasColumn>
+    <DirCanvasColumn>
+      <DirLoadError message={error ?? "This MSP could not be loaded."} />
+    </DirCanvasColumn>
   );
 
   const { msp, subscription, entitlements, customers, users, agreementAcceptances, hasAcceptedCurrentAgreement } = detail;
   const pastDue = subscription?.dunningState != null && subscription.dunningState !== "current";
 
   return (
-    <AdCanvasColumn>
-      <AdCanvasHeader
+    <DirCanvasColumn>
+      <DirCanvasHeader
         icon={Briefcase}
         name={msp.name}
         kindLabel="MSP"
         chips={
           <>
-            <AdChip label={msp.status} tone={msp.status === "active" ? "good" : msp.status === "suspended" ? "bad" : "warn"} />
-            {msp.isDirectBusiness && <AdChip label="direct business" />}
-            {pastDue && <AdChip label="past due" tone="warn" />}
+            <DirChip label={msp.status} tone={msp.status === "active" ? "good" : msp.status === "suspended" ? "bad" : "warn"} />
+            {msp.isDirectBusiness && <DirChip label="direct business" />}
+            {pastDue && <DirChip label="past due" tone="warn" />}
           </>
         }
         actions={
           <>
-            <AdButton label="Edit profile" onClick={openEdit} disabled={editing} />
-            <AdButton label="Impersonate" onClick={() => void runImpersonate()} title="Opens a new tab signed in as this MSP's MSPAdmin (expires in 30 minutes)." />
+            <DirButton label="Edit profile" onClick={openEdit} disabled={editing} />
+            <DirButton label="Impersonate" onClick={() => void runImpersonate()} title="Opens a new tab signed in as this MSP's MSPAdmin (expires in 30 minutes)." />
             {msp.status === "active" ? (
-              <AdArmedButton
+              <DirArmedButton
                 label="Suspend"
                 tone="danger"
                 onConfirm={() => void runSuspend()}
                 title="Every user under this MSP loses portal access immediately. Billing continues."
               />
             ) : msp.status === "suspended" ? (
-              <AdButton label="Reactivate" tone="primary" onClick={() => void runReactivate()} disabled={busy} />
+              <DirButton label="Reactivate" tone="primary" onClick={() => void runReactivate()} disabled={busy} />
             ) : undefined}
           </>
         }
       />
 
-      {outcome && <AdOutcome tone={outcome.tone} message={outcome.message} onDismiss={() => setOutcome(null)} />}
+      {outcome && <DirOutcome tone={outcome.tone} message={outcome.message} onDismiss={() => setOutcome(null)} />}
 
-      <AdCanvasBody>
+      <DirCanvasBody>
         {editing ? (
-          <AdSection title="Edit profile">
+          <DirSection title="Edit profile">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
-              <AdEditField label="Name" value={editForm.name} onChange={(v) => setEditForm((f) => ({ ...f, name: v }))} />
-              <AdEditField label="Domain" value={editForm.domain} onChange={(v) => setEditForm((f) => ({ ...f, domain: v }))} />
-              <AdEditField
+              <DirEditField label="Name" value={editForm.name} onChange={(v) => setEditForm((f) => ({ ...f, name: v }))} />
+              <DirEditField label="Domain" value={editForm.domain} onChange={(v) => setEditForm((f) => ({ ...f, domain: v }))} />
+              <DirEditField
                 label="Primary contact name"
                 value={editForm.primaryContactName}
                 onChange={(v) => setEditForm((f) => ({ ...f, primaryContactName: v }))}
               />
-              <AdEditField
+              <DirEditField
                 label="Primary contact email"
                 type="email"
                 value={editForm.primaryContactEmail}
                 onChange={(v) => setEditForm((f) => ({ ...f, primaryContactEmail: v }))}
               />
-              <AdEditField
+              <DirEditField
                 label="Primary contact phone"
                 value={editForm.primaryContactPhone}
                 onChange={(v) => setEditForm((f) => ({ ...f, primaryContactPhone: v }))}
               />
-              <AdEditField label="Address" value={editForm.address} onChange={(v) => setEditForm((f) => ({ ...f, address: v }))} />
-              <AdEditField
+              <DirEditField label="Address" value={editForm.address} onChange={(v) => setEditForm((f) => ({ ...f, address: v }))} />
+              <DirEditField
                 label="Own Microsoft Entra tenant ID"
                 value={editForm.entraTenantId}
                 onChange={(v) => setEditForm((f) => ({ ...f, entraTenantId: v }))}
@@ -343,7 +343,7 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
             <span style={{ fontSize: 11.5, color: TEXT.meta }}>
               The MSP&apos;s own organisation tenant GUID. Once set, this MSP can only connect a sending mailbox that lives in this tenant.
             </span>
-            <AdEditField label="Internal notes" area value={editForm.notes} onChange={(v) => setEditForm((f) => ({ ...f, notes: v }))} />
+            <DirEditField label="Internal notes" area value={editForm.notes} onChange={(v) => setEditForm((f) => ({ ...f, notes: v }))} />
             <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: TEXT.body }}>
               <input
                 type="checkbox"
@@ -354,80 +354,80 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
             </label>
             {saveError && <span style={{ fontSize: 11.5, color: ACCENT_TEXT.danger }}>{saveError}</span>}
             <div style={{ display: "flex", gap: 8 }}>
-              <AdButton label={saving ? "Saving…" : "Save changes"} tone="primary" onClick={() => void saveEdit()} disabled={saving} />
-              <AdButton label="Cancel" onClick={() => setEditing(false)} disabled={saving} />
+              <DirButton label={saving ? "Saving…" : "Save changes"} tone="primary" onClick={() => void saveEdit()} disabled={saving} />
+              <DirButton label="Cancel" onClick={() => setEditing(false)} disabled={saving} />
             </div>
-          </AdSection>
+          </DirSection>
         ) : (
-          <AdSection title="Profile">
-            <AdTileGrid>
-              <AdTile label="Slug" value={msp.slug} />
-              <AdTile label="Domain" value={msp.domain ?? "none"} />
-              <AdTile label="Customer since" value={fmtDate(msp.createdAt)} />
-              <AdTile label="Testbed" value={msp.isTestbed ? "yes" : "no"} />
-              <AdTile
+          <DirSection title="Profile">
+            <DirTileGrid>
+              <DirTile label="Slug" value={msp.slug} />
+              <DirTile label="Domain" value={msp.domain ?? "none"} />
+              <DirTile label="Customer since" value={fmtDate(msp.createdAt)} />
+              <DirTile label="Testbed" value={msp.isTestbed ? "yes" : "no"} />
+              <DirTile
                 label="Own Entra tenant"
                 value={msp.entraTenantId ?? "not set"}
                 accent={msp.entraTenantId ? undefined : ACCENT_TEXT.amber}
               />
-            </AdTileGrid>
-          </AdSection>
+            </DirTileGrid>
+          </DirSection>
         )}
 
         {!editing && (msp.primaryContactName || msp.primaryContactEmail || msp.primaryContactPhone || msp.address || msp.notes) && (
-          <AdSection title="Contact">
-            <AdTileGrid>
-              <AdTile label="Contact name" value={msp.primaryContactName ?? "none"} />
-              <AdTile label="Contact email" value={msp.primaryContactEmail ?? "none"} />
-              <AdTile label="Contact phone" value={msp.primaryContactPhone ?? "none"} />
-              <AdTile label="Address" value={msp.address ?? "none"} />
-            </AdTileGrid>
+          <DirSection title="Contact">
+            <DirTileGrid>
+              <DirTile label="Contact name" value={msp.primaryContactName ?? "none"} />
+              <DirTile label="Contact email" value={msp.primaryContactEmail ?? "none"} />
+              <DirTile label="Contact phone" value={msp.primaryContactPhone ?? "none"} />
+              <DirTile label="Address" value={msp.address ?? "none"} />
+            </DirTileGrid>
             {msp.notes && (
               <div style={{ fontSize: 12, color: TEXT.body, whiteSpace: "pre-wrap" }}>{msp.notes}</div>
             )}
-          </AdSection>
+          </DirSection>
         )}
 
         {subscription && (
-          <AdSection title="Subscription" note={pastDue ? "Payment failed — access is unaffected until suspended." : undefined}>
-            <AdTileGrid>
-              <AdTile label="Plan" value={subscription.tierName} />
-              <AdTile label="Status" value={subscription.status} accent={subscription.status === "active" ? ACCENT_TEXT.green : undefined} />
-              <AdTile label="Billing" value={subscription.billingInterval} />
-              <AdTile label="Dunning" value={subscription.dunningState ?? "current"} accent={pastDue ? ACCENT_TEXT.danger : undefined} />
-              <AdTile label="Tenant count" value={String(subscription.tenantCountSnapshot)} />
-              <AdTile label="Contact" value={subscription.contactEmail ?? "none"} />
-            </AdTileGrid>
-          </AdSection>
+          <DirSection title="Subscription" note={pastDue ? "Payment failed — access is unaffected until suspended." : undefined}>
+            <DirTileGrid>
+              <DirTile label="Plan" value={subscription.tierName} />
+              <DirTile label="Status" value={subscription.status} accent={subscription.status === "active" ? ACCENT_TEXT.green : undefined} />
+              <DirTile label="Billing" value={subscription.billingInterval} />
+              <DirTile label="Dunning" value={subscription.dunningState ?? "current"} accent={pastDue ? ACCENT_TEXT.danger : undefined} />
+              <DirTile label="Tenant count" value={String(subscription.tenantCountSnapshot)} />
+              <DirTile label="Contact" value={subscription.contactEmail ?? "none"} />
+            </DirTileGrid>
+          </DirSection>
         )}
 
         {entitlements && (
-          <AdSection title="Entitlements" note="Derived from the subscription tier — not editable here.">
-            <AdTileGrid>
-              <AdTile label="Tenant allowance" value={entitlements.tenantAllowance != null ? String(entitlements.tenantAllowance) : "unlimited"} />
-              <AdTile label="AI credit allowance" value={entitlements.aiCreditAllowance != null ? String(entitlements.aiCreditAllowance) : "unlimited"} />
-              <AdTile label="Overage rate" value={usd(entitlements.overageRateCents)} />
-            </AdTileGrid>
-          </AdSection>
+          <DirSection title="Entitlements" note="Derived from the subscription tier — not editable here.">
+            <DirTileGrid>
+              <DirTile label="Tenant allowance" value={entitlements.tenantAllowance != null ? String(entitlements.tenantAllowance) : "unlimited"} />
+              <DirTile label="AI credit allowance" value={entitlements.aiCreditAllowance != null ? String(entitlements.aiCreditAllowance) : "unlimited"} />
+              <DirTile label="Overage rate" value={usd(entitlements.overageRateCents)} />
+            </DirTileGrid>
+          </DirSection>
         )}
 
-        <AdSection title="Customers" note={`${detail.customerCount} tenant${detail.customerCount === 1 ? "" : "s"}`}>
-          <AdListRowGroup>
+        <DirSection title="Customers" note={`${detail.customerCount} tenant${detail.customerCount === 1 ? "" : "s"}`}>
+          <DirListRowGroup>
             {customers.length === 0 ? (
-              <AdEmptyRow label="No customers yet." />
+              <DirEmptyRow label="No customers yet." />
             ) : (
               customers.map((c) => (
-                <AdListRow
+                <DirListRow
                   key={c.id}
                   label={c.name}
                   detail={c.domain ?? undefined}
                   meta={c.status}
-                  onClick={() => shell.openDoc({ kind: "customer", id: String(c.id), screenId: "ad", label: c.name })}
+                  onClick={() => shell.openDoc({ kind: "customer", id: String(c.id), screenId: "msp-directory", label: c.name })}
                   onContextMenu={(e) =>
                     openMenu(
                       e,
                       [
-                        { label: "Open", onSelect: () => shell.openDoc({ kind: "customer", id: String(c.id), screenId: "ad", label: c.name }) },
+                        { label: "Open", onSelect: () => shell.openDoc({ kind: "customer", id: String(c.id), screenId: "msp-directory", label: c.name }) },
                         { label: "Copy name", onSelect: () => void navigator.clipboard.writeText(c.name).catch(() => {}) },
                       ],
                       `Actions for ${c.name}`,
@@ -436,28 +436,28 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
                 />
               ))
             )}
-          </AdListRowGroup>
-        </AdSection>
+          </DirListRowGroup>
+        </DirSection>
 
-        <AdSection title="Staff" note={`${detail.userCount} account${detail.userCount === 1 ? "" : "s"}`}>
-          <AdListRowGroup>
+        <DirSection title="Staff" note={`${detail.userCount} account${detail.userCount === 1 ? "" : "s"}`}>
+          <DirListRowGroup>
             {users.length === 0 ? (
-              <AdEmptyRow label="No staff accounts yet." />
+              <DirEmptyRow label="No staff accounts yet." />
             ) : (
               users.map((u) => (
-                <AdListRow
+                <DirListRow
                   key={u.id}
                   label={u.name || u.email}
                   detail={`${u.email} · ${u.mspRole}`}
                   meta={u.isActive ? "active" : "disabled"}
                   metaAccent={u.isActive ? undefined : ACCENT_TEXT.danger}
                   dot={u.isActive ? "#6ccb96" : "#e57a7a"}
-                  onClick={() => shell.openDoc({ kind: "user", id: String(u.id), screenId: "ad", label: u.name || u.email })}
+                  onClick={() => shell.openDoc({ kind: "user", id: String(u.id), screenId: "msp-directory", label: u.name || u.email })}
                   onContextMenu={(e) =>
                     openMenu(
                       e,
                       [
-                        { label: "Open", onSelect: () => shell.openDoc({ kind: "user", id: String(u.id), screenId: "ad", label: u.name || u.email }) },
+                        { label: "Open", onSelect: () => shell.openDoc({ kind: "user", id: String(u.id), screenId: "msp-directory", label: u.name || u.email }) },
                         { label: "Copy email", onSelect: () => void navigator.clipboard.writeText(u.email).catch(() => {}) },
                       ],
                       `Actions for ${u.name || u.email}`,
@@ -466,23 +466,23 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
                 />
               ))
             )}
-          </AdListRowGroup>
-        </AdSection>
+          </DirListRowGroup>
+        </DirSection>
 
-        <AdRbacOrgRolesPanel system="msp" orgId={mspId} />
+        <DirRbacOrgRolesPanel system="msp" orgId={mspId} />
 
-        <AdSection title="Activity" note="Recent admin actions against this MSP.">
+        <DirSection title="Activity" note="Recent admin actions against this MSP.">
           {auditLoading ? (
-            <AdLoading />
+            <DirLoading />
           ) : auditError ? (
-            <AdLoadError message={auditError} />
+            <DirLoadError message={auditError} />
           ) : (
-            <AdListRowGroup>
+            <DirListRowGroup>
               {auditEntries.length === 0 ? (
-                <AdEmptyRow label="No recorded activity yet." />
+                <DirEmptyRow label="No recorded activity yet." />
               ) : (
                 auditEntries.map((a) => (
-                  <AdListRow
+                  <DirListRow
                     key={a.id}
                     label={a.action}
                     detail={`${a.actorEmail ?? a.actorRole ?? "unknown actor"}${a.resource ? ` · ${a.resource}` : ""}`}
@@ -491,23 +491,23 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
                   />
                 ))
               )}
-            </AdListRowGroup>
+            </DirListRowGroup>
           )}
-        </AdSection>
+        </DirSection>
 
-        <AdSection title="Platform agreement" note={hasAcceptedCurrentAgreement ? undefined : "The current agreement version has not been accepted."}>
-          <AdListRowGroup>
+        <DirSection title="Platform agreement" note={hasAcceptedCurrentAgreement ? undefined : "The current agreement version has not been accepted."}>
+          <DirListRowGroup>
             {agreementAcceptances.length === 0 ? (
-              <AdEmptyRow label="No agreement acceptances on file." />
+              <DirEmptyRow label="No agreement acceptances on file." />
             ) : (
               agreementAcceptances.map((a) => (
-                <AdListRow key={a.agreementVersion} label={`v${a.agreementVersion}`} detail={a.checkboxConfirmed ? "checkbox confirmed" : "not confirmed"} meta={fmtDate(a.acceptedAt)} />
+                <DirListRow key={a.agreementVersion} label={`v${a.agreementVersion}`} detail={a.checkboxConfirmed ? "checkbox confirmed" : "not confirmed"} meta={fmtDate(a.acceptedAt)} />
               ))
             )}
-          </AdListRowGroup>
-        </AdSection>
-      </AdCanvasBody>
+          </DirListRowGroup>
+        </DirSection>
+      </DirCanvasBody>
       <ContextMenu menu={menu} onClose={closeMenu} />
-    </AdCanvasColumn>
+    </DirCanvasColumn>
   );
 }

@@ -1,10 +1,10 @@
 /**
- * Active Directory — API client.
+ * MSP Directory — API client.
  *
  * Every function here takes `adminFetch` (AuthContext's `fetchWithAuth`,
  * surfaced via `useAdminFetch()`) as its first argument rather than importing
  * a hook itself, so both real components (`useAuth()`) and the module-scope
- * ribbon closures (`adAuthBridge`'s singleton) can call the same client.
+ * ribbon closures (`dirAuthBridge`'s singleton) can call the same client.
  *
  * Every endpoint here is real and already shipped (initiative:
  * active-directory, docs/build-plans/active-directory.md, all 10 phases
@@ -12,30 +12,30 @@
  */
 
 import type {
-  AdAssignableService,
-  AdAssignServiceResult,
-  AdCustomerDetail,
-  AdDiagnosticRunFindingsResponse,
-  AdDiagnosticRunSummary,
-  AdEntitlementsView,
-  AdGroupDetail,
-  AdMonitoringPackage,
-  AdMonitoringPackageCheckLink,
-  AdMspAuditLogPage,
-  AdMspDetail,
-  AdMspProfile,
-  AdOu,
-  AdSearchResult,
-  AdTree,
-  AdUserDetail,
-  AdWriteConsentStatus,
+  DirAssignableService,
+  DirAssignServiceResult,
+  DirCustomerDetail,
+  DirDiagnosticRunFindingsResponse,
+  DirDiagnosticRunSummary,
+  DirEntitlementsView,
+  DirGroupDetail,
+  DirMonitoringPackage,
+  DirMonitoringPackageCheckLink,
+  DirMspAuditLogPage,
+  DirMspDetail,
+  DirMspProfile,
+  DirOu,
+  DirSearchResult,
+  DirTree,
+  DirUserDetail,
+  DirWriteConsentStatus,
   DirectoryGroupRole,
   RbacCapability,
   RbacMappingRow,
   RbacRoleMappingPayload,
   RbacRoleSummary,
   RbacSystem,
-} from "./adTypes";
+} from "./dirTypes";
 import type { AssessmentNode } from "../../../components/SimulatorLeftTree";
 
 export type AdminFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -66,108 +66,108 @@ function patchJson(adminFetch: AdminFetch, path: string, body: unknown) {
 
 // ── Reads ──────────────────────────────────────────────────────────────────
 
-export async function fetchAdTree(adminFetch: AdminFetch): Promise<AdTree> {
-  const res = await adminFetch("/api/admin/active-directory/tree");
-  return json<AdTree>(res);
+export async function fetchDirTree(adminFetch: AdminFetch): Promise<DirTree> {
+  const res = await adminFetch("/api/admin/msp-directory/tree");
+  return json<DirTree>(res);
 }
 
-export async function searchAdDirectory(adminFetch: AdminFetch, q: string): Promise<AdSearchResult> {
-  const res = await adminFetch(`/api/admin/active-directory/search?q=${encodeURIComponent(q)}`);
-  return json<AdSearchResult>(res);
+export async function searchDirDirectory(adminFetch: AdminFetch, q: string): Promise<DirSearchResult> {
+  const res = await adminFetch(`/api/admin/msp-directory/search?q=${encodeURIComponent(q)}`);
+  return json<DirSearchResult>(res);
 }
 
-export async function fetchAdMsp(adminFetch: AdminFetch, id: number): Promise<AdMspDetail> {
-  const res = await adminFetch(`/api/admin/active-directory/msp/${id}`);
-  return json<AdMspDetail>(res);
+export async function fetchDirMsp(adminFetch: AdminFetch, id: number): Promise<DirMspDetail> {
+  const res = await adminFetch(`/api/admin/msp-directory/msp/${id}`);
+  return json<DirMspDetail>(res);
 }
 
-export async function fetchAdGroup(adminFetch: AdminFetch, role: DirectoryGroupRole, q = ""): Promise<AdGroupDetail> {
+export async function fetchDirGroup(adminFetch: AdminFetch, role: DirectoryGroupRole, q = ""): Promise<DirGroupDetail> {
   const qs = q ? `?q=${encodeURIComponent(q)}` : "";
-  const res = await adminFetch(`/api/admin/active-directory/group/${role}${qs}`);
-  return json<AdGroupDetail>(res);
+  const res = await adminFetch(`/api/admin/msp-directory/group/${role}${qs}`);
+  return json<DirGroupDetail>(res);
 }
 
-export async function fetchAdMspAuditLog(adminFetch: AdminFetch, mspId: number, limit = 25): Promise<AdMspAuditLogPage> {
+export async function fetchDirMspAuditLog(adminFetch: AdminFetch, mspId: number, limit = 25): Promise<DirMspAuditLogPage> {
   const res = await adminFetch(`/api/msp/audit?mspId=${mspId}&limit=${limit}`);
-  return json<AdMspAuditLogPage>(res);
+  return json<DirMspAuditLogPage>(res);
 }
 
-export async function fetchAdCustomer(adminFetch: AdminFetch, id: number): Promise<AdCustomerDetail> {
-  const res = await adminFetch(`/api/admin/active-directory/customer/${id}`);
-  return json<AdCustomerDetail>(res);
+export async function fetchDirCustomer(adminFetch: AdminFetch, id: number): Promise<DirCustomerDetail> {
+  const res = await adminFetch(`/api/admin/msp-directory/customer/${id}`);
+  return json<DirCustomerDetail>(res);
 }
 
-export async function updateAdCustomerBusinessUnit(
+export async function updateDirCustomerBusinessUnit(
   adminFetch: AdminFetch,
   id: number,
   businessUnit: string | null,
 ): Promise<{ id: number; businessUnit: string | null }> {
-  const res = await patchJson(adminFetch, `/api/admin/active-directory/customer/${id}`, { businessUnit });
+  const res = await patchJson(adminFetch, `/api/admin/msp-directory/customer/${id}`, { businessUnit });
   return json(res);
 }
 
 /** #4489 — internal-only testbed flag, editable the same way businessUnit is. */
-export async function updateAdCustomerTestbed(
+export async function updateDirCustomerTestbed(
   adminFetch: AdminFetch,
   id: number,
   isTestbed: boolean,
 ): Promise<{ id: number; isTestbed: boolean }> {
-  const res = await patchJson(adminFetch, `/api/admin/active-directory/customer/${id}`, { isTestbed });
+  const res = await patchJson(adminFetch, `/api/admin/msp-directory/customer/${id}`, { isTestbed });
   return json(res);
 }
 
 /** #4489 — real service catalog for the Package Assignment picker; filter by deliveryType client-side. */
-export async function fetchAdAssignableServices(adminFetch: AdminFetch): Promise<AdAssignableService[]> {
+export async function fetchDirAssignableServices(adminFetch: AdminFetch): Promise<DirAssignableService[]> {
   const res = await adminFetch("/api/admin/services");
   return json(res);
 }
 
 /** #4489 — manual Monitoring/Retainer package swap. DB-only, no Stripe. */
-export async function assignAdCustomerPackage(
+export async function assignDirCustomerPackage(
   adminFetch: AdminFetch,
   id: number,
   serviceId: number,
-): Promise<AdAssignServiceResult> {
-  const res = await postJson(adminFetch, `/api/admin/active-directory/customer/${id}/assign-service`, { serviceId });
+): Promise<DirAssignServiceResult> {
+  const res = await postJson(adminFetch, `/api/admin/msp-directory/customer/${id}/assign-service`, { serviceId });
   return json(res);
 }
 
-export async function fetchAdCustomerDiagnosticRuns(
+export async function fetchDirCustomerDiagnosticRuns(
   adminFetch: AdminFetch,
   id: number,
-): Promise<{ recentDiagnosticRuns: AdDiagnosticRunSummary[] }> {
-  const res = await adminFetch(`/api/admin/active-directory/customer/${id}/diagnostics/runs`);
+): Promise<{ recentDiagnosticRuns: DirDiagnosticRunSummary[] }> {
+  const res = await adminFetch(`/api/admin/msp-directory/customer/${id}/diagnostics/runs`);
   return json(res);
 }
 
 // #371/#374/#379 — one run's real findings, reusing msp-diagnostics.ts's
 // existing GET /msp/customers/:customerId/diagnostics/runs/:runId route
 // exactly as the legacy ActiveDirectoryCustomerPane.tsx does (requireCapability
-// bypasses for PlatformAdmin, same reuse pattern as runAdCustomerDiagnostics).
-export async function fetchAdDiagnosticRunFindings(
+// bypasses for PlatformAdmin, same reuse pattern as runDirCustomerDiagnostics).
+export async function fetchDirDiagnosticRunFindings(
   adminFetch: AdminFetch,
   customerId: number,
   runId: string,
-): Promise<AdDiagnosticRunFindingsResponse> {
+): Promise<DirDiagnosticRunFindingsResponse> {
   const res = await adminFetch(`/api/msp/customers/${customerId}/diagnostics/runs/${runId}`);
-  return json<AdDiagnosticRunFindingsResponse>(res);
+  return json<DirDiagnosticRunFindingsResponse>(res);
 }
 
 // #376 — "Remove from scan package". Same two routes the legacy pane's
 // handleRemoveClick/removeCheckFromPackage already use.
-export async function fetchAdMonitoringPackageChecks(
+export async function fetchDirMonitoringPackageChecks(
   adminFetch: AdminFetch,
   packageKey: string,
-): Promise<{ checks: AdMonitoringPackageCheckLink[] }> {
+): Promise<{ checks: DirMonitoringPackageCheckLink[] }> {
   const res = await adminFetch(`/api/admin/monitoring-packages/${encodeURIComponent(packageKey)}/checks`);
   return json(res);
 }
 
-export async function setAdMonitoringPackageChecks(
+export async function setDirMonitoringPackageChecks(
   adminFetch: AdminFetch,
   packageKey: string,
   checkKeys: string[],
-): Promise<{ checks: AdMonitoringPackageCheckLink[] }> {
+): Promise<{ checks: DirMonitoringPackageCheckLink[] }> {
   const res = await adminFetch(`/api/admin/monitoring-packages/${encodeURIComponent(packageKey)}/checks`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -177,92 +177,92 @@ export async function setAdMonitoringPackageChecks(
 }
 
 /** GET /api/admin/simulator/assessments — used only to run #376's shared-package detection. */
-export async function fetchAdSimulatorAssessments(adminFetch: AdminFetch): Promise<{ assessments: AssessmentNode[] }> {
+export async function fetchDirSimulatorAssessments(adminFetch: AdminFetch): Promise<{ assessments: AssessmentNode[] }> {
   const res = await adminFetch("/api/admin/simulator/assessments");
   return json(res);
 }
 
-export async function fetchAdUser(adminFetch: AdminFetch, id: number): Promise<AdUserDetail> {
-  const res = await adminFetch(`/api/admin/active-directory/user/${id}`);
-  return json<AdUserDetail>(res);
+export async function fetchDirUser(adminFetch: AdminFetch, id: number): Promise<DirUserDetail> {
+  const res = await adminFetch(`/api/admin/msp-directory/user/${id}`);
+  return json<DirUserDetail>(res);
 }
 
-export async function fetchAdUserEntitlements(adminFetch: AdminFetch, id: number): Promise<AdEntitlementsView> {
-  const res = await adminFetch(`/api/admin/active-directory/user/${id}/entitlements`);
-  return json<AdEntitlementsView>(res);
+export async function fetchDirUserEntitlements(adminFetch: AdminFetch, id: number): Promise<DirEntitlementsView> {
+  const res = await adminFetch(`/api/admin/msp-directory/user/${id}/entitlements`);
+  return json<DirEntitlementsView>(res);
 }
 
 // ── User writes (Phases 7/8/9) ────────────────────────────────────────────────
 
-export async function setAdUserRole(adminFetch: AdminFetch, id: number, mspRole: DirectoryGroupRole) {
-  const res = await patchJson(adminFetch, `/api/admin/active-directory/user/${id}/role`, { mspRole });
+export async function setDirUserRole(adminFetch: AdminFetch, id: number, mspRole: DirectoryGroupRole) {
+  const res = await patchJson(adminFetch, `/api/admin/msp-directory/user/${id}/role`, { mspRole });
   return json<{ ok: true; mspRole: string; mspId: number | null; customerId: number | null }>(res);
 }
 
-export async function setAdUserAssignment(
+export async function setDirUserAssignment(
   adminFetch: AdminFetch,
   id: number,
   target: { mspId?: number } | { customerId?: number },
 ) {
-  const res = await patchJson(adminFetch, `/api/admin/active-directory/user/${id}/assignment`, target);
+  const res = await patchJson(adminFetch, `/api/admin/msp-directory/user/${id}/assignment`, target);
   return json<{ ok: true; mspId: number | null; customerId: number | null }>(res);
 }
 
-export async function setAdUserEntitlement(
+export async function setDirUserEntitlement(
   adminFetch: AdminFetch,
   id: number,
   capabilityKey: string,
   enabled: boolean | null,
 ) {
-  const res = await patchJson(adminFetch, `/api/admin/active-directory/user/${id}/entitlements`, {
+  const res = await patchJson(adminFetch, `/api/admin/msp-directory/user/${id}/entitlements`, {
     capabilityKey,
     enabled,
   });
-  return json<AdEntitlementsView>(res);
+  return json<DirEntitlementsView>(res);
 }
 
-export async function forceAdPasswordReset(adminFetch: AdminFetch, id: number) {
-  const res = await postJson(adminFetch, `/api/admin/active-directory/user/${id}/force-password-reset`);
+export async function forceDirPasswordReset(adminFetch: AdminFetch, id: number) {
+  const res = await postJson(adminFetch, `/api/admin/msp-directory/user/${id}/force-password-reset`);
   return json<{ ok: true; flow: string; revokedSessionCount: number; emailedTo: string }>(res);
 }
 
-export async function resetAdUserMfa(adminFetch: AdminFetch, id: number, method?: string) {
-  const res = await postJson(adminFetch, `/api/admin/active-directory/user/${id}/mfa-reset`, method ? { method } : {});
+export async function resetDirUserMfa(adminFetch: AdminFetch, id: number, method?: string) {
+  const res = await postJson(adminFetch, `/api/admin/msp-directory/user/${id}/mfa-reset`, method ? { method } : {});
   return json<{ ok: true; clearedMethods: string[]; emailedTo: string }>(res);
 }
 
-export interface AdImpersonateResult {
+export interface DirImpersonateResult {
   token: string;
   targetSlug: string | null;
   expiresAt: string;
   user: { id: number; email: string; name: string | null; mspRole: string | null; mspName: string | null };
 }
 
-export async function impersonateAdUser(adminFetch: AdminFetch, id: number) {
-  const res = await postJson(adminFetch, `/api/admin/active-directory/user/${id}/impersonate`);
-  return json<AdImpersonateResult>(res);
+export async function impersonateDirUser(adminFetch: AdminFetch, id: number) {
+  const res = await postJson(adminFetch, `/api/admin/msp-directory/user/${id}/impersonate`);
+  return json<DirImpersonateResult>(res);
 }
 
 /** Dev-environment-only cascading hard delete — the server refuses this outside a non-production environment. */
-export async function hardDeleteAdUser(adminFetch: AdminFetch, id: number) {
-  const res = await adminFetch(`/api/admin/active-directory/user/${id}`, { method: "DELETE" });
+export async function hardDeleteDirUser(adminFetch: AdminFetch, id: number) {
+  const res = await adminFetch(`/api/admin/msp-directory/user/${id}`, { method: "DELETE" });
   if (res.status === 204) return { ok: true as const };
   return json<{ ok: true }>(res);
 }
 
 // ── OU CRUD (Phase 5) ──────────────────────────────────────────────────────────
 
-export async function createAdOu(adminFetch: AdminFetch, name: string) {
+export async function createDirOu(adminFetch: AdminFetch, name: string) {
   const res = await postJson(adminFetch, "/api/admin/active-directory/ou", { name });
-  return json<AdOu>(res);
+  return json<DirOu>(res);
 }
 
-export async function renameAdOu(adminFetch: AdminFetch, id: number, name: string) {
+export async function renameDirOu(adminFetch: AdminFetch, id: number, name: string) {
   const res = await patchJson(adminFetch, `/api/admin/active-directory/ou/${id}`, { name });
-  return json<AdOu>(res);
+  return json<DirOu>(res);
 }
 
-export async function deleteAdOu(adminFetch: AdminFetch, id: number) {
+export async function deleteDirOu(adminFetch: AdminFetch, id: number) {
   const res = await adminFetch(`/api/admin/active-directory/ou/${id}`, { method: "DELETE" });
   if (res.status === 204) return { ok: true as const };
   return json<{ ok: true }>(res);
@@ -270,20 +270,20 @@ export async function deleteAdOu(adminFetch: AdminFetch, id: number) {
 
 // ── MSP writes (msp-admin-settings.ts) ────────────────────────────────────────
 
-export async function createAdMsp(
+export async function createDirMsp(
   adminFetch: AdminFetch,
   input: { name: string; slug: string; domain?: string },
-): Promise<AdMspProfile> {
+): Promise<DirMspProfile> {
   const res = await postJson(adminFetch, "/api/admin/msps", input);
-  return json<AdMspProfile>(res);
+  return json<DirMspProfile>(res);
 }
 
-export async function suspendAdMsp(adminFetch: AdminFetch, mspId: number) {
+export async function suspendDirMsp(adminFetch: AdminFetch, mspId: number) {
   const res = await postJson(adminFetch, `/api/admin/msps/${mspId}/suspend`);
   return json<{ ok: true; status: string }>(res);
 }
 
-export async function reactivateAdMsp(adminFetch: AdminFetch, mspId: number) {
+export async function reactivateDirMsp(adminFetch: AdminFetch, mspId: number) {
   const res = await postJson(adminFetch, `/api/admin/msps/${mspId}/reactivate`);
   return json<{ ok: true; status: string }>(res);
 }
@@ -297,7 +297,7 @@ export async function reactivateAdMsp(adminFetch: AdminFetch, mspId: number) {
  * the only sanctioned way to change it, so the state machine can't be
  * bypassed through a generic PATCH.
  */
-export async function updateAdMspProfile(
+export async function updateDirMspProfile(
   adminFetch: AdminFetch,
   mspId: number,
   input: {
@@ -311,18 +311,18 @@ export async function updateAdMspProfile(
     notes?: string | null;
     entraTenantId?: string | null;
   },
-): Promise<AdMspProfile> {
+): Promise<DirMspProfile> {
   const res = await patchJson(adminFetch, `/api/admin/msps/${mspId}`, input);
-  return json<AdMspProfile>(res);
+  return json<DirMspProfile>(res);
 }
 
 /**
  * MSP-level impersonation — issues a single-use token for that MSP's own
- * MSPAdmin user (admin-impersonation.ts), distinct from `impersonateAdUser`
+ * MSPAdmin user (admin-impersonation.ts), distinct from `impersonateDirUser`
  * above which impersonates one specific account. Rehomed from the archived
  * "Impersonate Partner" action on both msps.tsx and msp-detail.tsx.
  */
-export async function impersonateAdMsp(adminFetch: AdminFetch, mspId: number) {
+export async function impersonateDirMsp(adminFetch: AdminFetch, mspId: number) {
   const res = await postJson(adminFetch, `/api/admin/msps/${mspId}/impersonate`);
   return json<{ token: string; targetSlug: string; msp: { id: number; name: string; slug: string } }>(res);
 }
@@ -331,20 +331,20 @@ export async function impersonateAdMsp(adminFetch: AdminFetch, mspId: number) {
 
 export type ConsentKey = "graph" | "writeBack" | "sharepoint";
 
-export async function revokeAdTenantConsent(adminFetch: AdminFetch, tenantGuid: string, key: ConsentKey = "graph") {
+export async function revokeDirTenantConsent(adminFetch: AdminFetch, tenantGuid: string, key: ConsentKey = "graph") {
   const res = await patchJson(adminFetch, `/api/admin/consent/${encodeURIComponent(tenantGuid)}/revoke`, { key });
   return json<{ ok: true; tenantId: string; key: ConsentKey }>(res);
 }
 
-export async function runAdCustomerDiagnostics(adminFetch: AdminFetch, customerId: number, packageKey?: string) {
+export async function runDirCustomerDiagnostics(adminFetch: AdminFetch, customerId: number, packageKey?: string) {
   const res = await postJson(adminFetch, `/api/msp/customers/${customerId}/diagnostics/run`, packageKey ? { packageKey } : undefined);
   return json<{ runId: string; status: string; message: string }>(res);
 }
 
 /** GET /api/msp/monitoring-packages — the real catalog #1770's picker chooses from. */
-export async function fetchAdMonitoringPackages(adminFetch: AdminFetch): Promise<AdMonitoringPackage[]> {
+export async function fetchDirMonitoringPackages(adminFetch: AdminFetch): Promise<DirMonitoringPackage[]> {
   const res = await adminFetch("/api/msp/monitoring-packages");
-  const body = await json<{ packages: AdMonitoringPackage[] }>(res);
+  const body = await json<{ packages: DirMonitoringPackage[] }>(res);
   return body.packages;
 }
 
@@ -355,7 +355,7 @@ export async function fetchAdMonitoringPackages(adminFetch: AdminFetch): Promise
  * selection to the customer's real active subscription, per #1770's scope
  * item 3, without touching the server's resolution chain at all.
  */
-export async function fetchAdCustomerMonitoringPackage(
+export async function fetchDirCustomerMonitoringPackage(
   adminFetch: AdminFetch,
   customerId: number,
 ): Promise<{ packageKey: string | null; serviceId: number | null; serviceName: string | null }> {
@@ -363,22 +363,22 @@ export async function fetchAdCustomerMonitoringPackage(
   return json(res);
 }
 
-export interface AdConsentInviteLink {
+export interface DirConsentInviteLink {
   consentUrl: string;
   token: string;
   expiresAt: string;
   scopes: string[];
 }
 
-export async function createAdConsentInviteLink(
+export async function createDirConsentInviteLink(
   adminFetch: AdminFetch,
   input: { tenantId?: string; customerId?: number },
-): Promise<AdConsentInviteLink> {
+): Promise<DirConsentInviteLink> {
   const res = await postJson(adminFetch, "/api/consent/invite-link", input);
-  return json<AdConsentInviteLink>(res);
+  return json<DirConsentInviteLink>(res);
 }
 
-export interface AdCustomerHardDeleteResult {
+export interface DirCustomerHardDeleteResult {
   ok: true;
   deletedCustomerId: number;
   deletedCustomerName: string;
@@ -390,14 +390,14 @@ export interface AdCustomerHardDeleteResult {
 /**
  * Dev-environment-only cascading hard delete of an entire tenant — revokes
  * all three consent grants first, then removes every user under the tenant
- * (the same cascade `hardDeleteAdUser` runs, once per user), then every
+ * (the same cascade `hardDeleteDirUser` runs, once per user), then every
  * remaining tenant-scoped table, then the tenant row itself. One transaction
  * server-side; the server refuses this outside a non-production environment,
- * same gate as `hardDeleteAdUser`.
+ * same gate as `hardDeleteDirUser`.
  */
-export async function hardDeleteAdCustomer(adminFetch: AdminFetch, id: number): Promise<AdCustomerHardDeleteResult> {
-  const res = await adminFetch(`/api/admin/active-directory/customer/${id}`, { method: "DELETE" });
-  return json<AdCustomerHardDeleteResult>(res);
+export async function hardDeleteDirCustomer(adminFetch: AdminFetch, id: number): Promise<DirCustomerHardDeleteResult> {
+  const res = await adminFetch(`/api/admin/msp-directory/customer/${id}`, { method: "DELETE" });
+  return json<DirCustomerHardDeleteResult>(res);
 }
 
 // ── Write-back consent (consent.ts) ───────────────────────────────────────────
@@ -407,12 +407,12 @@ export async function hardDeleteAdCustomer(adminFetch: AdminFetch, id: number): 
 // dedicated write-app (MT_APP_WRITE_CLIENT_ID) admin-consent flow, not the
 // generic re-consent invite link.
 
-export async function fetchAdCustomerWriteConsent(adminFetch: AdminFetch, customerId: number): Promise<AdWriteConsentStatus> {
+export async function fetchDirCustomerWriteConsent(adminFetch: AdminFetch, customerId: number): Promise<DirWriteConsentStatus> {
   const res = await adminFetch(`/api/admin/customers/${customerId}/write-consent`);
-  return json<AdWriteConsentStatus>(res);
+  return json<DirWriteConsentStatus>(res);
 }
 
-export async function startAdCustomerWriteConsent(
+export async function startDirCustomerWriteConsent(
   adminFetch: AdminFetch,
   customerId: number,
 ): Promise<{ consentUrl: string; expiresAt: string }> {
@@ -423,26 +423,26 @@ export async function startAdCustomerWriteConsent(
 // ── RBAC (#2461, part of #1696) ───────────────────────────────────────────────
 // Manages the roles/user_roles/feature_role_mapping tables #2455 landed —
 // additive alongside the DirectoryGroupRole ladder writes above. See
-// adTypes.ts's RBAC section header for why this is a separate surface rather
-// than a replacement for setAdUserRole.
+// dirTypes.ts's RBAC section header for why this is a separate surface rather
+// than a replacement for setDirUserRole.
 
 function orgQuery(orgId: number | null): string {
   return orgId == null ? "" : `&orgId=${orgId}`;
 }
 
-export async function fetchAdRbacCapabilities(adminFetch: AdminFetch, system: RbacSystem): Promise<RbacCapability[]> {
+export async function fetchDirRbacCapabilities(adminFetch: AdminFetch, system: RbacSystem): Promise<RbacCapability[]> {
   const res = await adminFetch(`/api/admin/rbac/capabilities?system=${system}`);
   const body = await json<{ capabilities: RbacCapability[] }>(res);
   return body.capabilities;
 }
 
-export async function fetchAdRbacRoles(adminFetch: AdminFetch, system: RbacSystem, orgId: number | null): Promise<RbacRoleSummary[]> {
+export async function fetchDirRbacRoles(adminFetch: AdminFetch, system: RbacSystem, orgId: number | null): Promise<RbacRoleSummary[]> {
   const res = await adminFetch(`/api/admin/rbac/roles?system=${system}${orgQuery(orgId)}`);
   const body = await json<{ roles: RbacRoleSummary[] }>(res);
   return body.roles;
 }
 
-export async function createAdRbacRole(
+export async function createDirRbacRole(
   adminFetch: AdminFetch,
   input: { system: RbacSystem; orgId: number | null; key: string; name: string; description?: string },
 ): Promise<RbacRoleSummary> {
@@ -451,7 +451,7 @@ export async function createAdRbacRole(
   return body.role;
 }
 
-export async function renameAdRbacRole(
+export async function renameDirRbacRole(
   adminFetch: AdminFetch,
   roleId: string,
   input: { system: RbacSystem; name?: string; description?: string },
@@ -461,13 +461,13 @@ export async function renameAdRbacRole(
   return body.role;
 }
 
-export async function deleteAdRbacRole(adminFetch: AdminFetch, roleId: string, system: RbacSystem): Promise<{ ok: true }> {
+export async function deleteDirRbacRole(adminFetch: AdminFetch, roleId: string, system: RbacSystem): Promise<{ ok: true }> {
   const res = await adminFetch(`/api/admin/rbac/roles/${roleId}?system=${system}`, { method: "DELETE" });
   if (res.status === 204) return { ok: true };
   return json<{ ok: true }>(res);
 }
 
-export async function fetchAdUserRbacRoles(
+export async function fetchDirUserRbacRoles(
   adminFetch: AdminFetch,
   userId: number,
   system: RbacSystem,
@@ -476,7 +476,7 @@ export async function fetchAdUserRbacRoles(
   return json(res);
 }
 
-export async function grantAdUserRbacRole(
+export async function grantDirUserRbacRole(
   adminFetch: AdminFetch,
   userId: number,
   system: RbacSystem,
@@ -486,7 +486,7 @@ export async function grantAdUserRbacRole(
   return json(res);
 }
 
-export async function revokeAdUserRbacRole(
+export async function revokeDirUserRbacRole(
   adminFetch: AdminFetch,
   userId: number,
   system: RbacSystem,
@@ -496,13 +496,13 @@ export async function revokeAdUserRbacRole(
   return json(res);
 }
 
-export async function fetchAdRbacMappings(adminFetch: AdminFetch, system: RbacSystem, orgId: number | null): Promise<RbacMappingRow[]> {
+export async function fetchDirRbacMappings(adminFetch: AdminFetch, system: RbacSystem, orgId: number | null): Promise<RbacMappingRow[]> {
   const res = await adminFetch(`/api/admin/rbac/mappings?system=${system}${orgQuery(orgId)}`);
   const body = await json<{ mappings: RbacMappingRow[] }>(res);
   return body.mappings;
 }
 
-export async function setAdRbacMapping(
+export async function setDirRbacMapping(
   adminFetch: AdminFetch,
   input: { system: RbacSystem; orgId: number | null; capabilityKey: string; allow: string[]; deny: string[] },
 ): Promise<RbacRoleMappingPayload> {

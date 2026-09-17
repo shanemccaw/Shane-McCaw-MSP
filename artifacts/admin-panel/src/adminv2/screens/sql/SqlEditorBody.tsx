@@ -151,7 +151,7 @@ export function SqlEditorBody({ recordId, kind }: Props) {
       if (ok && docId) setEdits((prev) => { const { [docId]: _drop, ...rest } = prev; return rest; });
       return;
     }
-    // Unsaved draft — the same lightweight window.prompt flow `screens/ad`
+    // Unsaved draft — the same lightweight window.prompt flow `screens/directory`
     // uses for "New MSP"/"New organizational unit" (there is no modal-form
     // primitive in adminv2 yet).
     if (!text.trim()) return;

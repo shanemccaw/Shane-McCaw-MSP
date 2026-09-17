@@ -4,7 +4,7 @@ import { eq, and, inArray, asc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { createAuditLog } from "../lib/audit.ts";
 // Git #3684: impersonation only wrote to auditLogsTable (audit_logs), a table
-// AdMspCanvas's own Activity panel never reads — it queries msp_audit_logs
+// DirMspCanvas's own Activity panel never reads — it queries msp_audit_logs
 // exclusively (GET /api/msp/audit → msp-audit-log.ts). Writing here too, via
 // the same helper msp-admin-settings.ts's other MSP actions already use, is
 // what makes an impersonation event actually show up on that screen.

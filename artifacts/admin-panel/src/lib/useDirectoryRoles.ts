@@ -8,8 +8,8 @@
  *   - `components/ActiveDirectoryUserPane.tsx` — a seven-literal `ROLE_OPTIONS`
  *     array, plus a `roleLinkageRequirement()` whose own comment conceded it was
  *     *"a small intentional duplicate"* of the server's.
- *   - `adminv2/screens/ad/canvases/AdUserCanvas.tsx` — a third copy of the same
- *     function, over `DIRECTORY_GROUP_ROLES` re-declared in `adTypes.ts`.
+ *   - `adminv2/screens/directory/canvases/DirUserCanvas.tsx` — a third copy of the same
+ *     function, over `DIRECTORY_GROUP_ROLES` re-declared in `dirTypes.ts`.
  *
  * The two copies had already drifted, from the server and from each other. The
  * server (`api-server/src/lib/active-directory.ts:701-713`) returns `"customer"`
@@ -20,7 +20,7 @@
  * That is precisely the failure #1696 predicts for an authorization-shaped rule
  * transcribed into a component — *"a rule that exists nowhere the server can
  * enforce it"*, which then drifts. One endpoint, `GET
- * /admin/active-directory/roles`, is now the only source, and it is generated
+ * /admin/msp-directory/roles`, is now the only source, and it is generated
  * from the server's own `DIRECTORY_GROUP_ROLES` + `roleLinkageRequirement()`.
  *
  * ── Why role NAMES still appear on screen here, legitimately ────────────────
@@ -62,7 +62,7 @@ export function useDirectoryRoles(adminFetch: Fetcher): DirectoryRolesState {
 
   useEffect(() => {
     let cancelled = false;
-    adminFetch("/api/admin/active-directory/roles")
+    adminFetch("/api/admin/msp-directory/roles")
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { roles: DirectoryRole[] } | null) => {
         if (!cancelled && data) setRoles(data.roles);

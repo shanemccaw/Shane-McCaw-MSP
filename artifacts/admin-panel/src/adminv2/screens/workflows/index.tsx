@@ -11,7 +11,7 @@
  * replaces the old page's giant node config panel with a plain data editor.
  *
  * This screen owns two record kinds under one route, disambiguated by
- * `ctx.kind` the same way `screens/ad/` splits msp/tenant/user/group/ou:
+ * `ctx.kind` the same way `screens/directory/` splits msp/tenant/user/group/ou:
  * `workflow` (a `wf_definitions` row) renders the canvas (`WorkflowBody.tsx`);
  * `workflowRun` (one `wf_runs` row) renders its execution trace
  * (`RunDetailBody.tsx`) instead — opening a run never shows the canvas.

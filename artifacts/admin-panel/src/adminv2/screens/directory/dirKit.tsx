@@ -1,9 +1,9 @@
 /**
- * Active Directory — shared canvas primitives.
+ * MSP Directory — shared canvas primitives.
  *
  * The visual vocabulary (section → tiles/rows, chip, arm-then-confirm button)
  * is lifted from `Design/adminv2/Admin Shell.dc.html`'s own AD canvas
- * (`adSection`/`adTile`/`adListRow`/`adChip`, `adColStyle`'s block) — the same
+ * (`dirSection`/`dirTile`/`dirListRow`/`dirChip`, `dirColStyle`'s block) — the same
  * language the shell's own `Peek` uses for facts and armed actions, just
  * rendered inline in the doc column instead of an overlay, since this is a
  * screen opened "properly" rather than a quick peek.
@@ -15,7 +15,7 @@ import { ACCENT, ACCENT_TEXT, FONT, LINE, PRIMARY_OVERLAY, SURFACE, TEXT } from 
 
 // ── Section ────────────────────────────────────────────────────────────────
 
-export function AdSection({
+export function DirSection({
   title,
   note,
   actions,
@@ -56,7 +56,7 @@ export function AdSection({
 
 // ── Tiles ──────────────────────────────────────────────────────────────────
 
-export function AdTileGrid({ children }: { children: ReactNode }) {
+export function DirTileGrid({ children }: { children: ReactNode }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 9 }}>
       {children}
@@ -64,7 +64,7 @@ export function AdTileGrid({ children }: { children: ReactNode }) {
   );
 }
 
-export function AdTile({
+export function DirTile({
   label,
   value,
   hint,
@@ -150,7 +150,7 @@ export function AdTile({
 
 // ── List rows ──────────────────────────────────────────────────────────────
 
-export function AdListRowGroup({ children }: { children: ReactNode }) {
+export function DirListRowGroup({ children }: { children: ReactNode }) {
   return (
     <div style={{ border: `1px solid ${LINE.base}`, borderRadius: 8, background: SURFACE.card, overflow: "hidden" }}>
       {children}
@@ -158,7 +158,7 @@ export function AdListRowGroup({ children }: { children: ReactNode }) {
   );
 }
 
-export function AdListRow({
+export function DirListRow({
   label,
   detail,
   meta,
@@ -229,7 +229,7 @@ export function AdListRow({
   );
 }
 
-export function AdEmptyRow({ label }: { label: string }) {
+export function DirEmptyRow({ label }: { label: string }) {
   return (
     <div style={{ padding: "12px 12px", fontSize: 11.5, color: TEXT.faint, fontStyle: "italic" }}>{label}</div>
   );
@@ -237,22 +237,22 @@ export function AdEmptyRow({ label }: { label: string }) {
 
 // ── Chips ──────────────────────────────────────────────────────────────────
 
-export type AdTone = "good" | "warn" | "bad" | "neutral";
+export type DirTone = "good" | "warn" | "bad" | "neutral";
 
-const TONE_COLOR: Record<AdTone, string> = {
+const TONE_COLOR: Record<DirTone, string> = {
   good: ACCENT_TEXT.green,
   warn: ACCENT.amber,
   bad: ACCENT_TEXT.danger,
   neutral: TEXT.dim,
 };
-const TONE_BORDER: Record<AdTone, string> = {
+const TONE_BORDER: Record<DirTone, string> = {
   good: "rgba(108,203,150,.35)",
   warn: "rgba(233,185,73,.4)",
   bad: "rgba(229,122,122,.4)",
   neutral: LINE.control,
 };
 
-export function AdChip({ label, tone = "neutral" }: { label: string; tone?: AdTone }) {
+export function DirChip({ label, tone = "neutral" }: { label: string; tone?: DirTone }) {
   return (
     <span
       style={{
@@ -272,7 +272,7 @@ export function AdChip({ label, tone = "neutral" }: { label: string; tone?: AdTo
 
 // ── Buttons ────────────────────────────────────────────────────────────────
 
-export type AdButtonTone = "primary" | "default" | "danger";
+export type DirButtonTone = "primary" | "default" | "danger";
 
 const BTN_BASE: CSSProperties = {
   flex: "none",
@@ -284,7 +284,7 @@ const BTN_BASE: CSSProperties = {
   cursor: "pointer",
 };
 
-export function AdButton({
+export function DirButton({
   label,
   tone = "default",
   onClick,
@@ -292,7 +292,7 @@ export function AdButton({
   title,
 }: {
   label: string;
-  tone?: AdButtonTone;
+  tone?: DirButtonTone;
   onClick: () => void;
   disabled?: boolean;
   title?: string;
@@ -316,18 +316,18 @@ export function AdButton({
 }
 
 /** #1770 — one option a select renders; `label` carries whatever detail the caller wants shown (e.g. a check count). */
-export interface AdSelectOption {
+export interface DirSelectOption {
   value: string;
   label: string;
 }
 
 /**
- * Select primitive matching `AdButton`'s footprint (same `BTN_BASE` sizing/
- * radius/font) — the AD screen's component set had `AdButton` etc. but no
+ * Select primitive matching `DirButton`'s footprint (same `BTN_BASE` sizing/
+ * radius/font) — the AD screen's component set had `DirButton` etc. but no
  * select, so a picker (e.g. the run-scan monitoring-package picker) had
  * nothing consistent to reach for.
  */
-export function AdSelect({
+export function DirSelect({
   value,
   onChange,
   options,
@@ -336,7 +336,7 @@ export function AdSelect({
 }: {
   value: string;
   onChange: (value: string) => void;
-  options: AdSelectOption[];
+  options: DirSelectOption[];
   disabled?: boolean;
   title?: string;
 }) {
@@ -371,7 +371,7 @@ export function AdSelect({
  * rows render inline in the doc column, not inside the shell's `Peek`
  * overlay.
  */
-export function AdArmedButton({
+export function DirArmedButton({
   label,
   armedLabel,
   tone = "danger",
@@ -380,13 +380,13 @@ export function AdArmedButton({
 }: {
   label: string;
   armedLabel?: string;
-  tone?: AdButtonTone;
+  tone?: DirButtonTone;
   onConfirm: () => void;
   title?: string;
 }) {
   const [armed, setArmed] = useState(false);
   return (
-    <AdButton
+    <DirButton
       label={armed ? armedLabel ?? `${label} — press again` : label}
       tone={tone}
       onClick={() => {
@@ -404,7 +404,7 @@ export function AdArmedButton({
 
 // ── Outcome banner ─────────────────────────────────────────────────────────
 
-export function AdOutcome({
+export function DirOutcome({
   tone,
   message,
   onDismiss,
@@ -456,7 +456,7 @@ export function AdOutcome({
 
 // ── Canvas chrome ──────────────────────────────────────────────────────────
 
-export function AdCanvasHeader({
+export function DirCanvasHeader({
   icon: Icon,
   name,
   kindLabel,
@@ -520,7 +520,7 @@ export function AdCanvasHeader({
   );
 }
 
-export function AdCanvasBody({ children }: { children: ReactNode }) {
+export function DirCanvasBody({ children }: { children: ReactNode }) {
   return (
     <div
       data-noscrollbar="true"
@@ -539,7 +539,7 @@ export function AdCanvasBody({ children }: { children: ReactNode }) {
   );
 }
 
-export function AdCanvasColumn({ children }: { children: ReactNode }) {
+export function DirCanvasColumn({ children }: { children: ReactNode }) {
   return (
     <div
       style={{
@@ -556,11 +556,11 @@ export function AdCanvasColumn({ children }: { children: ReactNode }) {
   );
 }
 
-export function AdLoading() {
+export function DirLoading() {
   return <div style={{ padding: 24, fontSize: 12.5, color: TEXT.caption }}>Loading…</div>;
 }
 
-export function AdLoadError({ message }: { message: string }) {
+export function DirLoadError({ message }: { message: string }) {
   return (
     <div style={{ padding: 24, fontSize: 12.5, color: ACCENT_TEXT.danger, textWrap: "pretty" } as CSSProperties}>
       {message}

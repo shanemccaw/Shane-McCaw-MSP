@@ -1,11 +1,11 @@
 import { Users } from "lucide-react";
 import { TEXT } from "../../../theme";
-import { AdCanvasColumn } from "../adKit";
+import { DirCanvasColumn } from "../dirKit";
 
-/** What the centre column shows before any Active Directory record is open. */
-export function AdEmptyCanvas() {
+/** What the centre column shows before any MSP Directory record is open. */
+export function DirEmptyCanvas() {
   return (
-    <AdCanvasColumn>
+    <DirCanvasColumn>
       <div
         style={{
           flex: 1,
@@ -24,6 +24,6 @@ export function AdEmptyCanvas() {
           Pick an MSP, tenant, user, group or organizational unit from the Explorer, or press Ctrl K.
         </div>
       </div>
-    </AdCanvasColumn>
+    </DirCanvasColumn>
   );
 }

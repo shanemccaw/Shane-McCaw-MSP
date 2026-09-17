@@ -95,7 +95,7 @@ vi.mock("../lib/audit.ts", () => ({
 
 const mockResolveAssignmentCustomer = vi.fn();
 const mockResolveGraphUserByUpn = vi.fn();
-vi.mock("./admin-active-directory.ts", () => ({
+vi.mock("./admin-active-directory-ou.ts", () => ({
   resolveAssignmentCustomer: (...args: unknown[]) => mockResolveAssignmentCustomer(...args),
   resolveGraphUserByUpn: (...args: unknown[]) => mockResolveGraphUserByUpn(...args),
 }));

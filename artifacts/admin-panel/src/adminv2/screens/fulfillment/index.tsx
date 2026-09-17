@@ -13,7 +13,7 @@
  * syncs across every source (`global`). The Watch tab only opens the
  * overdue/blocked galleries. Everything that needs one specific delivery or
  * type open — advancing its status, activating/deactivating a type — is on
- * the contextual tab, split by `ctx.kind` the same way `screens/ad/` splits
+ * the contextual tab, split by `ctx.kind` the same way `screens/directory/` splits
  * MSP/tenant/user/group tools on one screen.
  *
  * ## What is deliberately not here
@@ -264,7 +264,7 @@ function fulfillmentTypePeek(key: string): PeekModel | null {
 
 /**
  * Keeps the open doc and the store's two independent selections in step —
- * same reasoning as `screens/ad/`'s multi-kind render: `ctx.kind`
+ * same reasoning as `screens/directory/`'s multi-kind render: `ctx.kind`
  * disambiguates which of this screen's two record kinds (if either) is open.
  */
 function FulfillmentScreen({ kind, recordId }: { kind?: string; recordId?: string }) {

@@ -1,12 +1,12 @@
 /**
- * admin-active-directory-credential-ops.test.ts
+ * admin-msp-directory-credential-ops.test.ts
  *
  * Active Directory Phase 8 (Issue #68) — the three security-sensitive User
  * Object write endpoints:
  *
- *   POST /admin/active-directory/user/:id/force-password-reset
- *   POST /admin/active-directory/user/:id/mfa-reset
- *   POST /admin/active-directory/user/:id/impersonate
+ *   POST /admin/msp-directory/user/:id/force-password-reset
+ *   POST /admin/msp-directory/user/:id/mfa-reset
+ *   POST /admin/msp-directory/user/:id/impersonate
  *
  * The point of these tests is not just "the route returns 200" — it is that
  * each one is a thin entry point onto a mechanism that already existed, which
@@ -170,7 +170,7 @@ beforeEach(async () => {
 
   app = express();
   app.use(express.json());
-  const { default: router } = await import("./admin-active-directory.ts");
+  const { default: router } = await import("./admin-msp-directory.ts");
   app.use(router);
 });
 
@@ -180,9 +180,9 @@ function insertsTo(name: string) {
 
 // ─── force-password-reset ────────────────────────────────────────────────────
 
-describe("POST /admin/active-directory/user/:id/force-password-reset", () => {
+describe("POST /admin/msp-directory/user/:id/force-password-reset", () => {
   it("rejects an unauthenticated caller before touching anything", async () => {
-    const res = await request(app).post("/admin/active-directory/user/42/force-password-reset");
+    const res = await request(app).post("/admin/msp-directory/user/42/force-password-reset");
 
     expect(res.status).toBe(401);
     expect(mockRevokeAllOtherSessions).not.toHaveBeenCalled();
@@ -190,7 +190,7 @@ describe("POST /admin/active-directory/user/:id/force-password-reset", () => {
   });
 
   it("400s on a non-numeric user id without querying", async () => {
-    const res = await request(app).post("/admin/active-directory/user/abc/force-password-reset").set(authHeader);
+    const res = await request(app).post("/admin/msp-directory/user/abc/force-password-reset").set(authHeader);
 
     expect(res.status).toBe(400);
     expect(mockRevokeAllOtherSessions).not.toHaveBeenCalled();
@@ -199,7 +199,7 @@ describe("POST /admin/active-directory/user/:id/force-password-reset", () => {
   it("404s for an unknown account and invalidates nothing", async () => {
     selectQueue.push([]); // loadTargetAccount → no row
 
-    const res = await request(app).post("/admin/active-directory/user/999/force-password-reset").set(authHeader);
+    const res = await request(app).post("/admin/msp-directory/user/999/force-password-reset").set(authHeader);
 
     expect(res.status).toBe(404);
     expect(mockRevokeAllOtherSessions).not.toHaveBeenCalled();
@@ -209,7 +209,7 @@ describe("POST /admin/active-directory/user/:id/force-password-reset", () => {
   it("issues a reset token, e-mails the link, and invalidates EVERY session via the established convention", async () => {
     selectQueue.push([TARGET_WITH_PASSWORD]);
 
-    const res = await request(app).post("/admin/active-directory/user/42/force-password-reset").set(authHeader);
+    const res = await request(app).post("/admin/msp-directory/user/42/force-password-reset").set(authHeader);
 
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ ok: true, flow: "password_reset", revokedSessionCount: 3 });
@@ -238,7 +238,7 @@ describe("POST /admin/active-directory/user/:id/force-password-reset", () => {
   it("audit-logs the reset with actor identity, target account, and outcome", async () => {
     selectQueue.push([TARGET_WITH_PASSWORD]);
 
-    await request(app).post("/admin/active-directory/user/42/force-password-reset").set(authHeader);
+    await request(app).post("/admin/msp-directory/user/42/force-password-reset").set(authHeader);
 
     expect(mockCreateAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -256,7 +256,7 @@ describe("POST /admin/active-directory/user/:id/force-password-reset", () => {
   it("falls back to the account-setup flow for an account that never had a password", async () => {
     selectQueue.push([TARGET_WITHOUT_PASSWORD]);
 
-    const res = await request(app).post("/admin/active-directory/user/43/force-password-reset").set(authHeader);
+    const res = await request(app).post("/admin/msp-directory/user/43/force-password-reset").set(authHeader);
 
     expect(res.status).toBe(200);
     expect(res.body.flow).toBe("account_setup");
@@ -278,7 +278,7 @@ describe("POST /admin/active-directory/user/:id/force-password-reset", () => {
     selectQueue.push([TARGET_WITH_PASSWORD]);
     mockSendEmailFromTemplate.mockRejectedValueOnce(new Error("smtp down"));
 
-    const res = await request(app).post("/admin/active-directory/user/42/force-password-reset").set(authHeader);
+    const res = await request(app).post("/admin/msp-directory/user/42/force-password-reset").set(authHeader);
 
     expect(res.status).toBe(200);
     expect(mockRevokeAllOtherSessions).toHaveBeenCalledWith(42, null);
@@ -288,9 +288,9 @@ describe("POST /admin/active-directory/user/:id/force-password-reset", () => {
 
 // ─── mfa-reset ───────────────────────────────────────────────────────────────
 
-describe("POST /admin/active-directory/user/:id/mfa-reset", () => {
+describe("POST /admin/msp-directory/user/:id/mfa-reset", () => {
   it("rejects an unauthenticated caller", async () => {
-    const res = await request(app).post("/admin/active-directory/user/42/mfa-reset");
+    const res = await request(app).post("/admin/msp-directory/user/42/mfa-reset");
 
     expect(res.status).toBe(401);
     expect(mockAdminResetMfa).not.toHaveBeenCalled();
@@ -303,7 +303,7 @@ describe("POST /admin/active-directory/user/:id/mfa-reset", () => {
       targetName: TARGET_WITH_PASSWORD.name,
     });
 
-    const res = await request(app).post("/admin/active-directory/user/42/mfa-reset").set(authHeader).send({});
+    const res = await request(app).post("/admin/msp-directory/user/42/mfa-reset").set(authHeader).send({});
 
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ ok: true, clearedMethods: ["totp", "passkey"] });
@@ -321,7 +321,7 @@ describe("POST /admin/active-directory/user/:id/mfa-reset", () => {
   it("passes a single method through for a per-method un-enrollment", async () => {
     mockAdminResetMfa.mockResolvedValue({ clearedMethods: ["sms"], targetEmail: "x@y.test", targetName: null });
 
-    const res = await request(app).post("/admin/active-directory/user/42/mfa-reset").set(authHeader).send({ method: "sms" });
+    const res = await request(app).post("/admin/msp-directory/user/42/mfa-reset").set(authHeader).send({ method: "sms" });
 
     expect(res.status).toBe(200);
     expect(mockAdminResetMfa).toHaveBeenCalledWith(expect.objectContaining({ method: "sms" }));
@@ -329,7 +329,7 @@ describe("POST /admin/active-directory/user/:id/mfa-reset", () => {
 
   it("400s an unrecognised method and never calls the reset", async () => {
     const res = await request(app)
-      .post("/admin/active-directory/user/42/mfa-reset")
+      .post("/admin/msp-directory/user/42/mfa-reset")
       .set(authHeader)
       .send({ method: "carrier-pigeon" });
 
@@ -341,7 +341,7 @@ describe("POST /admin/active-directory/user/:id/mfa-reset", () => {
   it("404s when the target account does not exist", async () => {
     mockAdminResetMfa.mockResolvedValue(null);
 
-    const res = await request(app).post("/admin/active-directory/user/999/mfa-reset").set(authHeader).send({});
+    const res = await request(app).post("/admin/msp-directory/user/999/mfa-reset").set(authHeader).send({});
 
     expect(res.status).toBe(404);
   });
@@ -349,9 +349,9 @@ describe("POST /admin/active-directory/user/:id/mfa-reset", () => {
 
 // ─── impersonate ─────────────────────────────────────────────────────────────
 
-describe("POST /admin/active-directory/user/:id/impersonate", () => {
+describe("POST /admin/msp-directory/user/:id/impersonate", () => {
   it("rejects an unauthenticated caller before issuing a token", async () => {
-    const res = await request(app).post("/admin/active-directory/user/42/impersonate");
+    const res = await request(app).post("/admin/msp-directory/user/42/impersonate");
 
     expect(res.status).toBe(401);
     expect(insertsTo("impersonation_tokens")).toHaveLength(0);
@@ -363,7 +363,7 @@ describe("POST /admin/active-directory/user/:id/impersonate", () => {
     selectQueue.push([{ slug: "contoso", name: "Contoso IT" }]); // owning MSP
 
     const before = Date.now();
-    const res = await request(app).post("/admin/active-directory/user/42/impersonate").set(authHeader);
+    const res = await request(app).post("/admin/msp-directory/user/42/impersonate").set(authHeader);
 
     expect(res.status).toBe(200);
     expect(String(res.body.token)).toMatch(/^[0-9a-f]{64}$/);
@@ -385,7 +385,7 @@ describe("POST /admin/active-directory/user/:id/impersonate", () => {
     selectQueue.push([{ mspId: 7, customerId: 12, mspRole: LEGACY_ROLE.customer, isActive: true }]);
     selectQueue.push([{ slug: "contoso", name: "Contoso IT" }]);
 
-    await request(app).post("/admin/active-directory/user/42/impersonate").set(authHeader);
+    await request(app).post("/admin/msp-directory/user/42/impersonate").set(authHeader);
 
     const mspAudit = insertsTo("msp_audit_logs");
     expect(mspAudit).toHaveLength(1);
@@ -414,14 +414,14 @@ describe("POST /admin/active-directory/user/:id/impersonate", () => {
     selectQueue.push([{ ...TARGET_WITH_PASSWORD, id: 99 }]);
     selectQueue.push([{ mspId: null, customerId: null, mspRole: LEGACY_ROLE.platformAdmin, isActive: true }]);
 
-    const res = await request(app).post("/admin/active-directory/user/99/impersonate").set(authHeader);
+    const res = await request(app).post("/admin/msp-directory/user/99/impersonate").set(authHeader);
 
     expect(res.status).toBe(403);
     expect(insertsTo("impersonation_tokens")).toHaveLength(0);
   });
 
   it("refuses self-impersonation before any lookup", async () => {
-    const res = await request(app).post(`/admin/active-directory/user/${ACTOR_ID}/impersonate`).set(authHeader);
+    const res = await request(app).post(`/admin/msp-directory/user/${ACTOR_ID}/impersonate`).set(authHeader);
 
     expect(res.status).toBe(400);
     expect(insertsTo("impersonation_tokens")).toHaveLength(0);
@@ -430,7 +430,7 @@ describe("POST /admin/active-directory/user/:id/impersonate", () => {
   it("404s for an unknown account and issues no token", async () => {
     selectQueue.push([]);
 
-    const res = await request(app).post("/admin/active-directory/user/999/impersonate").set(authHeader);
+    const res = await request(app).post("/admin/msp-directory/user/999/impersonate").set(authHeader);
 
     expect(res.status).toBe(404);
     expect(insertsTo("impersonation_tokens")).toHaveLength(0);
@@ -440,7 +440,7 @@ describe("POST /admin/active-directory/user/:id/impersonate", () => {
     selectQueue.push([TARGET_WITH_PASSWORD]);
     selectQueue.push([{ mspId: null, customerId: null, mspRole: LEGACY_ROLE.customer, isActive: true }]);
 
-    const res = await request(app).post("/admin/active-directory/user/42/impersonate").set(authHeader);
+    const res = await request(app).post("/admin/msp-directory/user/42/impersonate").set(authHeader);
 
     expect(res.status).toBe(200);
     expect(res.body.targetSlug).toBeNull();

@@ -3,12 +3,12 @@
  * roles/user_roles/feature_role_mapping tables #2455 landed.
  *
  * Two panels, both additive alongside the existing DirectoryGroupRole ladder
- * UI (AdUserCanvas's "Role" section, AdGroupCanvas):
+ * UI (DirUserCanvas's "Role" section, DirGroupCanvas):
  *
- * - `AdRbacUserRolesSection` — embedded in AdUserCanvas. Shows/manages the
+ * - `DirRbacUserRolesSection` — embedded in DirUserCanvas. Shows/manages the
  *   roles ONE user holds in one system (msp or customer), scoped to their own
  *   org (or the platform scope for an org-less PlatformAdmin).
- * - `AdRbacOrgRolesPanel` — embedded in AdMspCanvas / AdCustomerCanvas. Manages
+ * - `DirRbacOrgRolesPanel` — embedded in DirMspCanvas / DirCustomerCanvas. Manages
  *   the org's own named roles (create/rename/delete) and each catalogued
  *   capability's allow/deny mapping for that org.
  *
@@ -21,19 +21,19 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ACCENT_TEXT, LINE, SURFACE, TEXT } from "../../theme";
 import {
-  createAdRbacRole,
-  deleteAdRbacRole,
-  fetchAdRbacCapabilities,
-  fetchAdRbacMappings,
-  fetchAdRbacRoles,
-  fetchAdUserRbacRoles,
-  grantAdUserRbacRole,
-  renameAdRbacRole,
-  revokeAdUserRbacRole,
-  setAdRbacMapping,
-} from "./adApi";
-import type { RbacMappingRow, RbacRoleSummary, RbacSystem } from "./adTypes";
-import { AdArmedButton, AdButton, AdEmptyRow, AdListRow, AdListRowGroup, AdOutcome, AdSection } from "./adKit";
+  createDirRbacRole,
+  deleteDirRbacRole,
+  fetchDirRbacCapabilities,
+  fetchDirRbacMappings,
+  fetchDirRbacRoles,
+  fetchDirUserRbacRoles,
+  grantDirUserRbacRole,
+  renameDirRbacRole,
+  revokeDirUserRbacRole,
+  setDirRbacMapping,
+} from "./dirApi";
+import type { RbacMappingRow, RbacRoleSummary, RbacSystem } from "./dirTypes";
+import { DirArmedButton, DirButton, DirEmptyRow, DirListRow, DirListRowGroup, DirOutcome, DirSection } from "./dirKit";
 
 const inputStyle = {
   height: 26,
@@ -51,7 +51,7 @@ function roleLabel(role: RbacRoleSummary): string {
 
 // ── User's own role memberships ───────────────────────────────────────────
 
-export function AdRbacUserRolesSection({
+export function DirRbacUserRolesSection({
   userId,
   system,
 }: {
@@ -70,12 +70,12 @@ export function AdRbacUserRolesSection({
   const load = useCallback(async () => {
     try {
       const [heldRes, allRoles] = await Promise.all([
-        fetchAdUserRbacRoles(fetchWithAuth, userId, system),
-        fetchAdRbacRoles(fetchWithAuth, system, null),
+        fetchDirUserRbacRoles(fetchWithAuth, userId, system),
+        fetchDirRbacRoles(fetchWithAuth, system, null),
       ]);
       setHeld(heldRes.roles);
       setOrgId(heldRes.orgId);
-      const orgRoles = heldRes.orgId == null ? allRoles : await fetchAdRbacRoles(fetchWithAuth, system, heldRes.orgId);
+      const orgRoles = heldRes.orgId == null ? allRoles : await fetchDirRbacRoles(fetchWithAuth, system, heldRes.orgId);
       setAvailable(orgRoles);
     } catch (err) {
       setOutcome({ tone: "error", message: err instanceof Error ? err.message : "Failed to load RBAC roles." });
@@ -94,7 +94,7 @@ export function AdRbacUserRolesSection({
     setBusy(true);
     setOutcome(null);
     try {
-      const res = await grantAdUserRbacRole(fetchWithAuth, userId, system, selected);
+      const res = await grantDirUserRbacRole(fetchWithAuth, userId, system, selected);
       setHeld(res.roles);
       setSelected("");
       setOutcome({ tone: "ok", message: "Role granted." });
@@ -110,7 +110,7 @@ export function AdRbacUserRolesSection({
       setBusy(true);
       setOutcome(null);
       try {
-        const res = await revokeAdUserRbacRole(fetchWithAuth, userId, system, roleId);
+        const res = await revokeDirUserRbacRole(fetchWithAuth, userId, system, roleId);
         setHeld(res.roles);
       } catch (err) {
         setOutcome({ tone: "error", message: err instanceof Error ? err.message : "Failed to revoke this role." });
@@ -122,29 +122,29 @@ export function AdRbacUserRolesSection({
   );
 
   return (
-    <AdSection
+    <DirSection
       title={`RBAC roles (${system})`}
       note="New roles/user_roles model (#2455/#2461) — additive alongside the Role section above. Not yet what enforces access; see #2458."
     >
       {held == null ? (
         <span style={{ fontSize: 11.5, color: TEXT.label }}>Loading…</span>
       ) : (
-        <AdListRowGroup>
+        <DirListRowGroup>
           {held.length === 0 ? (
-            <AdEmptyRow label={`No ${system} roles held under the new model yet.`} />
+            <DirEmptyRow label={`No ${system} roles held under the new model yet.`} />
           ) : (
             held.map((r) => (
-              <AdListRow
+              <DirListRow
                 key={r.id}
                 label={roleLabel(r)}
                 detail={r.description || undefined}
-                actions={<AdButton label="Revoke" tone="danger" disabled={busy} onClick={() => void revoke(r.id)} />}
+                actions={<DirButton label="Revoke" tone="danger" disabled={busy} onClick={() => void revoke(r.id)} />}
               />
             ))
           )}
-        </AdListRowGroup>
+        </DirListRowGroup>
       )}
-      {outcome && <AdOutcome tone={outcome.tone} message={outcome.message} onDismiss={() => setOutcome(null)} />}
+      {outcome && <DirOutcome tone={outcome.tone} message={outcome.message} onDismiss={() => setOutcome(null)} />}
       {grantable.length > 0 && (
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           <select value={selected} onChange={(e) => setSelected(e.target.value)} style={inputStyle}>
@@ -155,7 +155,7 @@ export function AdRbacUserRolesSection({
               </option>
             ))}
           </select>
-          <AdButton label="Grant" disabled={!selected || busy} onClick={() => void grant()} />
+          <DirButton label="Grant" disabled={!selected || busy} onClick={() => void grant()} />
         </div>
       )}
       {orgId == null && system === "msp" && (
@@ -163,13 +163,13 @@ export function AdRbacUserRolesSection({
           This account has no MSP linkage — only platform-scoped roles can be granted.
         </span>
       )}
-    </AdSection>
+    </DirSection>
   );
 }
 
 // ── Org-level role + capability-mapping management ────────────────────────
 
-export function AdRbacOrgRolesPanel({ system, orgId }: { system: RbacSystem; orgId: number }) {
+export function DirRbacOrgRolesPanel({ system, orgId }: { system: RbacSystem; orgId: number }) {
   const { fetchWithAuth } = useAuth();
   const [roles, setRoles] = useState<RbacRoleSummary[] | null>(null);
   const [mappings, setMappings] = useState<RbacMappingRow[] | null>(null);
@@ -184,8 +184,8 @@ export function AdRbacOrgRolesPanel({ system, orgId }: { system: RbacSystem; org
   const load = useCallback(async () => {
     try {
       const [roleRows, mappingRows] = await Promise.all([
-        fetchAdRbacRoles(fetchWithAuth, system, orgId),
-        fetchAdRbacMappings(fetchWithAuth, system, orgId),
+        fetchDirRbacRoles(fetchWithAuth, system, orgId),
+        fetchDirRbacMappings(fetchWithAuth, system, orgId),
       ]);
       setRoles(roleRows);
       setMappings(mappingRows);
@@ -203,7 +203,7 @@ export function AdRbacOrgRolesPanel({ system, orgId }: { system: RbacSystem; org
     setBusy(true);
     setOutcome(null);
     try {
-      await createAdRbacRole(fetchWithAuth, { system, orgId, key: newKey.trim(), name: newName.trim() });
+      await createDirRbacRole(fetchWithAuth, { system, orgId, key: newKey.trim(), name: newName.trim() });
       setNewKey("");
       setNewName("");
       await load();
@@ -220,7 +220,7 @@ export function AdRbacOrgRolesPanel({ system, orgId }: { system: RbacSystem; org
       setBusy(true);
       setOutcome(null);
       try {
-        await deleteAdRbacRole(fetchWithAuth, roleId, system);
+        await deleteDirRbacRole(fetchWithAuth, roleId, system);
         await load();
       } catch (err) {
         setOutcome({ tone: "error", message: err instanceof Error ? err.message : "Failed to delete this role." });
@@ -236,7 +236,7 @@ export function AdRbacOrgRolesPanel({ system, orgId }: { system: RbacSystem; org
       setBusy(true);
       setOutcome(null);
       try {
-        await renameAdRbacRole(fetchWithAuth, roleId, { system, name });
+        await renameDirRbacRole(fetchWithAuth, roleId, { system, name });
         await load();
       } catch (err) {
         setOutcome({ tone: "error", message: err instanceof Error ? err.message : "Failed to rename this role." });
@@ -258,7 +258,7 @@ export function AdRbacOrgRolesPanel({ system, orgId }: { system: RbacSystem; org
     setBusy(true);
     setOutcome(null);
     try {
-      await setAdRbacMapping(fetchWithAuth, {
+      await setDirRbacMapping(fetchWithAuth, {
         system,
         orgId,
         capabilityKey: editingCapability,
@@ -279,26 +279,26 @@ export function AdRbacOrgRolesPanel({ system, orgId }: { system: RbacSystem; org
 
   return (
     <>
-      <AdSection
+      <DirSection
         title={`RBAC roles (${system})`}
         note="New roles/user_roles model (#2455/#2461). Platform-scoped roles are read-only here — only this org's own roles can be renamed or deleted."
       >
         {roles == null ? (
           <span style={{ fontSize: 11.5, color: TEXT.label }}>Loading…</span>
         ) : (
-          <AdListRowGroup>
+          <DirListRowGroup>
             {roles.length === 0 ? (
-              <AdEmptyRow label="No roles defined yet." />
+              <DirEmptyRow label="No roles defined yet." />
             ) : (
               roles.map((r) => (
-                <AdListRow
+                <DirListRow
                   key={r.id}
                   label={roleLabel(r)}
                   detail={`${r.description || "no description"} · ${r.memberCount} member${r.memberCount === 1 ? "" : "s"}`}
                   actions={
                     r.orgId == null ? undefined : (
                       <>
-                        <AdButton
+                        <DirButton
                           label="Rename"
                           disabled={busy}
                           onClick={() => {
@@ -306,41 +306,41 @@ export function AdRbacOrgRolesPanel({ system, orgId }: { system: RbacSystem; org
                             if (next && next.trim()) void rename(r.id, next.trim());
                           }}
                         />
-                        <AdArmedButton label="Delete" tone="danger" onConfirm={() => void removeRole(r.id)} />
+                        <DirArmedButton label="Delete" tone="danger" onConfirm={() => void removeRole(r.id)} />
                       </>
                     )
                   }
                 />
               ))
             )}
-          </AdListRowGroup>
+          </DirListRowGroup>
         )}
-        {outcome && <AdOutcome tone={outcome.tone} message={outcome.message} onDismiss={() => setOutcome(null)} />}
+        {outcome && <DirOutcome tone={outcome.tone} message={outcome.message} onDismiss={() => setOutcome(null)} />}
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           <input value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="role key (e.g. engineer)" style={{ ...inputStyle, fontFamily: "monospace", minWidth: 160 }} />
           <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="display name" style={{ ...inputStyle, minWidth: 140 }} />
-          <AdButton label="Create role" disabled={!newKey.trim() || !newName.trim() || busy} onClick={() => void createRole()} />
+          <DirButton label="Create role" disabled={!newKey.trim() || !newName.trim() || busy} onClick={() => void createRole()} />
         </div>
-      </AdSection>
+      </DirSection>
 
-      <AdSection title="Capability mapping" note="Allow/deny per capability. Deny wins across every role a user holds (#1696).">
+      <DirSection title="Capability mapping" note="Allow/deny per capability. Deny wins across every role a user holds (#1696).">
         {mappings == null ? (
           <span style={{ fontSize: 11.5, color: TEXT.label }}>Loading…</span>
         ) : (
-          <AdListRowGroup>
+          <DirListRowGroup>
             {mappings.map((row) => {
               const allowNames = row.org?.allow.map((id) => roleNameById.get(id) ?? id) ?? [];
               const denyNames = row.org?.deny.map((id) => roleNameById.get(id) ?? id) ?? [];
               return (
-                <AdListRow
+                <DirListRow
                   key={row.capability.key}
                   label={row.capability.label}
                   detail={`${row.capability.key} · allow: ${allowNames.join(", ") || "none"} · deny: ${denyNames.join(", ") || "none"}`}
-                  actions={<AdButton label="Edit" disabled={!roles?.length} onClick={() => openMappingEditor(row)} />}
+                  actions={<DirButton label="Edit" disabled={!roles?.length} onClick={() => openMappingEditor(row)} />}
                 />
               );
             })}
-          </AdListRowGroup>
+          </DirListRowGroup>
         )}
 
         {editingCapability && roles && (
@@ -389,12 +389,12 @@ export function AdRbacOrgRolesPanel({ system, orgId }: { system: RbacSystem; org
               </div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <AdButton label="Save mapping" tone="primary" disabled={busy} onClick={() => void saveMapping()} />
-              <AdButton label="Cancel" onClick={() => setEditingCapability(null)} disabled={busy} />
+              <DirButton label="Save mapping" tone="primary" disabled={busy} onClick={() => void saveMapping()} />
+              <DirButton label="Cancel" onClick={() => setEditingCapability(null)} disabled={busy} />
             </div>
           </div>
         )}
-      </AdSection>
+      </DirSection>
     </>
   );
 }
