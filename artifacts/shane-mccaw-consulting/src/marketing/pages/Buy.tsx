@@ -162,6 +162,11 @@ interface State {
    *  real environment (the field is never present), so the [DEBUG] autofill's
    *  "fill code" action is inert off localhost even if it were somehow rendered. */
   devCode: string | null;
+  /** Git #4406 — the real expiry the send-verification-code endpoint returns
+   *  for the just-issued code, so the on-page copy can't drift from the
+   *  server's actual CODE_TTL_MS (it previously hardcoded "ten minutes"
+   *  against a 15-minute server TTL). null until a code has been sent. */
+  codeExpiresAt: string | null;
   pw1: string;
   pw2: string;
   mfaMethod: MfaMethod;
@@ -246,6 +251,7 @@ function initialState(): State {
     payingError: null,
     codeInput: "",
     devCode: null,
+    codeExpiresAt: null,
     pw1: "",
     pw2: "",
     mfaMethod: "app",
@@ -905,7 +911,13 @@ export default function Buy() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId }),
       });
-      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; email?: string; error?: string; devVerificationCode?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        email?: string;
+        error?: string;
+        devVerificationCode?: string;
+        expiresAt?: string;
+      };
       if (!res.ok || !data.ok) {
         authLog.error({ status: res.status, error: data.error, sessionId }, "purchase verification code send failed");
         throw new Error(
@@ -920,6 +932,7 @@ export default function Buy() {
       // can fill it. undefined in every real environment → stays null.
       set({
         devCode: data.devVerificationCode ?? null,
+        codeExpiresAt: data.expiresAt ?? null,
         acctNotice: { kind: "info", text: `Code sent to ${data.email ?? "your billing address"}.` },
       });
     } catch (err) {
@@ -1947,6 +1960,17 @@ export default function Buy() {
         ? pwOk
         : mfaOk;
   const acctStepNo = acctIsIdentity ? 1 : acctIsCode ? 2 : acctIsPassword ? 3 : 4;
+  // Git #4406 — the code-expiry copy is derived from the real `expiresAt` the
+  // server returned with the code, not a second hardcoded number that can
+  // drift from CODE_TTL_MS. Rounds up so "14.9 minutes left" still reads as
+  // "15 minutes" rather than an off-by-one "14".
+  const codeExpiryMinutes = st.codeExpiresAt
+    ? Math.max(1, Math.ceil((new Date(st.codeExpiresAt).getTime() - Date.now()) / 60000))
+    : null;
+  const codeExpiryText =
+    codeExpiryMinutes !== null
+      ? `The code expires in ${codeExpiryMinutes} minute${codeExpiryMinutes === 1 ? "" : "s"}.`
+      : "Check your email for the code.";
   const acct = {
     step: accountFirst
       ? "Create your account · step " + acctStepNo + " of 4"
@@ -1988,7 +2012,7 @@ export default function Buy() {
     foot: acctIsIdentity
       ? "Nothing is charged and nothing is connected at this step."
       : acctIsCode
-        ? "The code expires in ten minutes."
+        ? codeExpiryText
         : acctIsPassword
           ? "Stored hashed. Shane cannot read it."
           : accountFirst
