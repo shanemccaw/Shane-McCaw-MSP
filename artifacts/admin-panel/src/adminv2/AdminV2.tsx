@@ -48,6 +48,7 @@ import "./screens/content-studio";
 import "./screens/retainer";
 import "./screens/risk-decisions";
 import "./screens/m365-changes";
+import "./screens/free-scan-recovery";
 import { FloatingSqlConsole } from "./screens/sql/FloatingSqlConsole";
 // Same reasoning as FloatingSqlConsole, for the CRM screen's fetch bridge
 // — see CrmFetchBridge.tsx's doc comment.
@@ -106,6 +107,8 @@ import { RetainerFetchBridge } from "./screens/retainer/RetainerFetchBridge";
 // group, its palette answers and its linked-check catalog — see
 // RiskDecisionsFetchBridge.tsx's doc comment (Git #1294).
 import { RiskDecisionsFetchBridge } from "./screens/risk-decisions/RiskDecisionsFetchBridge";
+// Same reasoning, for the Free Scan account recovery queue (Git #4483).
+import { FreeScanRecoveryFetchBridge } from "./screens/free-scan-recovery/FreeScanRecoveryFetchBridge";
 // Warm-loads the Microsoft Changes interpretation library so the Watch tab's
 // "n proposed, awaiting you" count is live before /m365-changes is opened (#1532).
 import { M365ChangesFetchBridge } from "./screens/m365-changes/M365ChangesFetchBridge";
@@ -214,6 +217,7 @@ function AdminShell() {
       <ContentStudioFetchBridge />
       <RetainerFetchBridge />
       <RiskDecisionsFetchBridge />
+      <FreeScanRecoveryFetchBridge />
       <M365ChangesFetchBridge />
       <AiPromptsFetchBridge />
       <SharedLinksFetchBridge />

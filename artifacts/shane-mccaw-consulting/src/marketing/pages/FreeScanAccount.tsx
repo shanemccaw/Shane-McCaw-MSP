@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { FreeScanFlowStrip } from "../components/FreeScanFlowStrip";
+import { FreeScanAccountRecovery, type RecoveryKind } from "../components/FreeScanAccountRecovery";
 import { logger } from "../../lib/logger";
 
 /**
@@ -16,7 +17,9 @@ import { logger } from "../../lib/logger";
  *
  * Two states, chosen by the server:
  *   • signed out — email + password, then the second factor enrolled at setup
- *     (authenticator code, or a code texted to the enrolled number);
+ *     (authenticator code, or a code texted to the enrolled number), with the
+ *     "Forgot your password?" / "Lost your authenticator?" recovery paths
+ *     (#4483, components/FreeScanAccountRecovery.tsx);
  *   • signed in  — the engagement read from `GET /api/public/free-scan/account/me`,
  *     with links into the three existing free-scan pages, each of which accepts
  *     this account's session as its identity when the tab holds nothing else.
@@ -104,6 +107,17 @@ const btn = (ready: boolean): React.CSSProperties => ({
   background: ready ? "linear-gradient(90deg,#3b82f6,#8b5cf6)" : "rgba(71,85,105,.4)",
 });
 
+const RECOVERY_LINK: React.CSSProperties = {
+  padding: 0,
+  border: 0,
+  background: "none",
+  fontFamily: "inherit",
+  fontSize: 11.5,
+  fontWeight: 600,
+  color: "#60a5fa",
+  cursor: "pointer",
+};
+
 const money = (cents: number) => `$${Math.round(cents / 100).toLocaleString("en-US")}`;
 const longDate = (iso: string) => {
   const d = new Date(iso);
@@ -131,7 +145,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   return data;
 }
 
-function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
+function SignIn({ onSignedIn, onRecover }: { onSignedIn: () => void; onRecover: (kind: RecoveryKind, email: string) => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [challenge, setChallenge] = useState<{ token: string; method: "totp" | "sms" | null; phoneLast4: string | null } | null>(null);
@@ -231,21 +245,36 @@ function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
           </span>
         ) : null}
         {challenge ? (
-          <button
-            type="button"
-            onClick={() => {
-              setChallenge(null);
-              setCode("");
-              setError(null);
-            }}
-            style={{ padding: 0, border: 0, background: "none", fontFamily: "inherit", fontSize: 11.5, fontWeight: 600, color: "#60a5fa", cursor: "pointer" }}
-          >
-            Start again
-          </button>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => {
+                setChallenge(null);
+                setCode("");
+                setError(null);
+              }}
+              style={RECOVERY_LINK}
+            >
+              Start again
+            </button>
+            <button type="button" onClick={() => onRecover("mfa", email)} style={RECOVERY_LINK} data-testid="freescan-account-lost-mfa">
+              {challenge.method === "sms" ? "Lost access to that phone?" : "Lost your authenticator?"}
+            </button>
+          </div>
         ) : (
-          <span style={{ fontSize: 11, color: "#475569", lineHeight: 1.5, textAlign: "center" }}>
-            Not set up yet? The account is created on the remediation step, right after your statement of work is paid.
-          </span>
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <button type="button" onClick={() => onRecover("password", email)} style={RECOVERY_LINK} data-testid="freescan-account-forgot-password">
+                Forgot your password?
+              </button>
+              <button type="button" onClick={() => onRecover("mfa", email)} style={RECOVERY_LINK} data-testid="freescan-account-lost-mfa-start">
+                Lost your authenticator?
+              </button>
+            </div>
+            <span style={{ fontSize: 11, color: "#475569", lineHeight: 1.5, textAlign: "center" }}>
+              Not set up yet? The account is created on the remediation step, right after your statement of work is paid.
+            </span>
+          </>
         )}
       </form>
     </div>
@@ -359,7 +388,8 @@ function Engagement({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
 
 export default function FreeScanAccount() {
   const [me, setMe] = useState<Me | null>(null);
-  const [phase, setPhase] = useState<"loading" | "signed_out" | "signed_in" | "error">("loading");
+  const [phase, setPhase] = useState<"loading" | "signed_out" | "recovering" | "signed_in" | "error">("loading");
+  const [recovery, setRecovery] = useState<{ kind: RecoveryKind; email: string }>({ kind: "password", email: "" });
 
   const load = useCallback(async () => {
     try {
@@ -396,7 +426,23 @@ export default function FreeScanAccount() {
   return (
     <div style={PAGE}>
       <FreeScanFlowStrip at={4} />
-      {phase === "signed_out" ? <SignIn onSignedIn={() => void load()} /> : null}
+      {phase === "signed_out" ? (
+        <SignIn
+          onSignedIn={() => void load()}
+          onRecover={(kind, email) => {
+            setRecovery({ kind, email });
+            setPhase("recovering");
+          }}
+        />
+      ) : null}
+      {phase === "recovering" ? (
+        <FreeScanAccountRecovery
+          kind={recovery.kind}
+          initialEmail={recovery.email}
+          onBack={() => setPhase("signed_out")}
+          onSignedIn={() => void load()}
+        />
+      ) : null}
       {phase === "signed_in" && me ? <Engagement me={me} onSignedOut={() => void load()} /> : null}
       {phase === "loading" || phase === "error" ? (
         <div style={{ maxWidth: 560, margin: "0 auto", padding: "80px 32px", display: "flex", flexDirection: "column", gap: 14 }}>
