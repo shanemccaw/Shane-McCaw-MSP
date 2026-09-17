@@ -20,7 +20,7 @@ import {
 import { startRegistration } from "@simplewebauthn/browser";
 import { useQuickStartPackAvailability } from "../../hooks/useQuickStartPackAvailability";
 import { useServices, type PublicService } from "../../hooks/useServices";
-import { useBuyPackLive, liveStepOutcome, BUY_SESSION_STORAGE_KEY, UUID_RE } from "../../hooks/useBuyPackLive";
+import { useBuyPackLive, liveStepOutcome, BUY_SESSION_STORAGE_KEY } from "../../hooks/useBuyPackLive";
 import { StripePaymentElement } from "../../components/StripePaymentElement";
 import { BuyResumeSignIn, type ResumedPurchase } from "../components/BuyResumeSignIn";
 import { logger } from "../../lib/logger";
@@ -91,22 +91,17 @@ type Product = "monitoring" | "retainer" | "pack";
 // payment, instead of the paid door's account creation after payment.
 // Everything from write access onward is unchanged for them.
 // #4377 — Monitoring joins: account → consent → tier & pay → portal.
-const ACCOUNT_FIRST_PRODUCTS: readonly Product[] = ["monitoring", "pack"];
+// #4383 — Retainer joins: account → connect (optional, still skippable) → tier
+// & pay → portal. A buyer who skips the connection pays on the recorded skip and
+// ends at RetainerPending, exactly as before; one who connects does so as their
+// own account, never as an anonymous checkout.
+const ACCOUNT_FIRST_PRODUCTS: readonly Product[] = ["monitoring", "pack", "retainer"];
 
-// #4339 — what a reload needs to put a Retainer checkout back where it was: the
-// session id (also BUY_SESSION_STORAGE_KEY, which useBuyPackLive reads) plus the
-// identity and selection the session was minted from, none of which the public
-// session read returns.
+// #4339's reload snapshot (identity + selection beside the stored session id).
+// Retainer was its only reader; now that Retainer is account-first (#4383) a
+// returning buyer resumes by signing in, so nothing writes it — the key is only
+// cleared, for browsers that still hold one.
 const BUY_RESUME_SNAPSHOT_KEY = "smc_buy_flow_resume";
-interface BuyResumeSnapshot {
-  sessionId: string;
-  product: Product;
-  choice: string | null;
-  seatInput: string;
-  email: string;
-  fullName: string;
-  company: string;
-}
 type Stage =
   | "identity"
   | "buy"
@@ -500,10 +495,13 @@ export default function Buy() {
     const packageKey = (svc?.typeAttributes as { packageKey?: string } | null)?.packageKey;
     const tierKey = packageKey?.startsWith("core:") ? packageKey.slice("core:".length) : null;
     const pack = svc ? PACKS.find((p) => p.name === svc.name) : undefined;
+    // #4383 — a Retainer row is matched by the same catalog name resolveRetainerSlug uses.
+    const retTier = svc ? RET_TIERS.find((t) => svc.name === `Architect ${t.name} Retainer`) : undefined;
     set((s) => ({
       resumeSlug: null,
       ...(s.product === "monitoring" && tierKey && MON_TIERS.some((t) => t.key === tierKey) ? { choice: tierKey } : {}),
       ...(s.product === "pack" && pack ? { packSel: { [pack.key]: true } } : {}),
+      ...(s.product === "retainer" && retTier ? { choice: retTier.key } : {}),
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [st.resumeSlug, catalogServices]);
@@ -664,19 +662,6 @@ export default function Buy() {
     }
     try {
       window.localStorage.setItem(BUY_SESSION_STORAGE_KEY, data.sessionId);
-      // #4339 — the public session read returns no PII, so the identity and
-      // selection this session was minted from are kept beside its id, in the
-      // buyer's own browser, for the reload rehydrate below.
-      const snapshot: BuyResumeSnapshot = {
-        sessionId: data.sessionId,
-        product: st.product,
-        choice: st.choice,
-        seatInput: st.seatInput,
-        email: st.email.trim(),
-        fullName: st.fullName.trim(),
-        company: st.company.trim(),
-      };
-      window.localStorage.setItem(BUY_RESUME_SNAPSHOT_KEY, JSON.stringify(snapshot));
     } catch {
       /* storage unavailable — state alone still works */
     }
@@ -704,82 +689,11 @@ export default function Buy() {
     }
   };
 
-  // #4339 — a reload before payment used to mint a second checkout session and
-  // send the buyer back through Microsoft consent for a tenant already connected
-  // to the first. Read the stored session back and confirm it server-side before
-  // trusting it: only a live, unpaid session is resumed; an expired one is
-  // cleared, and a paid one is left alone, so the next connect/pay mints fresh.
-  // Retainer only: Monitoring and Packs are account-first, and a returning buyer
-  // there resumes by signing in (#4377), never from a stored id alone.
-  useEffect(() => {
-    if (ACCOUNT_FIRST_PRODUCTS.includes(st.product) || qs("session")) return;
-    let snapshot: BuyResumeSnapshot | null = null;
-    try {
-      const storedId = window.localStorage.getItem(BUY_SESSION_STORAGE_KEY);
-      const raw = window.localStorage.getItem(BUY_RESUME_SNAPSHOT_KEY);
-      const parsed = raw ? (JSON.parse(raw) as Partial<BuyResumeSnapshot>) : null;
-      if (
-        storedId &&
-        UUID_RE.test(storedId) &&
-        parsed?.sessionId === storedId &&
-        parsed.product === st.product &&
-        parsed.email &&
-        parsed.fullName &&
-        parsed.company
-      ) {
-        snapshot = parsed as BuyResumeSnapshot;
-      }
-    } catch {
-      snapshot = null;
-    }
-    if (!snapshot) return;
-    const restored = snapshot;
-    let cancelled = false;
-    void (async () => {
-      let res: Response;
-      try {
-        res = await fetch(`/api/public/flow/consent-status?sessionId=${encodeURIComponent(restored.sessionId)}`);
-      } catch {
-        return; // network failure: leave storage alone, a later mint overwrites it
-      }
-      if (cancelled) return;
-      if (res.status === 404 || res.status === 400) {
-        log.info({ sessionId: restored.sessionId, status: res.status }, "stored checkout session expired — not resumed");
-        clearPersistedSession();
-        return;
-      }
-      if (!res.ok) return;
-      const status = (await res.json().catch(() => null)) as ConsentStatus | null;
-      if (cancelled || !status) return;
-      if (status.sessionStatus !== "pending" && status.sessionStatus !== "consented") {
-        log.info({ sessionId: restored.sessionId, sessionStatus: status.sessionStatus }, "stored checkout session not resumable — a new one will be minted");
-        return;
-      }
-      const connected = !!status.tenantConnected && status.sessionStatus === "consented";
-      log.info({ sessionId: restored.sessionId, sessionStatus: status.sessionStatus, connected }, "stored checkout session confirmed live — resuming it after reload");
-      set((s) => {
-        // The buyer may have started typing while the check ran; their own
-        // edits win and the stored session is not resumed underneath them.
-        if (s.sessionId || s.email || s.fullName || s.company || s.stage !== "buy") return {};
-        return {
-          sessionId: restored.sessionId,
-          choice: restored.choice,
-          seatInput: restored.seatInput,
-          seatEdited: restored.seatInput !== "",
-          email: restored.email,
-          fullName: restored.fullName,
-          company: restored.company,
-          connected,
-          scanSkipped: !connected && !!status.readConsentSkipped,
-        };
-      });
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // Mount-only: the rehydrate answers "what did this browser leave behind".
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // #4339's stored-session rehydrate lived here for Retainer, the one product
+  // that was not account-first. Since #4383 every product is: a buyer who
+  // reloads or comes back resumes by signing in (#4377's BuyResumeSignIn), which
+  // restores the session, the connection and a recorded skip server-side, and a
+  // stored id alone is never trusted.
   const waitForConsent = (
     sessionId: string,
     popup: Window | null,
@@ -992,12 +906,36 @@ export default function Buy() {
     }
   };
 
+  // #4383 — Retainer's counterpart: the session is kept once the account is
+  // bound to it, so the tier on screen is written onto it before pricing.
+  const syncRetainerSelection = async (sessionId: string) => {
+    const productSlug = resolveRetainerSlug(catalogServices, retSel.name);
+    if (!productSlug) {
+      throw new Error("This option isn't available to purchase right now. Please choose another.");
+    }
+    const res = await fetch("/api/public/purchase/retainer-selection", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, productSlug }),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { error?: string };
+      log.warn({ status: res.status, error: err.error, sessionId }, "retainer selection update refused");
+      throw new Error(
+        err.error === "product_not_found"
+          ? "This option isn't available to purchase right now. Please choose another."
+          : "Could not update your selection. Please try again.",
+      );
+    }
+  };
+
   // #4377 — the buyer signed back in (BuyResumeSignIn) and the server handed
   // back the checkout session their account owns. Land on the real next step:
   // MFA enrollment if they left before it, the post-payment stage if already
   // paid, otherwise the buying screen with the connection as it really stands.
   const applyResumed = (p: ResumedPurchase) => {
-    const product: Product = p.productCategory === "config_pack" ? "pack" : "monitoring";
+    const product: Product =
+      p.productCategory === "config_pack" ? "pack" : p.productCategory === "retainer" ? "retainer" : "monitoring";
     try {
       window.localStorage.setItem(BUY_SESSION_STORAGE_KEY, p.sessionId);
     } catch {
@@ -1012,7 +950,9 @@ export default function Buy() {
       seatInput: String(p.seats),
       seatEdited: true,
       connected: p.tenantConnected,
-      scanSkipped: false,
+      // #4383 — a Retainer buyer who already declined the scan on this session
+      // is not offered it again; a connection landed since always wins.
+      scanSkipped: !p.tenantConnected && p.readConsentSkipped,
       resumeOpen: false,
       resumeSlug: p.productSlug,
       accountDone: p.mfaEnrolled,
@@ -1110,6 +1050,8 @@ export default function Buy() {
       // #4377 — Monitoring: the tier chosen after connecting is priced from
       // the session row, so write it there before the intent is created.
       if (isMon && accountFirst) await syncMonitoringSelection(sessionId);
+      // #4383 — Retainer: the tier picked after the account step, same reason.
+      if (isRet && accountFirst) await syncRetainerSelection(sessionId);
 
       if (isPack && accountFirst) {
         const anchorSlug = resolvePackSlug(catalogServices, PACKS_BY_KEY[packKeys[0]]?.name ?? "");
@@ -1636,8 +1578,8 @@ export default function Buy() {
     : isPack
       ? // #4378 — account → read consent → packs/pay; from write access on unchanged.
         ["Create account", "Connect", "Pack & pay", "Write access", "Scan", "Approve", "Record"]
-      : ["Tier", "Pay", "Create account", "Portal"];
-  const acctIdx = 2;
+      : // #4383 — account → connect (optional) → tier & pay → portal.
+        ["Create account", "Connect", "Tier & pay", "Portal"];
   const monStageIdx: Record<string, number> = {
     identity: 0,
     code: 0,
@@ -1668,18 +1610,25 @@ export default function Buy() {
     executed: 6,
     done: 6,
   };
+  // #4383 — Retainer's Connect step is passed by connecting OR by the skip.
+  const retStageIdx: Record<string, number> = {
+    identity: 0,
+    code: 0,
+    verifying: 0,
+    password: 0,
+    mfa: 0,
+    logging: 0,
+    buy: st.connected || st.scanSkipped ? 2 : 1,
+    connecting: 1,
+    paying: 2,
+    done: 3,
+  };
   const accountStages: Stage[] = ["identity", "code", "verifying", "password", "mfa", "logging"];
   const at = isPack
     ? packStageIdx[st.stage] ?? 0
     : isMon
       ? monStageIdx[st.stage] ?? 0
-      : st.stage === "done"
-        ? stepLabels.length - 1
-        : st.stage === "write" || st.stage === "granting"
-          ? acctIdx + 1
-          : accountStages.includes(st.stage)
-            ? acctIdx
-            : 1;
+      : retStageIdx[st.stage] ?? 0;
 
   // ── show flags ──────────────────────────────────────────────────────────────
   const show = {
@@ -1737,7 +1686,8 @@ export default function Buy() {
       ? {
           eyebrow: "Architect retainer",
           title: "Pick your hours. Start this month.",
-          body: "A retainer needs no access to your tenant to begin — pay and your architect is booked. You can connect a read-only scan as well, so the first conversation starts from what is actually in there.",
+          // #4383 — the account now comes first; connecting stays optional.
+          body: "A retainer needs no access to your tenant to begin — with your account set up, pay and your architect is booked. You can connect a read-only scan as well, so the first conversation starts from what is actually in there.",
         }
       : {
           eyebrow: "Quick-Start Pack",
@@ -2018,7 +1968,9 @@ export default function Buy() {
           : accountFirst
             ? isPack
               ? "Next, connect your tenant read-only, then choose your packs and pay."
-              : "Next, connect your tenant read-only, then pay."
+              : isRet
+                ? "Next, pick your hours and pay. Connecting your tenant for a scan is optional."
+                : "Next, connect your tenant read-only, then pay."
             : "You will be signed in automatically — no second login.",
   };
   const pwRules = [

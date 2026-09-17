@@ -1,14 +1,15 @@
 /**
  * account-first-purchase.ts — the server half of the account-first checkout
- * order (Git #4377, issue 1 of Feature #4376; Packs joined by #4378).
+ * order (Git #4377, issue 1 of Feature #4376; Packs joined by #4378, Retainer
+ * by #4383).
  *
  * Feature #4370 made a real account possible BEFORE consent (the `*Pending`
  * rungs, #4374's pre-consent door, #4373's promote-on-consent swap). This file
  * is what makes that order hold for the products that use it, and what lets a
  * buyer who left mid-purchase come back to it:
  *
- *   1. checkAccountFirstConsentReady — the read-consent URL for a Monitoring or
- *      Pack session is only minted once the session is bound (accountUserId) to
+ *   1. checkAccountFirstConsentReady — the read-consent URL for a Monitoring,
+ *      Pack or Retainer session is only minted once the session is bound (accountUserId) to
  *      a real account at the session's own address with a password and at
  *      least one active MFA method. Consent is never granted on behalf of an
  *      anonymous checkout session for these products again. The client's stage
@@ -29,6 +30,14 @@
  *      when the session was anonymous. Tier stays changeable up to payment; the
  *      seat count locks once the tenant is connected (the page's own "locks in
  *      when you connect" rule, now enforced server-side).
+ *
+ *   4. updateRetainerSelection — the same in-place tier change for Retainer
+ *      (#4383), whose price is the services row itself, so only the slug moves.
+ *
+ * Retainer (#4383) is account-first with its consent still OPTIONAL: the gate in
+ * (1) only applies when a buyer actually asks for the consent URL. A buyer who
+ * skips the connection never reaches it, pays on the recorded skip exactly as
+ * before (read-consent-skip + the payment gate), and ends at RetainerPending.
  */
 
 import {
@@ -48,11 +57,12 @@ const log = logger.child({ channel: "auth" });
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Catalog categories whose Buy.tsx path is account → consent → pay. Retainer is
- * deliberately absent: its consent is optional (#1311) and its reorder is its
- * own decision (#4380 / #4383).
+ * Catalog categories whose Buy.tsx path is account → consent → pay. Retainer
+ * joined with #4383 (decided on #4380): its consent stays optional and
+ * skippable (#1311), but a buyer who does connect grants it from a real
+ * account — the same exposure #4376 closed for Monitoring and Packs.
  */
-export const ACCOUNT_FIRST_CATEGORIES: readonly string[] = Object.freeze(["monitoring", "config_pack"]);
+export const ACCOUNT_FIRST_CATEGORIES: readonly string[] = Object.freeze(["monitoring", "config_pack", "retainer"]);
 
 /** Same TTL checkout-session creation grants (public-services.ts). */
 export const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -154,6 +164,12 @@ export interface ResumablePurchase {
   seats: number;
   status: "pending" | "consented" | "paid";
   tenantConnected: boolean;
+  /**
+   * #4383 — the buyer explicitly declined the optional Retainer connection on
+   * this session (checkout_sessions.consent_skipped_at). Always false for
+   * Monitoring/Packs, whose consent cannot be skipped.
+   */
+  readConsentSkipped: boolean;
   email: string;
   fullName: string;
   company: string | null;
@@ -192,6 +208,7 @@ export async function findResumablePurchase(userId: number): Promise<ResumablePu
       seats: checkoutSessionsTable.seats,
       status: checkoutSessionsTable.status,
       tenantId: checkoutSessionsTable.tenantId,
+      consentSkippedAt: checkoutSessionsTable.consentSkippedAt,
       email: checkoutSessionsTable.email,
       fullName: checkoutSessionsTable.fullName,
       company: checkoutSessionsTable.company,
@@ -235,6 +252,7 @@ export async function findResumablePurchase(userId: number): Promise<ResumablePu
     seats: row.seats,
     status: row.status as ResumablePurchase["status"],
     tenantConnected: !!row.tenantId?.trim(),
+    readConsentSkipped: row.consentSkippedAt != null,
     email: user.email,
     fullName: row.fullName,
     company: row.company,
@@ -330,4 +348,63 @@ export async function updateMonitoringSelection(
     "account-first checkout: monitoring selection updated on the session",
   );
   return { ok: true, productSlug, seats };
+}
+
+export type RetainerSelectionResult =
+  | { ok: true; productSlug: string }
+  | {
+      ok: false;
+      status: 400 | 404 | 409;
+      error: "session_invalid" | "session_expired" | "already_paid" | "not_retainer" | "product_not_found";
+    };
+
+/**
+ * #4383 — re-point an unpaid Retainer session at a different tier in place,
+ * the Retainer counterpart of updateMonitoringSelection. Once the buyer's
+ * account is bound to the session the page keeps the session instead of
+ * minting a new one on every tier click (checkout-session refuses a new one for
+ * an address that has an account), so the tier on screen is written here and
+ * priced from the session row at payment.
+ *
+ *   - `paid` sessions are refused: what was charged is what was bought.
+ *   - Retainer → Retainer only, and only onto a real public catalog row.
+ *   - A connected tenant locks nothing: each retainer row is a flat monthly
+ *     price, and the consent is bound to the tenant, not the tier.
+ */
+export async function updateRetainerSelection(rawSessionId: unknown, productSlug: string): Promise<RetainerSelectionResult> {
+  const sessionId = typeof rawSessionId === "string" ? rawSessionId : "";
+  if (!UUID_RE.test(sessionId)) return { ok: false, status: 400, error: "session_invalid" };
+
+  const [session] = await db
+    .select({
+      id: checkoutSessionsTable.id,
+      status: checkoutSessionsTable.status,
+      category: servicesTable.category,
+    })
+    .from(checkoutSessionsTable)
+    .leftJoin(servicesTable, eq(servicesTable.slug, checkoutSessionsTable.productSlug))
+    .where(and(eq(checkoutSessionsTable.id, sessionId), gte(checkoutSessionsTable.expiresAt, new Date())))
+    .limit(1);
+
+  if (!session || session.status === "expired") return { ok: false, status: 404, error: "session_expired" };
+  if (session.status === "paid") return { ok: false, status: 409, error: "already_paid" };
+  if (session.category !== "retainer") return { ok: false, status: 409, error: "not_retainer" };
+
+  const [target] = await db
+    .select({ category: servicesTable.category, visibility: servicesTable.visibility })
+    .from(servicesTable)
+    .where(eq(servicesTable.slug, productSlug))
+    .limit(1);
+
+  if (!target || target.category !== "retainer" || target.visibility !== "public") {
+    return { ok: false, status: 404, error: "product_not_found" };
+  }
+
+  await db
+    .update(checkoutSessionsTable)
+    .set({ productSlug, updatedAt: new Date() })
+    .where(and(eq(checkoutSessionsTable.id, session.id), ne(checkoutSessionsTable.status, "paid")));
+
+  log.info({ sessionId: session.id, productSlug }, "account-first checkout: retainer tier updated on the session");
+  return { ok: true, productSlug };
 }

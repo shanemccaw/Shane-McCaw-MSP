@@ -4,9 +4,11 @@
  * lib/account-first-purchase.ts (see its header).
  *
  *   GET  /api/public/purchase/resume               (Bearer) the signed-in
- *        buyer's own unfinished Monitoring/Pack purchase, renewed if lapsed
+ *        buyer's own unfinished Monitoring/Pack/Retainer purchase, renewed if lapsed
  *   POST /api/public/purchase/monitoring-selection  (session UUID) tier/seats
  *        change on an unpaid Monitoring session, in place
+ *   POST /api/public/purchase/retainer-selection    (session UUID) tier change
+ *        on an unpaid Retainer session, in place (#4383)
  *
  * /api/public/* is on the pending-purchase gate's allowlist (#4375), so a
  * `*Pending` account's token reaches the resume route — that account can reach
@@ -20,7 +22,7 @@ import jwt from "jsonwebtoken";
 import type { AuthUser } from "../middlewares/requireAuth.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
-import { findResumablePurchase, updateMonitoringSelection } from "../lib/account-first-purchase.ts";
+import { findResumablePurchase, updateMonitoringSelection, updateRetainerSelection } from "../lib/account-first-purchase.ts";
 
 const log = logger.child({ channel: "auth" });
 
@@ -129,6 +131,28 @@ router.post("/public/purchase/monitoring-selection", selectionLimiter, async (re
   const result = await updateMonitoringSelection(parsed.data.sessionId, parsed.data.productSlug, parsed.data.seats);
   if (!result.ok) {
     res.status(result.status).json({ error: result.error, ...(result.message ? { message: result.message } : {}) });
+    return;
+  }
+  res.json(result);
+});
+
+// ── POST /api/public/purchase/retainer-selection (#4383) ──────────────────────
+
+const retainerSelectionSchema = z.object({
+  sessionId: z.string(),
+  productSlug: z.string().trim().min(1).max(200),
+});
+
+router.post("/public/purchase/retainer-selection", selectionLimiter, async (req: Request, res: Response) => {
+  const parsed = retainerSelectionSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0]?.message ?? "Invalid request" });
+    return;
+  }
+
+  const result = await updateRetainerSelection(parsed.data.sessionId, parsed.data.productSlug);
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
     return;
   }
   res.json(result);

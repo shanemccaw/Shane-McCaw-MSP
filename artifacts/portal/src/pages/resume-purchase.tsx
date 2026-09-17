@@ -20,17 +20,17 @@ import { Loader2 } from "lucide-react";
  *   1. `product`/`email`/`mspRole` off the signed JWT already in hand (the
  *      same source `PortalIdentityInterstitialPage` reads `mspRole` from) —
  *      always available the instant this renders, no request needed.
- *   2. For Monitoring/Packs (`GET /api/public/purchase/resume`, landed on
- *      `main` by #4377 the same day as this issue — `productCategory` is
- *      only ever `"monitoring"` or `"config_pack"`, `ACCOUNT_FIRST_CATEGORIES`
- *      in `account-first-purchase.ts`): the buyer's actual unfinished
+ *   2. For Monitoring/Packs/Retainer (`GET /api/public/purchase/resume`,
+ *      landed on `main` by #4377 the same day as this issue; Retainer joined
+ *      with #4383 — `productCategory` is `"monitoring"`, `"config_pack"` or
+ *      `"retainer"`, `ACCOUNT_FIRST_CATEGORIES` in `account-first-purchase.ts`):
+ *      the buyer's actual unfinished
  *      checkout session — seats and real status (`pending`/`consented`/
  *      `paid`), not just "there is exactly one stage left". Already under
  *      `/public/*`, so it needs no addition to the pending-purchase gate's
  *      allowlist. A 404 (`no_purchase_in_progress`) is expected and not an
- *      error — Retainer has no such session (Retainer's own resume
- *      mechanism is a separate, not-yet-built audit, #TBD4 under #4376) and
- *      a session can also genuinely lapse past its resume window; the JWT
+ *      error — a session can genuinely lapse past its resume window, and a
+ *      Retainer bought before #4383 has no account-bound session; the JWT
  *      tier above still carries the page in either case.
  *
  * "Continue" hands off to the marketing site's `/buy?product=...` entry
@@ -53,9 +53,11 @@ const PRODUCT_BY_PENDING_ROLE: Record<string, { buyProduct: "monitoring" | "pack
 };
 
 /** `checkout_sessions` categories `findResumablePurchase` can return (account-first-purchase.ts). */
-const BUY_PRODUCT_BY_CATEGORY: Record<string, "monitoring" | "pack"> = {
+const BUY_PRODUCT_BY_CATEGORY: Record<string, "monitoring" | "pack" | "retainer"> = {
   monitoring: "monitoring",
   config_pack: "pack",
+  // #4383 — Retainer is account-first too, so its session is resumable.
+  retainer: "retainer",
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -112,7 +114,9 @@ export default function ResumePurchasePage() {
       ? "Configuration Pack"
       : purchase.productCategory === "monitoring"
         ? "Monitoring"
-        : (roleProduct?.label ?? "purchase")
+        : purchase.productCategory === "retainer"
+          ? "Fractional Retainer"
+          : (roleProduct?.label ?? "purchase")
     : (roleProduct?.label ?? "purchase");
 
   async function handleLogOut() {

@@ -4,7 +4,7 @@ import { logger } from "../../lib/logger";
 
 // Git #4377 — "Already started? Sign in to resume." on /buy.
 //
-// Account → consent → pay means a Monitoring or Pack buyer has a real account
+// Account → consent → pay means a Monitoring, Pack or (#4383) Retainer buyer has a real account
 // (password + MFA) before anything else happens. A buyer who closed the tab,
 // crashed, or came back on another device therefore resumes by signing in —
 // not by hoping a localStorage session id survived. This is the platform's own
@@ -18,11 +18,13 @@ const authLog = logger.child({ channel: "auth" });
 export interface ResumedPurchase {
   sessionId: string;
   productSlug: string;
-  productCategory: "monitoring" | "config_pack";
+  productCategory: "monitoring" | "config_pack" | "retainer";
   seats: number;
   status: "pending" | "consented" | "paid";
   mfaEnrolled: boolean;
   tenantConnected: boolean;
+  /** #4383 — the buyer declined the optional Retainer scan on this session. */
+  readConsentSkipped: boolean;
   email: string;
   fullName: string;
   company: string | null;

@@ -2722,7 +2722,9 @@ router.get("/public/flow/read-consent-url", async (req: Request, res: Response) 
 
   // #4377 — Monitoring and Packs run account → consent → pay: the grant is only
   // requested for a session bound to a real account (password + MFA) at the
-  // session's own address. Retainer, assessments and the free scan are untouched.
+  // session's own address. #4383 — Retainer too, for the buyer who chooses to
+  // connect; its skip (read-consent-skip below) needs no account and is
+  // unchanged. Assessments and the free scan are untouched.
   const readiness = await checkAccountFirstConsentReadyForSession(session.id, category);
   if (readiness.outcome === "account_required") {
     log.warn(

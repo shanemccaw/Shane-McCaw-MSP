@@ -332,13 +332,16 @@ describeLive("#4377 — account-first Monitoring order + returning-buyer resume,
     const previewToken = jwt.sign({ id: half.id, email: halfEmail, role: "client", impersonatedBy: 1 }, process.env.JWT_SECRET!, { expiresIn: "5m" });
     await request(app).get("/public/purchase/resume").set("Authorization", `Bearer ${previewToken}`).expect(403);
 
-    // A retainer session is not account-first: its consent URL is untouched,
-    // and it cannot be re-pointed at a monitoring tier.
+    // #4383 — a retainer session is account-first too: its (optional) consent
+    // URL is refused until an account exists (the full Retainer order is covered
+    // by account-first-retainer.live-db.test.ts), and it cannot be re-pointed at
+    // a monitoring tier.
     const { servicesTable } = dbm;
     const [retainer] = await db.select({ slug: servicesTable.slug }).from(servicesTable).where(eq(servicesTable.category, "retainer")).limit(1);
     const retainerSession = await createSession("retainer", retainer.slug!, 1);
     const url = await request(app).get("/public/flow/read-consent-url").query({ sessionId: retainerSession });
-    expect(url.status, JSON.stringify(url.body)).toBe(200);
+    expect(url.status, JSON.stringify(url.body)).toBe(409);
+    expect(url.body).toEqual({ error: "account_required", reason: "no_account" });
     const sel = await request(app).post("/public/purchase/monitoring-selection").send({ sessionId: retainerSession, productSlug: slug, seats });
     expect(sel.status).toBe(409);
     expect(sel.body.error).toBe("not_monitoring");
