@@ -150,6 +150,17 @@ namespace BuildConsole
             await TriggerUpdateAsync(forceDeploy: true);
         }
 
+        /// <summary>Git #4572 — right-click "Copy commit hash" on the Deploy status bar segment.
+        /// Strips the "Deploy: " label off the real current text and puts just the hash on the clipboard.</summary>
+        private void CopyDeployCommitHash_Click(object sender, RoutedEventArgs e)
+        {
+            var text = DeployStatusText.Text ?? string.Empty;
+            const string prefix = "Deploy: ";
+            var hash = text.StartsWith(prefix) ? text.Substring(prefix.Length) : text;
+            if (string.IsNullOrWhiteSpace(hash) || hash == "—") return;
+            Clipboard.SetText(hash);
+        }
+
         /// <summary>Update button click — decides immediately-deploy vs defer based on the real Build Queue's active state.</summary>
         private async void BtnUpdate_Click(object sender, RoutedEventArgs e)
         {

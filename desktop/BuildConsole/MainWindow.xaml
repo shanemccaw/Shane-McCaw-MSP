@@ -741,6 +741,13 @@
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
                                 Cursor="Hand" MouseLeftButtonUp="DeployStatus_Click"
                                 ToolTip="Click to rebuild &amp; redeploy latest local code to ShanesBuild">
+                        <!-- Git #4572 — right-click to copy the real current commit hash. -->
+                        <StackPanel.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Copy commit hash"
+                                          Click="CopyDeployCommitHash_Click"/>
+                            </ContextMenu>
+                        </StackPanel.ContextMenu>
                         <Ellipse x:Name="DeployDot" Width="8" Height="8"
                                  Fill="{StaticResource Surface2Brush}"
                                  Margin="0,0,6,0" VerticalAlignment="Center"/>
