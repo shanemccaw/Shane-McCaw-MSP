@@ -1,7 +1,7 @@
 {
   "feature": "Marketing Free Scan scoped Prospect account (/scan/account + the acctScreen block on /scan/remediate) — Git #4329, Feature #1352. A paid Free Scan Prospect creates a SCOPED login (emailed code -> password -> authenticator app or SMS) that opens only their own engagement: scan results, signed SOW and the Remediate step behind it. It is not a Portal login: the credential lives in free_scan_accounts (never users.password_hash / mfa_enrollments / client_services, so hasRealEntitlement() #656 stays closed) and the session is an httpOnly cookie scoped to /api/public/free-scan, signed with a derived key requireAuth cannot verify. Served by routes/public-free-scan-account.ts -> lib/free-scan-account.ts, plus the `accountSession` door on resolveActor (routes/public-free-scan-sow.ts).",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "093e1ce1e",
+  "lastVerifiedAgainstCommit": "61a1bc899",
   "notes": [
     "SCOPE OF THIS MANIFEST — what a browser and an HTTP client can assert with no seeded data:",
     "",
@@ -38,7 +38,10 @@
     "    signed-in tab.",
     "",
     "  The login route writes a free_scan_account_sign_in_failed audit row per run of step 6; that is the",
-    "  real behaviour being asserted, not a side effect to suppress."
+    "  real behaviour being asserted, not a side effect to suppress.",
+    "",
+    "RECOVERY (Git #4483, sessionTag 4483-recovery) — asserted here: send-code answers 202 for an address with no account (no oracle) and 400 for a malformed one; verify-code refuses an unknown address with the same 400 code_invalid a wrong code gets; every token-bearing step refuses a garbage recovery token 401 recovery_expired; the AdminV2 queue refuses an anonymous caller 401; and /scan/account opens both recovery paths from the sign-in card.",
+    "NOT asserted here, and why: the recovery flow itself needs a complete engagement account, a real mailbox for the emailed code, an authenticator and a platform-admin approval. It is covered against live Postgres by artifacts/api-server/src/routes/public-free-scan-account-recovery.live-db.test.ts — no-oracle send/verify, resend gap and daily cap, attempt budget, emailed code alone cannot re-enrol, password reset revokes sessions without signing in, factor-reset request needs the password and consumes the token, a password reset cancels an approved factor reset, an expired approval re-enrols nothing, and the approved replacement swaps the factor, revokes sessions and signs in."
   ],
   "apiTests": [
     {
@@ -119,6 +122,76 @@
       "headers": { "Content-Type": "application/json" },
       "body": { "accountSession": true },
       "expect": { "status": 401, "jsonPath": "$.error", "value": "account_signin_required" }
+    },
+    {
+      "name": "RECOVERY SEND-CODE (Git #4483) — an address with no engagement account still answers 202 ok, so the reply says nothing about whether an account exists",
+      "sessionTag": "4483-recovery",
+      "method": "POST",
+      "path": "/api/public/free-scan/account/recover/send-code",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "zz-test-4483-no-such-account@example.invalid" },
+      "expect": { "status": 202, "jsonPath": "$.ok", "value": true }
+    },
+    {
+      "name": "RECOVERY SEND-CODE GUARD (Git #4483) — a malformed address is 400 email_invalid",
+      "sessionTag": "4483-recovery",
+      "method": "POST",
+      "path": "/api/public/free-scan/account/recover/send-code",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "not-an-email" },
+      "expect": { "status": 400, "jsonPath": "$.error", "value": "email_invalid" }
+    },
+    {
+      "name": "RECOVERY VERIFY-CODE (Git #4483) — an address with no account is 400 code_invalid, the same answer a wrong code gets",
+      "sessionTag": "4483-recovery",
+      "method": "POST",
+      "path": "/api/public/free-scan/account/recover/verify-code",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "zz-test-4483-no-such-account@example.invalid", "code": "123456" },
+      "expect": { "status": 400, "jsonPath": "$.error", "value": "code_invalid" }
+    },
+    {
+      "name": "RECOVERY RESET-PASSWORD (Git #4483) — a garbage recovery token is 401 recovery_expired",
+      "sessionTag": "4483-recovery",
+      "method": "POST",
+      "path": "/api/public/free-scan/account/recover/reset-password",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "recoveryToken": "not-a-token", "password": "StapleBattery77Horse" },
+      "expect": { "status": 401, "jsonPath": "$.error", "value": "recovery_expired" }
+    },
+    {
+      "name": "RECOVERY FACTOR RESET REQUEST (Git #4483) — a garbage recovery token is 401 recovery_expired",
+      "sessionTag": "4483-recovery",
+      "method": "POST",
+      "path": "/api/public/free-scan/account/recover/mfa-reset",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "recoveryToken": "not-a-token", "password": "StapleBattery77Horse" },
+      "expect": { "status": 401, "jsonPath": "$.error", "value": "recovery_expired" }
+    },
+    {
+      "name": "RECOVERY NEW AUTHENTICATOR (Git #4483) — a garbage recovery token is 401 recovery_expired",
+      "sessionTag": "4483-recovery",
+      "method": "POST",
+      "path": "/api/public/free-scan/account/recover/mfa/totp/setup",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "recoveryToken": "not-a-token", "password": "StapleBattery77Horse" },
+      "expect": { "status": 401, "jsonPath": "$.error", "value": "recovery_expired" }
+    },
+    {
+      "name": "RECOVERY NEW FACTOR VERIFY (Git #4483) — a garbage recovery token is 401 recovery_expired",
+      "sessionTag": "4483-recovery",
+      "method": "POST",
+      "path": "/api/public/free-scan/account/recover/mfa/verify",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "recoveryToken": "not-a-token", "code": "123456" },
+      "expect": { "status": 401, "jsonPath": "$.error", "value": "recovery_expired" }
+    },
+    {
+      "name": "RECOVERY OPERATOR QUEUE (Git #4483) — GET /api/admin/free-scan/account-recovery with no admin session is 401",
+      "sessionTag": "4483-recovery",
+      "method": "GET",
+      "path": "/api/admin/free-scan/account-recovery",
+      "expect": { "status": 401 }
     }
   ],
   "uiSteps": [
@@ -131,6 +204,16 @@
     { "action": "goto", "target": "/scan/remediate", "sessionTag": "4329-account" },
     { "action": "expect", "selector": "body", "textContains": "We lost track of your scan", "sessionTag": "4329-account" },
     { "action": "expect", "selector": "[data-testid='freescan-remediate-signin']", "state": "visible", "sessionTag": "4329-account" },
-    { "action": "expect", "selector": "[data-testid='freescan-account-setup']", "state": "absent", "sessionTag": "4329-account" }
+    { "action": "expect", "selector": "[data-testid='freescan-account-setup']", "state": "absent", "sessionTag": "4329-account" },
+    { "action": "goto", "target": "/scan/account", "sessionTag": "4483-recovery" },
+    { "action": "expect", "selector": "[data-testid='freescan-account-forgot-password']", "state": "visible", "sessionTag": "4483-recovery" },
+    { "action": "expect", "selector": "[data-testid='freescan-account-lost-mfa-start']", "state": "visible", "sessionTag": "4483-recovery" },
+    { "action": "click", "selector": "[data-testid='freescan-account-forgot-password']", "sessionTag": "4483-recovery" },
+    { "action": "expect", "selector": "[data-testid='freescan-account-recovery']", "state": "visible", "sessionTag": "4483-recovery" },
+    { "action": "expect", "selector": "[data-testid='freescan-account-recovery']", "textContains": "Forgot your password", "sessionTag": "4483-recovery" },
+    { "action": "expect", "selector": "[data-testid='freescan-recovery-email']", "state": "visible", "sessionTag": "4483-recovery" },
+    { "action": "click", "selector": "[data-testid='freescan-recovery-back']", "sessionTag": "4483-recovery" },
+    { "action": "click", "selector": "[data-testid='freescan-account-lost-mfa-start']", "sessionTag": "4483-recovery" },
+    { "action": "expect", "selector": "[data-testid='freescan-account-recovery']", "textContains": "Lost your authenticator", "sessionTag": "4483-recovery" }
   ]
 }
