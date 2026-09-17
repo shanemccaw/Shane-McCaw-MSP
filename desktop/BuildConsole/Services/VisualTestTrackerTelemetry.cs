@@ -997,9 +997,16 @@ namespace BuildConsole.Services
         noteCard.style.left = Math.round(leftPos) + 'px';
         noteCard.style.display = 'block';
 
-        setTimeout(function() {
-            if (cardInput) cardInput.focus();
-        }, 30);
+        // Git #4447 — deliberately NOT auto-focusing cardInput here. This card lives inside the
+        // WebView2's own native HWND; the host app (TestModeDiagnosticsPanel.OnDomElementInspected)
+        // separately, asynchronously focuses its own TxtDomComment box in response to the
+        // VTT_DOM_INSPECT message posted below. Both used to race for real OS keyboard focus with
+        // no coordination between them, since only one HWND can hold it at a time — a delayed
+        // .focus() here could silently steal focus back into the browser mid-keystroke, away from
+        // wherever the user (or the host's own deterministic focus call) had it, which is what made
+        // Ctrl+Enter/Enter land somewhere with no submit handler instead of saving the bug. The host
+        // side is now the single authority for auto-focus; a user who wants to type directly into
+        // this card can still click into it normally.
 
         if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
             window.chrome.webview.postMessage(JSON.stringify({
