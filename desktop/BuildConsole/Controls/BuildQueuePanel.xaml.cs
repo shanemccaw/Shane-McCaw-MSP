@@ -6832,36 +6832,107 @@ namespace BuildConsole.Controls
         /// popover's own inline text box supplies the message directly.</summary>
         public async System.Threading.Tasks.Task QuickReplyAsync(QueueItem item, string message)
         {
-            if (_db == null)
+            await SendReplyAsync(item, message, "Git Board hover popover");
+            await RefreshAsync();
+        }
+
+        /// <summary>
+        /// Git #4553 — the one Reply path, shared by the "💬 Reply…" context menu and <see cref="QuickReplyAsync"/> (Git Board
+        /// hover popover, sidebar inline reply box, floating chat). Before this, both queued a fresh
+        /// <c>claude --resume &lt;session&gt;</c> row with no check that the session's process had ended — live on 2026-09-15 a
+        /// Reply on #2953 queued #2957 on session c4180db4 while #2947 was still running it. Same order as Build Watch's
+        /// composer (#4547): a live, writable stdin for the session gets the message directly; otherwise
+        /// <see cref="QueueWatcherService.LaunchContinuationAsync"/> stops any live process for the session and confirms it
+        /// exited (or launches nothing) before resuming, asking first when that process is actively working.
+        /// </summary>
+        private async System.Threading.Tasks.Task SendReplyAsync(QueueItem item, string message, string via)
+        {
+            if (!Dispatcher.CheckAccess())
             {
-                ToastEngine.Warning("Reply", "Not connected (no direct DB) — can't queue a reply.");
+                // LaunchContinuationAsync mutates the watcher's running set, which is UI-thread only.
+                await Dispatcher.InvokeAsync(() => SendReplyAsync(item, message, via)).Task.Unwrap();
                 return;
             }
-            string? sid = !string.IsNullOrWhiteSpace(item.SessionId) ? item.SessionId : _watcher?.GetSessionId(item.Id);
+            if (_db == null)
+            {
+                ToastEngine.Warning("Reply", "Not connected (no direct DB) — can't send a reply.");
+                return;
+            }
+            if (_watcher == null)
+            {
+                ToastEngine.Warning("Reply", "The queue watcher isn't running, so nothing can resume this build from here.");
+                return;
+            }
+            string? sid = !string.IsNullOrWhiteSpace(item.SessionId) ? item.SessionId : _watcher.GetSessionId(item.Id);
             if (string.IsNullOrWhiteSpace(sid))
             {
                 ToastEngine.Warning("Reply", "No session id captured for this build yet — nothing to resume.");
                 return;
             }
+
+            // 1. The session's one live process can still read stdin → the message goes straight to it, no relaunch.
+            var live = _watcher.GetLiveQueueIdsForSession(item.Id, sid);
+            if (live.Count == 1 && _watcher.OwnsInteractive(live[0]) && _watcher.SendInput(live[0], message))
+            {
+                ActivityLog.Log("interactive-build",
+                    $"Reply for queue #{item.Id} ({item.Title}) written to the live stdin of queue #{live[0]} (session {sid}, {message.Length} chars, via {via}) — no new process.");
+                ToastEngine.Success("Reply sent", $"Sent straight to the running session for “{item.Title}”.");
+                return;
+            }
+
+            // 2. Resuming stops the live process first — if it's actively working, that interrupts real work, so ask.
+            if (_watcher.WouldInterruptActiveWork(item.Id, sid, out bool adopted))
+            {
+                string why = adopted
+                    ? "its input channel was lost when BuildConsole restarted"
+                    : "its input was closed when it went idle, but it is still running";
+                var answer = MessageBox.Show(
+                    $"\"{item.Title}\" is still working, but it can't take typed input — {why}.\n\n" +
+                    "Replying will stop that process and resume the same session with your message, so only one copy ever runs.\n\n" +
+                    "Stop it and send?",
+                    "Reply to a running build", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (answer != MessageBoxResult.Yes) return;
+            }
+
+            ActivityLog.Log("interactive-build",
+                $"Reply for queue #{item.Id} ({item.Title}) — resuming session {sid} with a {message.Length}-char message (via {via}; live process: {string.Join(", ", live.Select(i => "#" + i))}).");
+            QueueWatcherService.ContinuationResult result;
             try
             {
-                var replyRow = await _db.QueueBuildAsync(
-                    ReplyTitlePrefix + item.Title, message, item.Model, item.Effort, item.Cwd,
-                    githubNumber: null, blockedByNumbers: null,
-                    resumeSessionId: sid, chatUrl: item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
-                // Git #2119 — resolve the ORIGINAL row so its card doesn't sit stuck showing stale
-                // active status forever while the resumed work runs under this new "Reply → …" entry.
-                int superseded = await _db.MarkSupersededByReplyAsync(item.Id, replyRow.Id);
-                ActivityLog.Log("interactive-build",
-                    $"Reply queued for queue #{item.Id} ({item.Title}) — resuming session {sid} with a {message.Length}-char message (via Git Board hover popover). New row #{replyRow.Id}" +
-                    (superseded > 0 ? $"; original #{item.Id} marked superseded → #{replyRow.Id}." : $"; original #{item.Id} left as-is (running or already terminal)."));
-                ToastEngine.Success("Reply queued", $"Resuming the session for “{item.Title}” with your message.");
+                // githubNumber: null — a reply row never takes over the issue's own row by the github_number dedupe. When a
+                // live process is stopped its row is reused in place, which keeps that row's own github_number.
+                result = await _watcher.LaunchContinuationAsync(new QueueWatcherService.ContinuationRequest
+                {
+                    OriginalQueueId = item.Id,
+                    Title = item.Title,
+                    TitlePrefix = ReplyTitlePrefix,
+                    Text = message,
+                    Model = item.Model,
+                    Effort = item.Effort,
+                    Cwd = item.Cwd,
+                    GithubNumber = null,
+                    BlockedByNumbers = null,
+                    FallbackSessionId = sid,
+                    ChatUrl = item.ChatUrl,
+                    BuildSet = item.BuildSet,
+                    Cli = item.Cli,
+                    Account = item.Account,
+                });
             }
             catch (Exception ex)
             {
-                ToastEngine.Error("Reply Failed", $"Couldn't queue the reply: {ex.Message}");
+                ActivityLog.Log("interactive-build", $"Reply for queue #{item.Id} threw: {ex.Message}");
+                result = new QueueWatcherService.ContinuationResult { QueueId = item.Id, FailureReason = ex.Message };
             }
-            await RefreshAsync();
+
+            if (result.Launched)
+                ToastEngine.Success("Reply sent", result.StoppedLiveProcess
+                    ? $"Stopped the old process and resumed “{item.Title}” with your message (queue #{result.QueueId})."
+                    : $"Resumed the session for “{item.Title}” with your message (queue #{result.QueueId}).");
+            else if (result.QueuedAtHardCap)
+                ToastEngine.Warning("Reply queued", $"Every build slot is taken — “{item.Title}” resumes with your message when one frees (queue #{result.QueueId}).");
+            else
+                ToastEngine.Error("Reply Not Sent", $"Couldn't resume “{item.Title}”: {result.FailureReason ?? "the resumed session didn't start"}.");
         }
 
         /// <summary>Same effect as the "💬 Open Originating Chat" menu item / chat badge below.</summary>
@@ -6979,11 +7050,6 @@ namespace BuildConsole.Controls
                 var miReply = new MenuItem { Header = "💬 Reply… (resume this session with a message)" };
                 miReply.Click += async (_, _) =>
                 {
-                    if (_db == null)
-                    {
-                        ToastEngine.Warning("Reply", "Not connected (no direct DB) — can't queue a reply.");
-                        return;
-                    }
                     // Re-resolve at click time — a still-running build may only have revealed
                     // its session id after this menu was built.
                     string? sid = !string.IsNullOrWhiteSpace(item.SessionId)
@@ -6998,28 +7064,9 @@ namespace BuildConsole.Controls
                     string? message = PromptForReplyMessage(item.Title);
                     if (string.IsNullOrWhiteSpace(message)) return;
 
-                    try
-                    {
-                        // Fresh row (githubNumber: null) so we never dedupe onto — and re-queue
-                        // out from under — a row that may still be running. resumeSessionId makes
-                        // the watcher launch `claude --resume <sid> "<message>"`.
-                        var replyRow = await _db.QueueBuildAsync(
-                            ReplyTitlePrefix + item.Title, message, item.Model, item.Effort, item.Cwd,
-                            githubNumber: null, blockedByNumbers: null,
-                            resumeSessionId: sid, chatUrl: item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
-                        // Git #2119 — resolve the ORIGINAL row so its card doesn't sit stuck showing
-                        // stale active status forever while the resumed work runs under the new row.
-                        int superseded = await _db.MarkSupersededByReplyAsync(item.Id, replyRow.Id);
-                        ActivityLog.Log("interactive-build",
-                            $"Reply queued for queue #{item.Id} ({item.Title}) — resuming session {sid} with a {message.Length}-char message. New row #{replyRow.Id}" +
-                            (superseded > 0 ? $"; original #{item.Id} marked superseded → #{replyRow.Id}." : $"; original #{item.Id} left as-is (running or already terminal)."));
-                        ToastEngine.Success("Reply queued", $"Resuming the session for “{item.Title}” with your message.");
-                        await RefreshAsync();
-                    }
-                    catch (Exception ex)
-                    {
-                        ToastEngine.Error("Reply Failed", $"Couldn't queue the reply: {ex.Message}");
-                    }
+                    // Git #4553 — never a second process on the session: live stdin, or stop-confirm-exit-then-resume.
+                    await SendReplyAsync(item, message, "Build Queue context menu");
+                    await RefreshAsync();
                 };
                 cm.Items.Add(miReply);
                 cm.Items.Add(new Separator());

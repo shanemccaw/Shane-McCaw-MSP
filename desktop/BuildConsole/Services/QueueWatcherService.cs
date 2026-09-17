@@ -101,6 +101,10 @@ namespace BuildConsole.Services
             public string Title = "";
             /// <summary>Git #826 — filled in as soon as the run's stream-json output reveals it (usually the very first line); reported at completion so a later Reply can resume this exact conversation.</summary>
             public string? SessionId;
+            /// <summary>Git #4553 — the session this run was launched to --resume (null for a fresh dispatch). Known from launch,
+            /// before <see cref="SessionId"/> is read off the stream, so a just-started resume already counts as that session's
+            /// live process.</summary>
+            public string? ResumeSessionId;
             /// <summary>Session-limit auto-restart — set the moment any output line matches the CLI's "hit your session limit · resets …" message. Read at reap time: a flagged build is parked limit-paused (not failed) and the auto-restart timer is armed. Guarded by _gate.</summary>
             public bool SessionLimitHit;
             /// <summary>The captured reset label ("2:40am (America/New_York)") from the limit message, when present. Guarded by _gate.</summary>
@@ -1857,6 +1861,7 @@ namespace BuildConsole.Services
                 // Seed from the DB's already-persisted early session id (#826); the replay confirms
                 // or overwrites it from the real stream-json.
                 SessionId = string.IsNullOrWhiteSpace(item.SessionId) ? null : item.SessionId,
+                ResumeSessionId = string.IsNullOrWhiteSpace(item.ResumeSessionId) ? null : item.ResumeSessionId,
                 // Stdin deliberately left null — the interactive pipe died with the old app.
             };
 
@@ -3038,6 +3043,7 @@ namespace BuildConsole.Services
                 IsMainRepo = resolvedIsMain,
                 GithubNumber = item.GithubNumber,
                 Account = item.Account,
+                ResumeSessionId = string.IsNullOrWhiteSpace(item.ResumeSessionId) ? null : item.ResumeSessionId,
             };
 
             // Git #2103 — the actual dispatch call site: this is the moment a queue item's
@@ -3827,6 +3833,38 @@ namespace BuildConsole.Services
         public bool IsInputClosed(int id) =>
             _running.TryGetValue(id, out var e) && e.Interactive && !e.Process.HasExited && (e.Stdin == null || e.StdinClosed);
 
+        /// <summary>Git #4553 — every queue id with a live process for <paramref name="queueId"/>'s build: the id itself if its
+        /// process is alive, plus any other live entry running the same session (captured session id, or the session it was
+        /// launched to --resume). More than one entry means the session is already duplicated. UI thread only.</summary>
+        public IReadOnlyList<int> GetLiveQueueIdsForSession(int queueId, string? sessionId) => LiveQueueIdsForSession(queueId, sessionId);
+
+        private List<int> LiveQueueIdsForSession(int queueId, string? sessionId)
+        {
+            var ids = new List<int>();
+            if (IsProcessAlive(queueId)) ids.Add(queueId);
+            if (string.IsNullOrWhiteSpace(sessionId)) return ids;
+            foreach (var (id, e) in _running)
+            {
+                if (id == queueId || e.Process.HasExited) continue;
+                if (string.Equals(e.SessionId, sessionId, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(e.ResumeSessionId, sessionId, StringComparison.OrdinalIgnoreCase))
+                    ids.Add(id);
+            }
+            return ids;
+        }
+
+        /// <summary>Git #4553 — true when resuming this build's session through <see cref="LaunchContinuationAsync"/> would stop
+        /// a process that is actively working (not idle waiting for input, not already stopped), so the caller should ask first.
+        /// <paramref name="adopted"/> reports whether that process was re-attached after a BuildConsole restart.</summary>
+        public bool WouldInterruptActiveWork(int queueId, string? sessionId, out bool adopted)
+        {
+            adopted = false;
+            var live = LiveQueueIdsForSession(queueId, sessionId);
+            if (live.Count != 1) return false; // none: nothing to stop; several: LaunchContinuationAsync refuses without stopping any
+            adopted = IsAdopted(live[0]);
+            return GetInteractiveState(live[0]) is not (InteractiveInputState.WaitingForInput or InteractiveInputState.Stopped);
+        }
+
         /// <summary>
         /// Git #1839 — whether this queue id can render from the interactive structured stream
         /// (live output, context meter, working/waiting state): true for any interactive build we
@@ -3958,6 +3996,10 @@ namespace BuildConsole.Services
             public string? BuildSet { get; init; }
             public string? Cli { get; init; }
             public string? Account { get; init; }
+            /// <summary>Git #4553 — the title prefix for the continuation row: "Continue: " (Build Watch / Git detail, the
+            /// default), "Reply → " (Build Queue Reply), or "" (Resume Session re-sends the original prompt under its own title).</summary>
+            public string TitlePrefix { get; init; } = ResumeOnlyQueueRows.ContinueTitlePrefix;
+            public string? ChatUrl { get; init; }
         }
 
         public sealed class ContinuationResult
@@ -3995,9 +4037,27 @@ namespace BuildConsole.Services
             if (_db == null)
                 return new ContinuationResult { QueueId = req.OriginalQueueId, FailureReason = "no direct queue database connection — can't resume from here" };
 
-            int originalId = req.OriginalQueueId;
+            int requestedId = req.OriginalQueueId;
             // The live entry's captured id is the session actually being continued; the composer's copy can be stale.
-            string? sessionId = GetSessionId(originalId) ?? req.FallbackSessionId;
+            string? sessionId = GetSessionId(requestedId) ?? req.FallbackSessionId;
+
+            // Git #4553 — the session can be live under a DIFFERENT queue row than the one the message was sent from (live
+            // 2026-09-15: a Reply on #2953 resumed session c4180db4 while #2947 was still running it). Stop-and-reuse targets
+            // whichever row actually owns the live process. If more than one is already running the session, there is no
+            // single row to hand over — launch nothing rather than make it three.
+            var liveIds = LiveQueueIdsForSession(requestedId, sessionId);
+            if (liveIds.Count > 1)
+            {
+                ActivityLog.Log("build-watch", $"Git #4553 continuation of queue #{requestedId} refused — session {sessionId} is already running under {liveIds.Count} processes (queue {string.Join(", ", liveIds.Select(i => "#" + i))}).");
+                return new ContinuationResult
+                {
+                    QueueId = requestedId, SessionId = sessionId,
+                    FailureReason = $"this session is already running in {liveIds.Count} processes (queue {string.Join(", ", liveIds.Select(i => "#" + i))}) — stop the extras first; nothing was launched",
+                };
+            }
+            int originalId = liveIds.Count == 1 ? liveIds[0] : requestedId;
+            if (originalId != requestedId)
+                ActivityLog.Log("build-watch", $"Git #4553 continuation sent from queue #{requestedId}: session {sessionId} is live under queue #{originalId} — that process is the one stopped and resumed.");
             bool stopped = false;
             bool reserved = false;
 
@@ -4026,18 +4086,18 @@ namespace BuildConsole.Services
             bool slotReserved = false;
             try
             {
-                var title = req.Title.StartsWith(ResumeOnlyQueueRows.ContinueTitlePrefix, StringComparison.Ordinal)
+                var title = req.Title.StartsWith(req.TitlePrefix, StringComparison.Ordinal)
                     ? req.Title // Git #4547 — no more "Continue: Continue: Continue: …" titles on repeat messages
-                    : ResumeOnlyQueueRows.ContinueTitlePrefix + req.Title;
+                    : req.TitlePrefix + req.Title;
                 queued = await _db.QueueBuildAsync(title, req.Text, req.Model, req.Effort, req.Cwd, req.GithubNumber, req.BlockedByNumbers,
-                    resumeSessionId: sessionId, buildSet: req.BuildSet, cli: req.Cli, account: req.Account,
+                    resumeSessionId: sessionId, chatUrl: req.ChatUrl, buildSet: req.BuildSet, cli: req.Cli, account: req.Account,
                     reuseRowId: stopped ? originalId : null);
 
-                if (queued.Id != originalId)
+                foreach (var supersededId in new[] { originalId, requestedId }.Distinct().Where(i => i != queued.Id))
                 {
                     // Git #2120 — resolve the ORIGINAL row so it doesn't sit showing stale active status forever.
-                    try { await _db.MarkSupersededByReplyAsync(originalId, queued.Id); }
-                    catch (Exception ex) { ActivityLog.Log("build-watch", $"Couldn't mark original #{originalId} superseded by continuation #{queued.Id}: {ex.Message}"); }
+                    try { await _db.MarkSupersededByReplyAsync(supersededId, queued.Id); }
+                    catch (Exception ex) { ActivityLog.Log("build-watch", $"Couldn't mark original #{supersededId} superseded by continuation #{queued.Id}: {ex.Message}"); }
                 }
 
                 // Git #4542 — a continuation relaunches a real process, so it is a manual launch bounded by the HARD cap.

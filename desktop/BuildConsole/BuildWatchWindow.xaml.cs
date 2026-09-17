@@ -2079,25 +2079,22 @@ namespace BuildConsole
             }
 
             // 2. No writable stdin. If a process is still alive and actively working, stopping it interrupts real work — ask first.
-            if (_watcher.IsProcessAlive(queueId))
+            // Git #4553 — session-wide: the live process may sit under a different queue row than this slot's.
+            if (_watcher.WouldInterruptActiveWork(queueId, _watcher.GetSessionId(queueId) ?? slot.SessionId, out bool adopted))
             {
-                var live = _watcher.GetInteractiveState(queueId);
-                if (live is not (InteractiveInputState.WaitingForInput or InteractiveInputState.Stopped))
+                string why = adopted
+                    ? "its input channel was lost when BuildConsole restarted"
+                    : "its input was closed when it went idle, but it is still running";
+                var answer = MessageBox.Show(this,
+                    $"\"{slot.Title}\" is still working, but it can't take typed input — {why}.\n\n" +
+                    "Sending will stop that process and resume the same session with your message, so only one copy ever runs.\n\n" +
+                    "Stop it and send?",
+                    "Send to a running build", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (answer != MessageBoxResult.Yes)
                 {
-                    string why = _watcher.IsAdopted(queueId)
-                        ? "its input channel was lost when BuildConsole restarted"
-                        : "its input was closed when it went idle, but it is still running";
-                    var answer = MessageBox.Show(this,
-                        $"\"{slot.Title}\" is still working, but it can't take typed input — {why}.\n\n" +
-                        "Sending will stop that process and resume the same session with your message, so only one copy ever runs.\n\n" +
-                        "Stop it and send?",
-                        "Send to a running build", MessageBoxButton.YesNo, MessageBoxImage.Question);
-                    if (answer != MessageBoxResult.Yes)
-                    {
-                        turn.SetDelivery(MessageDelivery.Failed, "Not sent — the running build was left alone (your text is back in the box)");
-                        slot.Pane.RestoreDraft(text);
-                        return;
-                    }
+                    turn.SetDelivery(MessageDelivery.Failed, "Not sent — the running build was left alone (your text is back in the box)");
+                    slot.Pane.RestoreDraft(text);
+                    return;
                 }
             }
 
@@ -2226,31 +2223,93 @@ namespace BuildConsole
         /// lost the live process handle, but the row itself was never marked failed), which is exactly
         /// the shape neither existing guard resolves — see <see cref="Services.BuildQueuePostgresClient.MarkAdoptedSupersededByResumeAsync"/>.
         /// </summary>
+        /// <remarks>Git #4553 — an adopted build's process is, by definition, still alive when this button shows, and the old body
+        /// queued the --resume without stopping it (MarkAdoptedSupersededByResumeAsync resolved the row, not the process), so
+        /// two copies ran the session. It now goes through <see cref="Services.QueueWatcherService.LaunchContinuationAsync"/>
+        /// like a typed message: stop the live process, confirm it exited (or launch nothing), then resume under the same row.</remarks>
         private async void ResumeAdoptedSlot(BuildWatchSlot slot)
         {
-            if (_db == null || string.IsNullOrEmpty(slot.SessionId)) return;
+            if (_db == null || string.IsNullOrEmpty(slot.SessionId) || slot.ContinuationInFlight) return;
+            if (_watcher == null)
+            {
+                ToastEngine.Error("Resume Failed", "The queue watcher isn't running, so nothing can resume this build from here.");
+                return;
+            }
             int originalQueueId = slot.QueueItemId;
+
+            if (_watcher.WouldInterruptActiveWork(originalQueueId, slot.SessionId, out _))
+            {
+                var answer = MessageBox.Show(this,
+                    $"\"{slot.Title}\" is still running, but it can't take typed input — its input channel was lost when BuildConsole restarted.\n\n" +
+                    "Resuming will stop that process and resume the same session, so only one copy ever runs.\n\n" +
+                    "Stop it and resume?",
+                    "Resume a running build", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (answer != MessageBoxResult.Yes) return;
+            }
+
+            ActivityLog.Log("build-watch", $"Resume Session for queue #{originalQueueId} (session {slot.SessionId}; live process: {_watcher.IsProcessAlive(originalQueueId)}).");
+            slot.ContinuationInFlight = true;
+            Services.QueueWatcherService.ContinuationResult result;
             try
             {
-                var queued = await _db.QueueBuildAsync(slot.Title, slot.Prompt, slot.Model, slot.Effort, slot.Cwd, slot.GithubNumber,
-                    slot.BlockedByNumbers, resumeSessionId: slot.SessionId, buildSet: slot.BuildSet, cli: slot.Cli, account: slot.Account);
-                int newQueueId = queued.Id;
-
-                try
+                result = await _watcher.LaunchContinuationAsync(new Services.QueueWatcherService.ContinuationRequest
                 {
-                    await _db.MarkAdoptedSupersededByResumeAsync(originalQueueId, newQueueId);
-                }
-                catch (Exception ex)
-                {
-                    ActivityLog.Log("build-watch", $"Couldn't mark adopted original #{originalQueueId} superseded by resume #{newQueueId}: {ex.Message}");
-                }
-
-                ToastEngine.Success("Resuming", $"Resuming from where it left off: {slot.Title}");
+                    OriginalQueueId = originalQueueId,
+                    Title = slot.Title,
+                    TitlePrefix = "", // a plain resume re-sends the original prompt under its own title
+                    Text = slot.Prompt,
+                    Model = slot.Model,
+                    Effort = slot.Effort,
+                    Cwd = slot.Cwd,
+                    GithubNumber = slot.GithubNumber,
+                    BlockedByNumbers = slot.BlockedByNumbers,
+                    FallbackSessionId = slot.SessionId,
+                    BuildSet = slot.BuildSet,
+                    Cli = slot.Cli,
+                    Account = slot.Account,
+                });
             }
             catch (Exception ex)
             {
-                ToastEngine.Error("Resume Failed", $"Couldn't resume: {ex.Message}");
+                ActivityLog.Log("build-watch", $"Resume Session exception: {ex.Message}");
+                result = new Services.QueueWatcherService.ContinuationResult { QueueId = originalQueueId, FailureReason = ex.Message };
             }
+            finally
+            {
+                slot.ContinuationInFlight = false;
+            }
+
+            if (result.QueueId != originalQueueId && (result.Launched || result.QueuedAtHardCap))
+            {
+                // Git #3008 — an adopted original whose process had already gone still reads 'running'; resolve it.
+                try { await _db.MarkAdoptedSupersededByResumeAsync(originalQueueId, result.QueueId); }
+                catch (Exception ex) { ActivityLog.Log("build-watch", $"Couldn't mark adopted original #{originalQueueId} superseded by resume #{result.QueueId}: {ex.Message}"); }
+            }
+
+            if (result.Launched && slot.Occupied && slot.QueueItemId == originalQueueId)
+            {
+                // The resumed run's event stream starts from zero, even under a reused queue id.
+                if (!string.IsNullOrWhiteSpace(result.SessionId)) slot.SessionId = result.SessionId;
+                if (result.QueueId != slot.QueueItemId)
+                {
+                    slot.QueueItemId = result.QueueId;
+                    slot.Pane.SetChecklistBuild(result.QueueId);
+                }
+                slot.InteractiveCursor = 0;
+                slot.PendingRender.Clear();
+                slot.LastOutputUtc = DateTime.UtcNow;
+                slot.InteractiveBound = _watcher.IsInteractiveRenderable(slot.QueueItemId);
+                slot.LastInteractiveState = null;
+            }
+
+            if (result.Launched)
+                ToastEngine.Success("Resuming", result.StoppedLiveProcess
+                    ? $"Stopped the old process and resumed from where it left off: {slot.Title}"
+                    : $"Resuming from where it left off: {slot.Title}");
+            else if (result.QueuedAtHardCap)
+                ToastEngine.Warning("Resume Queued", $"Every build slot is taken — {slot.Title} resumes when one frees.");
+            else
+                ToastEngine.Error("Resume Failed", $"Couldn't resume: {result.FailureReason ?? "the resumed session didn't start"}");
         }
 
         /// <summary>Ticks the composer footer's "Running for Nm Ss" label for every occupied slot — spec: "ticking every second while RunState is Running" (kept ticking for terminal slots too, showing total elapsed since Build Watch started watching).</summary>

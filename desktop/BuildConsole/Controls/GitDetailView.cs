@@ -2182,8 +2182,8 @@ namespace BuildConsole.Controls
                 return;
             }
 
-            if (watcher.IsProcessAlive(_buildPaneItemId)
-                && watcher.GetInteractiveState(_buildPaneItemId) is not (InteractiveInputState.WaitingForInput or InteractiveInputState.Stopped))
+            // Git #4553 — session-wide: the live process may sit under a different queue row than this pane's.
+            if (watcher.WouldInterruptActiveWork(_buildPaneItemId, watcher.GetSessionId(_buildPaneItemId) ?? _buildPaneSessionId, out _))
             {
                 var answer = MessageBox.Show(
                     "This build is still working, but it can't take typed input.\n\n" +
@@ -2282,10 +2282,15 @@ namespace BuildConsole.Controls
         /// (crash recovery)" context-menu item: re-queues the ORIGINAL prompt with resumeSessionId
         /// set, so --resume picks the conversation back up — not HandleBuildSend's continuation path
         /// (which replaces the prompt with typed text), since there's no composer text here.
+        ///
+        /// <para>Git #4553 — the button shows for an ADOPTED build, whose process is still alive; the old body queued the
+        /// --resume without stopping it, so two copies ran the session. Now the same guarded path as a typed message:
+        /// <see cref="QueueWatcherService.LaunchContinuationAsync"/> stops the live process and confirms it exited (or launches
+        /// nothing) before resuming under the same row.</para>
         /// </summary>
         private async void HandleBuildResume()
         {
-            if (_buildPaneItemId == 0) return;
+            if (_buildPaneItemId == 0 || _buildContinuationInFlight) return;
 
             BuildQueuePostgresClient? db = null;
             QueueWatcherService? watcher = null;
@@ -2295,29 +2300,84 @@ namespace BuildConsole.Controls
                 watcher = mw.QueueWatcher;
             }
             if (db == null) return;
+            if (watcher == null)
+            {
+                ToastEngine.Error("Resume Failed", "The queue watcher isn't running, so nothing can resume this build from here.");
+                return;
+            }
 
-            string? sessionId = _buildPaneSessionId ?? watcher?.GetSessionId(_buildPaneItemId);
+            int originalId = _buildPaneItemId;
+            string? sessionId = _buildPaneSessionId ?? watcher.GetSessionId(originalId);
             if (string.IsNullOrEmpty(sessionId)) return;
 
+            string? cwd = _associatedBuild?.Cwd ?? BuildTrackerConfig.FindRepoRoot();
+            if (string.IsNullOrEmpty(cwd))
+            {
+                // Git #1985 — FindRepoRoot() already logged + toasted the resolution failure.
+                ActivityLog.Log(Channel, "Resume aborted: repo root could not be resolved (cwd would be empty).");
+                return;
+            }
+
+            if (watcher.WouldInterruptActiveWork(originalId, sessionId, out _))
+            {
+                var answer = MessageBox.Show(
+                    "This build is still running, but it can't take typed input — its input channel was lost when BuildConsole restarted.\n\n" +
+                    "Resuming will stop that process and resume the same session, so only one copy ever runs.\n\nStop it and resume?",
+                    "Resume a running build", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (answer != MessageBoxResult.Yes) return;
+            }
+
+            string title = _associatedBuild?.Title ?? "Build";
+            ActivityLog.Log(Channel, $"Resume Session for build #{originalId} (session {sessionId}; live process: {watcher.IsProcessAlive(originalId)}).");
+            _buildContinuationInFlight = true;
+            QueueWatcherService.ContinuationResult result;
             try
             {
-                await db.QueueBuildAsync(
-                    _associatedBuild?.Title ?? "Build",
-                    _associatedBuild?.Prompt ?? "",
-                    _associatedBuild?.Model ?? "claude-sonnet-5",
-                    _associatedBuild?.Effort ?? "normal",
-                    _associatedBuild?.Cwd ?? BuildTrackerConfig.FindRepoRoot(),
-                    _loadedIssue?.IssueNumber,
-                    _associatedBuild?.BlockedByNumbers,
-                    resumeSessionId: sessionId,
-                    buildSet: _associatedBuild?.BuildSet, cli: _associatedBuild?.Cli, account: _associatedBuild?.Account);
-                ToastEngine.Success("Resuming", $"Resuming from where it left off: {_associatedBuild?.Title ?? "Build"}");
+                result = await watcher.LaunchContinuationAsync(new QueueWatcherService.ContinuationRequest
+                {
+                    OriginalQueueId = originalId,
+                    Title = title,
+                    TitlePrefix = "", // a plain resume re-sends the original prompt under its own title
+                    Text = _associatedBuild?.Prompt ?? "",
+                    Model = _associatedBuild?.Model ?? "claude-sonnet-5",
+                    Effort = _associatedBuild?.Effort ?? "normal",
+                    Cwd = cwd,
+                    GithubNumber = _loadedIssue?.IssueNumber,
+                    BlockedByNumbers = _associatedBuild?.BlockedByNumbers,
+                    FallbackSessionId = sessionId,
+                    BuildSet = _associatedBuild?.BuildSet,
+                    Cli = _associatedBuild?.Cli,
+                    Account = _associatedBuild?.Account,
+                });
             }
             catch (Exception ex)
             {
                 ActivityLog.Log(Channel, $"Resume failed: {ex.Message}");
-                ToastEngine.Error("Resume Failed", $"Couldn't resume: {ex.Message}");
+                result = new QueueWatcherService.ContinuationResult { QueueId = originalId, FailureReason = ex.Message };
             }
+            finally
+            {
+                _buildContinuationInFlight = false;
+            }
+
+            if (result.QueueId != originalId && (result.Launched || result.QueuedAtHardCap))
+            {
+                // Git #3008 — an adopted original whose process had already gone still reads 'running'; resolve it.
+                try { await db.MarkAdoptedSupersededByResumeAsync(originalId, result.QueueId); }
+                catch (Exception ex) { ActivityLog.Log(Channel, $"Couldn't mark adopted original #{originalId} superseded by resume #{result.QueueId}: {ex.Message}"); }
+            }
+
+            if (result.Launched)
+            {
+                if (_buildPaneItemId == originalId) StartBuildTailing(result.QueueId, result.SessionId);
+                ToastEngine.Success("Resuming", result.StoppedLiveProcess
+                    ? $"Stopped the old process and resumed from where it left off: {title}"
+                    : $"Resuming from where it left off: {title}");
+            }
+            else if (result.QueuedAtHardCap)
+                ToastEngine.Warning("Resume Queued", $"Every build slot is taken — {title} resumes when one frees.");
+            else
+                ToastEngine.Error("Resume Failed", $"Couldn't resume: {result.FailureReason ?? "the resumed session didn't start"}");
         }
 
         private void TailBuildLog()
