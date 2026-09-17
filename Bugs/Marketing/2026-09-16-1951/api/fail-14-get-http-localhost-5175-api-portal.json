@@ -1,0 +1,11 @@
+{
+  "index": 14,
+  "method": "GET",
+  "url": "http://localhost:5175/api/portal/scan-status",
+  "statusCode": 500,
+  "statusText": "Internal Server Error",
+  "durationMs": 7,
+  "payloadSize": "190 B",
+  "timestamp": "21:48:49.497",
+  "failed": true
+}
