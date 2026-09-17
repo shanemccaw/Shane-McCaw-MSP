@@ -156,7 +156,7 @@ router.post("/public/free-scan/account/status", readLimiter, noStore, async (req
   try {
     const engagement = await loadOrCreateEngagement(actor);
     if (engagement.status !== "paid") {
-      res.json({ stage: "not_paid", email: null, mfaMethod: null, phoneLast4: null, signedIn: false });
+      res.json({ stage: "not_paid", email: null, codePending: false, mfaMethod: null, phoneLast4: null, signedIn: false });
       return;
     }
     const account = await loadAccountForEngagement(engagement.id);
@@ -167,6 +167,9 @@ router.post("/public/free-scan/account/status", readLimiter, noStore, async (req
       // Masked: the flow credential is a bearer link, and this reply is enough
       // for the Prospect to recognise their address without handing it out.
       email: email ? maskEmail(email) : null,
+      // An unexpired code is already in the inbox, so the screen does not send
+      // another one on every refresh.
+      codePending: !!account?.emailCodeHash && !!account.emailCodeExpiresAt && account.emailCodeExpiresAt.getTime() > Date.now(),
       mfaMethod: account?.mfaMethod ?? null,
       phoneLast4: account?.phone ? account.phone.slice(-4) : null,
       signedIn: !!session && session.engagement.id === engagement.id,

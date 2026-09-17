@@ -13,6 +13,7 @@ import Home from "./marketing/pages/Home";
 import FreeScan, { FreeScanReturn } from "./marketing/pages/FreeScan";
 import FreeScanReview from "./marketing/pages/FreeScanReview";
 import FreeScanRemediate from "./marketing/pages/FreeScanRemediate";
+import FreeScanAccount from "./marketing/pages/FreeScanAccount";
 import SolutionsIndex from "./marketing/pages/SolutionsIndex";
 import Monitoring from "./marketing/pages/Monitoring";
 import QuickStart from "./marketing/pages/QuickStart";
@@ -98,6 +99,8 @@ export default function App() {
         {/* Same reasoning again (#1375): the Remediate step needs a live free-scan
             session or an emailed return token, and a signed, paid engagement behind it. */}
         <Route path="/scan/remediate" children={() => <FreeScanRemediate />} />
+        {/* Same reasoning (#4329): a paid Prospect's private, signed-in engagement page. */}
+        <Route path="/scan/account" children={() => <FreeScanAccount />} />
         <Route path="/scan" component={FreeScan} />
         <Route path="/solutions" component={SolutionsIndex} />
 

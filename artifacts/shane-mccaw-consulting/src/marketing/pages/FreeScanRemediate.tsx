@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FreeScanFlowStrip } from "../components/FreeScanFlowStrip";
+import { FreeScanAccountSetup, type FreeScanCredential } from "../components/FreeScanAccountSetup";
 import { FREE_SCAN_SESSION_STORAGE_KEY } from "./FreeScan";
 import { logger } from "../../lib/logger";
 
@@ -7,9 +8,16 @@ import { logger } from "../../lib/logger";
  * /scan/remediate — step 5 of 5 of the Free Scan flow (Git #1375, Phase of
  * Feature #1352).
  *
- * Two screens behind one route, chosen by real server state, never by a stored
+ * Three screens behind one route, chosen by real server state, never by a stored
  * UI step:
  *
+ *   0. The account step (Git #4329) — the design's `{{ acctScreen }}` block
+ *      (emailed code → password → second factor), rendered by
+ *      components/FreeScanAccountSetup.tsx at the server's `account` stage. It
+ *      creates the Prospect's SCOPED login: their engagement page (/scan/account)
+ *      with their own results and signed SOW — not the customer Portal, which
+ *      stays behind a real entitlement (#656). Both of this page's "you can do it
+ *      later" promises point there.
  *   1. The write-consent gate — the `{{ writeStage }}` block of the confirmed
  *      design `Design/marketing/marketing_handoff/Marketing Checkout.dc.html`,
  *      recreated verbatim: the amber eyebrow, the headline, the explanation,
@@ -39,10 +47,12 @@ import { logger } from "../../lib/logger";
  *     figures, not recomputed here.
  *
  * ── Identity ─────────────────────────────────────────────────────────────────
- * Same two doors as Results (#1358), the return link (#1359) and Review
- * (#1374): the live flow's checkout sessionId out of sessionStorage, or the
- * emailed return token. Both travel in the request BODY. A Free Scan Prospect
- * holds no JWT (#656) and paying for a SOW does not create one.
+ * Same doors as Results (#1358), the return link (#1359) and Review (#1374):
+ * the live flow's checkout sessionId out of sessionStorage, or the emailed
+ * return token, both in the request BODY — or, with neither, the signed-in
+ * engagement account's own session cookie (#4329, `accountSession: true`). A
+ * Free Scan Prospect holds no Portal JWT (#656) and paying for a SOW does not
+ * create one.
  *
  * ── The consent itself happens on Microsoft's domain ──────────────────────────
  * "Grant write access" opens the real admin-consent popup. This page never
@@ -106,7 +116,7 @@ interface GuideItem {
 }
 
 interface RemediateState {
-  stage: "not_paid" | "write_consent" | "guide";
+  stage: "not_paid" | "account" | "write_consent" | "guide";
   sowReference: string;
   paymentPlan: "full" | "phased";
   phaseSlugs: string[];
@@ -139,7 +149,7 @@ interface ConsentUrlResponse {
 // the same storage keys, so a Prospect landing here straight off the Review page
 // is the same Prospect by the same evidence.
 
-type Credential = { sessionId: string } | { returnToken: string };
+type Credential = FreeScanCredential;
 
 const RETURN_TOKEN_STORAGE_KEY = "freeScanReturnToken";
 
@@ -153,9 +163,12 @@ function readCredential(): Credential | null {
     const token = sessionStorage.getItem(RETURN_TOKEN_STORAGE_KEY);
     if (token) return { returnToken: token };
   } catch {
-    // Storage blocked — handled by the caller's "we lost track of your scan" state.
+    // Storage blocked — fall through to the account session.
   }
-  return null;
+  // #4329 — no flow credential in this tab: a signed-in engagement account's
+  // httpOnly cookie is the remaining door. The server answers
+  // `account_signin_required` when there is none.
+  return { accountSession: true };
 }
 
 const money = (cents: number) => `$${Math.round(cents / 100).toLocaleString("en-US")}`;
@@ -501,7 +514,11 @@ export default function FreeScanRemediate() {
         log.error({ err }, "free-scan remediate: read failed");
         setPhase("error");
         setErrorMessage(
-          "We couldn't open your remediation step. Open the results link we emailed you, or run a new free scan.",
+          // #4329 — no flow credential in this tab and no signed-in engagement
+          // account: the same "lost track" state such a visitor always got.
+          err instanceof Error && err.message === "account_signin_required"
+            ? "We lost track of your scan. Open the results link we emailed you, or run a new free scan to pick this back up."
+            : "We couldn't open your remediation step. Open the results link we emailed you, or run a new free scan.",
         );
       }
     })();
@@ -623,9 +640,16 @@ export default function FreeScanRemediate() {
             {phase === "error" ? "We couldn't open your remediation step" : "Opening your remediation step"}
           </h1>
           <p style={{ margin: 0, fontSize: 15, lineHeight: 1.65, color: "#94a3b8" }}>{errorMessage ?? "One moment."}</p>
-          <a href="/scan" style={{ fontSize: 13.5, fontWeight: 600, color: "#60a5fa" }}>
-            Back to your scan
-          </a>
+          <span style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
+            {phase === "error" ? (
+              <a href="/scan/account" style={{ fontSize: 13.5, fontWeight: 600, color: "#60a5fa" }} data-testid="freescan-remediate-signin">
+                Sign in to your engagement
+              </a>
+            ) : null}
+            <a href="/scan" style={{ fontSize: 13.5, fontWeight: 600, color: "#60a5fa" }}>
+              Back to your scan
+            </a>
+          </span>
         </div>
       </div>
     );
@@ -647,6 +671,19 @@ export default function FreeScanRemediate() {
             Back to your statement of work
           </a>
         </div>
+      </div>
+    );
+  }
+
+  // ── 0. The account step (the design's `{{ acctScreen }}`, #4329) ───────────
+
+  if (state.stage === "account" && credential) {
+    return (
+      <div style={PAGE} data-testid="freescan-remediate-account">
+        {/* The design keeps Review current until the account exists. */}
+        <FreeScanFlowStrip at={3} />
+        {busyLabel ? <ProcessingOverlay label={busyLabel} /> : null}
+        <FreeScanAccountSetup credential={credential} onBusy={setBusyLabel} onComplete={() => void read()} />
       </div>
     );
   }
@@ -788,7 +825,7 @@ export default function FreeScanRemediate() {
           </div>
 
           <span style={{ fontSize: 11.5, color: "#64748b", lineHeight: 1.55 }}>
-            Decline and nothing is lost — you can grant it from the Portal whenever you want.
+            Decline and nothing is lost — you can grant it from your engagement page whenever you want.
           </span>
         </div>
       </div>
@@ -809,7 +846,7 @@ export default function FreeScanRemediate() {
         )} invoices only as you sign off each phase.`;
   const writeNote = granted
     ? "Write access is granted, so a phase can apply its fix directly — each change still needs your approval."
-    : "Remediation stays read-only for now; you can grant write access from the Portal whenever you want.";
+    : "Remediation stays read-only for now; you can grant write access from your engagement page whenever you want.";
 
   const guide = state.guide ?? [];
   const firstPhase = state.boughtPhases[0];
@@ -923,7 +960,7 @@ export default function FreeScanRemediate() {
         </div>
 
         {/* The decline path's promise, made real: the same grant is still one
-            click away, from here as well as from the Portal. */}
+            click away, from here as well as from the engagement page (#4329). */}
         {!granted && state.writeConsent.available ? (
           <div
             style={{
@@ -942,7 +979,7 @@ export default function FreeScanRemediate() {
             </span>
             <span style={{ fontSize: 12.5, lineHeight: 1.6, color: "#94a3b8" }}>
               Every item below shows what your team runs. Grant write access and the ones we can apply for you switch
-              over — from here, or from your Portal later.
+              over — from here, or from your engagement page later.
             </span>
             {actionError ? <span style={{ fontSize: 12, color: "#f87171", lineHeight: 1.55 }}>{actionError}</span> : null}
             <span>
@@ -978,8 +1015,10 @@ export default function FreeScanRemediate() {
         ) : null}
 
         <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          {/* #4329 — the Prospect's scoped engagement page, which their account opens.
+              Not /portal/login: a paid Free Scan Prospect holds no Portal login. */}
           <a
-            href="/portal/login"
+            href="/scan/account"
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -994,7 +1033,7 @@ export default function FreeScanRemediate() {
             }}
             data-testid="freescan-remediate-open-portal"
           >
-            Open your Portal {iconArrow}
+            Open your engagement {iconArrow}
           </a>
           <a href="/" style={{ fontSize: 13, fontWeight: 600, color: "#60a5fa" }}>
             Back to the site

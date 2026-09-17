@@ -168,7 +168,9 @@ interface PaymentIntentResponse {
 
 // ── Credential ────────────────────────────────────────────────────────────────
 
-type Credential = { sessionId: string } | { returnToken: string };
+// #4329 — `accountSession` is the paid Prospect's signed-in engagement account
+// (httpOnly cookie), used when this tab holds neither flow credential.
+type Credential = { sessionId: string } | { returnToken: string } | { accountSession: true };
 
 const RETURN_TOKEN_STORAGE_KEY = "freeScanReturnToken";
 
@@ -182,9 +184,11 @@ function readCredential(): Credential | null {
     const token = sessionStorage.getItem(RETURN_TOKEN_STORAGE_KEY);
     if (token) return { returnToken: token };
   } catch {
-    // Storage blocked — handled by the caller's "we lost track of your scan" state.
+    // Storage blocked — fall through to the account session.
   }
-  return null;
+  // No flow credential in this tab: the signed-in engagement account is the
+  // remaining door. The server answers `account_signin_required` without one.
+  return { accountSession: true };
 }
 
 // ── Formatting ────────────────────────────────────────────────────────────────
@@ -511,7 +515,11 @@ export default function FreeScanReview() {
         log.error({ err }, "free-scan review: SOW read failed");
         setPhase("error");
         setErrorMessage(
-          "We couldn't open your statement of work. Open the results link we emailed you, or run a new free scan.",
+          // #4329 — no flow credential in this tab and no signed-in engagement
+          // account: the same "lost track" state such a visitor always got.
+          err instanceof Error && err.message === "account_signin_required"
+            ? "We lost track of your scan. Open the results link we emailed you, or run a new free scan to pick this back up."
+            : "We couldn't open your statement of work. Open the results link we emailed you, or run a new free scan.",
         );
       }
     })();
@@ -658,9 +666,16 @@ export default function FreeScanReview() {
               ? "The statement of work is generated from your findings, so it waits for the scan to finish. Come back to this page in a few minutes."
               : errorMessage ?? "One moment."}
           </p>
-          <a href="/scan" style={{ fontSize: 13.5, fontWeight: 600, color: "#60a5fa" }}>
-            Back to your scan
-          </a>
+          <span style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
+            {phase === "error" ? (
+              <a href="/scan/account" style={{ fontSize: 13.5, fontWeight: 600, color: "#60a5fa" }} data-testid="freescan-review-signin">
+                Sign in to your engagement
+              </a>
+            ) : null}
+            <a href="/scan" style={{ fontSize: 13.5, fontWeight: 600, color: "#60a5fa" }}>
+              Back to your scan
+            </a>
+          </span>
         </div>
       </div>
     );

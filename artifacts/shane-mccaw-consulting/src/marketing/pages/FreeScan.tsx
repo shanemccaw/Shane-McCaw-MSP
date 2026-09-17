@@ -1013,19 +1013,30 @@ function FreeScanPage({ returnMode }: { returnMode: boolean }) {
   };
 
   const fetchReturnLinkResults = () => {
-    if (!returnToken) {
-      setReturnLinkProblem("no_token");
-      setResultsStatus("error");
-      setResultsError(RETURN_LINK_PROBLEM_MESSAGE.no_token);
-      return;
-    }
     void (async () => {
       try {
-        const res = await fetch("/api/public/free-scan/return-link/results", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token: returnToken }),
-        });
+        // Git #4329 — with no return token in this tab, a paid Prospect's signed-in engagement
+        // account (httpOnly cookie) reads the same locked payload for its own engagement. No
+        // account session either is the same "no token" state as before.
+        const res = returnToken
+          ? await fetch("/api/public/free-scan/return-link/results", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ token: returnToken }),
+            })
+          : await fetch("/api/public/free-scan/account/results", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "same-origin",
+              body: "{}",
+            });
+        if (!returnToken && res.status === 401) {
+          if (unmountedRef.current) return;
+          setReturnLinkProblem("no_token");
+          setResultsStatus("error");
+          setResultsError(RETURN_LINK_PROBLEM_MESSAGE.no_token);
+          return;
+        }
         const data = (await res.json().catch(() => ({}))) as Partial<FreeScanResultsResponse> & {
           error?: string;
           domain?: string | null;
