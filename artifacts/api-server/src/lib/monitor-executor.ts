@@ -1533,10 +1533,18 @@ export function applyMapping(
       // had the matching objects in hand at that exact expression and threw
       // them away.
       case "count": {
+        // #4537 — an array-typed sourceField (e.g. Graph's `assignedLicenses: []`
+        // for an unlicensed user) is present-but-empty, not null/undefined. A
+        // bare non-null check counts it anyway, which makes `count` on an array
+        // field always equal itemCount regardless of the array's real content.
+        // Only an empty array is excluded here; a non-array falsy-but-non-null
+        // value (0, "", false) keeps counting, unchanged from before.
         const ev = new EvidenceCollector(rawTransform, sourceField);
         for (let i = 0; i < vals.length; i++) {
-          if (vals[i] == null) continue;
-          ev.add(items[i], sourceField, vals[i]);
+          const v = vals[i];
+          if (v == null) continue;
+          if (Array.isArray(v) && v.length === 0) continue;
+          ev.add(items[i], sourceField, v);
         }
         result[targetField] = ev.count;
         publishEvidence(targetField, ev);

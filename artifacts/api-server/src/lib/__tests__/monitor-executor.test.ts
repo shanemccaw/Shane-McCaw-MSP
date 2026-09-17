@@ -548,6 +548,21 @@ describe("applyMapping", () => {
     expect(result.mfaEnabledCount).toBe(3);
   });
 
+  it("#4537: count on an array-typed sourceField excludes items whose array is empty", () => {
+    const licenseItems = [
+      { id: "u1", assignedLicenses: ["sku-e3"] },
+      { id: "u2", assignedLicenses: [] },
+      { id: "u3", assignedLicenses: ["sku-e3", "sku-e5"] },
+      { id: "u4", assignedLicenses: [] },
+    ];
+    const mapping: MappingRule[] = [
+      { sourceField: "assignedLicenses", targetField: "licensedCount", transform: "count" },
+    ];
+    const result = applyMapping(licenseItems, mapping, []);
+    // Only u1 and u3 actually carry a license; count must not equal itemCount (4).
+    expect(result.licensedCount).toBe(2);
+  });
+
   it("applies exists transform", () => {
     const mapping: MappingRule[] = [{ sourceField: "mfaRegistered", targetField: "anyMfaEnabled", transform: "exists" }];
     const result = applyMapping(items, mapping, []);
