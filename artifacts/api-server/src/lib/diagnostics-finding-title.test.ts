@@ -122,6 +122,28 @@ describe("#408 buildFindingTitle — the matched rule's own words reach the cust
   });
 });
 
+describe("#4479 buildFindingTitle — a rule label's own placeholder is interpolated", () => {
+  it("replaces <domain> with the finding's real extractedProperties.domain", () => {
+    const title = buildFindingTitle(
+      checkResult({
+        checkKey: "exchange:dkim-spf-dmarc-status",
+        severityMatched: "warning",
+        severityLabel: "No DMARC record found at _dmarc.<domain>",
+        extractedProperties: { domain: "mccawsoft2.onmicrosoft.com" },
+      }),
+    );
+    expect(title).toBe("No DMARC record found at _dmarc.mccawsoft2.onmicrosoft.com");
+    expect(title).not.toContain("<domain>");
+  });
+
+  it("leaves the placeholder in place when the property genuinely isn't present", () => {
+    const title = buildFindingTitle(
+      checkResult({ severityMatched: "warning", severityLabel: "No DMARC record found at _dmarc.<domain>" }),
+    );
+    expect(title).toBe("No DMARC record found at _dmarc.<domain>");
+  });
+});
+
 describe("#1147 buildFindingDescription — no raw property dump reaches the customer", () => {
   // The exact extractedProperties shape from Shane's report — including a nested
   // object (`sitesByHighestSharingLevel`) that the old generic builder rendered
