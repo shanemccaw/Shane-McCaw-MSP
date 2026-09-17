@@ -16,7 +16,7 @@
  * session was working in `C:\wt\...`, and would otherwise have surfaced as new tables
  * silently missing from the import.
  *
- * `--alias:` pins `@workspace/*` to THIS worktree's own sources, so a script tests the
+ * `workspaceSourcePlugin` pins `@workspace/*` to THIS worktree's own sources, so a script tests the
  * code the session actually wrote. `tsx` is not installed in this workspace, and Node's
  * native type stripping cannot resolve the directory imports `lib/db` uses, so bundling
  * is also what makes a `.ts` entry point runnable at all here.
@@ -82,6 +82,45 @@ if (envFileContents !== undefined) {
   }
 }
 
+// Pin `@workspace/*` to THIS worktree's sources by reading each package's own `exports`
+// map. A plain esbuild `alias` of the package root to its `src/index.ts` also rewrote
+// subpath imports (`@workspace/db/rbac/evaluate` -> `.../index.ts/rbac/evaluate`), so any
+// entry that transitively imported a subpath failed to bundle at all (Git #4471).
+const workspacePackages = { "@workspace/db": "lib/db", "@workspace/api-zod": "lib/api-zod" };
+const workspaceExports = {};
+for (const [name, dir] of Object.entries(workspacePackages)) {
+  const pkg = JSON.parse(await readFile(path.join(repoRoot, dir, "package.json"), "utf8"));
+  workspaceExports[name] = { dir: path.join(repoRoot, dir), exports: pkg.exports ?? {} };
+}
+function resolveWorkspaceImport(spec) {
+  for (const [name, { dir, exports }] of Object.entries(workspaceExports)) {
+    if (spec !== name && !spec.startsWith(`${name}/`)) continue;
+    const sub = `.${spec.slice(name.length)}`;
+    if (typeof exports[sub] === "string") return path.join(dir, exports[sub]);
+    for (const [pattern, target] of Object.entries(exports)) {
+      const star = pattern.indexOf("*");
+      if (star < 0 || typeof target !== "string") continue;
+      const prefix = pattern.slice(0, star);
+      const suffix = pattern.slice(star + 1);
+      if (sub.startsWith(prefix) && sub.endsWith(suffix) && sub.length >= prefix.length + suffix.length) {
+        const matched = sub.slice(prefix.length, sub.length - suffix.length);
+        return path.join(dir, target.replace("*", matched));
+      }
+    }
+    return null;
+  }
+  return null;
+}
+const workspaceSourcePlugin = {
+  name: "workspace-source",
+  setup(b) {
+    b.onResolve({ filter: /^@workspace\// }, (args) => {
+      const resolved = resolveWorkspaceImport(args.path);
+      return resolved ? { path: resolved } : undefined;
+    });
+  },
+};
+
 // The bundle must sit INSIDE this package, not in a temp directory: everything in
 // `external` below is resolved by Node at runtime from the nearest `node_modules`, and a
 // bundle in `%TEMP%` has none above it.
@@ -98,16 +137,15 @@ try {
     bundle: true,
     logLevel: "warning",
     // THE POINT OF THIS FILE — see the header.
-    alias: {
-      "@workspace/db": path.join(repoRoot, "lib/db/src/index.ts"),
-      "@workspace/api-zod": path.join(repoRoot, "lib/api-zod/src/index.ts"),
-    },
+    plugins: [workspaceSourcePlugin],
     external: [
       "*.node", "zod", "sharp", "better-sqlite3", "sqlite3", "canvas", "bcrypt", "argon2",
       "fsevents", "re2", "farmhash", "xxhash-addon", "bufferutil", "utf-8-validate",
       "ssh2", "cpu-features", "dtrace-provider", "isolated-vm", "lightningcss",
       "pg-native", "oracledb", "mongodb-client-encryption", "nodemailer", "pino",
       "pino-pretty", "thread-stream",
+      // Same as build.mjs: playwright-core requires chromium-bidi subpaths that do not bundle.
+      "playwright", "playwright-core", "chromium-bidi", "puppeteer", "puppeteer-core", "electron",
     ],
     banner: {
       js: "import{createRequire as __cr}from'node:module';const require=__cr(import.meta.url);",
