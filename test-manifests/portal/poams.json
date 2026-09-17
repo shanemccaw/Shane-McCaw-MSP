@@ -3,7 +3,7 @@
   "feature": "POA&Ms (#4037, Feature #1935) -- the real customer-facing POA&Ms page in artifacts/portal (/poams), wired to the six live artifacts/api-server/src/routes/portal-poams.ts routes -- see docs/portal/poams-contract-pack.md. No fixture module: every row on screen comes from these endpoints. The sibling exit to the Risk Register ('we ARE fixing this, here is the plan' vs. 'we accept the consequence').",
   "baseUrl": "{{DEPLOY_URL}}",
   "loginAs": "Customer — RBAC test",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "11fe078b8",
 
   "notes": [
     "TIER GATE IS THE REAL CURRENT STATE FOR EVERY TENANT (#3104): confirmed this session via a direct SELECT against the local DATABASE_URL -- no monitoring_tier row's type_attributes.includedFeatures array anywhere in the local DB contains 'poams'. So GET /api/portal/poams and GET /api/portal/poams/:poamId 402 for the designated test account exactly like they would for any real customer today; A1/A2 below assert that live 402, not a hypothetical.",
