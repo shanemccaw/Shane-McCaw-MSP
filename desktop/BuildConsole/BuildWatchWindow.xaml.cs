@@ -891,9 +891,13 @@ namespace BuildConsole
                 var agents = _watcher.GetActiveSubagents(slot.QueueItemId);
                 if (agents.Count > 0)
                 {
+                    // Git #4520 — the list now also carries the CLI's background shell tasks (a dev-server restart, a
+                    // Monitor), so only say "agent" when every entry really is one.
+                    bool allAgents = agents.All(a => QueueWatcherService.IsSubagentOrBackgroundTool(a.ToolName) || a.ToolName == "local_agent");
+                    var noun = allAgents ? "agent" : "task";
                     var label = agents.Count == 1
-                        ? $"⚡ running 1 background agent ({agents[0].Description})…"
-                        : $"⚡ {agents.Count} background agents working ({string.Join(", ", agents.Take(3).Select(a => a.Description))})…";
+                        ? $"⚡ running 1 background {noun} ({agents[0].Description})…"
+                        : $"⚡ {agents.Count} background {noun}s working ({string.Join(", ", agents.Take(3).Select(a => a.Description))})…";
                     slot.StatusLine.ActivityText = label;
                     slot.EasterEggUntilUtc = DateTime.MinValue; // don't let an easter egg overwrite the subagent status
                     return;

@@ -194,6 +194,23 @@ namespace BuildConsole.Services
             /// <summary>Active background subagents / workflows in flight for this build (tool_call registered, tool_result not yet landed). Guarded by the service _gate.</summary>
             public readonly Dictionary<string, SubagentActivityInfo> ActiveSubagents = new();
 
+            /// <summary>Git #4520 — the CLI's own background tasks still running for this build (a `run_in_background` Bash, a
+            /// command auto-backgrounded after its 120s timeout, a Monitor, a background Agent), keyed by task_id and tracked from
+            /// the real stream-json task lifecycle (system task_started / task_updated / task_notification /
+            /// background_tasks_changed). A turn can end while these are still running; the CLI then starts a new turn by itself
+            /// when one finishes. Guarded by the service _gate.</summary>
+            public readonly Dictionary<string, SubagentActivityInfo> BackgroundTasks = new();
+            /// <summary>Git #4520 — description + type of every task_started seen and not yet ended, so a task later flipped to
+            /// is_backgrounded by task_updated (which carries no description) can still be named. Guarded by the service _gate.</summary>
+            public readonly Dictionary<string, (string Description, string Type)> KnownTasks = new();
+            /// <summary>Git #4520 — when a background task last ended. Drives the reaction grace in the idle auto-finalize. Guarded by the service _gate.</summary>
+            public DateTime? LastBackgroundTaskEndedUtc;
+            /// <summary>Git #4520 — per-build copy of the longest the idle auto-finalize waits on open background tasks, in ms (0 = don't wait).</summary>
+            public int BackgroundTaskMaxWaitMs;
+            /// <summary>Git #4520 — the idle period (its AwaitingInputSince) a background-task deferral was last logged for, so a
+            /// deferral re-armed every idle interval logs once per idle period instead of every 15s. Guarded by the service _gate.</summary>
+            public DateTime? BackgroundDeferLoggedFor;
+
             /// <summary>
             /// The BuildConsole-owned live STRUCTURED event stream the Build Watch window pulls
             /// directly (via <see cref="CopyEventsSince"/>) instead of tailing the log file.
@@ -342,6 +359,10 @@ namespace BuildConsole.Services
         private const int StopSoftGraceMs = 4000;
         /// <summary>If the process is still emitting output within this window at the escalation check, the soft interrupt is deemed unresponsive → hard kill.</summary>
         private const int StopQuietMs = 2000;
+        /// <summary>Git #4520 — after a background task ends while the build sits idle, the CLI starts a new turn on its own to
+        /// react to the task-notification. Its first assistant output can take a while to land (model latency over a large
+        /// cached context), so the idle auto-finalize holds off at least this long after a task ends before closing stdin.</summary>
+        private const int BackgroundTaskReactionGraceMs = 60000;
         /// <summary>Resume: how long to let the soft interrupt abort the hung in-flight request and unwind the aborted turn before writing the follow-up continue message.</summary>
         private const int ResumeInterruptSettleMs = 900;
         /// <summary>Resume: how long to watch for the fresh turn to produce real output before deciding "resumed" vs "still stuck". A reconnect + first streamed token can take a few seconds.</summary>
@@ -2832,6 +2853,7 @@ namespace BuildConsole.Services
                 LastActivityUtc = DateTime.UtcNow,
                 State = InteractiveInputState.Working,
                 IdleFinalizeMs = Math.Max(0, settings.InteractiveIdleFinalizeSeconds) * 1000,
+                BackgroundTaskMaxWaitMs = Math.Max(0, settings.InteractiveBackgroundTaskMaxWaitMinutes) * 60_000,
                 BuildSet = string.IsNullOrWhiteSpace(item.BuildSet) ? null : item.BuildSet,
                 BuildSetMember = string.IsNullOrWhiteSpace(item.BuildSet) ? null : (item.GithubNumber?.ToString() ?? item.Id.ToString()),
                 WorktreePath = worktreePath,
@@ -3248,6 +3270,10 @@ namespace BuildConsole.Services
 
             if (!entry.Interactive) return;
 
+            // Git #4520 — the CLI's background-task lifecycle, which the idle auto-finalize must respect.
+            // Rebuilt during an adopted build's replay too (pure state, no side effects).
+            ApplyBackgroundTaskEvent(entry, data);
+
             // (2) Structured event stream — interactive builds only. Full fidelity: the real
             //     command/arguments (ToolCall) and real tool output (ToolResult) the Build
             //     Watch chip renders on expand, plus file-edit diffs. This is exactly where the
@@ -3411,6 +3437,103 @@ namespace BuildConsole.Services
                 || text.IndexOf("does not want to proceed with this tool use", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
+        /// <summary>
+        /// Git #4520 — keeps <see cref="RunningEntry.BackgroundTasks"/> in step with the CLI's own stream-json task events:
+        ///   • system/task_started   — is_backgrounded:true (run_in_background, Monitor, background Agent) opens a task;
+        ///   • system/task_updated   — patch.is_backgrounded:true (a command auto-backgrounded after its 120s timeout) opens
+        ///                             one; a patch.status other than running/pending (completed/failed/killed) ends it;
+        ///   • system/task_notification — the task ended (completed/failed/stopped);
+        ///   • system/background_tasks_changed — the CLI's authoritative snapshot of every background task still running.
+        /// Foreground tool tasks (task_started is_backgrounded:false, never backgrounded) are not tracked as background work:
+        /// a turn cannot end while one is outstanding. Guarded by _gate.
+        /// </summary>
+        private void ApplyBackgroundTaskEvent(RunningEntry entry, string line)
+        {
+            // Cheap pre-filter before a JSON parse: every one of these events carries one of these substrings.
+            if (line.IndexOf("\"task_", StringComparison.Ordinal) < 0
+                && line.IndexOf("background_tasks_changed", StringComparison.Ordinal) < 0) return;
+
+            JsonDocument doc;
+            try { doc = JsonDocument.Parse(line); }
+            catch { return; }
+            using (doc)
+            {
+                var root = doc.RootElement;
+                if (root.ValueKind != JsonValueKind.Object) return;
+                if ((root.TryGetProperty("type", out var t) ? t.GetString() : null) != "system") return; // e.g. an assistant message quoting these names
+                var subtype = root.TryGetProperty("subtype", out var st) ? st.GetString() : null;
+                string? taskId = root.TryGetProperty("task_id", out var tid) ? tid.GetString() : null;
+                var now = DateTime.UtcNow;
+
+                lock (_gate)
+                {
+                    void Open(string tId, string? desc, string? type)
+                    {
+                        if (entry.BackgroundTasks.ContainsKey(tId)) return;
+                        entry.KnownTasks.TryGetValue(tId, out var known);
+                        entry.BackgroundTasks[tId] = new SubagentActivityInfo
+                        {
+                            ToolUseId = tId,
+                            Description = !string.IsNullOrWhiteSpace(desc) ? desc! : (!string.IsNullOrWhiteSpace(known.Description) ? known.Description : "background task"),
+                            ToolName = !string.IsNullOrWhiteSpace(type) ? type! : (!string.IsNullOrWhiteSpace(known.Type) ? known.Type : "unknown"),
+                            StartedAtUtc = now,
+                        };
+                    }
+                    void End(string tId)
+                    {
+                        entry.KnownTasks.Remove(tId);
+                        if (entry.BackgroundTasks.Remove(tId)) entry.LastBackgroundTaskEndedUtc = now;
+                    }
+
+                    switch (subtype)
+                    {
+                        case "task_started":
+                            if (taskId == null) return;
+                            var desc = root.TryGetProperty("description", out var d) ? d.GetString() : null;
+                            var type = root.TryGetProperty("task_type", out var tt) ? tt.GetString() : null;
+                            entry.KnownTasks[taskId] = (desc ?? "", type ?? "");
+                            // Bound defensively: normally only outstanding tasks are held (each is dropped when it ends).
+                            if (entry.KnownTasks.Count > MaxBufferedEvents) entry.KnownTasks.Clear();
+                            if (root.TryGetProperty("is_backgrounded", out var bg) && bg.ValueKind == JsonValueKind.True)
+                                Open(taskId, desc, type);
+                            break;
+
+                        case "task_updated":
+                            if (taskId == null || !root.TryGetProperty("patch", out var patch) || patch.ValueKind != JsonValueKind.Object) return;
+                            if (patch.TryGetProperty("status", out var ps) && ps.ValueKind == JsonValueKind.String)
+                            {
+                                var status = ps.GetString();
+                                if (status != "running" && status != "pending") { End(taskId); break; }
+                            }
+                            if (patch.TryGetProperty("is_backgrounded", out var pbg) && pbg.ValueKind == JsonValueKind.True)
+                                Open(taskId, null, null);
+                            break;
+
+                        case "task_notification":
+                            if (taskId != null) End(taskId);
+                            break;
+
+                        case "background_tasks_changed":
+                            if (!root.TryGetProperty("tasks", out var tasks) || tasks.ValueKind != JsonValueKind.Array) return;
+                            var live = new HashSet<string>(StringComparer.Ordinal);
+                            foreach (var task in tasks.EnumerateArray())
+                            {
+                                if (task.ValueKind != JsonValueKind.Object) continue;
+                                var id = task.TryGetProperty("task_id", out var ti) ? ti.GetString() : null;
+                                if (string.IsNullOrEmpty(id)) continue;
+                                live.Add(id);
+                                Open(id,
+                                     task.TryGetProperty("description", out var td) ? td.GetString() : null,
+                                     task.TryGetProperty("task_type", out var ty) ? ty.GetString() : null);
+                            }
+                            foreach (var gone in entry.BackgroundTasks.Keys.Where(k => !live.Contains(k)).ToList())
+                                End(gone);
+                            break;
+                    }
+                }
+            }
+        }
+
         /// <summary>Returns true for tool names that represent a long-running background subagent or workflow the user should be aware of (e.g. Task, workflow).</summary>
         public static bool IsSubagentOrBackgroundTool(string? name)
         {
@@ -3426,9 +3549,13 @@ namespace BuildConsole.Services
         {
             lock (_gate)
             {
-                if (_running.TryGetValue(id, out var entry) && entry.ActiveSubagents.Count > 0)
-                    return new List<SubagentActivityInfo>(entry.ActiveSubagents.Values);
-                return new List<SubagentActivityInfo>();
+                var list = new List<SubagentActivityInfo>();
+                if (!_running.TryGetValue(id, out var entry)) return list;
+                list.AddRange(entry.ActiveSubagents.Values);
+                // Git #4520 — plus the CLI's own background tasks (run_in_background Bash, Monitor, background Agent), so a
+                // build idle only because it is waiting on one reads as waiting, not stalled.
+                list.AddRange(entry.BackgroundTasks.Values);
+                return list;
             }
         }
 
@@ -3576,7 +3703,16 @@ namespace BuildConsole.Services
         {
             if (_running.TryGetValue(id, out var e) && e.Interactive && !e.Process.HasExited)
             {
-                lock (_gate) return e.State;
+                lock (_gate)
+                {
+                    // Git #4520 — a turn that ended with its own background task(s) still running isn't asking Shane
+                    // anything; it's busy until the CLI reacts to them. Report Working so the queue/Build Watch don't
+                    // show the amber "needs input" cue for that whole wait. (Internal State stays WaitingForInput —
+                    // that's what the idle auto-finalize and Send key off.)
+                    if (e.State == InteractiveInputState.WaitingForInput && e.BackgroundTasks.Count > 0)
+                        return InteractiveInputState.Working;
+                    return e.State;
+                }
             }
             return null;
         }
@@ -4003,13 +4139,14 @@ namespace BuildConsole.Services
             _ = Task.Delay(delay, token).ContinueWith(t =>
             {
                 if (t.IsCanceled) return;
-                bool close;
-                bool deferForSubagents = false;
+                IdleFinalizeDecision decision;
                 int activeSubagents = 0;
+                string? bgLog = null;
                 lock (_gate)
                 {
                     bool idle = entry.AwaitingInputSince != null && !entry.Process.HasExited;
                     activeSubagents = entry.ActiveSubagents.Count;
+                    var now = DateTime.UtcNow;
                     // Git #2106 — do NOT finalize a build whose top-level turn is idle ONLY because
                     // it's waiting on its own background sub-agent(s)/workflow(s): a Task-tool
                     // invocation still in flight, tracked in ActiveSubagents (the same list Build
@@ -4023,27 +4160,110 @@ namespace BuildConsole.Services
                     // tool_result via AppendEvent); a genuinely long-running agent simply keeps
                     // deferring until it's done. The re-arm chain terminates on its own the moment
                     // the process actually exits (HasExited flips idle→false → no further re-arm).
-                    if (idle && activeSubagents > 0)
+                    //
+                    // Git #4520 — the same holds for the CLI's OWN background tasks, which the #2106 check above
+                    // never saw: a `run_in_background` Bash (or a background Agent) returns its tool_result
+                    // immediately, so it is never outstanding in ActiveSubagents while the turn is idle. Confirmed
+                    // live on queue #3114 (GH #4469): the turn ended with a dev-server restart + an isolated API host
+                    // running in the background, stdin was closed exactly 15s later, the CLI exited 0 in 9s, the build
+                    // was recorded done/Verifying, and the resumed session reported both tasks "Orphaned by a previous
+                    // Claude Code process exit". BackgroundTasks tracks those tasks from the stream-json lifecycle.
+                    decision = DecideIdleFinalize(
+                        idle, activeSubagents, entry.BackgroundTasks.Count,
+                        entry.AwaitingInputSince ?? now, entry.LastBackgroundTaskEndedUtc, entry.LastActivityUtc,
+                        entry.IdleFinalizeMs, entry.BackgroundTaskMaxWaitMs, now);
+
+                    switch (decision)
                     {
-                        deferForSubagents = true;
-                        close = false;
-                        ScheduleAutoFinalize(entry, id); // re-arm; caller-holds-_gate contract satisfied (we hold it here)
-                    }
-                    else
-                    {
-                        close = idle;
+                        case IdleFinalizeDecision.DeferForSubagents:
+                        case IdleFinalizeDecision.DeferForTaskReaction:
+                            ScheduleAutoFinalize(entry, id); // re-arm; caller-holds-_gate contract satisfied (we hold it here)
+                            break;
+                        case IdleFinalizeDecision.DeferForBackgroundTasks:
+                            ScheduleAutoFinalize(entry, id);
+                            // Re-armed every idle interval — log once per idle period, not every 15s.
+                            if (entry.BackgroundDeferLoggedFor != entry.AwaitingInputSince)
+                            {
+                                entry.BackgroundDeferLoggedFor = entry.AwaitingInputSince;
+                                bgLog = $"auto-finalize deferred — turn ended with {entry.BackgroundTasks.Count} background task(s) still running for {entry.Title} (queue #{id}): {DescribeBackgroundTasks(entry)}; holding stdin open (up to {entry.BackgroundTaskMaxWaitMs / 60000}m) so the CLI can react when they finish.";
+                            }
+                            break;
+                        case IdleFinalizeDecision.CloseAfterBackgroundCeiling:
+                            bgLog = $"background-task wait ceiling ({entry.BackgroundTaskMaxWaitMs / 60000}m) reached for {entry.Title} (queue #{id}) with task(s) still running: {DescribeBackgroundTasks(entry)} — finalizing anyway (the CLI stops them on exit).";
+                            break;
                     }
                 }
-                if (deferForSubagents)
+                if (bgLog != null) ActivityLog.Log("interactive-build", bgLog);
+                switch (decision)
                 {
-                    ActivityLog.Log("interactive-build", $"auto-finalize deferred — {activeSubagents} background sub-agent(s)/workflow(s) still in flight for {entry.Title} (queue #{id}); re-checking after another idle interval rather than force-closing stdin mid-work.");
-                    return;
+                    case IdleFinalizeDecision.DeferForSubagents:
+                        ActivityLog.Log("interactive-build", $"auto-finalize deferred — {activeSubagents} background sub-agent(s)/workflow(s) still in flight for {entry.Title} (queue #{id}); re-checking after another idle interval rather than force-closing stdin mid-work.");
+                        return;
+                    case IdleFinalizeDecision.DeferForTaskReaction:
+                        ActivityLog.Log("interactive-build", $"auto-finalize deferred — a background task just finished for {entry.Title} (queue #{id}); giving the CLI time to start its reaction turn.");
+                        return;
+                    case IdleFinalizeDecision.Close:
+                    case IdleFinalizeDecision.CloseAfterBackgroundCeiling:
+                        break;
+                    default:
+                        return;
                 }
-                if (!close) return;
                 try { lock (entry.InputLock) entry.Stdin?.Close(); } catch { }
                 ActivityLog.Log("interactive-build", $"auto-finalizing idle interactive build (closing stdin so it exits): {entry.Title} (queue #{id})");
             }, TaskScheduler.Default);
         }
+
+        internal enum IdleFinalizeDecision
+        {
+            /// <summary>Not idle (working, or the process already exited) — nothing to do; the timer chain ends.</summary>
+            NotIdle,
+            /// <summary>Git #2106 — a tracked sub-agent tool call is still outstanding.</summary>
+            DeferForSubagents,
+            /// <summary>Git #4520 — the CLI still reports background task(s) running, within the wait ceiling.</summary>
+            DeferForBackgroundTasks,
+            /// <summary>Git #4520 — a background task ended during this idle period; the CLI's own reaction turn may not have produced output yet.</summary>
+            DeferForTaskReaction,
+            /// <summary>Git #4520 — background task(s) still running but the wait ceiling for this idle period has passed.</summary>
+            CloseAfterBackgroundCeiling,
+            /// <summary>Genuinely idle — close stdin so the CLI exits (Git #800).</summary>
+            Close,
+        }
+
+        /// <summary>
+        /// Git #4520 — the idle auto-finalize decision, pure so it can be exercised without a live process. Closing stdin is
+        /// only correct once the build is idle AND has no work of its own still in flight:
+        ///   1. an outstanding sub-agent tool call (#2106) always defers;
+        ///   2. open background tasks defer until <paramref name="backgroundMaxWaitMs"/> has passed since the turn ended
+        ///      (0 = don't wait on them — the pre-#4520 behavior);
+        ///   3. when a background task ended during this idle period, the CLI starts a reaction turn by itself — defer for
+        ///      <see cref="BackgroundTaskReactionGraceMs"/> after it ended, and for as long as the process keeps emitting
+        ///      output (a thinking model streams events before its first assistant message).
+        /// </summary>
+        internal static IdleFinalizeDecision DecideIdleFinalize(
+            bool idle, int activeSubagents, int backgroundTasks,
+            DateTime awaitingInputSince, DateTime? lastBackgroundTaskEndedUtc, DateTime lastActivityUtc,
+            int idleFinalizeMs, int backgroundMaxWaitMs, DateTime nowUtc)
+        {
+            if (!idle) return IdleFinalizeDecision.NotIdle;
+            if (activeSubagents > 0) return IdleFinalizeDecision.DeferForSubagents;
+            if (backgroundTasks > 0 && backgroundMaxWaitMs > 0)
+            {
+                return nowUtc - awaitingInputSince < TimeSpan.FromMilliseconds(backgroundMaxWaitMs)
+                    ? IdleFinalizeDecision.DeferForBackgroundTasks
+                    : IdleFinalizeDecision.CloseAfterBackgroundCeiling;
+            }
+            if (backgroundMaxWaitMs > 0 && lastBackgroundTaskEndedUtc is DateTime ended && ended >= awaitingInputSince)
+            {
+                if (nowUtc - ended < TimeSpan.FromMilliseconds(BackgroundTaskReactionGraceMs)) return IdleFinalizeDecision.DeferForTaskReaction;
+                if (nowUtc - lastActivityUtc < TimeSpan.FromMilliseconds(idleFinalizeMs)) return IdleFinalizeDecision.DeferForTaskReaction;
+            }
+            return IdleFinalizeDecision.Close;
+        }
+
+        /// <summary>Caller must hold _gate. A short, log-safe list of the build's open background tasks.</summary>
+        private static string DescribeBackgroundTasks(RunningEntry entry) =>
+            string.Join("; ", entry.BackgroundTasks.Values.Take(4).Select(b => $"{b.ToolName} '{Truncate(b.Description.Replace("\r", " ").Replace("\n", " "), 80)}'"))
+            + (entry.BackgroundTasks.Count > 4 ? $"; +{entry.BackgroundTasks.Count - 4} more" : "");
 
         /// <summary>Caller must hold _gate.</summary>
         private static void CancelAutoFinalize(RunningEntry entry)

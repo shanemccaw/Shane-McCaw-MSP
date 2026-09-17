@@ -788,6 +788,17 @@ namespace BuildConsole.Services
         /// </summary>
         public int InteractiveIdleFinalizeSeconds { get; set; } = 15;
 
+        /// <summary>
+        /// Git #4520 — a turn can end while the agent still has its own background work running (a `run_in_background`
+        /// Bash such as a dev-server restart, a Monitor, a background Agent) and is waiting to be notified when it finishes.
+        /// Closing stdin then makes the CLI exit and kill that work — a healthy build recorded as done mid-task. So the idle
+        /// auto-finalize above holds off while the CLI reports background tasks still running, for at most this many minutes
+        /// per idle period (each new turn starts a fresh period). The ceiling exists because some background tasks never end
+        /// on their own (a long-running server the agent never stopped, a command hung on a pager). Default 30.
+        /// Set 0 to not wait on background tasks at all (the pre-#4520 behavior).
+        /// </summary>
+        public int InteractiveBackgroundTaskMaxWaitMinutes { get; set; } = 30;
+
         // ── Epic #803 — auto deploy+verify+test on build completion ───────────────
         // When a queue-managed build finishes SUCCESSFULLY, BuildConsole automatically runs the
         // deploy+verify+test pipeline that trigger-deploy-and-wait.ps1 used to require running by
