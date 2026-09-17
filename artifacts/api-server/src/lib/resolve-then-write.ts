@@ -43,6 +43,13 @@ export interface BaselineTemplateResolveStep {
    *   - "in:<a>,<b>,..."  → the field equals (case-insensitive) one of a
    *      comma-separated list — typically a {{var}} an earlier step's `collect`
    *      filled, so a later lookup can intersect two collections (#4514)
+   *   - "ieq:<text>"      → case-insensitive, whitespace-trimmed equality (#4531),
+   *      for names that may contain a comma and so cannot use "in:". Never
+   *      matches when <text> interpolates to nothing.
+   *   - "has:<a>,<b>,..." → the field is an ARRAY holding every listed value
+   *      (case-insensitive) — e.g. a CA policy's conditions.users.excludeGroups
+   *      holding {{breakGlassGroupId}} (#4531). A list that interpolates to
+   *      nothing never matches: an unresolved {{var}} is not "requires nothing".
    *   - "<text>"          → exact, string-coerced (===) match
    * Each expected value is {{var}}-substituted before comparison. Omit to select the
    * first item unconditionally.
@@ -83,6 +90,18 @@ export interface BaselineTemplateResolveStep {
    * existing matches are ambiguous and fail closed instead of skipping onto one.
    */
   onMatch?: "skip-write";
+  /**
+   * #4531 — read only on an `onMatch: "skip-write"` step. fieldPath → expected
+   * value, same conventions as `selectMatch`, that the ONE existing item must ALSO
+   * satisfy before the write may be skipped. A match that fails any of them fails
+   * closed (no skip, no write): finding a resource by its name is not proof it is
+   * the resource this template would create. A Conditional Access policy named
+   * "Baseline: Require MFA for All Users (report-only)" may lack the break-glass
+   * exclusion, target other users, or already be enforced — recording the step as
+   * satisfied would claim a state the tenant does not hold, and creating a second
+   * one beside it is the duplicate the lookup exists to prevent.
+   */
+  skipRequires?: Record<string, string>;
   /**
    * Plain-language name of what this lookup finds ("the break-glass CA exclusion
    * group"), used in fail-closed reasons so an operator reads what is missing
@@ -154,31 +173,74 @@ function readFieldPath(obj: unknown, path: string): unknown {
   return cur;
 }
 
-/** Does a candidate item satisfy every selectMatch entry? "contains:" → ci-substring, else exact. */
+/** An interpolated comma-separated list as trimmed, lower-cased, non-empty values. */
+function listOf(raw: string, payload: Record<string, unknown>): string[] {
+  return (interp(raw, payload) ?? "")
+    .split(",")
+    .map((v) => v.trim().toLowerCase())
+    .filter((v) => v.length > 0);
+}
+
+/** Does one field of an item satisfy one expected value? Conventions: see `selectMatch`. */
+function fieldMatches(
+  item: unknown,
+  fieldPath: string,
+  rawExpected: string,
+  payload: Record<string, unknown>,
+): boolean {
+  const actualRaw = readFieldPath(item, fieldPath);
+  if (rawExpected.startsWith("has:")) {
+    const required = listOf(rawExpected.slice("has:".length), payload);
+    if (required.length === 0 || !Array.isArray(actualRaw)) return false;
+    const held = new Set(actualRaw.map((v) => String(v).trim().toLowerCase()));
+    return required.every((v) => held.has(v));
+  }
+  const actual = actualRaw == null ? "" : String(actualRaw);
+  if (rawExpected.startsWith("in:")) {
+    return listOf(rawExpected.slice("in:".length), payload).includes(actual.trim().toLowerCase());
+  }
+  if (rawExpected.startsWith("ieq:")) {
+    const expected = (interp(rawExpected.slice("ieq:".length), payload) ?? "").trim().toLowerCase();
+    return expected.length > 0 && actual.trim().toLowerCase() === expected;
+  }
+  if (rawExpected.startsWith("contains:")) {
+    const needle = (interp(rawExpected.slice("contains:".length), payload) ?? "").trim().toLowerCase();
+    return actual.toLowerCase().includes(needle);
+  }
+  return actual === (interp(rawExpected, payload) ?? "").trim();
+}
+
+/** Does a candidate item satisfy every selectMatch entry? */
 function itemMatchesSelect(
   item: unknown,
   selectMatch: Record<string, string> | undefined,
   payload: Record<string, unknown>,
 ): boolean {
   if (!selectMatch) return true;
-  for (const [fieldPath, rawExpected] of Object.entries(selectMatch)) {
-    const actualRaw = readFieldPath(item, fieldPath);
-    const actual = actualRaw == null ? "" : String(actualRaw);
-    if (rawExpected.startsWith("in:")) {
-      const allowed = (interp(rawExpected.slice("in:".length), payload) ?? "")
-        .split(",")
-        .map((v) => v.trim().toLowerCase())
-        .filter((v) => v.length > 0);
-      if (!allowed.includes(actual.trim().toLowerCase())) return false;
-    } else if (rawExpected.startsWith("contains:")) {
-      const needle = (interp(rawExpected.slice("contains:".length), payload) ?? "").trim().toLowerCase();
-      if (!actual.toLowerCase().includes(needle)) return false;
-    } else {
-      const expected = (interp(rawExpected, payload) ?? "").trim();
-      if (actual !== expected) return false;
-    }
+  return Object.entries(selectMatch).every(([fieldPath, rawExpected]) =>
+    fieldMatches(item, fieldPath, rawExpected, payload),
+  );
+}
+
+/**
+ * #4531 — every `skipRequires` entry the existing item fails, rendered for the
+ * fail-closed reason as `<field> expected <interpolated expectation>, found <actual>`.
+ */
+function unmetSkipRequirements(
+  item: unknown,
+  skipRequires: Record<string, string> | undefined,
+  payload: Record<string, unknown>,
+): string[] {
+  const unmet: string[] = [];
+  for (const [fieldPath, rawExpected] of Object.entries(skipRequires ?? {})) {
+    if (fieldMatches(item, fieldPath, rawExpected, payload)) continue;
+    const actual = readFieldPath(item, fieldPath);
+    unmet.push(
+      `${fieldPath} expected ${JSON.stringify(interp(rawExpected, payload) ?? rawExpected)}, ` +
+        `found ${actual === undefined ? "nothing" : JSON.stringify(actual)}`,
+    );
   }
-  return true;
+  return unmet;
 }
 
 /** A matched item's `id`, when it has one — for ambiguity reports and the trail. */
@@ -193,7 +255,8 @@ function itemIdOf(item: unknown): string | null {
  * payload for later steps. Fails closed on a required step that matches nothing or
  * whose read throws, and (#4514) on a `unique`/skip-write step that matches more
  * than one item. A skip-write step that matches returns `skipWrite` and stops —
- * the caller must not fire the write.
+ * the caller must not fire the write — unless (#4531) its one match fails the
+ * step's `skipRequires`, which fails closed instead.
  */
 export async function runTemplateResolveSteps(
   steps: BaselineTemplateResolveStep[],
@@ -277,6 +340,18 @@ export async function runTemplateResolveSteps(
     }
 
     const matched = matches[0];
+
+    if (skipOnMatch) {
+      const unmet = unmetSkipRequirements(matched, step.skipRequires, workingPayload);
+      if (unmet.length > 0) {
+        const id = itemIdOf(matched);
+        return fail(
+          `resolve lookup ${subject}found an existing item${id ? ` (id ${id})` : ""} at GET ${endpoint} that is not ` +
+            `the one this template would create: ${unmet.join("; ")} — refusing to skip onto it or to create a duplicate beside it`,
+          endpoint,
+        );
+      }
+    }
 
     for (const [varName, fieldPath] of Object.entries(step.collect ?? {})) {
       const values = matches

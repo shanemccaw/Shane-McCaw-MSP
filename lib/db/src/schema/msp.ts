@@ -4420,6 +4420,8 @@ export const baselineActionTemplatesTable = pgTable("baseline_action_templates",
     unique?: boolean;
     collect?: Record<string, string>;
     onMatch?: "skip-write";
+    // #4531 — conditions the one existing match must also meet before a skip.
+    skipRequires?: Record<string, string>;
     subject?: string;
   }>>().notNull().default([]),
   // #4516 — the only real key here is `expectStatus` (a Graph HTTP status code, e.g.
