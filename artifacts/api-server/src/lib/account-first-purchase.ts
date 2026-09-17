@@ -27,9 +27,11 @@
  *   3. updateMonitoringSelection — tier and seats live on the session row
  *      (productSlug + seats), and with an account bound to the session the page
  *      can no longer throw the session away on every tier click the way it did
- *      when the session was anonymous. Tier stays changeable up to payment; the
- *      seat count locks once the tenant is connected (the page's own "locks in
- *      when you connect" rule, now enforced server-side).
+ *      when the session was anonymous. Tier and seat count both lock once the
+ *      tenant is connected (#4469; seats since #4377): the order is account →
+ *      tier → consent → pay, and the consent callback runs the first scan on
+ *      the session's tier at that moment, so a tier changed after consent would
+ *      be paid for without ever having been scanned (#4407).
  *
  *   4. updateRetainerSelection — the same in-place tier change for Retainer
  *      (#4383), whose price is the services row itself, so only the slug moves.
@@ -48,7 +50,7 @@ import {
   mfaEnrollmentsTable,
   webauthnCredentialsTable,
 } from "@workspace/db";
-import { and, desc, eq, gte, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, ne, or, sql } from "drizzle-orm";
 import { seatBandViolationMessage } from "./catalog-pricing.ts";
 import { logger } from "./logger.ts";
 
@@ -273,6 +275,7 @@ export type MonitoringSelectionResult =
         | "not_monitoring"
         | "product_not_found"
         | "seats_locked"
+        | "tier_locked"
         | "seat_band_mismatch";
       message?: string;
     };
@@ -283,8 +286,14 @@ export type MonitoringSelectionResult =
  *
  *   - `paid` sessions are refused: what was charged is what was bought.
  *   - Monitoring → Monitoring only, and only onto a real public catalog row.
- *   - Once a tenant is connected the seat count is fixed (seats_locked); a tier
- *     change is still allowed, which keeps the same seat band.
+ *   - Once a tenant is connected the seat count is fixed (seats_locked) and so
+ *     is the tier (tier_locked, #4469): the consent callback reads the session's
+ *     productSlug in the same UPDATE that stamps it consented and runs the first
+ *     scan on that package, so the tier paid for must be the tier consented on.
+ *     Re-sending the locked selection unchanged is still accepted.
+ *   - The lock is also in the UPDATE's own WHERE, so a tier change racing the
+ *     consent callback either lands before the callback reads the slug or is
+ *     refused — never after it.
  *   - The seat count must sit inside the target row's band — the same rule the
  *     payment intent enforces, checked here so the page learns it at the click.
  */
@@ -300,6 +309,7 @@ export async function updateMonitoringSelection(
     .select({
       id: checkoutSessionsTable.id,
       status: checkoutSessionsTable.status,
+      productSlug: checkoutSessionsTable.productSlug,
       seats: checkoutSessionsTable.seats,
       tenantId: checkoutSessionsTable.tenantId,
       category: servicesTable.category,
@@ -328,9 +338,16 @@ export async function updateMonitoringSelection(
     return { ok: false, status: 404, error: "product_not_found" };
   }
 
-  const tenantConnected = !!session.tenantId?.trim();
+  const tenantConnected = !!session.tenantId?.trim() || session.status === "consented";
   if (tenantConnected && seats !== session.seats) {
     return { ok: false, status: 409, error: "seats_locked" };
+  }
+  if (tenantConnected && productSlug !== session.productSlug) {
+    log.warn(
+      { sessionId: session.id, lockedSlug: session.productSlug, requestedSlug: productSlug },
+      "account-first checkout: tier change REFUSED — the tier locked when the tenant was connected",
+    );
+    return { ok: false, status: 409, error: "tier_locked" };
   }
 
   const bandViolation = seatBandViolationMessage(target, seats);
@@ -338,10 +355,39 @@ export async function updateMonitoringSelection(
     return { ok: false, status: 409, error: "seat_band_mismatch", message: bandViolation };
   }
 
-  await db
+  const updated = await db
     .update(checkoutSessionsTable)
     .set({ productSlug, seats, updatedAt: new Date() })
-    .where(and(eq(checkoutSessionsTable.id, session.id), ne(checkoutSessionsTable.status, "paid")));
+    .where(
+      and(
+        eq(checkoutSessionsTable.id, session.id),
+        ne(checkoutSessionsTable.status, "paid"),
+        // #4469 — re-checked at write time: a consent that landed since the
+        // read above leaves only an unchanged selection writable.
+        or(
+          and(
+            sql`coalesce(trim(${checkoutSessionsTable.tenantId}), '') = ''`,
+            ne(checkoutSessionsTable.status, "consented"),
+          ),
+          and(eq(checkoutSessionsTable.productSlug, productSlug), eq(checkoutSessionsTable.seats, seats)),
+        ),
+      ),
+    )
+    .returning({ id: checkoutSessionsTable.id });
+
+  if (updated.length === 0) {
+    const [now] = await db
+      .select({ status: checkoutSessionsTable.status })
+      .from(checkoutSessionsTable)
+      .where(eq(checkoutSessionsTable.id, session.id))
+      .limit(1);
+    if (now?.status === "paid") return { ok: false, status: 409, error: "already_paid" };
+    log.warn(
+      { sessionId: session.id, requestedSlug: productSlug, seats },
+      "account-first checkout: selection change REFUSED — the tenant was connected while it was being written",
+    );
+    return { ok: false, status: 409, error: seats !== session.seats ? "seats_locked" : "tier_locked" };
+  }
 
   log.info(
     { sessionId: session.id, productSlug, seats, tenantConnected },

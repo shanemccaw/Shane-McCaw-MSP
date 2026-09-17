@@ -1120,6 +1120,12 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   // (#4226), and before the consent stamp: the emission block below reads the
   // returned slug + email. The cross-MSP and existing-customer guards above
   // have already run and returned on refusal.
+  // #4469 — the productSlug RETURNED here is the tier the consent-time scan
+  // below runs, and it is final for a Monitoring session: from this row
+  // version on, updateMonitoringSelection refuses any tier or seat change
+  // (tier_locked / seats_locked, also enforced in its own UPDATE's WHERE), and
+  // the payment intent prices this same row. What was scanned is what is paid
+  // for (#4407).
   if (isCheckoutSession && state) {
     const sessionNow = new Date();
     [updatedSession] = await db

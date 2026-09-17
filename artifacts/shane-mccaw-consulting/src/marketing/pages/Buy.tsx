@@ -91,6 +91,9 @@ type Product = "monitoring" | "retainer" | "pack";
 // payment, instead of the paid door's account creation after payment.
 // Everything from write access onward is unchanged for them.
 // #4377 — Monitoring joins: account → consent → tier & pay → portal.
+// #4469 — Monitoring reordered: account → tier → consent → pay → login. The tier
+// is chosen (with seats) before consent and locks when the tenant connects, so
+// the consent-time scan runs the tier that is then paid for (#4407).
 // #4383 — Retainer joins: account → connect (optional, still skippable) → tier
 // & pay → portal. A buyer who skips the connection pays on the recorded skip and
 // ends at RetainerPending, exactly as before; one who connects does so as their
@@ -184,6 +187,13 @@ interface State {
   /** #4377 — a resumed session's productSlug, mapped back onto the on-screen
    *  tier/pack once the live catalogue has loaded; null otherwise. */
   resumeSlug: string | null;
+  /** #4469 — Monitoring: the buyer confirmed their tier and seats on the
+   *  Select tier step and moved on to Connect. The on-screen selection is
+   *  frozen from here; before the tenant connects "Change tier" reopens it,
+   *  after that the server refuses any change (tier_locked / seats_locked). */
+  tierChosen: boolean;
+  /** #4469 — in-flight guard for writing the chosen tier onto the session. */
+  tierBusy: boolean;
   writeGranted: boolean;
   writeDeclined: boolean;
   writeError: string | null;
@@ -257,6 +267,8 @@ function initialState(): State {
     accountDone: false,
     resumeOpen: ACCOUNT_FIRST_PRODUCTS.includes(product) && qs("resume") === "1",
     resumeSlug: null,
+    tierChosen: false,
+    tierBusy: false,
     writeGranted: false,
     writeDeclined: false,
     writeError: null,
@@ -548,6 +560,11 @@ export default function Buy() {
   const selName = isMon ? monSel.name : isRet ? retSel.name : "";
 
   const connectBlocked = connectRequired && !st.connected;
+  // #4469 — Monitoring's Select tier step: tier and seats are open until the
+  // buyer confirms them, then frozen through Connect (reopenable until the
+  // tenant connects) and Pay (locked server-side once connected).
+  const monTierStep = isMon && !st.tierChosen && !st.connected;
+  const monTierLocked = isMon && !monTierStep;
   const hasUnavailablePack =
     isPack && !catalogLoading && packKeys.some((k) => !availablePackKeys.has(k));
   // catalogLoading is included here (not just hasUnavailablePack's pack-only
@@ -726,6 +743,7 @@ export default function Buy() {
 
   // ── Handlers ──────────────────────────────────────────────────────────────────
   const pick = (key: string) => {
+    if (monTierLocked) return;
     if (!isPack) {
       set((s) => ({ choice: key, ...invalidated(s) }));
       return;
@@ -742,8 +760,37 @@ export default function Buy() {
     });
   };
   const toggleAgree = () => set((s) => ({ agreed: !s.agreed }));
-  const onSeats = (e: React.ChangeEvent<HTMLInputElement>) =>
+  const onSeats = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (monTierLocked) return;
     set((s) => ({ seatInput: e.target.value, seatEdited: true, ...invalidated(s) }));
+  };
+
+  // #4469 — Select tier → Connect. The confirmed tier and seats are written
+  // onto the buyer's session before the connect card is offered, so the
+  // consent that follows (and the first scan it runs) is on this tier.
+  const confirmTier = async () => {
+    if (st.stage !== "buy" || !monTierStep || st.tierBusy) return;
+    if (accountFirst && !st.accountDone) return;
+    if (catalogLoading) {
+      set({ payingError: "Still loading the catalogue — try again in a moment." });
+      return;
+    }
+    set({ tierBusy: true, payingError: null });
+    try {
+      const sessionId = await ensureSession();
+      await syncMonitoringSelection(sessionId);
+      log.info({ sessionId, tier: monSel.key, seats }, "monitoring tier confirmed — moving on to connect");
+      set({ tierBusy: false, tierChosen: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not save your tier. Please try again.";
+      set({ tierBusy: false, payingError: message });
+    }
+  };
+  // Back to Select tier — only while nothing has been consented on the tier.
+  const changeTier = () => {
+    if (st.stage !== "buy" || st.connected) return;
+    set({ tierChosen: false, payingError: null });
+  };
 
   // Real read consent (#1311): mint the session-keyed admin-consent URL, hand
   // it to a popup, and poll until the callback stamps the session consented.
@@ -751,6 +798,8 @@ export default function Buy() {
     if (st.stage !== "buy") return;
     // Account-first (#4376): read consent runs as the buyer's own account.
     if (accountFirst && !st.accountDone) return;
+    // #4469 — Monitoring connects on a confirmed tier only.
+    if (monTierStep) return;
     if (catalogLoading) {
       // The consent URL is minted against a session created from the live
       // catalog's slug — not resolvable yet. Say so instead of ignoring the click.
@@ -763,8 +812,8 @@ export default function Buy() {
     set({ stage: "connecting", payingError: null });
     try {
       const sessionId = await ensureSession();
-      // #4377 — the seat count locks at connect: write the on-screen tier and
-      // seats onto the buyer's session first.
+      // #4377/#4469 — tier and seats lock at connect: make sure the confirmed
+      // selection is the one on the buyer's session first.
       if (isMon && accountFirst) await syncMonitoringSelection(sessionId);
       const urlRes = await fetch(`/api/public/flow/read-consent-url?sessionId=${encodeURIComponent(sessionId)}`);
       const urlData = (await urlRes.json().catch(() => ({}))) as { url?: string; error?: string };
@@ -900,8 +949,10 @@ export default function Buy() {
         err.error === "seat_band_mismatch"
           ? err.message || "Your seat count doesn't match this tier."
           : err.error === "seats_locked"
-            ? "Your seat count is locked to the tenant you connected. Choose a tier at that count."
-            : "Could not update your selection. Please try again.",
+            ? "Your seat count is locked to the tenant you connected."
+            : err.error === "tier_locked"
+              ? "Your tier is locked to the tenant you connected — its first scan runs on this tier."
+              : "Could not update your selection. Please try again.",
       );
     }
   };
@@ -955,6 +1006,10 @@ export default function Buy() {
       scanSkipped: !p.tenantConnected && p.readConsentSkipped,
       resumeOpen: false,
       resumeSlug: p.productSlug,
+      // #4469 — a connected Monitoring session's tier is already locked: resume
+      // on Pay. An unconnected one reopens Select tier on its saved selection.
+      tierChosen: product === "monitoring" && p.tenantConnected,
+      tierBusy: false,
       accountDone: p.mfaEnrolled,
       acctBusy: false,
       acctNotice: null,
@@ -1047,8 +1102,9 @@ export default function Buy() {
       // step on a placeholder pack, and a pack session's own slug is always
       // part of what is charged — move it onto the buyer's real first pack
       // before pricing, so a pack they deselected is never billed.
-      // #4377 — Monitoring: the tier chosen after connecting is priced from
-      // the session row, so write it there before the intent is created.
+      // #4377 — Monitoring is priced from the session row. Since #4469 the tier
+      // is locked there at connect, so this re-sends the same selection and a
+      // stale screen is refused (tier_locked) rather than charged.
       if (isMon && accountFirst) await syncMonitoringSelection(sessionId);
       // #4383 — Retainer: the tier picked after the account step, same reason.
       if (isRet && accountFirst) await syncRetainerSelection(sessionId);
@@ -1573,8 +1629,9 @@ export default function Buy() {
 
   // ── Step rail ─────────────────────────────────────────────────────────────────
   const stepLabels = isMon
-    ? // #4377 — account → read consent → tier & pay → portal.
-      ["Create account", "Connect", "Tier & pay", "Portal"]
+    ? // #4469 — account → tier → read consent → pay → login (the portal
+      // handoff signs the buyer in on the account they created first).
+      ["Create account", "Select tier", "Connect", "Pay", "Login"]
     : isPack
       ? // #4378 — account → read consent → packs/pay; from write access on unchanged.
         ["Create account", "Connect", "Pack & pay", "Write access", "Scan", "Approve", "Record"]
@@ -1587,10 +1644,10 @@ export default function Buy() {
     password: 0,
     mfa: 0,
     logging: 0,
-    buy: st.connected ? 2 : 1,
-    connecting: 1,
-    paying: 2,
-    done: 3,
+    buy: st.connected ? 3 : st.tierChosen ? 2 : 1,
+    connecting: 2,
+    paying: 3,
+    done: 4,
   };
   const packStageIdx: Record<string, number> = {
     identity: 0,
@@ -1644,13 +1701,15 @@ export default function Buy() {
     processing: (["connecting", "granting", "verifying", "logging"] as Stage[]).includes(
       st.stage,
     ),
-    connect: (connectRequired && !st.connected) || connectOffered,
+    // #4469 — Monitoring offers the connection only once the tier is chosen.
+    connect: (connectRequired && !st.connected && !monTierStep) || connectOffered,
     connected: st.connected,
     preScan: st.stage === "prescan",
     dryRun: st.stage === "dryrun",
     executing: st.stage === "executing",
     executed: st.stage === "executed",
-    estimate: isMon && !st.connected,
+    // Seats are set on the Select tier step and frozen with the tier after it.
+    estimate: monTierStep,
     // Contact fields are needed BEFORE the connection now: the Microsoft
     // consent is minted against a real checkout session, and the session is
     // created from these fields (#1311). The pay CTA itself stays blocked
@@ -1678,9 +1737,10 @@ export default function Buy() {
     ? {
         // #4381 — Account-first (#4376/#4377): the account now comes before
         // Connect, so the head copy no longer claims Connect is the opener.
+        // #4469 — and the tier now comes before Connect as well.
         eyebrow: "Tenant monitoring",
-        title: "Create your account, then connect and pick a tier.",
-        body: "Monitoring runs on a connected tenant, so we set up your account first, then the read-only connection, then the card. Nothing is charged until you approve the payment.",
+        title: "Create your account, pick a tier, then connect.",
+        body: "Monitoring runs on a connected tenant, so we set up your account first, then your tier, then the read-only connection, then the card. Nothing is charged until you approve the payment.",
       }
     : isRet
       ? {
@@ -1696,7 +1756,8 @@ export default function Buy() {
         };
 
   const optionRows = isMon
-    ? MON_TIERS.map((o) => ({
+    ? // #4469 — past Select tier only the chosen tier is shown, not clickable.
+      MON_TIERS.filter((o) => !monTierLocked || o.key === monSel.key).map((o) => ({
         key: o.key,
         name: o.name,
         desc: o.desc,
@@ -1742,14 +1803,13 @@ export default function Buy() {
       : {
           title: "Connect your tenant, read-only",
           optional: false,
+          // #4469 — the tier and seats are chosen on the step before this one.
           body:
-            (st.seatsFromCatalog
-              ? "You have already picked " +
-                monSel.name +
-                " at " +
-                st.seatsFromCatalog.toLocaleString("en-US") +
-                " seats — that count is what you are billed on, locked in when you connect. "
-              : "Monitoring runs against your connected tenant, and the seat count you set here is what you are billed on. ") +
+            "You picked " +
+            monSel.name +
+            " at " +
+            seats.toLocaleString("en-US") +
+            " seats — that tier and seat count are what you are billed on, and both lock in when you connect. " +
             "You approve a scoped, read-only connection in Microsoft’s own consent screen — nothing is charged at this step.",
           foot: "Revocable from your tenant at any time.",
         };
@@ -1757,7 +1817,9 @@ export default function Buy() {
   const connectedCard = {
     title: "Tenant connected, read-only",
     body: isMon
-      ? "You will be billed on the " +
+      ? "You will be billed on " +
+        monSel.name +
+        " at the " +
         seats.toLocaleString("en-US") +
         " seats you set, now locked to this order. The first read-only scan is already under way."
       : isPack
@@ -1784,8 +1846,8 @@ export default function Buy() {
         ? "Licensed users, as you set them"
         : "Roughly how many licensed users?",
       foot: carried
-        ? "This is the seat count and tier you picked on the pricing page. Change it here if it was a guess — this count is what you are billed on, and it locks in when you connect your tenant."
-        : "Set this to your real licensed-user count — it is what you are billed on, and it locks in when you connect your tenant.",
+        ? "This is the seat count and tier you picked on the pricing page. Change it here if it was a guess — this count is what you are billed on, and it locks in with your tier when you connect your tenant."
+        : "Set this to your real licensed-user count — it is what you are billed on, and it locks in with your tier when you connect your tenant.",
     };
   })();
 
@@ -2349,8 +2411,32 @@ export default function Buy() {
 
             {/* Options */}
             <div style={{ display: "flex", flexDirection: "column", gap: "11px" }}>
-              <span style={{ ...eyebrow, color: "#64748b" }}>
-                {isPack ? "Choose your packs" : "Choose your tier"}
+              <span
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}
+              >
+                <span style={{ ...eyebrow, color: "#64748b" }}>
+                  {isPack ? "Choose your packs" : monTierLocked ? "Your tier" : "Choose your tier"}
+                </span>
+                {/* #4469 — reopen Select tier, only before the tenant connects. */}
+                {isMon && st.tierChosen && !st.connected && st.stage === "buy" && (
+                  <button
+                    data-testid="buy-tier-change"
+                    onClick={changeTier}
+                    style={{
+                      padding: "5px 11px",
+                      borderRadius: "8px",
+                      fontFamily: "inherit",
+                      fontSize: "11.5px",
+                      fontWeight: 600,
+                      color: "#94a3b8",
+                      background: "transparent",
+                      border: "1px solid rgba(71,85,105,.5)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Change tier
+                  </button>
+                )}
               </span>
               {optionRows.map((o) => (
                 <div
@@ -2364,7 +2450,7 @@ export default function Buy() {
                     gap: "12px",
                     padding: "15px 16px",
                     borderRadius: "13px",
-                    cursor: o.available ? "pointer" : "not-allowed",
+                    cursor: monTierLocked ? "default" : o.available ? "pointer" : "not-allowed",
                     opacity: o.available ? 1 : 0.55,
                     transition: "border-color 200ms,background 200ms",
                     border: o.on
@@ -2918,7 +3004,50 @@ export default function Buy() {
               {/* Terms + Pay — hidden once "paying" starts: the real Stripe
                   Payment Element (rendered above) owns the actual charge from
                   there, and showing both would read as two pay buttons. */}
-              {st.stage === "buy" && (
+              {st.stage === "buy" && monTierStep && (
+                // #4469 — Select tier ends here; the terms and the card come
+                // after the tenant is connected on this tier.
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "9px",
+                    paddingTop: "14px",
+                    borderTop: "1px solid rgba(30,41,59,.9)",
+                  }}
+                >
+                  <button
+                    data-testid="buy-tier-continue"
+                    onClick={() => void confirmTier()}
+                    disabled={st.tierBusy}
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      border: 0,
+                      borderRadius: "11px",
+                      fontFamily: "inherit",
+                      fontSize: "13.5px",
+                      fontWeight: 700,
+                      color: "#fff",
+                      cursor: st.tierBusy || catalogLoading ? "not-allowed" : "pointer",
+                      background: st.tierBusy || catalogLoading ? "rgba(71,85,105,.4)" : gradientBtn,
+                    }}
+                  >
+                    {st.tierBusy ? "Saving your tier…" : "Continue with " + monSel.name}
+                  </button>
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      lineHeight: 1.5,
+                      color: "#64748b",
+                      textAlign: "center",
+                    }}
+                  >
+                    Next you connect your tenant, read-only. Your tier and seat count lock in when you do.
+                  </span>
+                </div>
+              )}
+              {st.stage === "buy" && !monTierStep && (
                 <>
                   <div
                     data-testid="buy-terms"

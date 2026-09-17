@@ -269,14 +269,20 @@ describeLive("#4377 — account-first Monitoring order + returning-buyer resume,
     const resumedConsented = await request(app).get("/public/purchase/resume").set("Authorization", `Bearer ${token2}`);
     expect(resumedConsented.body).toMatchObject({ sessionId, status: "consented", tenantConnected: true });
 
-    // Seats lock at connect; tier (same band) is still the buyer's choice until payment.
+    // Seats AND tier lock at connect (#4469): the consent-time scan ran on the
+    // tier the session carried when the callback stamped it, so that is the tier
+    // paid for. Re-sending the locked selection unchanged is still accepted.
     const seatChange = await request(app)
       .post("/public/purchase/monitoring-selection")
-      .send({ sessionId, productSlug: slug, seats: seats + 1 });
+      .send({ sessionId, productSlug: sibling, seats: seats + 1 });
     expect(seatChange.status).toBe(409);
     expect(seatChange.body.error).toBe("seats_locked");
-    await request(app).post("/public/purchase/monitoring-selection").send({ sessionId, productSlug: slug, seats }).expect(200);
-    expect((await sessionRow(sessionId)).productSlug).toBe(slug);
+    const tierChange = await request(app).post("/public/purchase/monitoring-selection").send({ sessionId, productSlug: slug, seats });
+    expect(tierChange.status, JSON.stringify(tierChange.body)).toBe(409);
+    expect(tierChange.body.error).toBe("tier_locked");
+    expect((await sessionRow(sessionId)).productSlug).toBe(sibling);
+    await request(app).post("/public/purchase/monitoring-selection").send({ sessionId, productSlug: sibling, seats }).expect(200);
+    expect((await sessionRow(sessionId)).productSlug).toBe(sibling);
 
     // 5 — the session lapses (buyer came back the next day): renewed, not lost.
     await db
