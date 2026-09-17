@@ -1,0 +1,12 @@
+{
+  "StepIndex": 36,
+  "Route": "http://localhost:5173/buy?product=pack\u0026packs=entra,mfa",
+  "Selector": "/buy?product=pack\u0026packs=entra,mfa",
+  "Description": "goto /buy?product=pack\u0026packs=entra,mfa",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 0,
+  "Changes": [],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-16T12:41:32.9830942-04:00"
+}

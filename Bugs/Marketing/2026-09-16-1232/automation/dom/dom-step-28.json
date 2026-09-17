@@ -1,0 +1,12 @@
+{
+  "StepIndex": 28,
+  "Route": "http://localhost:5173/buy?product=pack\u0026packs=entra,ca",
+  "Selector": "/buy?product=pack\u0026packs=entra,ca",
+  "Description": "goto /buy?product=pack\u0026packs=entra,ca",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 0,
+  "Changes": [],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-16T12:34:01.7675297-04:00"
+}

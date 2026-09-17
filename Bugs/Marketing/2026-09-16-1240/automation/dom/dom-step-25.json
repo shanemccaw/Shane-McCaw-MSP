@@ -1,0 +1,12 @@
+{
+  "StepIndex": 25,
+  "Route": "http://localhost:5173/buy?product=retainer\u0026tier=architect-enterprise-retainer",
+  "Selector": "/buy?product=retainer\u0026tier=architect-enterprise-retainer",
+  "Description": "goto /buy?product=retainer\u0026tier=architect-enterprise-retainer",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 0,
+  "Changes": [],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-16T12:41:13.5556975-04:00"
+}

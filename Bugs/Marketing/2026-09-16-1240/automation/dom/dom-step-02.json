@@ -1,0 +1,14 @@
+{
+  "StepIndex": 2,
+  "Route": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+  "Selector": "[data-testid=\u0027buy-page\u0027]",
+  "Description": "expect [data-testid=\u0027buy-page\u0027]",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 156,
+  "Changes": [
+    "Captured DOM scope: 156 total element nodes under \u0027[data-testid=\u0027buy-page\u0027]\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-16T12:40:31.8955248-04:00"
+}

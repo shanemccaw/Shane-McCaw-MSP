@@ -1,0 +1,14 @@
+{
+  "StepIndex": 34,
+  "Route": "http://localhost:5173/buy?product=pack\u0026packs=entra,ca",
+  "Selector": "[data-testid=\u0027buy-terms\u0027]",
+  "Description": "click [data-testid=\u0027buy-terms\u0027]",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 4,
+  "Changes": [
+    "Captured DOM scope: 4 total element nodes under \u0027[data-testid=\u0027buy-terms\u0027]\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-16T12:45:57.8804371-04:00"
+}

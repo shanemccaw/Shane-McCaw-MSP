@@ -1,0 +1,12 @@
+{
+  "StepIndex": 7,
+  "Route": "http://localhost:5173/buy?product=monitoring\u0026scanned=1",
+  "Selector": "/buy?product=monitoring\u0026scanned=1",
+  "Description": "goto /buy?product=monitoring\u0026scanned=1",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 0,
+  "Changes": [],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-16T12:33:22.22579-04:00"
+}

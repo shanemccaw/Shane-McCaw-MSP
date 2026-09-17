@@ -1,0 +1,12 @@
+{
+  "StepIndex": 11,
+  "Route": "http://localhost:5173/buy?product=retainer\u0026tier=architect-essentials-retainer",
+  "Selector": "/buy?product=retainer\u0026tier=architect-essentials-retainer",
+  "Description": "goto /buy?product=retainer\u0026tier=architect-essentials-retainer",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 0,
+  "Changes": [],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-16T12:40:47.5875524-04:00"
+}

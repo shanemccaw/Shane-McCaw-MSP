@@ -1,0 +1,12 @@
+{
+  "StepIndex": 1,
+  "Route": "http://localhost:5173/buy?product=monitoring\u0026seats=250",
+  "Selector": "/buy?product=monitoring\u0026seats=250",
+  "Description": "goto /buy?product=monitoring\u0026seats=250",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 0,
+  "Changes": [],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-16T12:40:30.2126806-04:00"
+}

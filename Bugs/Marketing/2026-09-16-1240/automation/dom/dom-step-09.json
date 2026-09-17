@@ -1,0 +1,14 @@
+{
+  "StepIndex": 9,
+  "Route": "http://localhost:5173/buy?product=monitoring\u0026scanned=1",
+  "Selector": "[data-testid=\u0027buy-connected\u0027]",
+  "Description": "expect [data-testid=\u0027buy-connected\u0027]",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 159,
+  "Changes": [
+    "Captured DOM scope: 159 total element nodes under \u0027[data-testid=\u0027buy-connected\u0027]\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-16T12:40:43.9275289-04:00"
+}
