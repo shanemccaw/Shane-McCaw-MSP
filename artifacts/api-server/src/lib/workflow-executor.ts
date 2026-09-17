@@ -79,6 +79,7 @@ import { scoreHealthFromScriptRun } from "./m365-health-ai-scorer.ts";
 import { anthropic, withAiAttribution, type AiCallAttribution } from "@workspace/integrations-anthropic-ai";
 import { resolveNodeTypeMeta, resolveEffectiveNodeType } from "./node-type-registry.ts";
 import { isExchangeOnlineEndpoint, parseExchangeOnlineEndpoint, buildPsExecutionParams, classifyPsExecutionFailure } from "./exchange-online-transport.ts";
+import { parseReadBackSpec, buildReadBackParams, runReadBackConvergence, type ReadBackPolicy } from "./exchange-online-readback.ts";
 import { openai } from "@workspace/integrations-openai-ai-server/image";
 import { eq, and, count, desc, inArray, or, sql } from "drizzle-orm";
 import { purchaseApproverUserIds } from "../middlewares/rbac-capability.ts";
@@ -680,6 +681,11 @@ export interface ResolvedBaselineRequest {
    * up-front for lacking a value it produces itself.
    */
   resolveProvidedVariables: string[];
+  /**
+   * #4429 — the template's stored success_criteria, verbatim. The exchange-online://
+   * transport reads its optional `readBack` spec (see exchange-online-readback.ts).
+   */
+  successCriteria?: Record<string, unknown>;
 }
 
 /**
@@ -741,6 +747,7 @@ export async function resolveBaselineTemplateRequest(
     missingVariables,
     resolveSteps,
     resolveProvidedVariables,
+    successCriteria: template.successCriteria ?? undefined,
   };
 }
 
@@ -1107,9 +1114,13 @@ async function runExchangeOnlineTemplateAgainstTenant(opts: {
   label: string;
   /** What the audit row records as requestVariables. */
   effectivePayload: Record<string, unknown>;
+  /** #4429 — the template's success_criteria; its optional readBack gates success. */
+  successCriteria?: Record<string, unknown>;
   source?: string;
+  /** Test seam for the read-back loop's schedule. */
+  readBackPolicy?: ReadBackPolicy;
 }): Promise<BaselineTemplateExecutionResult> {
-  const { templateId, tenantId, customerId, endpoint, body, label, effectivePayload, source } = opts;
+  const { templateId, tenantId, customerId, endpoint, body, label, effectivePayload, successCriteria, source, readBackPolicy } = opts;
 
   const writeAudit = async (snapshot: Record<string, unknown>): Promise<number | undefined> => {
     try {
@@ -1159,12 +1170,86 @@ async function runExchangeOnlineTemplateAgainstTenant(opts: {
     return { success: false, status: 400, errorType: "bad_request", data: built.error, endpoint, method: "POWERSHELL", label, auditLogId };
   }
 
+  // #4429 — a template that opted into read-back verification must never run
+  // unverified because its spec is malformed or its read params don't resolve:
+  // both are template defects, rejected before anything fires.
+  const readBack = parseReadBackSpec(successCriteria);
+  if (!readBack.ok) {
+    log.warn({ templateId, endpoint, reason: readBack.error }, "runExchangeOnlineTemplateAgainstTenant: readBack spec rejected — nothing fired");
+    const auditLogId = await writeAudit({ success: false, status: 400, errorType: "bad_request", rejectReason: readBack.error });
+    return { success: false, status: 400, errorType: "bad_request", data: readBack.error, endpoint, method: "POWERSHELL", label, auditLogId };
+  }
+  let readBackParams: Record<string, unknown> | null = null;
+  if (readBack.spec) {
+    const rbParams = buildReadBackParams(readBack.spec, body);
+    if (!rbParams.ok) {
+      log.warn({ templateId, endpoint, reason: rbParams.error }, "runExchangeOnlineTemplateAgainstTenant: readBack params unresolved — nothing fired");
+      const auditLogId = await writeAudit({ success: false, status: 400, errorType: "bad_request", rejectReason: rbParams.error });
+      return { success: false, status: 400, errorType: "bad_request", data: rbParams.error, endpoint, method: "POWERSHELL", label, auditLogId };
+    }
+    // Organization is the same tenant-derived value the write connected with.
+    readBackParams = { ...rbParams.params, Organization: organization };
+  }
+
   const { callPsExecution, PsExecutionError } = await import("./ps-execution-client.ts");
   try {
     const result = await callPsExecution(parsed.parsed.cmdletKey, built.params);
     // No throw == the container returned 200 == the cmdlet completed without
     // error — the transport's success signal (see exchange-online-transport.ts's
     // header for why this, and not an HTTP-status comparison, is the design).
+    // #4429: for a template with a readBack spec that is necessary, not
+    // sufficient — EXO can complete a Set-* cmdlet (warning, no throw) without
+    // applying the value, so the end state must also be read back.
+    if (readBack.spec && readBackParams) {
+      const spec = readBack.spec;
+      const outcome = await runReadBackConvergence(spec, readBackParams, {
+        read: async (cmdletKey, params) => (await callPsExecution(cmdletKey, params)).items,
+        sleep: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+      }, readBackPolicy);
+      const readBackTrail = {
+        readBackCmdletKey: spec.cmdletKey,
+        readBackExpect: spec.expect,
+        verified: outcome.verified,
+        readBackReads: outcome.reads,
+        readBackWaitedMs: outcome.waitedMs,
+        readBackMismatches: outcome.lastMismatches,
+        readBackLastError: outcome.lastReadError ?? null,
+        unverifiedReason: outcome.unverifiedReason ?? null,
+      };
+      if (!outcome.verified) {
+        const detail =
+          `${parsed.parsed.cmdlet} completed without error but its effect could NOT be verified ` +
+          `(${outcome.unverifiedReason}; ${outcome.reads} read(s) of '${spec.cmdletKey}' over ${outcome.waitedMs}ms` +
+          (outcome.lastMismatches.length > 0
+            ? `; last read: ${outcome.lastMismatches.map((m) => `${m.property}=${JSON.stringify(m.actual)} (expected ${JSON.stringify(m.expected)})`).join(", ")}`
+            : "") +
+          (outcome.lastReadError ? `; last read error: ${outcome.lastReadError}` : "") +
+          "). Reported as a failure rather than claiming a change the tenant does not show (#4429).";
+        log.warn({ templateId, tenantId, ...readBackTrail }, "runExchangeOnlineTemplateAgainstTenant: write not verified by read-back");
+        const auditLogId = await writeAudit({
+          success: false,
+          status: 0,
+          errorType: "unexpected",
+          cmdlet: parsed.parsed.cmdlet,
+          cmdletKey: parsed.parsed.cmdletKey,
+          organization,
+          psResult: result.rawResponse,
+          ...readBackTrail,
+        });
+        return { success: false, status: 0, errorType: "unexpected", data: detail, endpoint, method: "POWERSHELL", label, auditLogId };
+      }
+      const auditLogId = await writeAudit({
+        success: true,
+        status: 200,
+        errorType: null,
+        cmdlet: parsed.parsed.cmdlet,
+        cmdletKey: parsed.parsed.cmdletKey,
+        organization,
+        psResult: result.rawResponse,
+        ...readBackTrail,
+      });
+      return { success: true, status: 200, data: result.rawResponse, endpoint, method: "POWERSHELL", label, auditLogId };
+    }
     const auditLogId = await writeAudit({
       success: true,
       status: 200,
@@ -1375,6 +1460,7 @@ export async function runBaselineTemplateAgainstTenant(
     return await runExchangeOnlineTemplateAgainstTenant({
       templateId, tenantId, customerId, endpoint, body,
       label: writeResolved.label, effectivePayload, source,
+      successCriteria: writeResolved.successCriteria,
     });
   }
 

@@ -326,6 +326,51 @@ $script:CmdletCatalog = @{
         Session        = "exchange"
     }
 
+    # #4429: read-back for the exchange-online:// write transport — ONE
+    # mailbox's send-restriction state, so a write template's
+    # success_criteria.readBack can confirm the tenant actually shows the value
+    # the write claimed to set (Set-Mailbox -MaxSendSize "0B" returned success
+    # while Get-Mailbox still showed the 35 MB default). Identity is mandatory
+    # and comes from the write's own resolved body, never free text.
+    # MaxSendSize/MaxReceiveSize are Unlimited<ByteQuantifiedSize>: a live
+    # object in some module builds, the display string "35 MB (36,700,160
+    # bytes)" in the EXO v3 REST output #3948 observed — both are normalized to
+    # an integer byte count ($null = Unlimited/unparseable), with the raw
+    # string kept alongside for the audit trail.
+    "get-mailbox-send-restrictions" = @{
+        AllowedParams = @("Identity")
+        Script = {
+            param($ReadParams)
+            if (-not $ReadParams -or -not $ReadParams["Identity"]) {
+                throw "get-mailbox-send-restrictions requires Identity."
+            }
+            $toBytes = {
+                param($v)
+                if ($null -eq $v) { return $null }
+                if ($v.PSObject.Properties["IsUnlimited"]) {
+                    if ($v.IsUnlimited -or $null -eq $v.Value) { return $null }
+                    return [long]$v.Value.ToBytes()
+                }
+                if ([string]$v -match '\(([\d,\.\s]+) bytes\)') {
+                    return [long]($Matches[1] -replace '[^\d]', '')
+                }
+                return $null
+            }
+            Get-Mailbox -Identity $ReadParams["Identity"] -ErrorAction Stop | ForEach-Object {
+                [PSCustomObject]@{
+                    PrimarySmtpAddress   = [string]$_.PrimarySmtpAddress
+                    RecipientTypeDetails = [string]$_.RecipientTypeDetails
+                    MaxSendSize          = [string]$_.MaxSendSize
+                    MaxSendSizeBytes     = & $toBytes $_.MaxSendSize
+                    MaxReceiveSize       = [string]$_.MaxReceiveSize
+                    MaxReceiveSizeBytes  = & $toBytes $_.MaxReceiveSize
+                    RecipientLimits      = [string]$_.RecipientLimits
+                }
+            }
+        }
+        Session = "exchange"
+    }
+
     # exchange:connector-health. PostFilter narrows to inbound connectors
     # that do NOT require TLS — RequireTls=$false is Microsoft's own
     # documented Exchange Online connector security-baseline flag, the

@@ -308,6 +308,7 @@ if ($catalogEntry.IsWrite) {
 }
 
 $writeOutcome = $null
+$writeWarnings = @()
 $result = $null
 $failurePayload = $null
 
@@ -322,6 +323,17 @@ try {
     if ($invocation.IsScript) {
         $result = & $catalogEntry.Script $invocation.Params
     }
+    elseif ($catalogEntry.IsWrite) {
+        # #4429: capture the WARNING stream on writes. EXO's Set-* cmdlets
+        # report "The command completed successfully but no settings of '<x>'
+        # have been modified." as a warning, never an error — so without this
+        # a write that changed nothing was indistinguishable from one that did
+        # (live: Set-Mailbox -MaxSendSize "0B", audit 70). Surfaced verbatim in
+        # the result for the audit trail; the api-server's read-back (not this
+        # text) is what decides success, since warning wording is not a contract.
+        $cmdletParams = $invocation.Params
+        $result = & $invocation.Cmdlet @cmdletParams -WarningVariable writeWarnings -WarningAction SilentlyContinue
+    }
     else {
         $cmdletParams = $invocation.Params
         $result = & $invocation.Cmdlet @cmdletParams
@@ -333,7 +345,10 @@ try {
         # object so a caller doesn't have to distinguish "[]" (empty read
         # result) from "write succeeded".
         $writeOutcome = "succeeded"
-        $result = @{ status = $writeOutcome }
+        $result = @{ status = $writeOutcome; warnings = @($writeWarnings | ForEach-Object { [string]$_ }) }
+        if ($result.warnings.Count -gt 0) {
+            Write-Log -Level "warn" -Channel "audit" -Message "write action completed with warnings" -Extra @{ cmdletKey = $cmdletKey; cmdlet = $invocation.Cmdlet; organization = $organization; identity = $invocation.Params["Identity"]; warnings = ($result.warnings -join " | ") }
+        }
     }
 
     # ResultProperty: some cmdlets (Export-ActivityExplorerData) return a
