@@ -225,7 +225,7 @@ export async function compensateSecurityDefaultsForRun(
       },
       output: {
         compensation: "security_defaults_reenable",
-        success, status, errorType, attempts,
+        success, status, errorType, error, attempts,
         endpoint: SECURITY_DEFAULTS_ENDPOINT, method: "PATCH",
         tenantId: plan.tenantId, customerId: plan.customerId,
         readBackIsEnabled: readBack.isEnabled, readBackError: readBack.error,
