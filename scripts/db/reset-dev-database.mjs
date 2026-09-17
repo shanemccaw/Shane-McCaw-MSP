@@ -191,6 +191,33 @@ function quoteIdent(name) {
   return `"${name.replace(/"/g, '""')}"`;
 }
 
+// Git #4423 — the same live-consented mccawsoft2 tenant row (a real M365 admin
+// consent + real Stripe signup, walked through by hand) was deleted six times in
+// one day by this script's own real `--yes` runs, every time as a build session's
+// "live verify the script/gate I just wrote" step against the shared local dev DB
+// -- never a scheduled job, never a test teardown. Nothing distinguished "scratch
+// data safe to nuke" from "a walkthrough that must survive," because both live at
+// the exact same msp_id scope this script targets.
+//
+// A tenant flagged reset_protected blocks the ENTIRE run -- dry run included, so
+// the BuildConsole Command Center gate never arms the confirm phrase either --
+// regardless of whether the script is invoked directly, through that gate, or
+// through an agent's own verification harness. This check lives here, in the
+// script's own shared logic, precisely so no caller can route around it.
+function loadProtectedTenants(databaseUrl, targetMspId) {
+  const rows = psqlValue(
+    databaseUrl,
+    `SELECT id || '|' || customer_name FROM tenants WHERE msp_id = ${targetMspId} AND reset_protected = true ORDER BY id;`
+  );
+  return rows
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [id, name] = line.split("|");
+      return { id: Number(id), name };
+    });
+}
+
 function loadTargetMspId(databaseUrl) {
   const rows = psqlValue(
     databaseUrl,
@@ -398,6 +425,23 @@ async function main() {
 
   const { id: targetMspId, name: targetMspName } = loadTargetMspId(databaseUrl);
   console.log(`Target MSP (live-derived, is_direct_business=true): #${targetMspId} "${targetMspName}"`);
+
+  const protectedTenants = loadProtectedTenants(databaseUrl, targetMspId);
+  if (protectedTenants.length > 0) {
+    console.error(
+      `\nREFUSING TO RUN (dry run included): ${protectedTenants.length} tenant(s) in msp #${targetMspId}'s ` +
+        `scope are marked reset_protected -- a real, live-consented walkthrough this script must not delete (Git #4423):`
+    );
+    for (const t of protectedTenants) {
+      console.error(`  tenants.id=${t.id} "${t.name}"`);
+    }
+    console.error(
+      `\nThis is a whole-run refusal, not a per-tenant skip -- nothing was changed. To reset anyway, first clear ` +
+        `the flag yourself with a deliberate manual UPDATE once the protected walkthrough is genuinely done with:\n` +
+        `  UPDATE tenants SET reset_protected = false WHERE id IN (${protectedTenants.map((t) => t.id).join(", ")});`
+    );
+    process.exit(1);
+  }
 
   const plan = buildResetPlan(databaseUrl, targetMspId);
   console.log(

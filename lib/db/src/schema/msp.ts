@@ -271,6 +271,26 @@ export const tenantsTable = pgTable("tenants", {
    */
   postTerminationPurgedAt: timestamp("post_termination_purged_at", { withTimezone: true }),
   isTestbed: boolean("is_testbed").notNull().default(false),
+  /**
+   * Git #4423 — a real, live-consented tenant (real M365 admin consent + real Stripe
+   * signup, walked through by hand) shares the exact same `msp_id` scope that
+   * `scripts/db/reset-dev-database.mjs` targets when Shane wants to wipe his own
+   * direct-business MSP back to a clean-slate testing state: nothing distinguished
+   * "scratch data safe to nuke" from "a walkthrough that must survive." That
+   * collision destroyed the same live-consented row six times in one day — every
+   * time via a build session's own "live verify the script/gate I just wrote"
+   * step running the script's real `--yes` mode against the shared local dev DB,
+   * never a scheduled job or test teardown.
+   *
+   * Setting this true makes `reset-dev-database.mjs` refuse its ENTIRE run (dry
+   * run included, so the BuildConsole gate never arms) while any tenant in the
+   * target MSP's scope carries it — a structural refusal inside the script's own
+   * shared logic, not a UI-layer confirmation, so it holds regardless of whether
+   * the script is invoked directly, through the Command Center gate, or through
+   * an agent's own verification harness. Cleared only by an explicit manual
+   * UPDATE once the protected walkthrough is genuinely done with.
+   */
+  resetProtected: boolean("reset_protected").notNull().default(false),
   // The tenant's Stripe Customer (`cus_…`), created once and reused for every
   // charge this direct customer ever makes (#490).
   //

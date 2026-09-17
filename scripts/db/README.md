@@ -26,6 +26,38 @@ real local dev database (host must be `localhost`/`127.0.0.1`, and the URL can't
 remote-hosting pattern like `neon.tech`/`replit`/`amazonaws`/`rds.`/`supabase`). This script
 never runs against Staging/Replit or production, by design — not a flag, a hard refusal.
 
+**`reset_protected` — a real, live-consented tenant survives this script no matter who runs it
+(Git #4423):** the same live-consented mccawsoft2 tenant row (a real M365 admin consent + real
+Stripe signup, walked through by hand) was deleted six times in one day, every time by a build
+session's own "live verify the script/gate I just wrote" step running this script's real `--yes`
+mode against the shared local dev DB — never a scheduled job, never a test teardown. Nothing
+distinguished "scratch data safe to nuke" from "a walkthrough that must survive," because both
+live at the exact same `msp_id` scope this script targets.
+
+If ANY tenant in the target MSP's scope has `tenants.reset_protected = true`, the script refuses
+its **entire** run — dry run included, so the BuildConsole Command Center gate never arms its
+confirm phrase either — and changes nothing. This is a whole-run refusal, not a per-tenant skip,
+and it lives in the script's own shared logic, not a UI-layer confirmation, so it holds no matter
+whether the script is invoked directly, through the Command Center gate, through the "Clean Dev
+Database" chain below, or through an agent's own verification harness. Flip it on right after a
+real walkthrough:
+
+```sql
+UPDATE tenants SET reset_protected = true WHERE tenant_id = '<the real Entra tenant GUID>';
+```
+
+and clear it yourself, deliberately, only once that walkthrough is genuinely done with:
+
+```sql
+UPDATE tenants SET reset_protected = false WHERE id IN (<ids the refusal message printed>);
+```
+
+**A build session verifying this script or its Command Center gate must never do so by running
+the real `--yes` mode (or typing a gate's real confirm phrase) against this shared database.**
+That is exactly the pattern that caused #4423. Verify against `--dry-run` output, a throwaway
+database, or a synthetic tenant/MSP that isn't `is_direct_business = true` — never the real
+target MSP's live data.
+
 **What it does, in order:**
 1. Live-derives the target MSP (`is_direct_business = true`) — never a hardcoded id.
 2. Reuses `find-tenant-scoped-tables.mjs` (#4313, imported not reimplemented) to discover —
@@ -112,7 +144,9 @@ in that order, through the same gates as the individual rows above (no second ru
   and 3, each shown in the right pane as it runs. Nothing changes. The preview ends with the phrase
   `clean dev db #<live msp id>`; typing it and pressing Enter runs the real chain once.
 - **Step 1 never blocks** — its output is shown whatever it reports.
-- **Fail-stop on step 2:** if the real reset fails, step 3 is marked not run and never starts.
+- **Fail-stop on step 2:** if the real reset fails, step 3 is marked not run and never starts —
+  including a step-2 refusal because of a `reset_protected` tenant (Git #4423), which now shows
+  up here the same way any other reset-dev-database.mjs failure does.
 - **Tenant admin consent before step 3:** after the reset, the chain re-runs step 3's dry run
   against the reset database. If the script reports no live mccawsoft2 `tenants` row (the row only a
   manual, browser-based admin consent creates, #4318), the chain stops before step 3 and says so.
