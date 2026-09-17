@@ -39,6 +39,12 @@
  *       three-step resolution, ownership scoped by assertCustomerAccess instead
  *       of "caller IS this customer".
  *
+ *   GET  /api/msp/customers/:customerId/pillars
+ *     — MSP-operator mirror of /api/portal/pillars (#4340): the real
+ *       seven-pillar summary (`buildPillarSummary`) for an operator-selected
+ *       customer, ownership scoped by assertCustomerAccess instead of the
+ *       JWT-only `resolveCustomerId` the customer-portal route uses.
+ *
  * Customer portal routes (require Customer role):
  *   GET  /api/portal/diagnostics/latest
  *     — Customer's latest run + findings summary (read-only).
@@ -77,6 +83,7 @@ import { fetchSignalRulesAndGroups } from "../lib/priority-engine.ts";
 import { evaluateDocGateCoverage } from "../lib/doc-gate-coverage.ts";
 import { REQUIRED_MT_SCOPES } from "../lib/graph.ts";
 import { classifyMonitorFailure, type FailureClassification } from "../lib/monitor-failure-classifier.ts";
+import { buildPillarSummary } from "../lib/pillar-summary-stats.ts";
 import jwt from "jsonwebtoken";
 import { randomUUID } from "crypto";
 import { LEGACY_ROLE, canonicalRoleValue } from "@workspace/db/rbac/legacy-ladder";
@@ -1377,6 +1384,42 @@ router.get(
       res.status(500).json({ error: "Internal server error" });
     }
   }
+);
+
+// ── GET /api/msp/customers/:customerId/pillars ────────────────────────────────
+// MSP-operator mirror of GET /api/portal/pillars (#4340): the real seven-pillar
+// summary (`buildPillarSummary`, the same health-engine computation the
+// customer-facing pillar cards use — no separate/approximate formula) for an
+// operator-SELECTED customer. /api/portal/pillars itself is customer-scoped off
+// the JWT only (`resolveCustomerId`) and ignores any `?tenantId=` an operator
+// client sends, so an MSP operator signed in as staff (no `customerId` claim of
+// their own) had no route back to a specific tenant's real pillar scores — this
+// closes that gap the same way the /scripts mirror above does: ownership scoped
+// by assertCustomerAccess instead of "the caller IS this customer".
+router.get(
+  "/msp/customers/:customerId/pillars",
+  requireCapability("ladder.msp-operator"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const customerId = parseInt(req.params["customerId"] as string, 10);
+      if (isNaN(customerId)) { res.status(400).json({ error: "Invalid customerId" }); return; }
+
+      const [customer] = await db
+        .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
+        .limit(1);
+      if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
+      if (!(await assertCustomerAccess(req.user!, customerId))) {
+        res.status(404).json({ error: "Customer not found" }); return;
+      }
+
+      res.json(await buildPillarSummary(customerId));
+    } catch (err) {
+      log.error({ err }, "GET /msp/customers/:customerId/pillars error");
+      res.status(500).json({ error: "Failed to compute pillar summary" });
+    }
+  },
 );
 
 export default router;
