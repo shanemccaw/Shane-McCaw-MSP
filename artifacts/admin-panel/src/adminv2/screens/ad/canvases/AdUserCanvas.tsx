@@ -9,10 +9,10 @@
  * already uses — same endpoints, same request shapes, new shell chrome.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { UserCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { ACCENT_TEXT } from "../../../theme";
+import { ACCENT_TEXT, LINE, SURFACE, TEXT } from "../../../theme";
 import { useShell } from "../../../shell/ShellContext";
 import { ContextMenu, useContextMenu } from "../../../shell/ContextMenu";
 import {
@@ -22,13 +22,14 @@ import {
   hardDeleteAdUser,
   impersonateAdUser,
   resetAdUserMfa,
+  searchAdDirectory,
   setAdUserAssignment,
   setAdUserEntitlement,
   setAdUserRole,
 } from "../adApi";
 import { setAdCachedRecord } from "../adNameCache";
 import { onAdRecordAction, requestAdTreeRefresh } from "../adEvents";
-import type { AdEntitlementsView, AdUserDetail, DirectoryGroupRole } from "../adTypes";
+import type { AdEntitlementsView, AdSearchResult, AdUserDetail, DirectoryGroupRole } from "../adTypes";
 import { useDirectoryRoles } from "@/lib/useDirectoryRoles";
 import { AdRbacUserRolesSection } from "../AdRbacPanels";
 import {
@@ -55,6 +56,20 @@ function fmtDateTime(v: string | null): string {
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
+function REASSIGN_RESULT_ROW_STYLE(busy: boolean): CSSProperties {
+  return {
+    display: "block",
+    width: "100%",
+    textAlign: "left",
+    padding: "6px 9px",
+    border: 0,
+    background: "transparent",
+    color: TEXT.primary,
+    fontSize: 11.5,
+    cursor: busy ? "default" : "pointer",
+  };
+}
+
 // #2459 (part of #1696) — the local `roleLinkageRequirement()` copy that used to
 // sit here, and the `DIRECTORY_GROUP_ROLES` literal list it ran over, are gone.
 // Both are read from `GET /admin/active-directory/roles` via `useDirectoryRoles`,
@@ -74,6 +89,10 @@ export function AdUserCanvas({ userId }: { userId: number }) {
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [deleted, setDeleted] = useState(false);
+  const [reassignQuery, setReassignQuery] = useState("");
+  const [reassignResults, setReassignResults] = useState<AdSearchResult | null>(null);
+  const [reassignBusy, setReassignBusy] = useState(false);
+  const reassignDebounceRef = useRef<number | null>(null);
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
   const load = useCallback(async () => {
@@ -104,8 +123,51 @@ export function AdUserCanvas({ userId }: { userId: number }) {
     setDeleteArmed(false);
     setDeleteConfirmText("");
     setDeleted(false);
+    setReassignQuery("");
+    setReassignResults(null);
     void load();
   }, [load]);
+
+  // Reassignment picker — same debounced universal search AdExplorerTree.tsx
+  // uses (`searchAdDirectory`), scoped here to whichever target type the
+  // account's current role actually requires.
+  useEffect(() => {
+    if (!reassignQuery.trim()) {
+      setReassignResults(null);
+      return;
+    }
+    if (reassignDebounceRef.current) window.clearTimeout(reassignDebounceRef.current);
+    reassignDebounceRef.current = window.setTimeout(async () => {
+      try {
+        setReassignResults(await searchAdDirectory(fetchWithAuth, reassignQuery));
+      } catch {
+        // Leave previous results visible on a transient failure.
+      }
+    }, 200);
+    return () => {
+      if (reassignDebounceRef.current) window.clearTimeout(reassignDebounceRef.current);
+    };
+  }, [reassignQuery, fetchWithAuth]);
+
+  const runReassign = useCallback(
+    async (target: { mspId: number } | { customerId: number }, targetLabel: string) => {
+      setOutcome(null);
+      setReassignBusy(true);
+      try {
+        await setAdUserAssignment(fetchWithAuth, userId, target);
+        setOutcome({ tone: "ok", message: `Reassigned to ${targetLabel}. Takes effect at their next JWT refresh.` });
+        setReassignQuery("");
+        setReassignResults(null);
+        requestAdTreeRefresh();
+        await load();
+      } catch (err) {
+        setOutcome({ tone: "error", message: err instanceof Error ? err.message : "Failed to reassign this account." });
+      } finally {
+        setReassignBusy(false);
+      }
+    },
+    [fetchWithAuth, userId, load],
+  );
 
   const changeRole = useCallback(
     async (role: DirectoryGroupRole) => {
@@ -286,9 +348,77 @@ export function AdUserCanvas({ userId }: { userId: number }) {
             ))}
           </div>
           {linkageRequirement !== "none" && (
-            <span style={{ fontSize: 11, color: ACCENT_TEXT.neutral }}>
-              {linkageRequirement === "msp" ? "This role requires an MSP linkage." : "This role requires a tenant linkage."} Reassign via the MSP/Tenant tree to move it.
-            </span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+              <span style={{ fontSize: 11, color: ACCENT_TEXT.neutral }}>
+                {linkageRequirement === "msp" ? "This role requires an MSP linkage." : "This role requires a tenant linkage."}{" "}
+                Currently: {(linkage?.mspName ?? linkage?.customerName) ?? "unassigned"}.
+              </span>
+              <div style={{ maxWidth: 340 }}>
+                <input
+                  value={reassignQuery}
+                  onChange={(e) => setReassignQuery(e.target.value)}
+                  placeholder={linkageRequirement === "msp" ? "Search MSPs to reassign to…" : "Search tenants to reassign to…"}
+                  disabled={reassignBusy}
+                  style={{
+                    width: "100%",
+                    height: 26,
+                    padding: "0 9px",
+                    borderRadius: 5,
+                    border: `1px solid ${LINE.control}`,
+                    background: SURFACE.well,
+                    color: TEXT.primary,
+                    fontFamily: "inherit",
+                    fontSize: 11.5,
+                    boxSizing: "border-box",
+                  }}
+                />
+                {reassignQuery.trim() && (
+                  <div
+                    style={{
+                      marginTop: 4,
+                      border: `1px solid ${LINE.control}`,
+                      borderRadius: 5,
+                      background: SURFACE.card,
+                      maxHeight: 180,
+                      overflowY: "auto",
+                    }}
+                  >
+                    {!reassignResults ? (
+                      <div style={{ padding: 8, fontSize: 11, color: TEXT.faint, fontStyle: "italic" }}>Searching…</div>
+                    ) : linkageRequirement === "msp" ? (
+                      reassignResults.msps.length === 0 ? (
+                        <div style={{ padding: 8, fontSize: 11, color: TEXT.faint }}>No matches for &ldquo;{reassignQuery}&rdquo;.</div>
+                      ) : (
+                        reassignResults.msps.map((m) => (
+                          <button
+                            key={`msp-${m.id}`}
+                            disabled={reassignBusy}
+                            onClick={() => void runReassign({ mspId: m.id }, m.name)}
+                            style={REASSIGN_RESULT_ROW_STYLE(reassignBusy)}
+                          >
+                            {m.name}
+                          </button>
+                        ))
+                      )
+                    ) : reassignResults.customers.length === 0 ? (
+                      <div style={{ padding: 8, fontSize: 11, color: TEXT.faint }}>No matches for &ldquo;{reassignQuery}&rdquo;.</div>
+                    ) : (
+                      reassignResults.customers.map((c) => (
+                        <button
+                          key={`customer-${c.id}`}
+                          disabled={reassignBusy}
+                          onClick={() => void runReassign({ customerId: c.id }, c.name)}
+                          style={REASSIGN_RESULT_ROW_STYLE(reassignBusy)}
+                        >
+                          {c.name}
+                          {c.mspName ? ` · ${c.mspName}` : ""}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
           )}
         </AdSection>
 
