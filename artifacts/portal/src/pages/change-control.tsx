@@ -125,9 +125,9 @@ export default function ChangeControlPage() {
         <div className="flex flex-col gap-2.5 rounded-xl border border-status-amber/30 bg-status-amber/5 p-4" data-testid="change-control-addon-required">
           <span className="text-[13.5px] font-semibold text-foreground">The change control add-on isn&apos;t active for your organisation</span>
           <span className="max-w-[700px] text-xs leading-relaxed text-muted-foreground">
-            Change control is a separately priced add-on, not part of any Monitoring tier, so your
-            tier does not unlock it. The register, the standard change catalogue, the freeze and
-            maintenance calendars and change metrics all read behind that add-on, and the server
+            Change control comes with the Premier Monitoring tier and is a separately priced add-on
+            on every other tier, so your current tier does not unlock it. The register, the standard
+            change catalogue, the freeze and maintenance calendars and change metrics all read behind that add-on, and the server
             answers 402 for your organisation until it is active. This is not a fault.
           </span>
           <span className="max-w-[700px] text-xs leading-relaxed text-muted-foreground/80">

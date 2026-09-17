@@ -351,6 +351,10 @@ export const tenantAddOnEntitlementsTable = pgTable("tenant_add_on_entitlements"
   status: text("status", { enum: ["active", "canceled"] }).notNull().default("active"),
   purchasedAt: timestamp("purchased_at", { withTimezone: true }).notNull().defaultNow(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  // #4462 — the paid portal add-on checkout that provisioned this row, and the
+  // subscription it created. Null on rows that predate purchases.
+  stripeCheckoutSessionId: text("stripe_checkout_session_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
 }, (t) => [
   unique("tenant_add_on_entitlements_tenant_feature_uq").on(t.tenantId, t.featureKey),
   index("tenant_add_on_entitlements_tenant_id_idx").on(t.tenantId),

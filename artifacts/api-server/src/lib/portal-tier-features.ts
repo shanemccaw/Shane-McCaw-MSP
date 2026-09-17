@@ -16,11 +16,11 @@
  *     plan, this is a customer's purchased monitoring tier.
  *   - `lib/portal-addon-entitlements.ts` — a per-tenant, separately-priced
  *     ADD-ON purchase (`tenant_add_on_entitlements`), used by Change Control
- *     per #1173/#1168's own comment thread (2026-08-21): Change Control is
- *     real add-on, not a tier-bundled feature, precisely because a customer's
- *     need for the customer-FACING approval UI (vs. their own mature ITSM
- *     process) doesn't track their monitoring tier. Do NOT route Change
- *     Control's gate through this module — it already has the right one.
+ *     per #1173/#1168's own comment thread (2026-08-21). A Premier tenant passes
+ *     every add-on gate by tier (#4462, Shane's decision on #4463): that module
+ *     asks `resolveCustomerTierEntitlement` below for the tier label and never
+ *     reads `includedFeatures`. Do NOT route Change Control's gate through this
+ *     module — it already has the right one.
  *
  * This module is the fourth: **does the customer's purchased Monitoring tier
  * (Foundation/Growth/Premier, `services.tier`) bundle module X**, per the real
@@ -38,10 +38,9 @@
  * ── Module keys ──────────────────────────────────────────────────────────────
  * Canonical strings written into `services.type_attributes.includedFeatures`
  * by `lib/db/migrations/manual/2026-09-05-portal-tier-included-features-1168.sql`.
- * `changeControl` is listed for documentation completeness only (Premier
- * "functionally gets both", per #1168's structural-dependency note) — it is
- * NEVER read by `hasTierFeature`/`requireTierFeature` below; its real gate is
- * `requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY)`.
+ * There is no Change Control key: it is an add-on, not a tier module, and
+ * Premier's inclusion of it (and of every other add-on) is enforced by tier in
+ * `portal-addon-entitlements.ts` (#4462), not by an `includedFeatures` entry.
  *
  * #4191 moved the vocabulary itself to `@workspace/db/rbac/tier-modules` — one key
  * at a time, unchanged — because the composed RBAC + tier decision function

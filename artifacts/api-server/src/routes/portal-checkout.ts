@@ -54,6 +54,7 @@ import { broadcastCustomerOfferChange, broadcastMspOfferChange } from "../lib/ss
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { verifyCaptchaToken } from "../lib/captcha.ts";
 import { provisionDirectMarketingPurchase, DIRECT_MARKETING_CHECKOUT_KIND } from "./portal-checkout-direct.ts";
+import { PORTAL_ADD_ON_CHECKOUT_KIND } from "../lib/addon-checkout-kind.ts";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
 const router: IRouter = Router();
@@ -931,6 +932,15 @@ async function handleCheckoutCompleted(
   // signing secret, one raw-body mount) but provisions through its own handler.
   if (meta["checkout_kind"] === DIRECT_MARKETING_CHECKOUT_KIND) {
     await provisionDirectMarketingPurchase(session);
+    return;
+  }
+
+  // Signed-in tenant add-on purchase (Git #4462) — the backstop for a buyer who
+  // never returns to the portal's confirm callback. Idempotent with it. Loaded
+  // lazily so this webhook's import graph doesn't carry the add-on route's.
+  if (meta["checkout_kind"] === PORTAL_ADD_ON_CHECKOUT_KIND) {
+    const { provisionPortalAddOnPurchase } = await import("./portal-add-ons.ts");
+    await provisionPortalAddOnPurchase(session);
     return;
   }
 

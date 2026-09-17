@@ -9,9 +9,10 @@
 --
 --   Foundation: policy_decisions, risk_register
 --   Growth:     + runbooks, remediation_tracking, sops_runbooks, message_center
---   Premier:    + change_control (doc-only, real gate is the add-on
---               entitlement table per #1173), ownership, security_plan,
---               pii_governance
+--   Premier:    + ownership, security_plan, pii_governance
+--               (change_control was listed here as doc-only until #4462: Premier
+--               now passes every add-on gate by tier, so it was removed —
+--               see 2026-09-17-premier-includes-all-add-ons-4462.sql)
 --
 -- Additive jsonb merge via `||` on an object built from the existing array
 -- plus the new keys — existing entries (report-name strings, capability
@@ -54,7 +55,7 @@ SET type_attributes = jsonb_set(
     SELECT jsonb_agg(DISTINCT feature)
     FROM jsonb_array_elements_text(
       COALESCE(type_attributes->'includedFeatures', '[]'::jsonb)
-      || '["policy_decisions", "risk_register", "runbooks", "remediation_tracking", "sops_runbooks", "message_center", "change_control", "ownership", "security_plan", "pii_governance"]'::jsonb
+      || '["policy_decisions", "risk_register", "runbooks", "remediation_tracking", "sops_runbooks", "message_center", "ownership", "security_plan", "pii_governance"]'::jsonb
     ) AS feature
   )
 )

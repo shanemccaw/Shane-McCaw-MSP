@@ -84,7 +84,7 @@ function rbacUnset(): RbacEvaluationInput {
 // input, mirroring real rows — nothing the product reads.
 const FOUNDATION_FEATURES = ["policy_decisions", "risk_register"];
 const GROWTH_FEATURES = [...FOUNDATION_FEATURES, "runbooks", "remediation_tracking", "sops_runbooks", "message_center"];
-const PREMIER_FEATURES = [...GROWTH_FEATURES, "change_control", "ownership", "security_plan", "pii_governance", "poams"];
+const PREMIER_FEATURES = [...GROWTH_FEATURES, "ownership", "security_plan", "pii_governance", "poams"];
 
 const CATALOG: readonly TierCatalogEntry[] = [
   { tier: "foundation", sortOrder: 1, includedFeatures: FOUNDATION_FEATURES },

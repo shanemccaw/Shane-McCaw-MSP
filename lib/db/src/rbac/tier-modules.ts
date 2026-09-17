@@ -20,11 +20,14 @@
  * merge these into the capability catalog; that conflation is exactly what #1696
  * diagnoses in `MSP_ROLES`.
  *
- * `changeControl` is listed for documentation completeness only (Premier "functionally
- * gets both", per #1168's structural-dependency note). Its real gate is
- * `requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY)` in
- * `artifacts/api-server/src/lib/portal-addon-entitlements.ts` — a per-tenant add-on
- * purchase, not a tier bundle — and nothing on the tier axis should be asked about it.
+ * There is no `change_control` key (#4462). It used to be listed for documentation only
+ * (Premier "functionally gets both", #1168) while nothing on the tier axis read it.
+ * Change Control is an add-on, gated by `requireAddOnEntitlement` in
+ * `artifacts/api-server/src/lib/portal-addon-entitlements.ts`, and Shane's decision on
+ * #4463 made Premier's inclusion real there: a Premier tier passes every add-on gate by
+ * tier. A doc-only key here implied a narrower, per-key model than the one enforced, so
+ * it was removed along with the matching `includedFeatures` entries
+ * (lib/db/migrations/manual/2026-09-17-premier-includes-all-add-ons-4462.sql).
  */
 export const PORTAL_TIER_MODULE_KEYS = {
   policyDecisions: "policy_decisions",
@@ -33,7 +36,6 @@ export const PORTAL_TIER_MODULE_KEYS = {
   remediationTracking: "remediation_tracking",
   sopsRunbooks: "sops_runbooks",
   messageCenter: "message_center",
-  changeControl: "change_control", // documentation only — see header. Real gate: portal-addon-entitlements.ts
   ownership: "ownership",
   securityPlan: "security_plan",
   piiGovernance: "pii_governance",
