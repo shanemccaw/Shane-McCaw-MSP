@@ -2,18 +2,19 @@
   "issue": 4452,
   "feature": "Change Control add-on gate (#4452, Feature #1486) — when the calling tenant holds no active `change_control` row in tenant_add_on_entitlements, GET /api/portal/change-control answers 402 ADD_ON_REQUIRED (requireAddOnEntitlement, artifacts/api-server/src/lib/portal-addon-entitlements.ts). artifacts/portal/src/pages/change-control.tsx must render that as its own 'add-on not active' state — not the 'Couldn't load the change register' failure card, and never with the header claiming 'change control add-on active' (which it previously printed unconditionally). Companion to test-manifests/portal/change-control.json, which covers the ENTITLED path.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "loginAs": "Customer — RBAC test",
-  "lastVerifiedAgainstCommit": "1823c90a7",
+  "loginAs": "Customer — RBAC test (non-Premier add-on gate)",
+  "lastVerifiedAgainstCommit": "2f8c4fcd7",
   "notes": [
-    "PRECONDITION, UPDATED #4464 (post-#4462/#4463 Premier-tier bypass): this manifest needs the caller's tenant to be BOTH un-purchased (no active tenant_add_on_entitlements row) AND non-Premier — requireAddOnEntitlement now checks the tenant's Monitoring tier first and bypasses for Premier with no row needed at all. The shared mccawsoft2 tenant (tenants.id 2080) that scripts/db/reset-rbac-test-accounts.mjs binds every 'Customer' RBAC test account to is NO LONGER a valid target for this manifest: it carries a real, live active client_services row (id 176, tier=premier) from the genuine shanemccaw+premier@outlook.com purchase (#4452), so the 'Customer — RBAC test' account now resolves ENTITLED via tier on every reset, not gated. change-control.json (the entitled case) and this manifest are therefore no longer 'mutually exclusive states of one shared account' — this manifest needs its OWN distinct non-Premier tenant/account, which does not currently exist in scripts/db/reset-rbac-test-accounts.mjs. Filed as a finding (see #1486 sub-issues) rather than fabricated here.",
+    "RESOLVED #4488 2026-09-17: scripts/db/reset-rbac-test-accounts.mjs now creates its own dedicated, always-un-entitled tenant/account pair for this manifest — a stable synthetic tenant (tenant_id marker `zz-test-4488-nonpremier-tenant`, created/reused idempotently by the script itself, never touched by any real purchase flow) bound to a new 'Customer' rung, tag `customer-addongate` (email shanemccaw+customer-addongate@outlook.com). The script now aborts the whole run if that tenant ever picks up a real active monitoring_tier client_services row, rather than silently creating a 'non-Premier' account that would actually resolve entitled.",
+    "Live-verified 2026-09-17 against commit 2f8c4fcd7 (real :8080 api-server, real local Postgres): after a real reset-rbac-test-accounts.mjs run, POST /api/auth/login as shanemccaw+customer-addongate@outlook.com succeeded (customerId in the JWT = the new synthetic tenant's id), and GET /api/portal/change-control with that token returned 402 {\"code\":\"ADD_ON_REQUIRED\",\"feature\":\"change_control\"} — exactly what G1 below expects. The same-run shanemccaw+customer@outlook.com (bound to the real Premier mccawsoft2 tenant) still returned 200 scoped:true on the same endpoint, confirming the two accounts now genuinely diverge on entitlement, as change-control.json (entitled) and this manifest (gated) each need.",
+    "SHANE TO-DO: apiTests below resolve credentials automatically via TestEnvironmentVariables (TEST_RBAC_CUSTOMER_ADDONGATE_EMAIL/_PASSWORD), which BuildConsole's 'Reset RBAC test accounts' gate writes on every real reset — no manual step needed for the apiTests. The top-level `loginAs` used by uiSteps is a DIFFERENT, manually-maintained list (Settings -> Test Environment -> User Accounts): add a new profile labeled exactly 'Customer — RBAC test (non-Premier add-on gate)', TargetApp 'Portal', pointing at shanemccaw+customer-addongate@outlook.com with its current TEST_RBAC_CUSTOMER_ADDONGATE_PASSWORD value, before the uiSteps below can run end-to-end.",
     "Live-verified in-session (#4452) against the real :8080 api-server and a worktree portal Vite, driven by playwright-core/Edge as a synthetic zz-test-4452 Customer on a synthetic tenant (both deleted afterwards): gated state rendered this manifest's exact strings with a single 402 request and no downstream change-control reads; after temporarily granting the entitlement the same page read 'Live · genuinely empty', header 'change control add-on active', and all five change-control reads answered 200.",
     "The Raise-a-change dialog is opened but NOT submitted — POST /api/portal/change-control creates a real change request, and this suite does not write.",
-    "shaneapp://runTest (onlyTag=4452-addon-gate) run 2026-09-17 against b7bd8aeea: 0/4 passed. SETUP login returned 401 because the Customer RBAC account (shanemccaw+customer@outlook.com) is not in the reset dev DB. The other steps failed only because {{authToken}} was never extracted, and loginAs aborted for the same reason. Re-run after \"Reset RBAC test accounts\". See #4464.",
-    "RE-CONFIRMED STALE 2026-09-17 (#4464), after running scripts/db/reset-rbac-test-accounts.mjs for real and logging in as the freshly-created shanemccaw+customer@outlook.com: a direct authenticated probe of GET /api/portal/change-control against the real :8080 api-server returned 200 scoped:true (NOT 402 ADD_ON_REQUIRED) — the account is Premier-entitled by tier, per the PRECONDITION note above. G1 (expects 402/ADD_ON_REQUIRED) and every UI step below are NOT expected green against this account until a genuinely non-Premier tenant/account exists for this manifest to target."
+    "STALE HISTORY (#4464, kept for context): prior runs bound this manifest to the same shared shanemccaw+customer@outlook.com account change-control.json uses, which stopped working once that account's tenant became genuinely Premier-entitled (#4452's real purchase). Superseded by the dedicated customer-addongate account above."
   ],
   "apiTests": [
     {
-      "name": "SETUP — log in as the Customer RBAC test account; extract the bearer.",
+      "name": "SETUP — log in as the dedicated non-Premier customer-addongate RBAC test account; extract the bearer.",
       "sessionTag": "4452-addon-gate",
       "method": "POST",
       "path": "/api/auth/login",
@@ -21,8 +22,8 @@
         "Content-Type": "application/json"
       },
       "body": {
-        "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}",
-        "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}"
+        "email": "{{TEST_RBAC_CUSTOMER_ADDONGATE_EMAIL}}",
+        "password": "{{TEST_RBAC_CUSTOMER_ADDONGATE_PASSWORD}}"
       },
       "expect": {
         "status": 200,

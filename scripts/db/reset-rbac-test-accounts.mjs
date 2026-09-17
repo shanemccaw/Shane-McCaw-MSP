@@ -48,6 +48,19 @@
 //      every new account's password actually bcrypt-verifies against its
 //      own freshly-stored hash before committing.
 //
+//   7. Git #4488: also resolves/creates one genuinely non-Premier synthetic
+//      tenant (a stable `zz-test-*` marker row this script owns outright — no
+//      real signup ever targets it, so it can never accrue a real
+//      `client_services`/`tenant_add_on_entitlements` row) and binds one
+//      "Customer" rung to it (`customer-addongate`). The real mccawsoft2
+//      tenant (#4396's TENANT_ID above) now carries a genuine, live Premier
+//      `client_services` row (#4452's real purchase), which makes every
+//      "Customer" account bound to it Premier-entitled to every add-on
+//      (#4462/#4463's tier bypass) — so a manifest that needs a genuinely
+//      un-entitled/gated Customer (e.g. change-control-addon-gate.json) can no
+//      longer use the shared mccawsoft2-bound "customer" tag. This tag is
+//      that manifest's own dedicated, always-un-entitled account.
+//
 // Usage:
 //   node scripts/db/reset-rbac-test-accounts.mjs --dry-run   # BEGIN...ROLLBACK, no writes committed
 //   node scripts/db/reset-rbac-test-accounts.mjs             # real run — wipes + recreates, prints creds once
@@ -72,6 +85,13 @@ const DRY_RUN = process.argv.includes("--dry-run");
 
 const MCCAWSOFT2_ENTRA_TENANT_ID = "c4c814d4-3afe-441e-9145-62461d0a4fd3";
 const PROTECTED_EMAIL = "shane@shanemccaw.com";
+
+// Git #4488: this script's own synthetic, always-un-entitled tenant. Stable
+// `tenant_id` marker so re-runs resolve the SAME row rather than piling up
+// duplicates. Nothing outside this script ever writes to it, so it can never
+// pick up a real `client_services`/`tenant_add_on_entitlements` row.
+const NONPREMIER_TENANT_MARKER = "zz-test-4488-nonpremier-tenant";
+const NONPREMIER_TENANT_NAME = "zz-test-4488 (non-Premier RBAC add-on-gate tenant)";
 
 const dbUrl = process.env.DATABASE_URL;
 if (!dbUrl) {
@@ -128,6 +148,46 @@ async function main() {
     const MSP_ID = mspRows[0].id;
     console.log(`[resolve] real direct MSP id=${MSP_ID}`);
 
+    // ── Resolve/create the synthetic non-Premier tenant (Git #4488) ─────────
+    // Idempotent: reuse the same row across runs by its stable marker rather
+    // than creating a fresh one every time. This tenant is never touched by
+    // any real purchase/onboarding flow, so it stays permanently un-entitled
+    // (no client_services row => resolveCustomerTierEntitlement's currentTier
+    // is null, never "premier"; no tenant_add_on_entitlements row => no
+    // purchased add-on either) — exactly the state change-control-addon-gate
+    // .json's G1/GU1-GU8 assertions need.
+    const { rows: nonPremierRows } = await client.query(
+      `SELECT id FROM tenants WHERE tenant_id = $1`,
+      [NONPREMIER_TENANT_MARKER],
+    );
+    let NONPREMIER_TENANT_ID = nonPremierRows[0]?.id ?? null;
+    if (NONPREMIER_TENANT_ID === null) {
+      const { rows: [createdTenant] } = await client.query(
+        `INSERT INTO tenants (msp_id, customer_name, tenant_id, status, is_testbed)
+         VALUES ($1, $2, $3, 'active', true)
+         RETURNING id`,
+        [MSP_ID, NONPREMIER_TENANT_NAME, NONPREMIER_TENANT_MARKER],
+      );
+      NONPREMIER_TENANT_ID = createdTenant.id;
+      console.log(`[resolve] created synthetic non-Premier tenant id=${NONPREMIER_TENANT_ID} (${NONPREMIER_TENANT_MARKER}).`);
+    } else {
+      console.log(`[resolve] synthetic non-Premier tenant id=${NONPREMIER_TENANT_ID} (${NONPREMIER_TENANT_MARKER}) already exists — reusing.`);
+    }
+    const { rows: rogueServiceRows } = await client.query(
+      `SELECT cs.id, s.tier FROM client_services cs
+         JOIN services s ON s.id = cs.service_id
+        WHERE cs.client_user_id IN (SELECT id FROM users WHERE tenant_id = $1)
+          AND cs.status = 'active' AND s.service_type = 'monitoring_tier'`,
+      [NONPREMIER_TENANT_ID],
+    );
+    if (rogueServiceRows.length > 0) {
+      throw new Error(
+        `Synthetic non-Premier tenant id=${NONPREMIER_TENANT_ID} has ${rogueServiceRows.length} active monitoring_tier ` +
+          `client_services row(s) (${JSON.stringify(rogueServiceRows)}) — it is no longer genuinely un-entitled. Aborting rather than ` +
+          `silently creating a "non-Premier" account that would actually resolve entitled.`,
+      );
+    }
+
     const { rows: shaneBefore } = await client.query(
       `SELECT id, email, msp_role, msp_id, tenant_id, updated_at FROM users WHERE email = $1`,
       [PROTECTED_EMAIL],
@@ -171,6 +231,7 @@ async function main() {
       { tag: "cap.team.manage", mspRole: "Customer", tenantId: "REQUIRED", mspId: MSP_ID, canManageTeam: true },
       { tag: "cap.changes.approve", mspRole: "Customer", tenantId: "REQUIRED", mspId: MSP_ID, canApproveChanges: true },
       { tag: "cap.purchases.approve", mspRole: "MSPOperator", tenantId: null, mspId: MSP_ID, canApprovePurchases: true, grantMspRoleKey: "cap.purchases.approve" },
+      { tag: "customer-addongate", mspRole: "Customer", tenantId: "REQUIRED_NONPREMIER", mspId: MSP_ID },
     ];
 
     // ── Delete only the accounts THIS script's tag list owns ────────────────
@@ -247,7 +308,10 @@ async function main() {
       const password = randomPassword();
       const passwordHash = await bcrypt.hash(password, 12);
       const name = `RBAC Test — ${spec.tag}`;
-      const rowTenantId = spec.tenantId === "REQUIRED" ? TENANT_ID : spec.tenantId;
+      const rowTenantId =
+        spec.tenantId === "REQUIRED" ? TENANT_ID
+        : spec.tenantId === "REQUIRED_NONPREMIER" ? NONPREMIER_TENANT_ID
+        : spec.tenantId;
 
       const { rows: [inserted] } = await client.query(
         `INSERT INTO users (email, password_hash, role, name, msp_role, msp_id, tenant_id, can_manage_team, can_approve_changes, can_approve_purchases)
