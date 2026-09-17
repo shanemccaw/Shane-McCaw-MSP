@@ -244,8 +244,16 @@ namespace BuildConsole.Services
         /// <summary>Direct Postgres client for all queue DB mutations (claim, complete, orphan-sweep). Non-null when BUILD_DATABASE_URL was resolved at startup; falls back to _api HTTP calls when null (e.g. .env.local not found).</summary>
         private readonly BuildQueuePostgresClient? _db;
         /// <summary>Git #2122 — no longer readonly: <see cref="UpdateMaxConcurrent"/> is the live-apply
-        /// path for the Settings UI's max concurrent build slots control.</summary>
+        /// path for the Settings UI's max concurrent build slots control. Git #4542 — this is now the
+        /// SOFT auto-dispatch max: the ceiling the automatic queue poller (<see cref="TickAsync"/>)
+        /// checks the real total against. Manual launches are bounded by <see cref="_hardCap"/> instead.</summary>
         private int _maxConcurrent;
+        /// <summary>Git #4542 — the HARD cap: the absolute ceiling the real total active build count may
+        /// never cross from ANY source, including a manual Run Now / Continue. Always &gt;= the soft
+        /// <see cref="_maxConcurrent"/> (clamped in the ctor and both live-apply setters), so the 2-slot
+        /// (or however wide) gap between them is the headroom reserved for manual urgent launches that
+        /// jump the auto queue. Live-appliable via <see cref="UpdateHardCap"/>.</summary>
+        private int _hardCap;
         /// <summary>
         /// Git #1985 — nullable on purpose. The constructor used to coalesce a null
         /// FindRepoRoot() to AppDomain.CurrentDomain.BaseDirectory (the app's own install/exe
@@ -381,11 +389,14 @@ namespace BuildConsole.Services
             Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         };
 
-        public QueueWatcherService(BuildTrackerApiClient api, BuildQueuePostgresClient? db, int maxConcurrent, string? repoRoot)
+        public QueueWatcherService(BuildTrackerApiClient api, BuildQueuePostgresClient? db, int maxConcurrent, string? repoRoot, int hardCap = 0)
         {
             _api = api;
             _db = db;
-            _maxConcurrent = maxConcurrent;
+            _maxConcurrent = Math.Max(1, maxConcurrent);
+            // Git #4542 — a hard cap below the soft max is meaningless; clamp up. hardCap<=0 means "no
+            // separate ceiling configured" → fall back to the soft max (old single-cap behavior).
+            _hardCap = Math.Max(_maxConcurrent, hardCap);
             _repoRoot = repoRoot;
             _claudeExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin", "claude.exe");
             _geminiExe = ResolveGeminiExe();
@@ -453,11 +464,41 @@ namespace BuildConsole.Services
         /// this is called on the UI thread; <see cref="LaunchingCount"/> takes its own lock.</summary>
         private int OccupiedSlots => _running.Count + _reservedSlots.Count + LaunchingCount;
 
-        /// <summary>Git #1805 — the real, configured concurrency cap (see <see cref="_maxConcurrent"/>,
-        /// sourced from scripts/build-queue-watcher.config.json's maxConcurrent, default 8). Exposed
-        /// so a manual per-item override (Start Now) can check it and refuse to launch a genuinely-full
-        /// queue instead of guessing or silently exceeding it.</summary>
+        /// <summary>
+        /// Git #4542 — the ONE atomic check-and-reserve every launch path funnels through, so the real
+        /// shared total (<see cref="OccupiedSlots"/>) is evaluated against the caller's threshold and
+        /// the slot claimed in a single locked step — no check-then-act window where two launches both
+        /// pass. <paramref name="limit"/> is the SOFT max (<see cref="_maxConcurrent"/>) for the
+        /// automatic dispatcher and the HARD cap (<see cref="_hardCap"/>) for a manual Run Now / Continue.
+        /// Returns true (and adds <paramref name="id"/> to <see cref="_launching"/>) only if a slot is
+        /// genuinely free under that threshold; idempotent if this id is already reserved. Reads
+        /// <see cref="_running"/>/<see cref="_reservedSlots"/> under <see cref="_launchGate"/>: every real
+        /// caller (the tick, ForceLaunch, LaunchItemExplicit, StartNowAsync) is on the UI thread where
+        /// those two are only ever mutated, so the snapshot is consistent; the lock is what serializes it
+        /// against <see cref="_launching"/>'s thread-pool mutations and against a second concurrent
+        /// reserve attempt.</summary>
+        private bool TryReserveSlot(int id, int limit)
+        {
+            lock (_launchGate)
+            {
+                if (_launching.Contains(id)) return true; // already holds a reservation — don't double-count
+                int occupied = _running.Count + _reservedSlots.Count + _launching.Count;
+                if (occupied >= limit) return false;
+                _launching.Add(id);
+                return true;
+            }
+        }
+
+        /// <summary>Git #1805 / #4542 — the SOFT auto-dispatch max (see <see cref="_maxConcurrent"/>,
+        /// sourced from scripts/build-queue-watcher.config.json's maxConcurrent). This is the ceiling the
+        /// AUTOMATIC queue poller checks the real total against; a manual Run Now / Continue is bounded by
+        /// the wider <see cref="HardCap"/> instead. Exposed so the UI and Start Now can read the live
+        /// value instead of guessing.</summary>
         public int MaxConcurrent => _maxConcurrent;
+
+        /// <summary>Git #4542 — the HARD cap (see <see cref="_hardCap"/>): the absolute ceiling the real
+        /// total may never cross from any source, manual launches included. Always &gt;= <see cref="MaxConcurrent"/>.</summary>
+        public int HardCap => _hardCap;
 
         /// <summary>
         /// Git #2122 — live-apply path for the Settings UI's max concurrent build slots control.
@@ -474,7 +515,27 @@ namespace BuildConsole.Services
             int clamped = Math.Max(1, newValue);
             int old = _maxConcurrent;
             _maxConcurrent = clamped;
-            ActivityLog.Log("watcher", $"Max concurrent build slots changed live: {old} -> {clamped} (no restart required).");
+            // Git #4542 — the hard cap can never sit below the soft max; if raising the soft max crosses
+            // the current hard cap, lift the hard cap with it so the ceiling stays coherent.
+            if (_hardCap < _maxConcurrent)
+            {
+                int oldHard = _hardCap;
+                _hardCap = _maxConcurrent;
+                ActivityLog.Log("watcher", $"Hard cap raised live to match new soft max: {oldHard} -> {_hardCap}.");
+            }
+            ActivityLog.Log("watcher", $"Soft auto-dispatch max changed live: {old} -> {clamped} (hard cap {_hardCap}, no restart required).");
+        }
+
+        /// <summary>Git #4542 — live-apply path for the HARD cap (the absolute ceiling), the sibling of
+        /// <see cref="UpdateMaxConcurrent"/>. Clamped up to at least the current soft max — a hard cap
+        /// below the soft max is meaningless — and re-read fresh by every launch path on its next check,
+        /// so a change takes effect with no restart, exactly like the soft max.</summary>
+        public void UpdateHardCap(int newValue)
+        {
+            int clamped = Math.Max(_maxConcurrent, newValue);
+            int old = _hardCap;
+            _hardCap = clamped;
+            ActivityLog.Log("watcher", $"Hard cap changed live: {old} -> {clamped} (soft auto-dispatch max {_maxConcurrent}, no restart required).");
         }
 
         /// <summary>
@@ -860,8 +921,41 @@ namespace BuildConsole.Services
             return true;
         }
 
-        /// <summary>Git #820 — "Run Now": launches an item this app just force-claimed (bypassing the blocker/free-slot check GetNextQueueItemsAsync would normally enforce). Same launch path as the normal poll loop, just triggered directly instead of discovered.</summary>
-        public void ForceLaunch(QueueItem item) => _ = SafeLaunch(item, isForced: true);
+        /// <summary>Git #820 — "Run Now": launches an item this app just force-claimed (bypassing the
+        /// blocker/free-slot check GetNextQueueItemsAsync would normally enforce). Same launch path as
+        /// the normal poll loop, just triggered directly instead of discovered.
+        ///
+        /// Git #4542 — Run Now no longer bypasses concurrency accounting entirely. It still jumps the
+        /// auto queue (it is not bounded by the SOFT auto-dispatch max — that headroom is exactly what
+        /// Run Now exists to spend), but it IS bounded by the HARD cap: the real total active count may
+        /// never cross the absolute ceiling, from any source. Returns true if it reserved a slot and is
+        /// launching, false if refused because the real total is already at the hard cap.</summary>
+        public bool ForceLaunch(QueueItem item)
+        {
+            if (!TryReserveSlot(item.Id, _hardCap))
+            {
+                ActivityLog.Log("watcher", $"Run Now refused for queue #{item.Id} ({item.Title}) — real total is already at the hard cap ({OccupiedSlots}/{_hardCap}). Run Now spends reserved headroom, but even it cannot cross the hard ceiling.");
+                return false;
+            }
+            _ = SafeLaunch(item, isForced: true);
+            return true;
+        }
+
+        /// <summary>Git #4542 — atomically try to claim a MANUAL (hard-cap) concurrency slot for
+        /// <paramref name="id"/> BEFORE the caller force-claims the DB row. The manual launch callers
+        /// (Run Now, Build Watch Continue) claim the row in Postgres and only then launch; if the
+        /// hard-cap check happened after that claim and refused, the row would sit stuck 'running'. By
+        /// reserving first, a refusal (returns false) means nothing was claimed and there is nothing to
+        /// unwind. On success the id is already in <see cref="_launching"/>, so the subsequent
+        /// <see cref="ForceLaunch"/>/<see cref="LaunchItemExplicit"/> call finds it reserved (idempotent)
+        /// and proceeds; <see cref="LaunchItem"/> clears it in its finally. If the caller's own DB claim
+        /// then fails, it must call <see cref="ReleaseReservation"/> so the held slot is given back.</summary>
+        public bool TryReserveManualSlot(int id) => TryReserveSlot(id, _hardCap);
+
+        /// <summary>Git #4542 — release a slot reserved by <see cref="TryReserveManualSlot"/> when the
+        /// caller's follow-up work (its DB force-claim) failed and the launch will not happen, so the
+        /// held slot is never leaked against the cap. A no-op if the id already left <see cref="_launching"/>.</summary>
+        public void ReleaseReservation(int id) { lock (_launchGate) _launching.Remove(id); }
 
         /// <summary>Git #1805 — the three things <see cref="StartNowAsync"/> can report back to the
         /// caller so the UI's toast is honest about what actually happened, never a generic
@@ -896,24 +990,23 @@ namespace BuildConsole.Services
             // Git #4542 — count claimed-but-still-launching builds (_launching) here too, via
             // OccupiedSlots, not just running + reserved: a build mid-provision holds a real slot and
             // must be able to make Start Now refuse, exactly like a running or reserved one.
-            int occupied = OccupiedSlots;
-            if (occupied >= _maxConcurrent)
+            // Git #4542 — Start Now is a MANUAL action, so it is bounded by the HARD cap (the absolute
+            // ceiling), not the soft auto-dispatch max — the same threshold as Run Now. TryReserveSlot
+            // does the capacity test and the slot reservation as ONE atomic locked step against the real
+            // shared total (running + reserved + launching), so two Start Now clicks (or a Start Now
+            // racing the tick) can't both pass a check-then-act window and overshoot. On success the id
+            // is already in _launching; LaunchItem re-adds it (idempotent) and clears it in its finally,
+            // and the ForceClaim-failure path below clears it so a failed claim never leaves a phantom.
+            if (!TryReserveSlot(queueItemId, _hardCap))
             {
-                int launchingNow = LaunchingCount;
+                int occupied = OccupiedSlots;
                 string reservedNote = _reservedSlots.Count > 0 ? $" + {_reservedSlots.Count} reserved for limit-paused builds resuming" : "";
+                int launchingNow = LaunchingCount;
                 string launchingNote = launchingNow > 0 ? $" + {launchingNow} still launching" : "";
-                string msg = $"Not launched — genuinely at capacity ({_running.Count} running{reservedNote}{launchingNote}, cap {_maxConcurrent}). Start Now overrides waiting, never the concurrency cap itself.";
+                string msg = $"Not launched — genuinely at the hard cap ({_running.Count} running{reservedNote}{launchingNote}, hard cap {_hardCap}). Start Now overrides waiting, never the hard concurrency ceiling itself.";
                 ActivityLog.Log("watcher", $"Start Now: queue #{queueItemId} ({title}) — {msg}");
                 return new StartNowResult(StartNowOutcome.AtCapacity, msg);
             }
-
-            // Git #4542 — reserve this slot in _launching synchronously, on the UI thread, BEFORE the
-            // ForceClaim await below. Otherwise two Start Now clicks (or a Start Now racing the periodic
-            // tick) could each pass the capacity check during the other's await — neither yet counted —
-            // and both launch, overshooting the cap. LaunchItem re-adds this id (idempotent) and clears
-            // it in its own finally; the ForceClaim-failure path below clears it so a failed claim never
-            // leaves a phantom-occupied slot.
-            lock (_launchGate) _launching.Add(queueItemId);
 
             // 2. A per-item manual Pause (BuildConsoleSettings.PausedBuildIds) is also a "wait",
             //    same as Run Now already treats it — clear it so this row isn't re-parked on the
@@ -3014,9 +3107,10 @@ namespace BuildConsole.Services
             _running[item.Id] = entry;
             ArmCompletionTrigger(item.Id, entry);
 
+            // Git #4542 — show soft auto-max AND hard cap so the log makes the real ceiling legible.
             if (interactive)
-                ActivityLog.Log("interactive-build", $"launched (durable-file stdout/stderr redirect + owned stdin, --input-format stream-json): {item.Title} (queue #{item.Id}, {_running.Count}/{_maxConcurrent} running)");
-            ActivityLog.Log("watcher", $"Started: {item.Title} (queue #{item.Id}, {_running.Count}/{_maxConcurrent} running)");
+                ActivityLog.Log("interactive-build", $"launched (durable-file stdout/stderr redirect + owned stdin, --input-format stream-json): {item.Title} (queue #{item.Id}, {_running.Count} running; soft {_maxConcurrent}, hard {_hardCap})");
+            ActivityLog.Log("watcher", $"Started: {item.Title} (queue #{item.Id}, {_running.Count} running; soft {_maxConcurrent}, hard {_hardCap})");
         }
 
         // ── Git #2103 — re-dispatch tracking + toast ────────────────────────────
@@ -3785,8 +3879,22 @@ namespace BuildConsole.Services
             return null;
         }
 
-        /// <summary>Immediately launches a claimed queue item (e.g. when resuming or continuing an interactive session from Build Watch).</summary>
-        public void LaunchItemExplicit(QueueItem item) => _ = SafeLaunch(item, isForced: true);
+        /// <summary>Immediately launches a claimed queue item (e.g. when resuming or continuing an
+        /// interactive session from Build Watch). Git #4542 — a resume/continue relaunches a FRESH
+        /// process into a real slot, so it is a manual launch bounded by the HARD cap exactly like
+        /// Run Now: it jumps the auto queue but cannot cross the absolute ceiling (the confirmed live
+        /// repro — continuing an exited build while the queue was already full pushed the real total to
+        /// 3/2). Returns true if it reserved a slot and is launching, false if refused at the hard cap.</summary>
+        public bool LaunchItemExplicit(QueueItem item)
+        {
+            if (!TryReserveSlot(item.Id, _hardCap))
+            {
+                ActivityLog.Log("watcher", $"Continue/resume refused for queue #{item.Id} ({item.Title}) — real total is already at the hard cap ({OccupiedSlots}/{_hardCap}). A relaunch occupies a real slot and cannot cross the hard ceiling.");
+                return false;
+            }
+            _ = SafeLaunch(item, isForced: true);
+            return true;
+        }
 
         /// <summary>Approximate current context-window token usage for a live or just-exited (retained) interactive build — real numbers read from the CLI's own stream-json `usage` field, or null if unknown/not an interactive build/nothing seen yet.</summary>
         public long? GetContextTokens(int id)

@@ -689,7 +689,7 @@ namespace BuildConsole
                 if (_buildTrackerApi.IsConfigured)
                 {
                     _queueWatcher = new BuildConsole.Services.QueueWatcherService(
-                        _buildTrackerApi, _queueDb, btConfig.MaxConcurrent, BuildConsole.Services.BuildTrackerConfig.FindRepoRoot());
+                        _buildTrackerApi, _queueDb, btConfig.MaxConcurrent, BuildConsole.Services.BuildTrackerConfig.FindRepoRoot(), btConfig.HardCap);
                     _queueWatcher.BuildFinished += QueueWatcher_BuildFinished;
 
                     // Git #1883 — the pickup loop must never claim/launch a queued item until

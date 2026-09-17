@@ -17,7 +17,17 @@ namespace BuildConsole.Services
     {
         public string ApiBaseUrl { get; set; } = "";
         public string IngestToken { get; set; } = "";
+        /// <summary>The SOFT auto-dispatch max: how many builds the automatic queue poller will keep
+        /// running on its own (Git #4542, Shane's "6" in "6/8"). The auto-dispatcher fires a new build
+        /// only while the REAL total active count (auto + manual combined) is below this.</summary>
         public int MaxConcurrent { get; set; } = 8;
+        /// <summary>Git #4542 — the HARD cap: the absolute ceiling the real total active build count
+        /// must never cross, from ANY source including a manual Run Now / Continue (Shane's "8" in
+        /// "6/8"). The gap between <see cref="MaxConcurrent"/> and this is the headroom reserved for
+        /// manual urgent launches that jump the auto queue. Defaults to 8 so existing single-cap setups
+        /// (where it equals the old MaxConcurrent default) behave unchanged; a running watcher clamps it
+        /// up to at least MaxConcurrent, since a hard cap below the soft max is meaningless.</summary>
+        public int HardCap { get; set; } = 8;
 
         public string DevBaseUrl { get; set; } = "http://localhost:8080";
         public string StagingBaseUrl { get; set; } = "https://ba888680-2595-412d-84fe-4e9aefc2688b-00-22rhgh0krunr4.picard.replit.dev/";
@@ -47,6 +57,7 @@ namespace BuildConsole.Services
                 ApiBaseUrl = GetBaseUrl(env),
                 IngestToken = this.IngestToken,
                 MaxConcurrent = this.MaxConcurrent,
+                HardCap = this.HardCap,
                 DatabaseUrl = this.DatabaseUrl,
                 DevBaseUrl = this.DevBaseUrl,
                 StagingBaseUrl = this.StagingBaseUrl,

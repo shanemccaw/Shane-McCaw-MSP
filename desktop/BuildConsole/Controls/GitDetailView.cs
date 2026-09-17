@@ -2233,14 +2233,26 @@ namespace BuildConsole.Controls
                         }
                     }
 
-                    try
+                    // Git #4542 — a continuation is a manual launch bounded by the HARD cap. Reserve the
+                    // slot before force-claiming; if the real total is already at the hard ceiling, leave
+                    // the new "Continue: …" row queued for the auto-dispatcher instead of forcing it into
+                    // a stuck 'running' state.
+                    if (!watcher.TryReserveManualSlot(newQueueId))
                     {
-                        var claimed = await db.ForceClaimAsync(newQueueId);
-                        watcher.LaunchItemExplicit(claimed);
+                        ActivityLog.Log(Channel, $"Continuation #{newQueueId} left queued — real total at the hard cap ({watcher.RunningCount}/{watcher.HardCap}); it will start when a slot frees.");
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        ActivityLog.Log(Channel, $"Force claim/launch failed: {ex.Message}");
+                        try
+                        {
+                            var claimed = await db.ForceClaimAsync(newQueueId);
+                            watcher.LaunchItemExplicit(claimed); // slot already reserved above → launches
+                        }
+                        catch (Exception ex)
+                        {
+                            watcher.ReleaseReservation(newQueueId); // claim/launch failed — give the slot back
+                            ActivityLog.Log(Channel, $"Force claim/launch failed: {ex.Message}");
+                        }
                     }
                 }
                 else if (api != null)

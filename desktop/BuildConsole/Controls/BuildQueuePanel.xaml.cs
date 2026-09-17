@@ -1938,7 +1938,10 @@ namespace BuildConsole.Controls
             if (MatrixChipCaret != null)
                 MatrixChipCaret.Text = _matrixDrawerOpen ? "" : ""; // Segoe MDL2 chevron up/down
 
-            int slotCount = Math.Max(1, _watcher?.MaxConcurrent ?? 8);
+            // Git #4542 — draw slots up to the HARD cap, not the soft auto-max: up to HardCap builds can
+            // genuinely run at once (soft-max auto builds + manual Run Now headroom), so every running
+            // build needs a slot to render into.
+            int slotCount = Math.Max(1, _watcher?.HardCap ?? 8);
             var runningIds = _watcher?.GetRunningBuildIds() ?? Array.Empty<int>();
             var runningSet = runningIds.ToHashSet();
 
@@ -2125,7 +2128,7 @@ namespace BuildConsole.Controls
         /// _lastItems the live drawer just rendered from, no second slot-assignment pass.</summary>
         private BuildMatrixDocSnapshot BuildMatrixSnapshotNow()
         {
-            int slotCount = Math.Max(1, _watcher?.MaxConcurrent ?? 8);
+            int slotCount = Math.Max(1, _watcher?.HardCap ?? 8); // Git #4542 — hard cap = max builds that can actually run
             var idBySlot = _matrixSlotAssignments.ToDictionary(kv => kv.Value, kv => kv.Key);
             var itemsById = _lastItems.ToDictionary(i => i.Id, i => i);
 
@@ -7128,6 +7131,16 @@ namespace BuildConsole.Controls
                         ToastEngine.Info("Run Now", "The in-app watcher isn't active, so Run Now can't launch locally. The background service will pick it up.");
                         return;
                     }
+                    // Git #4542 — Run Now still jumps the auto queue (it's not bounded by the soft
+                    // auto-dispatch max), but it can no longer cross the HARD cap. Reserve the slot
+                    // atomically BEFORE force-claiming the row, so a refusal at the hard ceiling leaves
+                    // nothing claimed/stuck. This is the reserved-headroom-spend that keeps the real
+                    // total between the soft max and the hard cap, never above it.
+                    if (!_watcher.TryReserveManualSlot(item.Id))
+                    {
+                        ToastEngine.Warning("Run Now", $"At the hard cap ({_watcher.RunningCount}/{_watcher.HardCap} running) — not launched: {item.Title}. Run Now spends reserved headroom, but can't cross the hard ceiling.");
+                        return;
+                    }
                     try
                     {
                         var settings = BuildConsoleSettings.Load();
@@ -7142,12 +7155,13 @@ namespace BuildConsole.Controls
                             claimed = await _db.ForceClaimAsync(item.Id);
                         else
                             claimed = await _api.ForceClaimQueueItemAsync(item.Id);
-                        _watcher.ForceLaunch(claimed);
+                        _watcher.ForceLaunch(claimed); // slot already reserved above → launches
                         ToastEngine.Success("Run Now", $"Launched: {item.Title}");
                         await RefreshAsync();
                     }
                     catch (Exception ex)
                     {
+                        _watcher.ReleaseReservation(item.Id); // claim/launch failed — give the reserved slot back
                         ToastEngine.Warning("Run Now", $"Couldn't launch immediately: {ex.Message}");
                     }
                 };
@@ -7428,8 +7442,19 @@ namespace BuildConsole.Controls
                             await RefreshAsync();
                             return;
                         }
-                        var claimed = await _db.ForceClaimAsync(item.Id);
-                        _watcher.ForceLaunch(claimed);
+                        // Git #4542 — same hard-cap discipline as Run Now: reserve the manual slot
+                        // before claiming so a refusal at the hard ceiling leaves the (now-uncapped) row
+                        // simply queued for the auto-dispatcher rather than stuck 'running'.
+                        if (!_watcher.TryReserveManualSlot(item.Id))
+                        {
+                            ToastEngine.Warning("Run at Full Model", $"At the hard cap ({_watcher.RunningCount}/{_watcher.HardCap} running) — uncapped and left queued; it'll launch when a slot frees: {item.Title}");
+                            await RefreshAsync();
+                            return;
+                        }
+                        QueueItem claimed;
+                        try { claimed = await _db.ForceClaimAsync(item.Id); }
+                        catch { _watcher.ReleaseReservation(item.Id); throw; }
+                        _watcher.ForceLaunch(claimed); // slot already reserved above → launches
                         ToastEngine.Success("Run at Full Model", $"Launched at {item.Model ?? "default"}/{item.Effort ?? "default"}: {item.Title}");
                         ActivityLog.Log("build-queue", $"Conservation Cap override: queue #{item.Id} ({item.Title}) launched at its full original model/effort ({item.Model ?? "default"}/{item.Effort ?? "default"}) — one-shot, toggle left unchanged.");
                     }

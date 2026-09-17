@@ -500,9 +500,9 @@
                                 <!-- Git #2122 — real Settings control for max concurrent build slots -->
                                 <Border BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Margin="0,0,0,16" Padding="0,14,0,0">
                                     <StackPanel>
-                                        <TextBlock Text="Max Concurrent Build Slots" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
+                                        <TextBlock Text="Auto-Dispatch Max (Soft)" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
                                                    Foreground="{StaticResource PeachBrush}" Margin="0,0,0,6"/>
-                                        <TextBlock Text="How many queued builds can run at once. Persists to scripts\build-queue-watcher.config.json (the same file build-queue-watcher.ps1's own -MaxConcurrent default reads) and applies LIVE to a running queue watcher on its next ~30s poll — no restart needed."
+                                        <TextBlock Text="How many builds the AUTOMATIC queue keeps running on its own (Git #4542, the 'soft' max). The gap between this and the Hard Cap below is headroom reserved for manual Run Now launches. Persists to scripts\build-queue-watcher.config.json (the same file build-queue-watcher.ps1's own -MaxConcurrent default reads) and applies LIVE to a running queue watcher on its next ~30s poll — no restart needed."
                                                    FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,10" TextWrapping="Wrap"/>
                                         <Grid HorizontalAlignment="Left">
                                             <Grid.ColumnDefinitions>
@@ -514,6 +514,26 @@
                                                     Padding="16,5" Click="BtnSaveMaxConcurrent_Click"/>
                                         </Grid>
                                         <TextBlock x:Name="MaxConcurrentSavedText" Text="" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Git #4542 — hard cap: the absolute ceiling manual Run Now / Continue can never cross -->
+                                <Border BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Margin="0,0,0,16" Padding="0,14,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="Hard Cap (Absolute Ceiling)" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource PeachBrush}" Margin="0,0,0,6"/>
+                                        <TextBlock Text="The absolute maximum number of builds allowed to run at once from ANY source, including a manual Run Now or a Build Watch Continue. The automatic queue stops at the soft max above; manual launches may spend the headroom up to this ceiling but never past it (Git #4542 — the overrun that caused the crash). Must be at least the soft max; it is clamped up automatically otherwise. Applies LIVE — no restart needed."
+                                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,10" TextWrapping="Wrap"/>
+                                        <Grid HorizontalAlignment="Left">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox x:Name="HardCapBox" Grid.Column="0" Width="80" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,8,0"/>
+                                            <Button x:Name="BtnSaveHardCap" Grid.Column="1" Content="Save" Style="{StaticResource PrimaryButton}"
+                                                    Padding="16,5" Click="BtnSaveHardCap_Click"/>
+                                        </Grid>
+                                        <TextBlock x:Name="HardCapSavedText" Text="" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </Border>
 

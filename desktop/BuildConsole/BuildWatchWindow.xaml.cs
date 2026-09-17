@@ -1992,15 +1992,29 @@ namespace BuildConsole
 
                     if (_watcher != null)
                     {
-                        try
+                        // Git #4542 — a continuation relaunches a fresh process into a real slot, so it
+                        // is bounded by the HARD cap like any manual launch. Reserve the slot before
+                        // force-claiming; if the real total is already at the hard ceiling, leave the
+                        // new "Continue: …" row queued (the auto-dispatcher starts it when a slot frees)
+                        // rather than force-claiming it into a stuck 'running' state.
+                        if (!_watcher.TryReserveManualSlot(newQueueId))
                         {
-                            var claimed = await _db.ForceClaimAsync(newQueueId);
-                            _watcher.LaunchItemExplicit(claimed);
-                            slot.InteractiveBound = _watcher.IsInteractiveRenderable(newQueueId);
+                            ActivityLog.Log("build-watch", $"Continuation #{newQueueId} left queued — real total at the hard cap ({_watcher.RunningCount}/{_watcher.HardCap}); it will start when a slot frees.");
+                            slot.StatusLine!.ActivityText = $"queued — at hard cap ({_watcher.RunningCount}/{_watcher.HardCap}), will start when a slot frees";
                         }
-                        catch (Exception ex)
+                        else
                         {
-                            ActivityLog.Log("build-watch", $"Couldn't force-launch continuation #{newQueueId}: {ex.Message}");
+                            try
+                            {
+                                var claimed = await _db.ForceClaimAsync(newQueueId);
+                                _watcher.LaunchItemExplicit(claimed); // slot already reserved above → launches
+                                slot.InteractiveBound = _watcher.IsInteractiveRenderable(newQueueId);
+                            }
+                            catch (Exception ex)
+                            {
+                                _watcher.ReleaseReservation(newQueueId); // claim/launch failed — give the slot back
+                                ActivityLog.Log("build-watch", $"Couldn't force-launch continuation #{newQueueId}: {ex.Message}");
+                            }
                         }
                     }
                 }

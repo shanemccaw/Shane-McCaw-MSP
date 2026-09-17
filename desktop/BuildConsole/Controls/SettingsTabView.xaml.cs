@@ -204,6 +204,9 @@ namespace BuildConsole.Controls
             // live-applied earlier this session); otherwise fall back to the config file's value.
             MaxConcurrentBox.Text = ((Application.Current?.MainWindow as BuildConsole.MainWindow)?.QueueWatcher?.MaxConcurrent
                 ?? cfg.MaxConcurrent).ToString();
+            // Git #4542 — hard cap: live watcher's own current value wins if one is running.
+            HardCapBox.Text = ((Application.Current?.MainWindow as BuildConsole.MainWindow)?.QueueWatcher?.HardCap
+                ?? cfg.HardCap).ToString();
 
             if (api == null)
             {
@@ -1085,6 +1088,49 @@ namespace BuildConsole.Controls
                 ? $"✓ Saved and applied live — {value} max concurrent (takes effect on the watcher's next ~30s poll, no restart needed)."
                 : $"✓ Saved — {value} max concurrent. No queue watcher is running yet in this session; it will read this on next launch.";
             ActivityLog.Log("settings.tab", $"Max concurrent build slots set to {value} (config persisted{(liveApplied ? " + live-applied" : "")}).");
+        }
+
+        /// <summary>
+        /// Git #4542 — persists the HARD cap (absolute ceiling) to the same
+        /// scripts\build-queue-watcher.config.json and live-applies it, exactly like
+        /// <see cref="BtnSaveMaxConcurrent_Click"/>. The value is clamped up to at least the soft max
+        /// by the watcher (a hard cap below the soft max is meaningless); the UI just persists what's
+        /// entered and reports the applied result.
+        /// </summary>
+        private void BtnSaveHardCap_Click(object sender, RoutedEventArgs e)
+        {
+            if (!int.TryParse(HardCapBox.Text.Trim(), out var value) || value < 1)
+            {
+                HardCapSavedText.Foreground = (Brush)FindResource("StatusErrorBrush");
+                HardCapSavedText.Text = "Enter a whole number of at least 1.";
+                return;
+            }
+
+            var cfg = BuildTrackerConfig.Load();
+            // Keep the persisted hard cap coherent with the soft max — never below it.
+            int effective = Math.Max(value, cfg.MaxConcurrent);
+            cfg.HardCap = effective;
+            cfg.Save();
+
+            bool liveApplied = false;
+            try
+            {
+                var mainWindow = Application.Current?.MainWindow as BuildConsole.MainWindow;
+                if (mainWindow?.QueueWatcher != null)
+                {
+                    mainWindow.UpdateHardCapBuildSlots(value);
+                    effective = mainWindow.QueueWatcher.HardCap; // report the actually-applied (clamped) value
+                    liveApplied = true;
+                }
+            }
+            catch { /* best-effort live-apply; the file write above already succeeded */ }
+
+            HardCapSavedText.Foreground = (Brush)FindResource("StatusSuccessBrush");
+            string clampNote = effective != value ? $" (clamped up to the soft max of {cfg.MaxConcurrent})" : "";
+            HardCapSavedText.Text = liveApplied
+                ? $"✓ Saved and applied live — hard cap {effective}{clampNote} (takes effect on the watcher's next check, no restart needed)."
+                : $"✓ Saved — hard cap {effective}{clampNote}. No queue watcher is running yet in this session; it will read this on next launch.";
+            ActivityLog.Log("settings.tab", $"Hard cap set to {effective} (config persisted{(liveApplied ? " + live-applied" : "")}).");
         }
 
         private void BtnSaveEpicChatProjectUrl_Click(object sender, RoutedEventArgs e)
