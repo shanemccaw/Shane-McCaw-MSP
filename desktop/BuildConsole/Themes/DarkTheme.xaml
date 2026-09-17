@@ -1281,6 +1281,24 @@
         <Setter Property="Margin"     Value="8,2"/>
     </Style>
 
+    <!-- Git #4441 — same bug class as MenuItem.SeparatorStyleKey above: a bare
+         <Separator> hosted directly inside a StatusBar (MainWindow.xaml's
+         Grid.Column="3" spring-column separator) gets WPF's StatusBar-specific
+         separator style instead of the generic TargetType="Separator" style
+         above, and falls back to the OS-default beveled groove visual — pale
+         gray regardless of theme, stretched across the Width="*" column. -->
+    <Style x:Key="{x:Static StatusBar.SeparatorStyleKey}" TargetType="{x:Type Separator}">
+        <Setter Property="Height" Value="1"/>
+        <Setter Property="Margin" Value="8,2"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Separator}">
+                    <Border Background="{StaticResource Surface0Brush}"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style TargetType="{x:Type GridSplitter}" BasedOn="{StaticResource {x:Type GridSplitter}}">
         <Setter Property="Background" Value="{StaticResource Surface0Brush}"/>
     </Style>
