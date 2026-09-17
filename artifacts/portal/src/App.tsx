@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Route, Switch, Router as WouterRouter, Link } from "wouter";
+import { Route, Switch, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { Loader2 } from "lucide-react";
@@ -103,22 +103,9 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) {
-    return (
-      <div
-        className="flex min-h-screen items-center justify-center bg-background px-6"
-        data-testid="require-auth-panel"
-      >
-        <div className="max-w-md text-center">
-          <h1 className="text-2xl font-extrabold text-foreground">Sign in required</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            You need to be signed in to view the customer portal.
-          </p>
-          <Link href="/login" className="mt-4 inline-block text-sm font-semibold text-primary hover:underline">
-            Go to sign in →
-          </Link>
-        </div>
-      </div>
-    );
+    // Git #4454 — land directly on the sign-in form instead of an
+    // intermediate "please sign in" interstitial requiring an extra click.
+    return <Redirect to="/login" />;
   }
 
   // Issue 3 of #4376 (#4379) / server-side gate #4375 — a `*Pending` account

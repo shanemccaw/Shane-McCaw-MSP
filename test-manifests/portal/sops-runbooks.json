@@ -217,9 +217,9 @@
       "target": "/portal/sops"
     },
     {
-      "name": "U2 -- the real sign-in-required panel renders -- proves the route is wired to a real page component, not a dead link.",
+      "name": "U2 -- Git #4454: an unauthenticated visit redirects straight to the sign-in form (no interstitial) -- proves the route is wired to a real page component, not a dead link.",
       "action": "expect",
-      "selector": "[data-testid='require-auth-panel']",
+      "selector": "[data-testid='login-email']",
       "state": "visible",
       "critical": true
     },
