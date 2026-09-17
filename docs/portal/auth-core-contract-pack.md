@@ -182,7 +182,11 @@ Public (no `requireAuth` — the caller isn't authenticated yet, only holds a sh
 `mfaToken` is `verifyMfaToken()`'d (`mfa.ts:435`, a signed JWT with `{ mfa: true,
 userId, methods }`, 10-min TTL, `mfa.ts:131-139`) — `401` if invalid/expired. Looks up
 the caller's enabled `totp` enrollment; `400 "TOTP not enrolled"` if none; verifies the
-6-digit code (`verifySync`, 30s epoch tolerance) — `401` on mismatch. On success, calls
+6-digit code (`verifySync`, 30s epoch tolerance) — `401` on mismatch. Codes are single-use
+(Git #4408): a code whose time-step is <= `mfa_enrollments.totp_last_accepted_step` is
+refused with the same `401`, and success advances that column by compare-and-set (the code
+that finished enrollment is already spent). `/auth/mfa/verify` (method `totp`) applies the
+same rule through the same helper. On success, calls
 the shared `issueFullSession(userId, res, req, "totp")` tail (`mfa.ts:1248-1308`).
 
 ### `POST /api/auth/mfa/bypass` (`mfa.ts:1052-1130`)

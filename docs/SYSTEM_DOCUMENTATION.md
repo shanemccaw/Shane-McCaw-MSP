@@ -1505,6 +1505,7 @@ M365 environment intelligence per client.
 | `enabled` | boolean | |
 | `encryptedSecret` | text | AES-encrypted TOTP secret |
 | `phone` | text | For SMS MFA |
+| `totpLastAcceptedStep` | bigint, nullable | TOTP time-step of the last accepted code; a step <= it is refused (replay protection, Git #4408) |
 | `createdAt` / `updatedAt` | timestamp | |
 
 
