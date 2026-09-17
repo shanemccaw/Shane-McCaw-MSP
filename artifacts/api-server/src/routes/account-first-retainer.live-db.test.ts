@@ -30,7 +30,7 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import request from "supertest";
 import { randomUUID } from "node:crypto";
-import { generateSync } from "otplib";
+import { nextTotpCode } from "../test-setup/totp-codes.ts";
 import { and, eq, inArray, like, sql } from "drizzle-orm";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
@@ -129,7 +129,7 @@ describeLive("#4383 — account-first Retainer: account → optional connect →
     expect(setup.status, JSON.stringify(setup.body)).toBe(200);
     await request(app)
       .post("/public/purchase/pre-consent/mfa/totp/verify-setup")
-      .send({ sessionId, secret: setup.body.secret, code: generateSync({ secret: setup.body.secret }) })
+      .send({ sessionId, secret: setup.body.secret, code: await nextTotpCode(setup.body.secret) })
       .expect(200);
     return setup.body.secret as string;
   }
@@ -140,7 +140,7 @@ describeLive("#4383 — account-first Retainer: account → optional connect →
     expect(login.body.mfaRequired).toBe(true);
     const challenge = await request(app)
       .post("/auth/mfa/totp/challenge")
-      .send({ mfaToken: login.body.mfaToken, code: generateSync({ secret: totpSecret }) });
+      .send({ mfaToken: login.body.mfaToken, code: await nextTotpCode(totpSecret) });
     expect(challenge.status, JSON.stringify(challenge.body)).toBe(200);
     return challenge.body.accessToken as string;
   }
