@@ -9,10 +9,11 @@
  * from what customer-facing "run a scan" already calls.
  */
 
-import { useCallback, useEffect, useState } from "react";
-import { Users } from "lucide-react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { ExternalLink, Search, Trash2, Users, X } from "lucide-react";
+import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { ACCENT_TEXT, LINE, SURFACE, TEXT } from "../../../theme";
+import { ACCENT, ACCENT_TEXT, LINE, SURFACE, TEXT } from "../../../theme";
 import { useShell } from "../../../shell/ShellContext";
 import { ContextMenu, useContextMenu } from "../../../shell/ContextMenu";
 import {
@@ -20,12 +21,17 @@ import {
   createAdConsentInviteLink,
   fetchAdAssignableServices,
   fetchAdCustomer,
+  fetchAdCustomerDiagnosticRuns,
   fetchAdCustomerMonitoringPackage,
   fetchAdCustomerWriteConsent,
+  fetchAdDiagnosticRunFindings,
+  fetchAdMonitoringPackageChecks,
   fetchAdMonitoringPackages,
+  fetchAdSimulatorAssessments,
   hardDeleteAdCustomer,
   revokeAdTenantConsent,
   runAdCustomerDiagnostics,
+  setAdMonitoringPackageChecks,
   startAdCustomerWriteConsent,
   updateAdCustomerBusinessUnit,
   updateAdCustomerTestbed,
@@ -33,8 +39,18 @@ import {
 } from "../adApi";
 import { setAdCachedRecord } from "../adNameCache";
 import { onAdRecordAction, requestAdTreeRefresh } from "../adEvents";
-import type { AdAssignableService, AdConsentStatus, AdCustomerDetail, AdMonitoringPackage, AdWriteConsentStatus } from "../adTypes";
+import type {
+  AdAssignableService,
+  AdConsentStatus,
+  AdCustomerDetail,
+  AdDiagnosticFinding,
+  AdDiagnosticRunFindingsResponse,
+  AdMonitoringPackage,
+  AdWriteConsentStatus,
+} from "../adTypes";
 import { AdRbacOrgRolesPanel } from "../AdRbacPanels";
+import { FailureCategoryChip, SimulatorFailureClassification } from "../../../../components/SimulatorFailureClassification";
+import { simulatorStudioCheckPath } from "../../../../components/simulatorDeepLink";
 import {
   AdArmedButton,
   AdButton,
@@ -66,6 +82,85 @@ const CONSENT_ROWS: Array<{ key: ConsentKey; label: string; get: (d: AdCustomerD
   { key: "writeBack", label: "Write-back", get: (d) => d.writeConsent },
 ];
 
+// ── Diagnostic run findings (#371/#374/#378/#379) — ported from the legacy
+// ActiveDirectoryCustomerPane.tsx's own proven data-fetching/business logic.
+// Only the rendering below is new (adKit.tsx primitives / inline theme tokens
+// instead of the legacy pane's Tailwind/inline-styled JSX).
+
+const FINDING_SEVERITY_RANK: Record<AdDiagnosticFinding["severity"], number> = {
+  critical: 0,
+  warning: 1,
+  info: 2,
+  ok: 3,
+};
+
+// Errors surface first regardless of severity — the use case is diagnosing
+// what went wrong, not reading an alphabetical/severity-only list.
+function sortFindings(findings: AdDiagnosticFinding[]): AdDiagnosticFinding[] {
+  return [...findings].sort((a, b) => {
+    const aErr = a.checkStatus === "error" ? 0 : 1;
+    const bErr = b.checkStatus === "error" ? 0 : 1;
+    if (aErr !== bErr) return aErr - bErr;
+    return FINDING_SEVERITY_RANK[a.severity] - FINDING_SEVERITY_RANK[b.severity];
+  });
+}
+
+// #374 persists the raw Graph error under extractedProperties._rawGraphError
+// alongside the friendly, humanized `description`. Older findings written
+// before #374 landed won't carry this key — the raw-error block simply
+// doesn't render for them.
+function extractRawGraphError(extractedProperties: Record<string, unknown> | null): string | null {
+  const raw = extractedProperties?.["_rawGraphError"];
+  return typeof raw === "string" && raw.length > 0 ? raw : null;
+}
+
+function findingSeverityColor(finding: AdDiagnosticFinding): string {
+  if (finding.checkStatus === "error" || finding.severity === "critical") return ACCENT_TEXT.danger;
+  if (finding.severity === "warning") return ACCENT.amber;
+  if (finding.severity === "ok") return ACCENT_TEXT.green;
+  return TEXT.label;
+}
+
+// #378 — search is scoped to the currently-expanded run only (client-side
+// filter over data already fetched by toggleRunExpanded, no new backend
+// route). extractedProperties is stringified rather than read field-by-field
+// so it also catches endpoint/URL text buried inside a raw Graph error.
+function findingMatchesSearch(finding: AdDiagnosticFinding, term: string): boolean {
+  if (!term) return true;
+  const needle = term.toLowerCase();
+  const haystacks = [
+    finding.checkKey,
+    finding.title,
+    finding.description ?? "",
+    finding.extractedProperties ? JSON.stringify(finding.extractedProperties) : "",
+  ];
+  return haystacks.some((h) => h.toLowerCase().includes(needle));
+}
+
+function HighlightMatch({ text, term }: { text: string; term: string }) {
+  if (!term) return <>{text}</>;
+  const needle = term.toLowerCase();
+  const parts: ReactNode[] = [];
+  let rest = text;
+  let offset = 0;
+  while (rest.length > 0) {
+    const idx = rest.toLowerCase().indexOf(needle);
+    if (idx === -1) {
+      parts.push(text.slice(offset));
+      break;
+    }
+    if (idx > 0) parts.push(text.slice(offset, offset + idx));
+    parts.push(
+      <mark key={offset + idx} style={{ borderRadius: 2, background: "rgba(242,202,99,.35)", color: "inherit" }}>
+        {text.slice(offset + idx, offset + idx + term.length)}
+      </mark>,
+    );
+    offset += idx + term.length;
+    rest = rest.slice(idx + term.length);
+  }
+  return <>{parts}</>;
+}
+
 export function AdCustomerCanvas({ customerId }: { customerId: number }) {
   const { fetchWithAuth } = useAuth();
   const shell = useShell();
@@ -91,6 +186,30 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
   const [writeConsentStatus, setWriteConsentStatus] = useState<AdWriteConsentStatus | null>(null);
   const [writeConsentLoading, setWriteConsentLoading] = useState(true);
   const [writeConsentGenerating, setWriteConsentGenerating] = useState(false);
+
+  // #371 addendum — refresh just the runs list, not the whole customer detail
+  // payload. Hits the dedicated runs-only endpoint (already shipped, dead
+  // code before this build — #4493).
+  const [refreshingRuns, setRefreshingRuns] = useState(false);
+  const [refreshRunsError, setRefreshRunsError] = useState<string | null>(null);
+
+  // #371 — expandable diagnostic run findings. One run expanded at a time;
+  // findings are fetched on-demand the first time a run is expanded.
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
+  // #378 — search is scoped to whichever run is currently expanded.
+  const [findingsSearch, setFindingsSearch] = useState("");
+  const [runFindings, setRunFindings] = useState<Record<string, AdDiagnosticRunFindingsResponse | "loading" | "error">>({});
+
+  // #376 — "Remove from scan package" on a finding row. Shared-package
+  // detection reuses the same GET /api/admin/simulator/assessments filter
+  // the legacy pane runs (existingAssessments.filter(a => a.packageKey === key)).
+  const [removeConfirm, setRemoveConfirm] = useState<{
+    runId: string;
+    packageKey: string;
+    checkKey: string;
+    sharedNames: string[];
+  } | null>(null);
+  const [removingKey, setRemovingKey] = useState<string | null>(null);
 
   // ── Hard delete — self-contained state, same convention as the User
   // canvas's own delete flow: an explicit "arm" click is confirmation #1,
@@ -350,6 +469,98 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
     }
   }, [fetchWithAuth, customerId]);
 
+  // #371 addendum — refresh just the runs list. Closes the gap this canvas's
+  // own runScan() success message used to admit ("reopen this tenant in a
+  // minute to see results").
+  const refreshRuns = useCallback(async () => {
+    setRefreshingRuns(true);
+    setRefreshRunsError(null);
+    try {
+      const body = await fetchAdCustomerDiagnosticRuns(fetchWithAuth, customerId);
+      setDetail((prev) => (prev ? { ...prev, recentDiagnosticRuns: body.recentDiagnosticRuns } : prev));
+    } catch (err) {
+      setRefreshRunsError(err instanceof Error ? err.message : "Failed to refresh diagnostic runs.");
+    } finally {
+      setRefreshingRuns(false);
+    }
+  }, [fetchWithAuth, customerId]);
+
+  // #371 — expand a run in place, fetching its real findings from the same
+  // route the legacy pane uses. Findings are cached per runId once fetched.
+  const toggleRunExpanded = useCallback(
+    async (runId: string) => {
+      setFindingsSearch("");
+      if (expandedRunId === runId) {
+        setExpandedRunId(null);
+        return;
+      }
+      setExpandedRunId(runId);
+      if (runFindings[runId]) return;
+      setRunFindings((prev) => ({ ...prev, [runId]: "loading" }));
+      try {
+        const body = await fetchAdDiagnosticRunFindings(fetchWithAuth, customerId, runId);
+        setRunFindings((prev) => ({ ...prev, [runId]: body }));
+      } catch {
+        setRunFindings((prev) => ({ ...prev, [runId]: "error" }));
+      }
+    },
+    [customerId, fetchWithAuth, expandedRunId, runFindings],
+  );
+
+  // #376 — actually remove the check from the package, after shared-package
+  // detection (handleRemoveClick below) has either confirmed there's nothing
+  // shared or the operator confirmed removing from every assessment sharing it.
+  const removeCheckFromPackage = useCallback(
+    async (runId: string, packageKey: string, checkKey: string, sharedCount: number) => {
+      const inFlightKey = `${runId}:${checkKey}`;
+      setRemovingKey(inFlightKey);
+      try {
+        const current = await fetchAdMonitoringPackageChecks(fetchWithAuth, packageKey);
+        const remainingKeys = current.checks.map((c) => c.checkKey).filter((k) => k !== checkKey);
+        await setAdMonitoringPackageChecks(fetchWithAuth, packageKey, remainingKeys);
+        setRunFindings((prev) => {
+          const existing = prev[runId];
+          if (!existing || existing === "loading" || existing === "error") return prev;
+          return { ...prev, [runId]: { ...existing, findings: existing.findings.filter((f) => f.checkKey !== checkKey) } };
+        });
+        setOutcome({
+          tone: "ok",
+          message:
+            sharedCount > 0
+              ? `Removed "${checkKey}" from "${packageKey}" and the ${sharedCount} other assessment${sharedCount === 1 ? "" : "s"} sharing it.`
+              : `Removed "${checkKey}" from "${packageKey}".`,
+        });
+      } catch (err) {
+        setOutcome({ tone: "error", message: err instanceof Error ? err.message : `Failed to remove "${checkKey}" from "${packageKey}".` });
+      } finally {
+        setRemovingKey(null);
+        setRemoveConfirm(null);
+      }
+    },
+    [fetchWithAuth],
+  );
+
+  // #376 — checks whether this package is shared with other assessments
+  // before removing; fails closed (surfaces the error, does not proceed)
+  // rather than risk a silent multi-assessment change.
+  const handleRemoveClick = useCallback(
+    async (runId: string, packageKey: string, checkKey: string) => {
+      try {
+        const data = await fetchAdSimulatorAssessments(fetchWithAuth);
+        const sharedWith = data.assessments.filter((a) => a.packageKey === packageKey);
+        if (sharedWith.length > 0) {
+          setRemoveConfirm({ runId, packageKey, checkKey, sharedNames: sharedWith.map((a) => a.name) });
+          return;
+        }
+      } catch {
+        setOutcome({ tone: "error", message: "Failed to check whether this package is shared with other assessments. Try again." });
+        return;
+      }
+      void removeCheckFromPackage(runId, packageKey, checkKey, 0);
+    },
+    [fetchWithAuth, removeCheckFromPackage],
+  );
+
   useEffect(
     () =>
       onAdRecordAction("customer", String(customerId), (action) => {
@@ -604,20 +815,205 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
           </div>
         </AdSection>
 
-        <AdSection title="Recent scans">
+        <AdSection
+          title="Recent scans"
+          actions={
+            <AdButton
+              label={refreshingRuns ? "Refreshing…" : "Refresh"}
+              onClick={() => void refreshRuns()}
+              disabled={refreshingRuns}
+              title="Refresh recent diagnostic runs"
+            />
+          }
+        >
+          {refreshRunsError && <span style={{ fontSize: 11.5, color: ACCENT_TEXT.danger }}>{refreshRunsError}</span>}
           <AdListRowGroup>
             {recentDiagnosticRuns.length === 0 ? (
               <AdEmptyRow label={connected ? "No scans have run yet." : "No scan has ever run against this tenant."} />
             ) : (
-              recentDiagnosticRuns.map((r) => (
-                <AdListRow
-                  key={r.runId}
-                  label={r.packageKey}
-                  detail={r.status}
-                  meta={r.completedAt ? fmtDate(r.completedAt) : r.startedAt ? `started ${fmtDate(r.startedAt)}` : undefined}
-                  dot={r.status === "completed" ? "#6ccb96" : r.status === "failed" ? "#e57a7a" : "#e9b949"}
-                />
-              ))
+              recentDiagnosticRuns.map((r) => {
+                const expanded = expandedRunId === r.runId;
+                const state = runFindings[r.runId];
+                return (
+                  <div key={r.runId}>
+                    <AdListRow
+                      label={r.packageKey}
+                      detail={r.status}
+                      meta={r.completedAt ? fmtDate(r.completedAt) : r.startedAt ? `started ${fmtDate(r.startedAt)}` : undefined}
+                      dot={r.status === "completed" ? "#6ccb96" : r.status === "failed" ? "#e57a7a" : "#e9b949"}
+                      onClick={() => void toggleRunExpanded(r.runId)}
+                    />
+                    {expanded && (
+                      <div style={{ padding: "10px 14px 14px", borderBottom: `1px solid ${LINE.subtle}`, background: SURFACE.well }}>
+                        {state === "loading" || state === undefined ? (
+                          <span style={{ fontSize: 11.5, fontStyle: "italic", color: TEXT.caption }}>Loading findings…</span>
+                        ) : state === "error" ? (
+                          <span style={{ fontSize: 11.5, fontStyle: "italic", color: ACCENT_TEXT.danger }}>Failed to load findings for this run.</span>
+                        ) : state.findings.length === 0 ? (
+                          <span style={{ fontSize: 11.5, fontStyle: "italic", color: TEXT.caption }}>No findings recorded for this run.</span>
+                        ) : (
+                          <>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: "3px 12px", fontSize: 10.5, color: TEXT.label, marginBottom: 8 }}>
+                              <span>{state.run.checksTotal} checks</span>
+                              <span style={{ color: ACCENT_TEXT.green }}>{state.run.checksOk} ok</span>
+                              <span style={{ color: ACCENT_TEXT.danger }}>{state.run.checksError} error</span>
+                              <span>{state.run.checksRequiresScript} needs script</span>
+                              <span>{state.run.checksLicenseGap} license gap</span>
+                            </div>
+                            <div style={{ position: "relative", marginBottom: 8 }}>
+                              <Search
+                                size={13}
+                                strokeWidth={1.8}
+                                style={{ position: "absolute", left: 8, top: 7, color: TEXT.dim, pointerEvents: "none" }}
+                              />
+                              <input
+                                value={findingsSearch}
+                                onChange={(e) => setFindingsSearch(e.target.value)}
+                                placeholder="Search findings…"
+                                style={{
+                                  width: "100%",
+                                  height: 28,
+                                  padding: "0 26px",
+                                  borderRadius: 5,
+                                  border: `1px solid ${LINE.control}`,
+                                  background: SURFACE.card,
+                                  color: TEXT.primary,
+                                  fontSize: 11.5,
+                                }}
+                              />
+                              {findingsSearch && (
+                                <button
+                                  onClick={() => setFindingsSearch("")}
+                                  title="Clear search"
+                                  style={{ position: "absolute", right: 6, top: 6, border: 0, background: "transparent", color: TEXT.dim, cursor: "pointer", display: "flex" }}
+                                >
+                                  <X size={13} strokeWidth={1.8} />
+                                </button>
+                              )}
+                            </div>
+                            {(() => {
+                              const visible = sortFindings(state.findings).filter((f) => findingMatchesSearch(f, findingsSearch));
+                              if (visible.length === 0) {
+                                return (
+                                  <span style={{ fontSize: 11.5, fontStyle: "italic", color: TEXT.caption }}>
+                                    No findings match “{findingsSearch}”.
+                                  </span>
+                                );
+                              }
+                              return (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                                  {visible.map((f) => {
+                                    const rawError = extractRawGraphError(f.extractedProperties);
+                                    const removeKey = `${r.runId}:${f.checkKey}`;
+                                    return (
+                                      <div key={f.findingId} style={{ borderTop: `1px solid ${LINE.subtle}`, paddingTop: 8 }}>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                          <span style={{ flex: "1 1 160px", minWidth: 0, fontSize: 12, fontWeight: 600, color: TEXT.strong }}>
+                                            <HighlightMatch text={f.title} term={findingsSearch} />
+                                          </span>
+                                          {f.classification && <FailureCategoryChip classification={f.classification} />}
+                                          <span style={{ flex: "none", fontSize: 10, textTransform: "uppercase", color: findingSeverityColor(f) }}>
+                                            {f.checkStatus === "error" ? "error" : f.severity}
+                                          </span>
+                                          <button
+                                            onClick={() => void handleRemoveClick(r.runId, r.packageKey, f.checkKey)}
+                                            disabled={removingKey === removeKey}
+                                            title="Remove this check from the scan package"
+                                            style={{
+                                              flex: "none",
+                                              border: 0,
+                                              background: "transparent",
+                                              color: TEXT.dim,
+                                              cursor: removingKey === removeKey ? "default" : "pointer",
+                                              opacity: removingKey === removeKey ? 0.5 : 1,
+                                              display: "flex",
+                                            }}
+                                          >
+                                            <Trash2 size={13} strokeWidth={1.8} />
+                                          </button>
+                                        </div>
+                                        <div style={{ fontSize: 10.5, color: TEXT.label, marginTop: 2 }}>
+                                          <HighlightMatch text={f.checkKey} term={findingsSearch} />
+                                        </div>
+                                        {removeConfirm && removeConfirm.runId === r.runId && removeConfirm.checkKey === f.checkKey && (
+                                          <div
+                                            style={{
+                                              marginTop: 6,
+                                              padding: "6px 8px",
+                                              borderRadius: 5,
+                                              border: "1px solid rgba(233,185,73,.4)",
+                                              background: "rgba(242,202,99,.08)",
+                                            }}
+                                          >
+                                            <span style={{ fontSize: 10.5, color: ACCENT.amber }}>
+                                              This check is also used by {removeConfirm.sharedNames.length} other assessment
+                                              {removeConfirm.sharedNames.length === 1 ? "" : "s"} ({removeConfirm.sharedNames.join(", ")}) — remove it
+                                              from all of them?
+                                            </span>
+                                            <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                                              <AdButton
+                                                label={removingKey === removeKey ? "Removing…" : "Remove from all"}
+                                                tone="danger"
+                                                disabled={removingKey === removeKey}
+                                                onClick={() => void removeCheckFromPackage(r.runId, r.packageKey, f.checkKey, removeConfirm.sharedNames.length)}
+                                              />
+                                              <AdButton label="Cancel" disabled={removingKey === removeKey} onClick={() => setRemoveConfirm(null)} />
+                                            </div>
+                                          </div>
+                                        )}
+                                        {f.description && (
+                                          <p style={{ marginTop: 4, marginBlockEnd: 0, fontSize: 11, lineHeight: 1.5, color: TEXT.body }}>
+                                            <HighlightMatch text={f.description} term={findingsSearch} />
+                                          </p>
+                                        )}
+                                        {rawError && (
+                                          <div
+                                            style={{
+                                              marginTop: 6,
+                                              padding: "5px 8px",
+                                              borderRadius: 5,
+                                              border: "1px solid rgba(229,122,122,.3)",
+                                              background: "rgba(229,122,122,.06)",
+                                            }}
+                                          >
+                                            <span style={{ fontSize: 10, whiteSpace: "pre-wrap", wordBreak: "break-word", color: ACCENT_TEXT.danger }}>
+                                              <HighlightMatch text={rawError} term={findingsSearch} />
+                                            </span>
+                                          </div>
+                                        )}
+                                        {f.classification && (
+                                          <div style={{ marginTop: 6 }}>
+                                            <SimulatorFailureClassification classification={f.classification} />
+                                          </div>
+                                        )}
+                                        <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 6 }}>
+                                          <Link
+                                            href={simulatorStudioCheckPath(f.checkKey)}
+                                            style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, color: TEXT.dim, textDecoration: "none" }}
+                                            title={`Open "${f.checkKey}" in Simulator Studio's endpoint canvas`}
+                                          >
+                                            <ExternalLink size={11} strokeWidth={1.8} />
+                                            Test in Simulator Studio →
+                                          </Link>
+                                          {(f.classification?.action.kind === "edit_endpoint" || f.classification?.action.kind === "retire_check") && (
+                                            <span style={{ fontSize: 10.5, color: TEXT.label }}>
+                                              Suggested: {f.classification.action.label} — in Simulator Studio
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })()}
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
             )}
           </AdListRowGroup>
         </AdSection>

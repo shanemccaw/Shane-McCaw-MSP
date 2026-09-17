@@ -15,10 +15,12 @@ import type {
   AdAssignableService,
   AdAssignServiceResult,
   AdCustomerDetail,
+  AdDiagnosticRunFindingsResponse,
   AdDiagnosticRunSummary,
   AdEntitlementsView,
   AdGroupDetail,
   AdMonitoringPackage,
+  AdMonitoringPackageCheckLink,
   AdMspAuditLogPage,
   AdMspDetail,
   AdMspProfile,
@@ -34,6 +36,7 @@ import type {
   RbacRoleSummary,
   RbacSystem,
 } from "./adTypes";
+import type { AssessmentNode } from "../../../components/SimulatorLeftTree";
 
 export type AdminFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -134,6 +137,48 @@ export async function fetchAdCustomerDiagnosticRuns(
   id: number,
 ): Promise<{ recentDiagnosticRuns: AdDiagnosticRunSummary[] }> {
   const res = await adminFetch(`/api/admin/active-directory/customer/${id}/diagnostics/runs`);
+  return json(res);
+}
+
+// #371/#374/#379 — one run's real findings, reusing msp-diagnostics.ts's
+// existing GET /msp/customers/:customerId/diagnostics/runs/:runId route
+// exactly as the legacy ActiveDirectoryCustomerPane.tsx does (requireCapability
+// bypasses for PlatformAdmin, same reuse pattern as runAdCustomerDiagnostics).
+export async function fetchAdDiagnosticRunFindings(
+  adminFetch: AdminFetch,
+  customerId: number,
+  runId: string,
+): Promise<AdDiagnosticRunFindingsResponse> {
+  const res = await adminFetch(`/api/msp/customers/${customerId}/diagnostics/runs/${runId}`);
+  return json<AdDiagnosticRunFindingsResponse>(res);
+}
+
+// #376 — "Remove from scan package". Same two routes the legacy pane's
+// handleRemoveClick/removeCheckFromPackage already use.
+export async function fetchAdMonitoringPackageChecks(
+  adminFetch: AdminFetch,
+  packageKey: string,
+): Promise<{ checks: AdMonitoringPackageCheckLink[] }> {
+  const res = await adminFetch(`/api/admin/monitoring-packages/${encodeURIComponent(packageKey)}/checks`);
+  return json(res);
+}
+
+export async function setAdMonitoringPackageChecks(
+  adminFetch: AdminFetch,
+  packageKey: string,
+  checkKeys: string[],
+): Promise<{ checks: AdMonitoringPackageCheckLink[] }> {
+  const res = await adminFetch(`/api/admin/monitoring-packages/${encodeURIComponent(packageKey)}/checks`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ checkKeys }),
+  });
+  return json(res);
+}
+
+/** GET /api/admin/simulator/assessments — used only to run #376's shared-package detection. */
+export async function fetchAdSimulatorAssessments(adminFetch: AdminFetch): Promise<{ assessments: AssessmentNode[] }> {
+  const res = await adminFetch("/api/admin/simulator/assessments");
   return json(res);
 }
 

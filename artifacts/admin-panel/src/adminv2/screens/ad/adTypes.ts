@@ -1,4 +1,5 @@
 import type { LegacyRole } from "@workspace/db/rbac/legacy-ladder";
+import type { FailureClassification } from "../../../components/SimulatorFailureClassification";
 /**
  * Active Directory — wire types.
  *
@@ -295,6 +296,47 @@ export interface AdAssignServiceResult {
   clientService: { id: number; status: string };
   serviceName: string;
   completedPreviousIds: number[];
+}
+
+// ── Diagnostic run findings (#371/#374/#379, GET /msp/customers/:id/diagnostics/runs/:runId) ──
+// Mirrors the legacy ActiveDirectoryCustomerPane.tsx's own wire shape for this
+// route — same route, same server response, ported rather than redesigned.
+
+export interface AdDiagnosticRunCounts {
+  checksTotal: number;
+  checksOk: number;
+  checksError: number;
+  checksRequiresScript: number;
+  checksLicenseGap: number;
+}
+
+export interface AdDiagnosticFinding {
+  findingId: string;
+  runId: string;
+  checkKey: string;
+  checkLabel: string;
+  severity: "ok" | "info" | "warning" | "critical";
+  title: string;
+  description: string | null;
+  extractedProperties: Record<string, unknown> | null;
+  checkStatus: string | null;
+  /** #379 — the server's triage verdict for this finding, null when not a real failure. */
+  classification?: FailureClassification | null;
+}
+
+export interface AdDiagnosticRunFindingsResponse {
+  run: AdDiagnosticRunCounts;
+  findings: AdDiagnosticFinding[];
+}
+
+// ── Monitoring package ↔ check assignments (GET/PUT /admin/monitoring-packages/:key/checks) ──
+// #376 — "Remove from scan package" reads/writes this same route the legacy
+// pane already uses.
+
+export interface AdMonitoringPackageCheckLink {
+  packageKey: string;
+  checkKey: string;
+  sortOrder: number;
 }
 
 export interface AdCustomerDetail {
