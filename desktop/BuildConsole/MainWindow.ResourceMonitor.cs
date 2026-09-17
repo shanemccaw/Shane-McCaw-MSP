@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using BuildConsole.Services;
 
 namespace BuildConsole
 {
@@ -217,6 +219,26 @@ namespace BuildConsole
             else if (!memPaused && normalBrush != null) MemoryMeterBar.Foreground = normalBrush;
             if (MemoryPressurePauseText != null)
                 MemoryPressurePauseText.Visibility = memPaused ? Visibility.Visible : Visibility.Collapsed;
+            if (MemoryPressureForceClearText != null)
+                MemoryPressureForceClearText.Visibility = memPaused ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        /// <summary>
+        /// Git #4577 — manual escape hatch: force-clears the CURRENT #4543 memory-pressure
+        /// auto-pause on click, without disabling the automatic detector. Resets
+        /// <see cref="_memoryPressureClearSince"/> so the automatic cooldown logic above doesn't
+        /// immediately re-evaluate against stale tracking, then clears the pause directly on the
+        /// watcher (which itself re-evaluates the queue immediately — see
+        /// <see cref="QueueWatcherService.SetMemoryPressurePause"/>). If real pressure genuinely
+        /// returns afterward, the automatic detector re-engages normally on its next poll.
+        /// </summary>
+        private void ForceClearMemoryPressurePause_Click(object sender, MouseButtonEventArgs e)
+        {
+            var watcher = _queueWatcher;
+            if (watcher == null || !watcher.IsMemoryPressurePaused) return;
+            _memoryPressureClearSince = null;
+            watcher.SetMemoryPressurePause(false);
+            ActivityLog.Log("watcher", "Queue memory-pressure pause force-cleared manually (Git #4577) — automatic detection remains active and will re-pause if real pressure returns.");
         }
 
         [StructLayout(LayoutKind.Sequential)]

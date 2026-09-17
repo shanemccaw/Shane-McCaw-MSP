@@ -838,6 +838,21 @@
                                        FontWeight="SemiBold"
                                        FontSize="{StaticResource CaptionFontSize}"
                                        VerticalAlignment="Center" Margin="8,0,0,0"/>
+                            <!-- Git #4577 — manual unstick button for the #4543 auto-pause. Only
+                                 visible while auto-paused (same visibility toggle as the text
+                                 above, in MainWindow.ResourceMonitor.cs). Does NOT disable the
+                                 automatic detector — it only force-clears the CURRENT pause; real
+                                 pressure returning re-engages it normally. -->
+                            <TextBlock x:Name="MemoryPressureForceClearText"
+                                       Text="[Force clear]"
+                                       Visibility="Collapsed"
+                                       Cursor="Hand"
+                                       Foreground="{StaticResource RedBrush}"
+                                       TextDecorations="Underline"
+                                       FontSize="{StaticResource CaptionFontSize}"
+                                       VerticalAlignment="Center" Margin="6,0,0,0"
+                                       MouseLeftButtonUp="ForceClearMemoryPressurePause_Click"
+                                       ToolTip="Force-clear now — the automatic check will re-engage if real pressure returns."/>
                         </StackPanel>
                     </StackPanel>
                 </StatusBarItem>
