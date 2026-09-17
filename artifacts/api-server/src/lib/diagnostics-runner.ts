@@ -822,6 +822,10 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
       packageKey,
       tenantId: resolvedTenantId,
       triggerId,
+      // #4449 — runDiagnostics() is never reached from the Workflow Engine's
+      // scheduled cron path; every real caller (onboarding, MSP re-check,
+      // assessment pipeline, testbed debug trigger) is a manual/on-demand run.
+      triggeredBy: "manual",
       onProgress: (evt) => {
         if (evt.checkLabel && evt.checkLabel.trim()) {
           checkLabelByKey.set(evt.checkKey, evt.checkLabel.trim());

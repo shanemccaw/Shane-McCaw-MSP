@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { ThemeProvider } from "@/lib/theme-context";
 import { SlugProvider, getStoredSlug } from "@/lib/slug-context";
 import { PortalLayout } from "@/components/layout";
+import DevScanPauseToggle from "@/components/dev-scan-pause-toggle";
 import IndexPage from "@/pages/index";
 import CustomerOffersPage from "@/pages/customer-offers";
 import ComingSoon from "@/pages/coming-soon";
@@ -280,6 +281,7 @@ export default function App() {
             </WouterRouter>
           </SlugProvider>
           <Toaster richColors closeButton />
+          <DevScanPauseToggle />
         </ThemeProvider>
       </AuthProvider>
     </QueryClientProvider>

@@ -395,6 +395,7 @@ describe("runItemDetailCollection — parallel with the scoring scan", () => {
         packageKey: "core:security-baseline",
         tenantId: "tenant-guid",
         triggerId: "diag-run-abc",
+        triggeredBy: "manual",
       }),
       runItemDetailCollection({ tenantId: "tenant-guid", customerId: 42, scopeToPackageKey: SCORING_PACKAGE_KEY, parallelToRunId: "abc" }),
     ]);
@@ -417,7 +418,7 @@ describe("runItemDetailCollection — parallel with the scoring scan", () => {
     mockPaginatedGraph(2);
 
     const [, detail] = await Promise.all([
-      executeMonitoringPackage({ packageKey: "core:security-baseline", tenantId: "tenant-guid", triggerId: "diag-run-abc" }),
+      executeMonitoringPackage({ packageKey: "core:security-baseline", tenantId: "tenant-guid", triggerId: "diag-run-abc", triggeredBy: "manual" }),
       runItemDetailCollection({ tenantId: "tenant-guid", scopeToPackageKey: SCORING_PACKAGE_KEY }),
     ]);
 
@@ -451,7 +452,7 @@ describe("runItemDetailCollection — parallel with the scoring scan", () => {
     state.failInsertsInto = "tenant_check_item_details";
 
     const [scoring, detail] = await Promise.all([
-      executeMonitoringPackage({ packageKey: "core:security-baseline", tenantId: "tenant-guid", triggerId: "diag-run-abc" }),
+      executeMonitoringPackage({ packageKey: "core:security-baseline", tenantId: "tenant-guid", triggerId: "diag-run-abc", triggeredBy: "manual" }),
       runItemDetailCollection({ tenantId: "tenant-guid", scopeToPackageKey: SCORING_PACKAGE_KEY }),
     ]);
 
@@ -538,6 +539,7 @@ describe("runItemDetailCollection — #543 package-curation gating", () => {
         packageKey: SCORING_PACKAGE_KEY,
         tenantId: "tenant-guid",
         triggerId: "diag-run-abc",
+        triggeredBy: "manual",
       }),
       runItemDetailCollection({
         tenantId: "tenant-guid",
@@ -617,6 +619,7 @@ describe("executeMonitoringPackage — #543 resolved-check-list logging", () => 
       packageKey: SCORING_PACKAGE_KEY,
       tenantId: "tenant-guid",
       triggerId: "diag-run-abc",
+      triggeredBy: "manual",
     });
 
     // The line that makes "did this run execute check X?" answerable from the

@@ -67,6 +67,19 @@ import { syncTenantServicePlans } from "./tenant-workloads.ts";
 import { logger } from "./logger.ts";
 const log = logger.child({ channel: "engine.monitor" });
 
+// Dev-only scan pause (Git #4449). In-memory, process-level — never a DB row,
+// so a stray "paused" state can't silently survive a restart. Gates ONLY
+// scheduled (Workflow Engine cron) runs; a manual "Scan Now" always runs.
+let scheduledScansPaused = false;
+
+export function isScheduledScansPaused(): boolean {
+  return scheduledScansPaused;
+}
+
+export function setScheduledScansPaused(paused: boolean): void {
+  scheduledScansPaused = paused;
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 /** Hard cap on @odata.nextLink page fetches per check to prevent runaway loops. */
@@ -375,7 +388,7 @@ export interface PackageRunResult {
   packageKey: string;
   tenantId: string;
   triggerId: string;
-  runStatus: "completed" | "partial_failure" | "consent_revoked" | "no_checks";
+  runStatus: "completed" | "partial_failure" | "consent_revoked" | "no_checks" | "dev_paused_skipped";
   checks: CheckResult[];
   enginesRecomputed: string[];
   /** Count of checks that couldn't run due to a missing M365 SKU/add-on (not a failure). */
@@ -4146,10 +4159,34 @@ export async function executeMonitoringPackage(opts: {
   packageKey: string;
   tenantId: string;
   triggerId: string;
+  /** #4449 — which real caller fired this run. Only "scheduled" is ever skipped by the dev pause. */
+  triggeredBy: "scheduled" | "manual";
   onProgress?: ProgressCallback;
 }): Promise<PackageRunResult> {
-  const { packageKey, tenantId, triggerId, onProgress } = opts;
+  const { packageKey, tenantId, triggerId, triggeredBy, onProgress } = opts;
   const startedAt = new Date().toISOString();
+
+  // Dev-only scan pause (Git #4449) — skip ONLY scheduled runs while paused.
+  // A manual "Scan Now" always runs, even while paused. Never fakes a
+  // completed scan: the returned result is honestly "dev_paused_skipped".
+  if (triggeredBy === "scheduled" && scheduledScansPaused) {
+    log.info({ packageKey, tenantId, triggerId }, "monitor-executor: scan skipped — dev pause active");
+    const skippedAt = new Date().toISOString();
+    return {
+      packageKey,
+      tenantId,
+      triggerId,
+      runStatus: "dev_paused_skipped",
+      checks: [],
+      serviceNotConfiguredCount: 0,
+      serviceStates: [],
+      enginesRecomputed: [],
+      licenseGapCount: 0,
+      licenseGapFeatures: [],
+      startedAt,
+      completedAt: skippedAt,
+    };
+  }
 
   const { pkg, linkedCheckCount, checks: orderedChecks } = await loadOrderedPackageChecks(packageKey);
 

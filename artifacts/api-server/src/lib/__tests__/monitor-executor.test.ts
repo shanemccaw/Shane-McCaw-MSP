@@ -6,7 +6,7 @@
  * output shape validation, mapping/property extraction.
  */
 
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import {
   evalConditionGrammar,
   validateOutputShape,
@@ -19,6 +19,8 @@ import {
   isCsvReportResponse,
   appendQueryParams,
   sharePointPrefixFromDomain,
+  isScheduledScansPaused,
+  setScheduledScansPaused,
 } from "../monitor-executor.ts";
 import type { SeverityRule, MappingRule } from "../monitor-executor.ts";
 import { logger } from "../logger.ts";
@@ -2041,6 +2043,65 @@ describe("idempotency key format", () => {
   });
 });
 
+// ── executeMonitoringPackage — dev scan pause (Git #4449) ─────────────────────
+
+describe("executeMonitoringPackage — dev scan pause", () => {
+  afterEach(() => {
+    setScheduledScansPaused(false);
+  });
+
+  it("skips a scheduled run while paused, without touching the DB, and reports it honestly", async () => {
+    const { db } = await import("@workspace/db");
+    const mockDb = db as unknown as { select: Mock };
+    mockDb.select.mockClear();
+
+    setScheduledScansPaused(true);
+    expect(isScheduledScansPaused()).toBe(true);
+
+    const result = await executeMonitoringPackage({
+      packageKey: "pkg1",
+      tenantId: "tenant-x",
+      triggerId: "run-1",
+      triggeredBy: "scheduled",
+    });
+
+    expect(result.runStatus).toBe("dev_paused_skipped");
+    expect(result.checks).toEqual([]);
+    // Never fakes a completed scan — the DB is never touched for a skipped run.
+    expect(mockDb.select).not.toHaveBeenCalled();
+  });
+
+  it("still runs a manual trigger while paused", async () => {
+    const { db } = await import("@workspace/db");
+    const mockDb = db as unknown as { select: Mock };
+
+    setScheduledScansPaused(true);
+
+    mockDb.select.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([]) }),
+      }),
+    });
+
+    const result = await executeMonitoringPackage({
+      packageKey: "missing-pkg",
+      tenantId: "tenant-x",
+      triggerId: "run-2",
+      triggeredBy: "manual",
+    });
+
+    // Not skipped by the pause — falls through to the real "package not found" path.
+    expect(result.runStatus).toBe("no_checks");
+  });
+
+  it("resume clears the pause and a scheduled run executes normally again", () => {
+    setScheduledScansPaused(true);
+    expect(isScheduledScansPaused()).toBe(true);
+    setScheduledScansPaused(false);
+    expect(isScheduledScansPaused()).toBe(false);
+  });
+});
+
 // ── executeMonitoringPackage — consent-revoked short-circuit ──────────────────
 
 describe("executeMonitoringPackage — consent-revoked short-circuit", () => {
@@ -2090,6 +2151,7 @@ describe("executeMonitoringPackage — consent-revoked short-circuit", () => {
       packageKey: "pkg1",
       tenantId: "tenant-x",
       triggerId: "run-1",
+      triggeredBy: "manual",
       onProgress: (e) => progressEvents.push(`${e.checkKey}:${e.status}`),
     });
 
@@ -2150,6 +2212,7 @@ describe("executeMonitoringPackage — license gap does not block completion", (
       packageKey: "pkg1",
       tenantId: "tenant-lg",
       triggerId: "run-1",
+      triggeredBy: "manual",
       onProgress: (e) => progressEvents.push(`${e.checkKey}:${e.status}`),
     });
 

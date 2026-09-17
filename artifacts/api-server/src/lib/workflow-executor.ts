@@ -9060,10 +9060,17 @@ Return ONLY a JSON object with these exact keys (no prose outside the JSON):
           (node.data.triggerId as string | undefined
             ? interp(node.data.triggerId as string, payload)
             : undefined) ?? `wf-run-${runId}-node-${node.id}`;
+        // #4449 — this node executes for BOTH scheduled-cron and manually-fired
+        // workflow runs; the trigger type is a property of the run, not this
+        // call site, so look it up off the run row itself.
+        const [mepRunRow] = await db.select({ triggerType: wfRunsTable.triggerType })
+          .from(wfRunsTable).where(eq(wfRunsTable.id, runId)).limit(1);
+        const mepTriggeredBy: "scheduled" | "manual" = mepRunRow?.triggerType === "schedule" ? "scheduled" : "manual";
         const mepResult = await executeMonitoringPackage({
           packageKey: mepPackageKey,
           tenantId: mepTenantId,
           triggerId: mepTriggerId,
+          triggeredBy: mepTriggeredBy,
           onProgress: (evt) => {
             broadcastAdminWorkflowEvent({
               type: "node_progress",

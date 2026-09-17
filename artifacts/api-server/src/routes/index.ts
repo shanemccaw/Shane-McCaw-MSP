@@ -336,6 +336,11 @@ if (process.env.NODE_ENV !== "production") {
   void import("./admin-dev-seed.ts").then(m => {
     router.use(m.default);
   });
+  // Dev-only scheduled-scan pause/resume (Git #4449) — same conditional
+  // registration, so it's structurally unreachable (404) in production.
+  void import("./dev-scan-pause.ts").then(m => {
+    router.use(m.default);
+  });
 }
 
 router.use(healthRouter);

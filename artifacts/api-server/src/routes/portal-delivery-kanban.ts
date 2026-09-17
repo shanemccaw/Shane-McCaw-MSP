@@ -338,7 +338,7 @@ router.post("/portal/delivery-kanban-tasks/:id/run-monitoring", requireAdmin, as
   const triggerId = `delivery-kanban:${id}:${Date.now()}`;
 
   try {
-    const result = await executeMonitoringPackage({ packageKey, tenantId, triggerId });
+    const result = await executeMonitoringPackage({ packageKey, tenantId, triggerId, triggeredBy: "manual" });
     log.info({ taskId: id, packageKey, tenantId, runStatus: result.runStatus }, "delivery-kanban: admin fired run-monitoring");
     res.json({ ok: true, packageKey, runStatus: result.runStatus, checksRan: result.checks.length });
   } catch (err) {
