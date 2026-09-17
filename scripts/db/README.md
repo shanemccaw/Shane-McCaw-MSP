@@ -1,5 +1,27 @@
 # scripts/db/
 
+## `psql.mjs` — the safe way to run ad-hoc `psql` against local dev (Git #4526)
+
+A build agent's Bash tool shell never has `DATABASE_URL` exported (correctly — sourcing
+`.env.local` risks leaking `MT_APP_CERT_PRIVATE_KEY`). Hand-rolling `psql "$DATABASE_URL"`
+against that empty var makes real `psql` silently fall back to its default connection params
+and block on an interactive password prompt written directly to the controlling terminal,
+invisible to stdout/stderr capture — a silent, permanent hang, not an error. Confirmed live:
+6 of the last 60 build-queue sessions ended a turn with exactly this shape, auto-backgrounded,
+holding the queue slot up to the 30-minute background-task ceiling.
+
+```
+node scripts/db/psql.mjs -c "select 1"
+node scripts/db/psql.mjs -c "\d remediation_knowledge_base"
+```
+
+Loads `DATABASE_URL` via `find-tenant-scoped-tables.mjs`'s `loadDatabaseUrl()` (a single regex
+line out of `.env.local`, never a full `source`), builds a password-free conninfo + `PGPASSWORD`
+env via `pg-cli.mjs`'s `pgCli()`, and always passes `-w` (never prompt) plus a bounded
+`PGCONNECT_TIMEOUT`. Any real connection failure — bad credentials, unreachable server, a
+genuinely missing `DATABASE_URL` — now surfaces as a fast, capturable error instead of hanging.
+Any argv after the script path passes straight through to the real `psql` binary.
+
 ## `reset-dev-database.mjs` — reset the local dev DB to a clean-slate MSP (Git #4393)
 
 Resets the real direct MSP (the `msps` row with `is_direct_business = true`) back to a
