@@ -83,10 +83,15 @@ export function isGeneratedSecretRef(value: unknown): value is GeneratedSecretRe
     && typeof r.secretName === "string";
 }
 
-/** The vault the generated-credential store uses. Falls back to the platform
- *  vault only when explicitly unset, so a single-vault deployment still works. */
+/** The vault the generated-credential store uses: `GENERATED_SECRET_VAULT_URL`
+ *  and nothing else. Git #4515 — this used to fall back to `AZURE_KEY_VAULT_URL`,
+ *  the PRODUCTION vault, so any environment without the separate variable wrote
+ *  minted break-glass passwords there. Unset or blank now means unconfigured, and
+ *  every caller fails closed on that. A deployment that genuinely wants the
+ *  platform vault sets this variable to it explicitly. */
 function vaultUrl(): string | null {
-  return process.env.GENERATED_SECRET_VAULT_URL ?? process.env.AZURE_KEY_VAULT_URL ?? null;
+  const url = process.env.GENERATED_SECRET_VAULT_URL?.trim();
+  return url ? url : null;
 }
 
 /** Dev-scoped by default — see the header. Production must set this explicitly. */
@@ -119,7 +124,7 @@ function client(): SecretClient {
   const clientSecret = process.env.AZURE_CLIENT_SECRET;
   if (!url || !tenantId || !clientId || !clientSecret) {
     throw new Error(
-      "generated-secret-store: GENERATED_SECRET_VAULT_URL (or AZURE_KEY_VAULT_URL) plus AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET must be set",
+      "generated-secret-store: GENERATED_SECRET_VAULT_URL (no fallback to AZURE_KEY_VAULT_URL) plus AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET must be set",
     );
   }
   return new SecretClient(url, new ClientSecretCredential(tenantId, clientId, clientSecret));

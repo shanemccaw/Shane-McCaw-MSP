@@ -774,7 +774,7 @@ export async function persistGeneratedSecretsForRun(
     throw new ConfigPackError(
       "generated_secret_store_unavailable",
       "This pack generates a credential, and the generated-credential store is not configured "
-      + "(GENERATED_SECRET_VAULT_URL or AZURE_KEY_VAULT_URL, plus AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET). "
+      + "(GENERATED_SECRET_VAULT_URL, which does not fall back to AZURE_KEY_VAULT_URL, plus AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET). "
       + "The run is refused rather than writing the credential to the database.",
       { generatedFields },
     );

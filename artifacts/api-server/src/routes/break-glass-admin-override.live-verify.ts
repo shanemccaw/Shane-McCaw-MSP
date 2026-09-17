@@ -9,9 +9,9 @@
  *   npx vitest run --config vitest.live-verify.config.ts src/routes/break-glass-admin-override.live-verify.ts
  *
  * Requires .env.local loaded, WITH the generated-secret store unconfigured
- * (GENERATED_SECRET_VAULT_URL="" — empty, not unset, so it does not fall back to
- * AZURE_KEY_VAULT_URL). Locally that fallback is the production Key Vault, which
- * is outside agent reach (Git #1913), so this harness refuses to run otherwise.
+ * (GENERATED_SECRET_VAULT_URL unset or empty). Before #4515 an unset value fell
+ * back to AZURE_KEY_VAULT_URL — locally the production Key Vault, outside agent
+ * reach (Git #1913) — and this harness still refuses to run if a store is configured.
  *
  * #4029 — the override used to reset first and store second, so an unconfigured
  * store answered 503 AFTER the password had already changed. It now refuses before
