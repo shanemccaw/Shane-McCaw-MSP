@@ -99,6 +99,7 @@ import {
   classifyRemoveAuthMethodDeleteResult,
 } from "./mfa-reregistration.ts";
 import { runWithRequestContext } from "./request-context.ts";
+import { compensateSecurityDefaultsForRun } from "./security-defaults-compensation-run.ts";
 import { evaluateRules as runAlertRuleEvaluation } from "./alert-engine.ts";
 import { evaluateCustomerTenantRules } from "./customer-tenant-alert-engine.ts";
 import { drainCustomerAlertDigests } from "./customer-alert-digest.ts";
@@ -10099,6 +10100,9 @@ Return ONLY a JSON object with these exact keys (no prose outside the JSON):
               data: ebtResult.data,
               templateId: ebtTemplateId,
               label: ebtResult.label,
+              // #4529 — the compensation pass needs the tenant this write landed on.
+              tenantId: ebtCustomerRow.tenantId,
+              customerId: ebtCustomerId,
               // #4514 — no write fired; the gate reads unappliedVariables off this node.
               ...(ebtResult.skippedExisting
                 ? { skippedExisting: true, unappliedVariables: ebtResult.unappliedVariables ?? [] }
@@ -10114,6 +10118,8 @@ Return ONLY a JSON object with these exact keys (no prose outside the JSON):
               data: ebtResult.data,
               templateId: ebtTemplateId,
               label: ebtResult.label,
+              tenantId: ebtCustomerRow.tenantId,
+              customerId: ebtCustomerId,
             };
             nodeError = true;
           }
@@ -10491,7 +10497,12 @@ export async function executeWorkflowRun(
 
   return runWithRequestContext(
     { traceId, mspId: null, customerId: null, actor: null },
-    () => executeWorkflowRunInner(run, opts),
+    async () => {
+      await executeWorkflowRunInner(run, opts);
+      // #4529 — a run that ends failed/cancelled after turning Security Defaults
+      // off, with no enforcing CA policy confirmed, gets it turned back on.
+      if (!opts.dryRun) await compensateSecurityDefaultsForRun(run.id);
+    },
   );
 }
 
@@ -11406,6 +11417,17 @@ export async function checkApprovalTimeouts(): Promise<void> {
 // Re-enters the BFS from the successors of the approval_gate node.
 
 export async function resumeWorkflowRun(
+  runId: number,
+  approvalGateNodeId: string,
+  resumePayload: Record<string, unknown>,
+  decisionNote?: string,
+): Promise<void> {
+  await resumeWorkflowRunInner(runId, approvalGateNodeId, resumePayload, decisionNote);
+  // #4529 — same compensation pass as executeWorkflowRun.
+  await compensateSecurityDefaultsForRun(runId);
+}
+
+async function resumeWorkflowRunInner(
   runId: number,
   approvalGateNodeId: string,
   resumePayload: Record<string, unknown>,

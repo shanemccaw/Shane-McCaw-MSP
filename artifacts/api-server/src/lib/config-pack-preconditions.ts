@@ -92,11 +92,29 @@ export function isSecurityDefaultsDisableStep(
   step: PackPreconditionStep,
   payload: Record<string, unknown>,
 ): boolean {
+  return securityDefaultsWriteEffect(step, payload) === "disable";
+}
+
+/** What a step does to Security Defaults: "enable" only for a resolved
+ *  `isEnabled: true`, "disable" for any other write to the policy, null when the
+ *  step does not write it. */
+export function securityDefaultsWriteEffect(
+  step: Pick<PackPreconditionStep, "method" | "endpoint" | "bodyTemplate">,
+  payload: Record<string, unknown>,
+): "enable" | "disable" | null {
   const method = step.method.toUpperCase();
-  if (method !== "PATCH" && method !== "PUT") return false;
-  if (normalizedPath(step.endpoint, payload) !== SECURITY_DEFAULTS_PATH) return false;
-  const body = resolvedBody(step, payload);
-  return !(body && body.isEnabled === true);
+  if (method !== "PATCH" && method !== "PUT") return null;
+  if (normalizedPath(step.endpoint, payload) !== SECURITY_DEFAULTS_PATH) return null;
+  const body = resolvedBody(step as PackPreconditionStep, payload);
+  return body && body.isEnabled === true ? "enable" : "disable";
+}
+
+/** True when the step creates a Conditional Access policy (any state). */
+export function isConditionalAccessPolicyCreate(
+  step: Pick<PackPreconditionStep, "method" | "endpoint">,
+  payload: Record<string, unknown>,
+): boolean {
+  return step.method.toUpperCase() === "POST" && normalizedPath(step.endpoint, payload) === CA_POLICIES_PATH;
 }
 
 /** Why a step is not an enforcing Security Defaults replacement, or null when it is one. */
@@ -109,6 +127,21 @@ export function enforcingReplacementGap(
   }
   const body = resolvedBody(step, payload);
   if (!body) return "policy body does not resolve";
+  const shapeGap = enforcingPolicyShapeGap(body);
+  if (shapeGap) return shapeGap;
+  if (step.requiredLicenseSkuLists.length === 0) {
+    return "no license requirement is recorded for this policy, so it cannot be confirmed to apply on this tenant";
+  }
+  return null;
+}
+
+/**
+ * Why a Conditional Access policy object is not an enforcing Security Defaults
+ * replacement, or null when it is one. Shape only — state "enabled", requires MFA,
+ * All users, All applications, all client app types. #4529 applies this to the
+ * policy Graph actually returned, where a license check is moot: Graph accepted it.
+ */
+export function enforcingPolicyShapeGap(body: Record<string, unknown>): string | null {
   if (body.state !== "enabled") {
     return `policy state is '${typeof body.state === "string" ? body.state : String(body.state)}', not 'enabled'`;
   }
@@ -122,9 +155,6 @@ export function enforcingReplacementGap(
   const clientAppTypes = stringList(conditions.clientAppTypes);
   if (clientAppTypes.length > 0 && !clientAppTypes.includes("all")) {
     return "policy does not cover all client app types (legacy authentication would stay open)";
-  }
-  if (step.requiredLicenseSkuLists.length === 0) {
-    return "no license requirement is recorded for this policy, so it cannot be confirmed to apply on this tenant";
   }
   return null;
 }
