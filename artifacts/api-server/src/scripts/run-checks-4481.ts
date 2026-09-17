@@ -34,6 +34,7 @@ for (const check of checks) {
     triggerId: `verify-4481:${check.key}:${started}`,
     skipIdempotency: true,
     persistProfile: false,
+    includeItems: true,
   });
   if (result.status === "error") failures++;
   console.log(JSON.stringify({
@@ -48,6 +49,8 @@ for (const check of checks) {
     severityMatched: result.severityMatched,
     severityLabel: result.severityLabel,
     errorMessage: result.errorMessage ?? null,
+    // Field names only (no values): enough to confirm the fields a mapping keys on came back.
+    firstItemFields: result.items?.[0] && typeof result.items[0] === "object" ? Object.keys(result.items[0] as object) : [],
   }));
 }
 process.exit(failures ? 2 : 0);

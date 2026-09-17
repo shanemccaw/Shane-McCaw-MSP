@@ -460,18 +460,41 @@ $script:CmdletCatalog = @{
         # whose `.Value` was nonetheless null). `.Value` is guarded again
         # right before `.ToBytes()` as defense in depth, so a genuinely null
         # value degrades to $null output instead of throwing.
+        #
+        # Git #4481: the #1786 fix still threw on every run since, now with
+        # "Method invocation failed because
+        # [Deserialized.Microsoft.Exchange.Data.ByteQuantifiedSize] does not
+        # contain a method named 'ToBytes'" (container Log Analytics, 7 of 7
+        # runs 2026-09-08 → 2026-09-17). ExchangeOnlineManagement V3 returns
+        # REST-deserialized objects: the properties survive, the .NET methods
+        # do not (Microsoft Q&A 1921124 — the documented workaround is to parse
+        # the "1.234 GB (1,325,000,000 bytes)" string form). ConvertTo-QuotaBytes
+        # below keeps .ToBytes() for a live object and parses the byte count
+        # out of the string otherwise; "Unlimited" has no "(N bytes)" part and
+        # resolves to $null, same as the IsUnlimited branch.
         Script = {
-            Get-Mailbox -ResultSize Unlimited -RecipientTypeDetails UserMailbox, SharedMailbox |
+            function ConvertTo-QuotaBytes {
+                param($Quantity)
+                if ($null -eq $Quantity) { return $null }
+                if ($Quantity.PSObject.Properties['IsUnlimited'] -and $Quantity.IsUnlimited) { return $null }
+                $size = if ($Quantity.PSObject.Properties['Value'] -and $null -ne $Quantity.Value) { $Quantity.Value } else { $Quantity }
+                if ($size.PSObject.Methods['ToBytes']) { return [int64]$size.ToBytes() }
+                $match = [regex]::Match([string]$size, '\(([\d,.\s]+) bytes\)')
+                if ($match.Success) { return [int64]($match.Groups[1].Value -replace '[^\d]', '') }
+                return $null
+            }
+            # The PostFilter below hides every mailbox under 90%, so an empty
+            # result alone can't tell "nobody is near quota" from "no size
+            # parsed". One aggregate log line (counts only, no mailbox
+            # identities) keeps that distinguishable in the container log.
+            $rows = @(Get-Mailbox -ResultSize Unlimited -RecipientTypeDetails UserMailbox, SharedMailbox |
                 ForEach-Object {
                     $mbx = $_
-                    $prohibitBytes = $null
-                    if ($mbx.ProhibitSendQuota -and -not $mbx.ProhibitSendQuota.IsUnlimited -and $null -ne $mbx.ProhibitSendQuota.Value) {
-                        $prohibitBytes = $mbx.ProhibitSendQuota.Value.ToBytes()
-                    }
+                    $prohibitBytes = ConvertTo-QuotaBytes $mbx.ProhibitSendQuota
                     $stats = Get-MailboxStatistics -Identity $mbx.Identity -ErrorAction SilentlyContinue
                     $usedBytes = $null
-                    if ($stats -and $stats.TotalItemSize -and -not $stats.TotalItemSize.IsUnlimited -and $null -ne $stats.TotalItemSize.Value) {
-                        $usedBytes = $stats.TotalItemSize.Value.ToBytes()
+                    if ($stats) {
+                        $usedBytes = ConvertTo-QuotaBytes $stats.TotalItemSize
                     }
                     $utilizationPercent = $null
                     if ($prohibitBytes -and $usedBytes) {
@@ -484,7 +507,16 @@ $script:CmdletCatalog = @{
                         TotalItemSizeBytes = $usedBytes
                         UtilizationPercent = $utilizationPercent
                     }
-                }
+                })
+            $measured = @($rows | Where-Object { $null -ne $_.UtilizationPercent })
+            Write-Log -Level "info" -Message "mailbox quota utilization computed" -Extra @{
+                cmdletKey              = "get-mailbox-quota-utilization"
+                mailboxCount           = $rows.Count
+                quotaParsedCount       = @($rows | Where-Object { $null -ne $_.ProhibitSendQuotaBytes }).Count
+                sizeParsedCount        = @($rows | Where-Object { $null -ne $_.TotalItemSizeBytes }).Count
+                maxUtilizationPercent  = if ($measured.Count) { ($measured | Measure-Object -Property UtilizationPercent -Maximum).Maximum } else { $null }
+            }
+            $rows
         }
         PostFilter = { $null -ne $_.UtilizationPercent -and $_.UtilizationPercent -ge 90 }
         Session    = "exchange"
@@ -817,10 +849,22 @@ $script:CmdletCatalog = @{
         AllowedParams  = @()
         Session        = "exchange"
     }
+    # Git #4481: every run since the 2026-09-15 dev image died with exit 137
+    # (OOM-kill) about two minutes AFTER the cmdlet itself returned. Each rule
+    # package carries its entire classification rule pack twice —
+    # SerializedClassificationRuleCollection (byte[]) and
+    # ClassificationRuleCollectionXml (string), #1793 survey shape — and
+    # Send-ChildResult's #2852 key sanitizer walked that byte[] one boxed
+    # element at a time inside a 1Gi container. No check reads either
+    # property (compliance:dlp-rule-package-invalid keys on Name/IsValid;
+    # RuleCollectionName/Version/rulePackSize/ModificationTimeUtc still carry
+    # change signal for config snapshots), so they are dropped in the child
+    # before serialization rather than shipped as megabytes of unused payload.
     "get-dlp-sensitive-information-type-rule-package" = @{
-        Cmdlet         = "Get-DlpSensitiveInformationTypeRulePackage"
-        AllowedParams  = @()
-        Session        = "compliance"
+        Cmdlet            = "Get-DlpSensitiveInformationTypeRulePackage"
+        AllowedParams     = @()
+        Session           = "compliance"
+        ExcludeProperties = @("SerializedClassificationRuleCollection", "ClassificationRuleCollectionXml")
     }
     "get-email-tenant-settings" = @{
         Cmdlet         = "Get-EmailTenantSettings"

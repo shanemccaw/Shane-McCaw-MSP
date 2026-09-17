@@ -113,6 +113,12 @@ function ConvertTo-JsonSafeValue {
     # Strings ARE IEnumerable (of chars) — never walk them as a collection.
     # Other JSON-primitive-safe leaf types pass through unchanged too, same
     # list ConvertTo-Json itself treats as scalars.
+    # A byte[] is IEnumerable too, but it has no dictionary to sanitize and
+    # walking it element-by-element is what OOM-killed the child on a
+    # multi-megabyte DLP rule pack (#4481) — hand it to ConvertTo-Json whole.
+    # The leading comma stops the return from unrolling it into an Object[].
+    if ($Value -is [byte[]]) { return , $Value }
+
     if ($Value -is [string] -or $Value -is [datetime] -or $Value -is [decimal] -or
         $Value -is [guid] -or $Value.GetType().IsPrimitive) {
         return $Value
@@ -371,6 +377,13 @@ try {
     # `_itemCount` is derived from it on the api-server side.
     if ($catalogEntry.PostFilter -and $null -ne $result) {
         $result = @($result) | Where-Object $catalogEntry.PostFilter
+    }
+
+    # ExcludeProperties (#4481): a code-owned list of properties too large to
+    # serialize that no consumer reads (the DLP rule package's raw rule-pack
+    # byte[]/XML). Dropped here, before Send-ChildResult walks the graph.
+    if ($catalogEntry.ExcludeProperties -and $null -ne $result) {
+        $result = @($result) | Select-Object -Property * -ExcludeProperty $catalogEntry.ExcludeProperties
     }
 }
 catch {
