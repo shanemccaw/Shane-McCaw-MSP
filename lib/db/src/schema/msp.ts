@@ -4481,6 +4481,53 @@ export const insertBaselineActionTemplateAuditLogSchema = createInsertSchema(bas
 export type BaselineActionTemplateAuditLog = typeof baselineActionTemplateAuditLogTable.$inferSelect;
 export type InsertBaselineActionTemplateAuditLog = typeof baselineActionTemplateAuditLogTable.$inferInsert;
 
+/**
+ * Git #4522 — one row per attempt to promote a report-only Conditional Access
+ * policy to enforced (#4518: monitor-first, promote only after real sign-in impact
+ * is verified). Written BEFORE the Graph write fires (outcome "executing") and
+ * settled after, so an attempt that crashes mid-write still leaves who/when/what
+ * was reviewed. The row id is also the in-process authorization the template
+ * executor checks before it lets the enforcing PATCH through.
+ */
+export const caPolicyPromotionsTable = pgTable("ca_policy_promotions", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull(),
+  /** tenants.id */
+  customerId: integer("customer_id").notNull(),
+  /** Entra tenant GUID the write targets. */
+  tenantId: text("tenant_id").notNull(),
+  policyId: text("policy_id").notNull(),
+  policyDisplayName: text("policy_display_name"),
+  /** Live state read immediately before the write (always report-only when the write is allowed). */
+  previousState: text("previous_state"),
+  newState: text("new_state").notNull(),
+  /** executing | succeeded | failed | refused */
+  outcome: text("outcome").notNull(),
+  /** Why a promotion was refused or failed, in operator words. */
+  outcomeReason: text("outcome_reason"),
+  /** The impact fingerprint the operator reviewed and the server re-derived. */
+  impactFingerprint: text("impact_fingerprint"),
+  /** The full server-side impact evaluation the promotion was decided on. */
+  impactSnapshot: jsonb("impact_snapshot").$type<Record<string, unknown>>(),
+  /** True when the operator explicitly acknowledged non-zero (or incomplete) impact. */
+  impactAcknowledged: boolean("impact_acknowledged").notNull().default(false),
+  operatorNote: text("operator_note"),
+  actorUserId: integer("actor_user_id"),
+  actorName: text("actor_name"),
+  actorRole: text("actor_role"),
+  /** msp_change_requests.id raised for this write. */
+  changeRequestId: integer("change_request_id"),
+  /** baseline_action_template_audit_log.id of the PATCH itself. */
+  templateAuditLogId: integer("template_audit_log_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+}, (t) => [
+  index("ca_policy_promotions_customer_idx").on(t.customerId, t.createdAt),
+  index("ca_policy_promotions_policy_idx").on(t.tenantId, t.policyId),
+]);
+
+export type CaPolicyPromotion = typeof caPolicyPromotionsTable.$inferSelect;
+
 // ── Write Action Catalog (M365 Launch Control) ──────────────────────────────────
 //
 // Schema-definition-only mapping of an already-live table (created via manual

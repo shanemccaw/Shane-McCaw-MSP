@@ -72,6 +72,8 @@ interface PackRunResponse {
    *  route). Always the changeRequestId this tool supplied, since the tool
    *  refuses to execute without one. */
   authorizingChangeRequestId: number | null;
+  /** #4522 — the CA enforcement mode the run fired under. */
+  caEnforcementMode: "monitor-first" | "immediate";
 }
 
 const inputSchema = {
@@ -106,6 +108,16 @@ const inputSchema = {
         "The CR must be fully approved, unconsumed, and scoped to the target customer's tenant, or the run is " +
         "rejected with 403 change_request_not_authorized. Not needed for planOnly (nothing executes).",
     ),
+  caEnforcementMode: z
+    .enum(["monitor-first", "immediate"])
+    .optional()
+    .describe(
+      "#4522 — Conditional Access enforcement for this run. Omit for the default, \"monitor-first\": every CA policy " +
+        "the pack creates is report-only, and a report-only policy is enforced later only through the promotion " +
+        "workflow after its real sign-in impact is reviewed. \"immediate\" is the explicit override that creates CA " +
+        "policies enforced (state enabled) and lets a pack step enable a policy; it is recorded on the run and audited. " +
+        "Only choose it when the operator has deliberately decided to skip report-only.",
+    ),
   planOnly: z
     .boolean()
     .optional()
@@ -138,12 +150,13 @@ export const executeWritePackTool: ToolDef = {
   inputSchema,
   audit: { access: "write", tenantArg: "customerId", entityType: "config_pack", entityIdArg: "packKey" },
   handler: async (raw) => {
-    const { packKey, customerId, variables, changeRequestId, planOnly } = raw as {
+    const { packKey, customerId, variables, changeRequestId, planOnly, caEnforcementMode } = raw as {
       packKey: string;
       customerId: number;
       variables?: Record<string, string>;
       changeRequestId?: number;
       planOnly?: boolean;
+      caEnforcementMode?: "monitor-first" | "immediate";
     };
 
     if (planOnly) {
@@ -170,7 +183,12 @@ export const executeWritePackTool: ToolDef = {
 
     const run = await apiFetch<PackRunResponse>(`/admin/config-packs/${encodeURIComponent(packKey)}/run`, {
       method: "POST",
-      body: { customerId, changeRequestId, ...(variables ? { variables } : {}) },
+      body: {
+        customerId,
+        changeRequestId,
+        ...(variables ? { variables } : {}),
+        ...(caEnforcementMode ? { caEnforcementMode } : {}),
+      },
     });
 
     log.info(

@@ -66,6 +66,7 @@ const router: IRouter = Router();
 const PRECONDITION_STATUS: Record<string, number> = {
   license_required: 409,
   security_defaults_replacement_not_enforcing: 422,
+  ca_enforcement_requires_promotion: 422,
 };
 
 /** The sellable micro-remediation slugs, for honest "did you mean" errors. */

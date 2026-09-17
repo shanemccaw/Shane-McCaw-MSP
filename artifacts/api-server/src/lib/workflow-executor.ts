@@ -28,6 +28,7 @@ import {
   breakGlassPendingSecretsTable,
   baselineActionTemplatesTable,
   baselineActionTemplateAuditLogTable,
+  caPolicyPromotionsTable,
   leadStagingTable,
   usersTable,
   tenantsTable,
@@ -75,6 +76,12 @@ import { generateDocument } from "./document-engine.ts";
 import { generateSowDocument } from "./document-engine-sow.ts";
 import { computeTenantSignals, resolveSignalsOverride, getDisabledSignalKeys, coerceDecayRate, fetchLatestMonitorProfileRows, mergeMonitorProfileRows, deriveMonitorFindings, resolveCustomerPortalUserId, resolveCustomerUserIds, resolveCustomerIdForPortalUser, resolveSiblingUserIds, type SignalDerivationRule, type SignalRuleGroup } from "./tenant-signals.ts";
 import { getEngineDef } from "./engine-registry.ts";
+import {
+  classifyCaEnforcementWrite,
+  caEnforcementRefusalMessage,
+  withCaPolicyStateDefault,
+  type CaEnforcementAuthorization,
+} from "./ca-enforcement-mode.ts";
 import { scoreHealthFromScriptRun } from "./m365-health-ai-scorer.ts";
 import { anthropic, withAiAttribution, type AiCallAttribution } from "@workspace/integrations-anthropic-ai";
 import { resolveNodeTypeMeta, resolveEffectiveNodeType } from "./node-type-registry.ts";
@@ -640,7 +647,10 @@ export interface BaselineTemplateExecutionResult {
   // Git #3937 — "license_gap" surfaces a tenant licensing shortfall (e.g. Entra
   // ID P1/P2 for Conditional Access) distinctly from a real privilege failure;
   // see graphWriteForTenant's GraphWriteResult for where this is classified.
-  errorType?: "insufficient_privilege" | "conflict" | "bad_request" | "unexpected" | "license_gap";
+  // #4522 — "ca_enforcement_refused": the write would leave a Conditional Access
+  // policy enforcing without a verified promotion or an explicit "immediate" pack
+  // run. Refused before any Graph call.
+  errorType?: "insufficient_privilege" | "conflict" | "bad_request" | "unexpected" | "license_gap" | "ca_enforcement_refused";
   /** Customer-safe name of the missing license/add-on. Present only when errorType === "license_gap". */
   licenseFeature?: string;
   endpoint: string;
@@ -752,6 +762,10 @@ export async function resolveBaselineTemplateRequest(
   // Resolve {{variable}} placeholders in bodyTemplate using interp(). We do this
   // by JSON-serializing the template, running interp on the string, then parsing
   // it back — the same approach as any structured JSON template.
+  // #4522 — {{caPolicyState}} resolves to report-only unless the caller chose a
+  // state (a Config Pack run stamps it from caEnforcementMode). Whether an
+  // "enabled" value may actually be sent is runBaselineTemplateAgainstTenant's gate.
+  payload = withCaPolicyStateDefault(payload);
   const rawBodyTemplate = (template.bodyTemplate ?? {}) as Record<string, unknown>;
   const bodyTemplateStr = JSON.stringify(rawBodyTemplate);
   const bodyResolved = interp(bodyTemplateStr, payload) ?? "{}";
@@ -1324,12 +1338,63 @@ async function runExchangeOnlineTemplateAgainstTenant(opts: {
   }
 }
 
+/**
+ * #4522 — why a CA enforcement write is NOT authorized, or null when it is.
+ * "verified_promotion" must name a ca_policy_promotions row that is mid-write
+ * ("executing") for this tenant and this exact policy; "config_pack_immediate"
+ * must match the run payload the orchestrator stamped.
+ */
+async function caEnforcementDenialReason(
+  auth: CaEnforcementAuthorization | undefined,
+  write: {
+    kind: "create_enforced" | "enable_existing";
+    tenantId: string;
+    customerId: number;
+    endpoint: string;
+    payload: Record<string, unknown>;
+  },
+): Promise<string | null> {
+  if (!auth) return "no enforcement authorization (monitor-first default)";
+  if (auth.kind === "config_pack_immediate") {
+    if (write.payload["caEnforcementMode"] !== "immediate" || write.payload["packKey"] !== auth.packKey) {
+      return "config pack run did not choose the immediate enforcement mode";
+    }
+    return null;
+  }
+  if (write.kind !== "enable_existing") return "a promotion can only enable an existing policy";
+  const [row] = await db
+    .select({
+      tenantId: caPolicyPromotionsTable.tenantId,
+      customerId: caPolicyPromotionsTable.customerId,
+      policyId: caPolicyPromotionsTable.policyId,
+      outcome: caPolicyPromotionsTable.outcome,
+    })
+    .from(caPolicyPromotionsTable)
+    .where(eq(caPolicyPromotionsTable.id, auth.promotionId))
+    .limit(1);
+  if (!row) return `promotion ${auth.promotionId} not found`;
+  if (row.outcome !== "executing") return `promotion ${auth.promotionId} is ${row.outcome}, not executing`;
+  const targetPolicyId = write.endpoint.split("?")[0]!.replace(/\/+$/, "").split("/").pop() ?? "";
+  if (
+    row.tenantId !== write.tenantId ||
+    row.customerId !== write.customerId ||
+    row.policyId.toLowerCase() !== targetPolicyId.toLowerCase()
+  ) {
+    return `promotion ${auth.promotionId} does not cover this tenant/policy`;
+  }
+  return null;
+}
+
 export async function runBaselineTemplateAgainstTenant(
   templateId: string,
   tenantId: string,
   customerId: number,
   payload: Record<string, unknown>,
   source?: string,
+  options?: {
+    /** #4522 — required for a write that leaves a Conditional Access policy enforcing. */
+    caEnforcement?: CaEnforcementAuthorization;
+  },
 ): Promise<BaselineTemplateExecutionResult> {
   // Same substitution the preview surface sees — resolveBaselineTemplateRequest()
   // is the single implementation, so a confirmed request executes verbatim.
@@ -1535,6 +1600,45 @@ export async function runBaselineTemplateAgainstTenant(
   const method = writeResolved.method;
   const body = writeResolved.body;
 
+  // #4522 — monitor-first (#4518). A write that leaves a Conditional Access policy
+  // ENFORCING fires only with an in-process authorization that was actually earned:
+  // a verified promotion row for this very policy, or a Config Pack run whose
+  // orchestrator-stamped payload chose "immediate". Every other caller — Launch
+  // Control, admin write-actions, execute_action, a template test run — is refused
+  // here before any Graph call, whatever variables it was handed.
+  const caEnforcementKind = classifyCaEnforcementWrite({ method, endpoint, body });
+  if (caEnforcementKind !== null) {
+    const denial = await caEnforcementDenialReason(options?.caEnforcement, {
+      kind: caEnforcementKind, tenantId, customerId, endpoint, payload: effectivePayload,
+    });
+    if (denial !== null) {
+      const message = caEnforcementRefusalMessage(caEnforcementKind);
+      try {
+        await db.insert(baselineActionTemplateAuditLogTable).values({
+          action: "failed",
+          templateId,
+          requestVariables: effectivePayload,
+          afterSnapshot: {
+            success: false, status: 409, errorType: "ca_enforcement_refused",
+            caEnforcementKind, refusal: denial,
+            endpoint, method, customerId, tenantId, executedAt: new Date().toISOString(),
+            ...(source !== undefined ? { source } : {}),
+          },
+        });
+      } catch (auditErr) {
+        log.warn({ auditErr, templateId }, "runBaselineTemplateAgainstTenant: CA enforcement refusal audit insert failed (non-fatal)");
+      }
+      log.warn(
+        { templateId, tenantId, customerId, caEnforcementKind, denial, source },
+        "runBaselineTemplateAgainstTenant: Conditional Access enforcement write refused — not fired",
+      );
+      return {
+        success: false, status: 409, errorType: "ca_enforcement_refused", data: message,
+        endpoint, method, label: resolved.label,
+      };
+    }
+  }
+
   // #3948 — second transport: an exchange-online:// endpoint is an Exchange
   // Online PowerShell cmdlet, not a Graph URL. Route it through the
   // ps-execution container instead of graphWriteForTenant, which would
@@ -1591,7 +1695,7 @@ export interface RollbackExecutionResult {
   success: boolean;
   status: number;
   data: unknown;
-  errorType?: "insufficient_privilege" | "conflict" | "bad_request" | "unexpected" | "license_gap";
+  errorType?: "insufficient_privilege" | "conflict" | "bad_request" | "unexpected" | "license_gap" | "ca_enforcement_refused";
   /** Customer-safe name of the missing license/add-on. Present only when errorType === "license_gap". */
   licenseFeature?: string;
   endpoint: string;
@@ -10081,7 +10185,16 @@ Return ONLY a JSON object with these exact keys (no prose outside the JSON):
         }
 
         try {
-          const ebtResult = await runBaselineTemplateAgainstTenant(ebtTemplateId, ebtCustomerRow.tenantId, ebtCustomerId, payload);
+          // #4522 — only a Config Pack run whose orchestrator-stamped payload chose
+          // "immediate" carries CA enforcement authorization into its template steps.
+          const ebtCaEnforcement: CaEnforcementAuthorization | undefined =
+            payload["caEnforcementMode"] === "immediate" && typeof payload["packKey"] === "string"
+              ? { kind: "config_pack_immediate", packKey: payload["packKey"] as string }
+              : undefined;
+          const ebtResult = await runBaselineTemplateAgainstTenant(
+            ebtTemplateId, ebtCustomerRow.tenantId, ebtCustomerId, payload, undefined,
+            ebtCaEnforcement ? { caEnforcement: ebtCaEnforcement } : undefined,
+          );
 
           if (ebtResult.missingVariables) {
             nodeError = true;

@@ -302,6 +302,7 @@ const SOP_RUN_ERROR_STATUS: Record<SopExecutionErrorCode, number> = {
   // #4528 — the #4513 tenant preconditions, same statuses as the pack run route.
   license_required: 409,
   security_defaults_replacement_not_enforcing: 422,
+  ca_enforcement_requires_promotion: 422,
 };
 
 router.post(

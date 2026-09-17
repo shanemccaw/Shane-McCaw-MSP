@@ -113,7 +113,10 @@ export type SopExecutionErrorCode =
   | "standing_policy_requires_policy_origin"
   // #4528 — the #4513 tenant preconditions, same codes the pack path uses.
   | "license_required"
-  | "security_defaults_replacement_not_enforcing";
+  | "security_defaults_replacement_not_enforcing"
+  // #4522 — an SOP step would enforce a Conditional Access policy; that goes
+  // through the promotion workflow.
+  | "ca_enforcement_requires_promotion";
 
 export class SopExecutionError extends Error {
   readonly code: SopExecutionErrorCode;

@@ -70,6 +70,7 @@ import { loadTier, tierAllowsFeature } from "../lib/msp-entitlement.ts";
 import { resolveCustomerTierEntitlement } from "../lib/portal-tier-features.ts";
 import { logger } from "../lib/logger.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
+import { classifyCaEnforcementWrite, caEnforcementRefusalMessage } from "../lib/ca-enforcement-mode.ts";
 import {
   raiseChangeRequestForLaunchControlExecution,
   recordLaunchControlExecutionOutcome,
@@ -536,6 +537,31 @@ router.post(
       // execution rather than one assumed-but-never-created (the exact gap
       // #3541 found — `human-action` 404ing with no CR to attest against).
       const payload: Record<string, unknown> = { ...(body.variables ?? {}), customerId };
+
+      // #4522 — monitor-first (#4518). A single action that would leave a
+      // Conditional Access policy enforcing (e.g. action.set-ca-policy-state with
+      // state "enabled") is refused here, BEFORE a Change Request is raised: that
+      // decision belongs to the promotion workflow, which reviews the policy's real
+      // sign-in impact first. runBaselineTemplateAgainstTenant refuses it too; this
+      // is the clean, CR-free refusal.
+      const { resolveBaselineTemplateRequest } = await import("../lib/workflow-executor.ts");
+      const preview = await resolveBaselineTemplateRequest(templateId, payload);
+      const caEnforcementKind = classifyCaEnforcementWrite({
+        method: preview.method, endpoint: preview.endpoint, body: preview.body,
+      });
+      if (caEnforcementKind !== null) {
+        log.info(
+          { mspId, catalogActionId, customerId, templateId, caEnforcementKind, userId: req.user?.id },
+          "msp-launch-control: execute refused — Conditional Access enforcement goes through the promotion workflow",
+        );
+        res.status(409).json({
+          error: caEnforcementRefusalMessage(caEnforcementKind),
+          errorType: "ca_enforcement_requires_promotion",
+          caEnforcementKind,
+        });
+        return;
+      }
+
       const changeRequest = await raiseChangeRequestForLaunchControlExecution({
         mspId,
         tenantId: customer.tenantId,

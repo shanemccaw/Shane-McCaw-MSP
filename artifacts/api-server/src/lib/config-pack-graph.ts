@@ -105,7 +105,16 @@ export type ConfigPackErrorCode =
   // #4513 — the pack turns Security Defaults off but does not also create a
   // licensed, enforcing (state "enabled") MFA Conditional Access policy for all
   // users. Security Defaults is never removed without a real replacement.
-  | "security_defaults_replacement_not_enforcing";
+  | "security_defaults_replacement_not_enforcing"
+  // #4522 — a step would leave a Conditional Access policy enforcing (create with
+  // state "enabled", or PATCH an existing policy to "enabled") on a monitor-first
+  // run. Enforcement goes through the promotion workflow, or an explicit
+  // caEnforcementMode "immediate" on the pack run.
+  | "ca_enforcement_requires_promotion"
+  // #4522 — caEnforcementMode was not one of monitor-first / immediate, or a
+  // caller tried to set the orchestrator-owned caEnforcementMode/caPolicyState
+  // through `variables`.
+  | "invalid_ca_enforcement_mode";
 
 export class ConfigPackError extends Error {
   readonly code: ConfigPackErrorCode;
@@ -160,6 +169,9 @@ export const AUTO_DERIVED_VARIABLES: readonly string[] = [
   "currentDateTime",
   "roleDefinitionId",
   "customerId",
+  // #4522 — stamped by the orchestrator from the run's caEnforcementMode.
+  "caEnforcementMode",
+  "caPolicyState",
   GATE_SECRET_FIELD,
   ...MID_RUN_PROVIDED_VARIABLES,
 ];

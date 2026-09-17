@@ -15,6 +15,7 @@
  *   customerId: number,           // required — msp_customers.id
  *   variables?: Record<string,string>  // e.g. { tenantPrefix: "CONTOSO" } — values
  *                                      // with no derivable source, or overrides
+ *   caEnforcementMode?: "monitor-first" | "immediate"  // #4522 — default monitor-first
  * }
  *
  * Responses:
@@ -31,6 +32,8 @@ import { requireCapability } from "../middlewares/requireAuth.ts";
 import { ConfigPackError, loadConfigPack, runConfigPackForCustomer } from "../lib/config-pack-orchestrator.ts";
 import { buildConfigPackGraph, operatorRequiredVariables } from "../lib/config-pack-graph.ts";
 import { logger } from "../lib/logger.ts";
+import { createAuditLog, resolveAuditActorRole } from "../lib/audit.ts";
+import { CA_ENFORCEMENT_MODES, DEFAULT_CA_ENFORCEMENT_MODE } from "../lib/ca-enforcement-mode.ts";
 const log = logger.child({ channel: "engine.config-pack" });
 
 const router: IRouter = Router();
@@ -43,6 +46,10 @@ const runBodySchema = z.object({
   // execute_write_pack MCP tool (the operator/AI write path) REQUIRES it, which
   // is where the fail-closed posture is enforced for that path.
   changeRequestId: z.number().int().positive().optional(),
+  // #4522 — Conditional Access enforcement for this run. Omitted = "monitor-first"
+  // (CA policies are created report-only, #4518). "immediate" is the explicit,
+  // audited override that creates them enforced.
+  caEnforcementMode: z.enum(CA_ENFORCEMENT_MODES).optional(),
 });
 
 const ERROR_STATUS: Record<ConfigPackError["code"], number> = {
@@ -72,6 +79,8 @@ const ERROR_STATUS: Record<ConfigPackError["code"], number> = {
   // Security Defaults without an enforcing replacement. Nothing was written.
   license_required: 409,
   security_defaults_replacement_not_enforcing: 422,
+  ca_enforcement_requires_promotion: 422,
+  invalid_ca_enforcement_mode: 400,
 };
 
 /**
@@ -104,6 +113,10 @@ router.get(
         gatedTemplateId,
         coalescedGateTemplateIds,
         operatorVariables: operatorRequiredVariables(ordered),
+        // #4522 — the run-time choice the operator makes; the default is what an
+        // omitted caEnforcementMode means.
+        caEnforcementModes: CA_ENFORCEMENT_MODES,
+        defaultCaEnforcementMode: DEFAULT_CA_ENFORCEMENT_MODE,
         ordered: ordered.map((t) => ({
           templateId: t.templateId,
           label: t.label,
@@ -152,7 +165,30 @@ router.post(
         ...(body.data.changeRequestId != null
           ? { changeRequestAuthorization: { changeRequestId: body.data.changeRequestId } }
           : {}),
+        caEnforcementMode: body.data.caEnforcementMode,
       });
+
+      // #4522 — every fired pack run records who chose which CA enforcement mode,
+      // so an "immediate" override is never a silent bypass of monitor-first.
+      if (req.user) {
+        void createAuditLog({
+          actorUserId: req.user.id,
+          actorName: req.user.name ?? req.user.email ?? "platform admin",
+          actorRole: resolveAuditActorRole(req.user),
+          actionType: result.caEnforcementMode === "immediate"
+            ? "config_pack.run_fired_ca_immediate"
+            : "config_pack.run_fired",
+          entityType: "config_pack",
+          entityId: packKey,
+          tenantId: body.data.customerId,
+          metadata: {
+            runId: result.runId,
+            customerId: body.data.customerId,
+            caEnforcementMode: result.caEnforcementMode,
+            authorizingChangeRequestId: result.authorizingChangeRequestId,
+          },
+        });
+      }
 
       res.status(202).json({
         runId: result.runId,
@@ -164,6 +200,7 @@ router.post(
         reusedVersion: result.reusedVersion,
         templateOrder: result.templateOrder,
         authorizingChangeRequestId: result.authorizingChangeRequestId,
+        caEnforcementMode: result.caEnforcementMode,
       });
     } catch (err) {
       if (err instanceof ConfigPackError) {

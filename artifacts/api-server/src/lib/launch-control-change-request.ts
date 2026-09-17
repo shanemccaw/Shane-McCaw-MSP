@@ -107,6 +107,16 @@ export interface RaiseLaunchControlChangeRequestInput {
   readonly requestedBy: string;
   /** Set only when the template pairs with a real reverse template (Reverse-Template Pairing). */
   readonly reverseTemplateId: string | null;
+  /**
+   * #4522 — a caller that is not Launch Control itself (the CA promotion workflow)
+   * describes its own origin and the real number of users its reviewed impact
+   * names, instead of the Launch Control wording and 0.
+   */
+  readonly origin?: {
+    readonly description: string;
+    readonly scheduledFor: string;
+    readonly impactedUsersCount: number;
+  };
 }
 
 export interface RaisedLaunchControlChangeRequest {
@@ -137,8 +147,9 @@ export async function raiseChangeRequestForLaunchControlExecution(
       primaryDomain: input.primaryDomain,
       title: input.catalogRow.actionName,
       description:
+        input.origin?.description ??
         `Raised from M365 Launch Control: ${input.catalogRow.domain} · ${input.catalogRow.actionName}. ` +
-        `Executed live by the MSP operator against ${input.tenantName} — pre-approved by tier entitlement, no CAB required.`,
+          `Executed live by the MSP operator against ${input.tenantName} — pre-approved by tier entitlement, no CAB required.`,
       changeClass: "standard",
       riskLevel,
       category: categoryForWriteActionDomain(input.catalogRow.domain),
@@ -150,8 +161,8 @@ export async function raiseChangeRequestForLaunchControlExecution(
       psaTicketId: "No ticket reference",
       requestedBy: input.requestedBy,
       requestedAt,
-      scheduledFor: "Immediate — Launch Control live execution",
-      impactedUsersCount: 0,
+      scheduledFor: input.origin?.scheduledFor ?? "Immediate — Launch Control live execution",
+      impactedUsersCount: input.origin?.impactedUsersCount ?? 0,
       status: "pending_approval",
       // #2665 — no real backup mechanism exists for a Launch Control write yet;
       // matches the standard-catalog and MSP-console create routes' own fix.

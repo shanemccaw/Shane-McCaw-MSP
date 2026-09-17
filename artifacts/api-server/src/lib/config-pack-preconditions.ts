@@ -30,6 +30,15 @@
  * Pure: the caller loads the step rows and the tenant SKU set once, so this
  * module is unit-testable without db or Graph.
  *
+ *   0. Conditional Access enforcement (Git #4522, Shane's #4518 decision). A step
+ *      whose resolved write leaves a CA policy ENFORCING — a create with
+ *      `state: "enabled"`, or a PATCH of an existing policy to `"enabled"` — is
+ *      refused unless the run explicitly chose `caEnforcementMode: "immediate"`.
+ *      Monitor-first is the default for every caller; the only other way a policy
+ *      becomes enforced is the promotion workflow (ca-policy-promotion.ts), which
+ *      reviews real sign-in impact first. Evaluated before the license rule: it is
+ *      a refusal of the request itself, whatever the tenant holds.
+ *
  * Git #4528 — the same evaluation gates every path that fires these writes, not
  * only packs: tenant-write-preconditions.ts loads the steps for a Config Pack
  * (prepareConfigPackRun), a single execute_action (admin-execute-action.ts) and
@@ -43,6 +52,12 @@ import {
   type TenantLicenseSkuResult,
 } from "./license-gate.ts";
 import { ConfigPackError } from "./config-pack-graph.ts";
+import {
+  DEFAULT_CA_ENFORCEMENT_MODE,
+  classifyCaEnforcementWrite,
+  withCaPolicyStateDefault,
+  type CaEnforcementMode,
+} from "./ca-enforcement-mode.ts";
 
 /** One template step of a pack, with what the precondition rules need. */
 export interface PackPreconditionStep {
@@ -199,9 +214,35 @@ export function evaluateConfigPackPreconditions(opts: {
   steps: PackPreconditionStep[];
   payload: Record<string, unknown>;
   tenantSkus: TenantLicenseSkuResult | null;
+  /** #4522 — only a Config Pack run passes this, from its explicit run parameter.
+   *  Omitted means monitor-first: execute_action and SOP runs never enforce. */
+  caEnforcementMode?: CaEnforcementMode;
 }): ConfigPackError | null {
-  const { packKey, steps, payload, tenantSkus } = opts;
+  const { packKey, steps, tenantSkus } = opts;
+  // Same default the executor resolves {{caPolicyState}} with (report-only).
+  const payload = withCaPolicyStateDefault(opts.payload);
   const subject = opts.subject ?? `Pack '${packKey}'`;
+  const caEnforcementMode = opts.caEnforcementMode ?? DEFAULT_CA_ENFORCEMENT_MODE;
+
+  // ── 0. CA enforcement only by explicit choice (#4522) ──
+  if (caEnforcementMode !== "immediate") {
+    const enforcing = steps.flatMap((s) => {
+      const body = resolvedBody(s, payload);
+      const kind = body
+        ? classifyCaEnforcementWrite({ method: s.method, endpoint: interp(s.endpoint, payload) ?? s.endpoint, body })
+        : null;
+      return kind ? [{ templateId: s.templateId, kind }] : [];
+    });
+    if (enforcing.length > 0) {
+      return new ConfigPackError(
+        "ca_enforcement_requires_promotion",
+        `${subject} would leave a Conditional Access policy enforcing (${enforcing.map((e) => e.templateId).join(", ")}). ` +
+          "Policies are report-only (monitor-first) by default: promote a report-only policy through the promotion " +
+          'workflow after reviewing its sign-in impact, or run the pack with caEnforcementMode "immediate". Nothing was written.',
+        { caEnforcementMode, enforcingSteps: enforcing },
+      );
+    }
+  }
 
   // ── 1. License ──
   const unlicensed = steps.filter((s) => !licenseSatisfied(s, tenantSkus));

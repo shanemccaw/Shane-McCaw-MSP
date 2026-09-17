@@ -69,8 +69,11 @@ const NO_P1 = skus("FLOW_FREE", "ENTERPRISEPACK", "POWER_BI_STANDARD", "Power_Pa
 const WITH_P1 = skus("ENTERPRISEPACK", "AAD_PREMIUM");
 const payload = { breakGlassGroupId: "" };
 
+// #4522 — an enforcing CA create is only allowed under the explicit "immediate"
+// override, so the license and Security Defaults rules below are exercised in that
+// mode; the monitor-first refusal has its own suite (ca-enforcement-precondition-4522.test.ts).
 const evaluate = (steps: PackPreconditionStep[], tenantSkus: TenantLicenseSkuResult | null) =>
-  evaluateConfigPackPreconditions({ packKey: "quickstart-v1", steps, payload, tenantSkus });
+  evaluateConfigPackPreconditions({ packKey: "quickstart-v1", steps, payload, tenantSkus, caEnforcementMode: "immediate" });
 
 describe("license precondition", () => {
   it("refuses license_required when a step's recorded SKUs are not held (tenant 2080's case)", () => {
@@ -134,7 +137,7 @@ describe("Security Defaults precondition", () => {
   it("resolves a {{state}} variable the same way execution does, and an unresolved one is not 'enabled'", () => {
     const variableState = caBaseline("{{caState}}");
     const steps = [disableSecurityDefaults, variableState];
-    expect(evaluateConfigPackPreconditions({ packKey: "p", steps, payload: { caState: "enabled" }, tenantSkus: WITH_P1 })).toBeNull();
+    expect(evaluateConfigPackPreconditions({ packKey: "p", steps, payload: { caState: "enabled" }, tenantSkus: WITH_P1, caEnforcementMode: "immediate" })).toBeNull();
     expect(evaluateConfigPackPreconditions({ packKey: "p", steps, payload: {}, tenantSkus: WITH_P1 })?.code).toBe(
       "security_defaults_replacement_not_enforcing",
     );
@@ -200,6 +203,7 @@ describe("evaluateConfigPackPreconditions subject (#4528)", () => {
       steps: [caBaseline("enabled")],
       payload: {},
       tenantSkus: { skuPartNumbers: new Set(["ENTERPRISEPACK"]), error: null },
+      caEnforcementMode: "immediate",
     });
     expect(refusal?.code).toBe("license_required");
     expect(refusal?.message).toMatch(/^SOP 'SOP-SEED-IAM-03' cannot run on this tenant/);

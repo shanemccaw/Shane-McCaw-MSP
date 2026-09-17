@@ -35,6 +35,7 @@ import {
   type PackPreconditionStep,
 } from "./config-pack-preconditions.ts";
 import type { ConfigPackError } from "./config-pack-graph.ts";
+import type { CaEnforcementMode } from "./ca-enforcement-mode.ts";
 import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.config-pack" });
@@ -118,15 +119,17 @@ export async function resolveTenantWritePreconditionRefusal(opts: {
   steps: PackPreconditionStep[];
   tenantId: string;
   payload: Record<string, unknown>;
+  /** #4522 — a Config Pack run's explicit choice; omitted = monitor-first. */
+  caEnforcementMode?: CaEnforcementMode;
 }): Promise<ConfigPackError | null> {
-  const { packKey, subject, steps, tenantId, payload } = opts;
+  const { packKey, subject, steps, tenantId, payload, caEnforcementMode } = opts;
   if (steps.length === 0) return null;
 
   const tenantSkus = steps.some((s) => s.requiredLicenseSkuLists.length > 0)
     ? await getSubscribedSkuPartNumbersForTenant(tenantId)
     : null;
 
-  const refusal = evaluateConfigPackPreconditions({ packKey, subject, steps, payload, tenantSkus });
+  const refusal = evaluateConfigPackPreconditions({ packKey, subject, steps, payload, tenantSkus, caEnforcementMode });
   if (refusal) {
     log.warn(
       { packKey, tenantId, code: refusal.code, details: refusal.details },

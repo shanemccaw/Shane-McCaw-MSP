@@ -44,6 +44,12 @@ import {
 import { recordExecution } from "./msp-change-execution-store.ts";
 import { assertGraphStructurallySound } from "./workflow-graph-integrity.ts";
 import { resolveProvidedVariablesOf, type BaselineTemplateResolveStep } from "./resolve-then-write.ts";
+import {
+  CA_ENFORCEMENT_PAYLOAD_KEYS,
+  DEFAULT_CA_ENFORCEMENT_MODE,
+  caPolicyStateForMode,
+  type CaEnforcementMode,
+} from "./ca-enforcement-mode.ts";
 import { logger } from "./logger.ts";
 const log = logger.child({ channel: "engine.config-pack" });
 import {
@@ -298,6 +304,8 @@ export interface RunConfigPackResult {
   /** #1497 — the approved CR that authorized this write, when the run was fired
    *  through the Change Control gate; null for a testbed/purchase-authorized run. */
   authorizingChangeRequestId: number | null;
+  /** #4522 — the Conditional Access enforcement mode the run fired under. */
+  caEnforcementMode: CaEnforcementMode;
 }
 
 /** Everything a pack run (or a real dry-run preview of one) derives before
@@ -330,6 +338,9 @@ export interface ConfigPackRunContext {
    *  it before anything is authorized, persisted or fired, and the dry-run
    *  reports it as not executable. */
   preconditionRefusal: ConfigPackError | null;
+  /** #4522 — the run's Conditional Access enforcement mode (monitor-first unless
+   *  the caller explicitly chose "immediate"). Stamped onto `payload`. */
+  caEnforcementMode: CaEnforcementMode;
 }
 
 /**
@@ -342,6 +353,7 @@ async function resolvePreconditionRefusal(
   ordered: PackTemplateResolved[],
   tenantId: string,
   payload: Record<string, unknown>,
+  caEnforcementMode: CaEnforcementMode,
 ): Promise<ConfigPackError | null> {
   const templateIds = [...new Set(ordered.map((t) => t.templateId).filter((id): id is string => !!id))];
   if (templateIds.length === 0) return null;
@@ -367,7 +379,7 @@ async function resolvePreconditionRefusal(
     requiredLicenseSkuLists: licenseListsByTemplate.get(r.templateId) ?? [],
   }));
 
-  return resolveTenantWritePreconditionRefusal({ packKey, steps, tenantId, payload });
+  return resolveTenantWritePreconditionRefusal({ packKey, steps, tenantId, payload, caEnforcementMode });
 }
 
 /**
@@ -381,8 +393,23 @@ export async function prepareConfigPackRun(opts: {
   packKey: string;
   customerId: number;
   variables?: Record<string, string>;
+  /** #4522 — omitted means monitor-first (report-only CA policies). */
+  caEnforcementMode?: CaEnforcementMode;
 }): Promise<ConfigPackRunContext> {
   const { packKey, customerId } = opts;
+  const caEnforcementMode = opts.caEnforcementMode ?? DEFAULT_CA_ENFORCEMENT_MODE;
+
+  // #4522 — the enforcement choice is a named run parameter, never a variable: a
+  // caller cannot turn "immediate" on (or report-only off) by sliding a key into
+  // `variables`, which would otherwise be spread over the stamped values below.
+  const smuggled = CA_ENFORCEMENT_PAYLOAD_KEYS.filter((k) => opts.variables && k in opts.variables);
+  if (smuggled.length > 0) {
+    throw new ConfigPackError(
+      "invalid_ca_enforcement_mode",
+      `${smuggled.join(", ")} cannot be passed as a variable — choose the enforcement mode with caEnforcementMode on the run request`,
+      { variables: smuggled },
+    );
+  }
 
   const { pack, templates } = await loadConfigPack(packKey);
 
@@ -452,6 +479,9 @@ export async function prepareConfigPackRun(opts: {
     ...(tenantDomain ? { tenantDomain, domain: tenantDomain } : {}),
     ...(opts.variables ?? {}),
     customerId,
+    // #4522 — lands in wf_runs.payload, so the run record says which mode it ran under.
+    caEnforcementMode,
+    caPolicyState: caPolicyStateForMode(caEnforcementMode),
   };
 
   if (gatedTemplateId !== null || requiredVars.has(GATE_SECRET_FIELD)) {
@@ -477,9 +507,12 @@ export async function prepareConfigPackRun(opts: {
     (v) => !midRunProvided.has(v) && (payload[v] === undefined || payload[v] === ""),
   );
 
-  const preconditionRefusal = await resolvePreconditionRefusal(packKey, ordered, customer.tenantId, payload);
+  const preconditionRefusal = await resolvePreconditionRefusal(
+    packKey, ordered, customer.tenantId, payload, caEnforcementMode,
+  );
 
   return {
+    caEnforcementMode,
     pack,
     templates,
     ordered,
@@ -516,10 +549,15 @@ export async function runConfigPackForCustomer(opts: {
    *  already-consumed CR throws `change_request_not_authorized` and nothing
    *  fires. */
   changeRequestAuthorization?: { changeRequestId: number };
+  /** #4522 — "monitor-first" (default) creates CA policies report-only;
+   *  "immediate" is the explicit override that creates them enforced. */
+  caEnforcementMode?: CaEnforcementMode;
 }): Promise<RunConfigPackResult> {
   const { packKey, customerId } = opts;
 
-  const ctx = await prepareConfigPackRun({ packKey, customerId, variables: opts.variables });
+  const ctx = await prepareConfigPackRun({
+    packKey, customerId, variables: opts.variables, caEnforcementMode: opts.caEnforcementMode,
+  });
   const { pack, graph, ordered, gatedTemplateId, customer } = ctx;
 
   // Non-authorizing validation first — it writes nothing, so it is safe to run
@@ -707,6 +745,7 @@ export async function runConfigPackForCustomer(opts: {
       gated: gatedTemplateId !== null,
       templateOrder: ordered.map((t) => getStepId(t)),
       authorizingChangeRequestId: claimedChangeRequestId,
+      caEnforcementMode: ctx.caEnforcementMode,
     };
   } catch (err) {
     if (claimedChangeRequestId !== null) {

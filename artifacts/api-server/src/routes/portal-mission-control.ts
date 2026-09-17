@@ -557,6 +557,8 @@ const CONFIG_PACK_ERROR_STATUS: Record<ConfigPackError["code"], number> = {
   // #4513 — tenant preconditions refused the pack before any write.
   license_required: 409,
   security_defaults_replacement_not_enforcing: 422,
+  ca_enforcement_requires_promotion: 422,
+  invalid_ca_enforcement_mode: 400,
 };
 
 router.post(

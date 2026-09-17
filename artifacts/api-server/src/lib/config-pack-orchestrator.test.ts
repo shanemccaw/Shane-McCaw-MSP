@@ -183,10 +183,12 @@ describe("runConfigPackForCustomer tenant preconditions (#4513)", () => {
   };
 
   it("refuses license_required on a testbed tenant without Entra ID P1 and never fires", async () => {
-    withCaState("enabled");
+    // #4522 — the real template resolves {{caPolicyState}}; an enforcing replacement
+    // only exists under the explicit "immediate" mode.
+    withCaState("{{caPolicyState}}");
     getSubscribedSkuPartNumbersForTenant.mockResolvedValue({ skuPartNumbers: new Set(["ENTERPRISEPACK"]), error: null });
     await expect(
-      runConfigPackForCustomer({ packKey: "sample-pack", customerId: TESTBED_CUSTOMER.id }),
+      runConfigPackForCustomer({ packKey: "sample-pack", customerId: TESTBED_CUSTOMER.id, caEnforcementMode: "immediate" }),
     ).rejects.toMatchObject({ code: "license_required" });
     expect(getSubscribedSkuPartNumbersForTenant).toHaveBeenCalledWith(TESTBED_CUSTOMER.tenantId);
     expect(fireWorkflowForDefinition).not.toHaveBeenCalled();
@@ -198,6 +200,45 @@ describe("runConfigPackForCustomer tenant preconditions (#4513)", () => {
     await expect(
       runConfigPackForCustomer({ packKey: "sample-pack", customerId: TESTBED_CUSTOMER.id }),
     ).rejects.toMatchObject({ code: "security_defaults_replacement_not_enforcing" });
+    expect(fireWorkflowForDefinition).not.toHaveBeenCalled();
+  });
+
+  // #4522 — monitor-first by default.
+  it("resolves {{caPolicyState}} report-only when no mode is chosen, so Security Defaults stays on", async () => {
+    withCaState("{{caPolicyState}}");
+    getSubscribedSkuPartNumbersForTenant.mockResolvedValue({ skuPartNumbers: new Set(["AAD_PREMIUM"]), error: null });
+    await expect(
+      runConfigPackForCustomer({ packKey: "sample-pack", customerId: TESTBED_CUSTOMER.id }),
+    ).rejects.toMatchObject({
+      code: "security_defaults_replacement_not_enforcing",
+      details: { conditionalAccessCandidates: [{ gap: "policy state is 'enabledForReportingButNotEnforced', not 'enabled'" }] },
+    });
+    expect(fireWorkflowForDefinition).not.toHaveBeenCalled();
+  });
+
+  it("refuses a monitor-first run whose step would enforce a CA policy, and never fires", async () => {
+    configPackTemplates = [{ ...CA_STEP, templateId: "microrem.enforce-ca-policy", requiredVariables: ["policyId"] }];
+    baselineTemplates = [{
+      templateId: "microrem.enforce-ca-policy", method: "PATCH",
+      endpoint: "/identity/conditionalAccess/policies/{{policyId}}", bodyTemplate: { state: "enabled" },
+    }];
+    writeActionCatalog = [];
+    await expect(
+      runConfigPackForCustomer({
+        packKey: "sample-pack", customerId: TESTBED_CUSTOMER.id,
+        variables: { policyId: "6f2a1b0e-2c1d-4d8e-9a55-0b7f1c3e9d21" },
+      }),
+    ).rejects.toMatchObject({ code: "ca_enforcement_requires_promotion" });
+    expect(fireWorkflowForDefinition).not.toHaveBeenCalled();
+  });
+
+  it("refuses the enforcement mode smuggled in as a variable", async () => {
+    withCaState("{{caPolicyState}}");
+    await expect(
+      runConfigPackForCustomer({
+        packKey: "sample-pack", customerId: TESTBED_CUSTOMER.id, variables: { caPolicyState: "enabled" },
+      }),
+    ).rejects.toMatchObject({ code: "invalid_ca_enforcement_mode" });
     expect(fireWorkflowForDefinition).not.toHaveBeenCalled();
   });
 });
