@@ -25,11 +25,16 @@ export function AddOnCheckoutReturnBanner({ onConfirmed }: { onConfirmed?: () =>
   const search = useSearch();
   const confirm = useConfirmAddOnCheckout();
   const firedFor = useRef<string | null>(null);
-  const [cleared, setCleared] = useState(false);
 
-  const params = new URLSearchParams(search);
-  const outcome = params.get("addOnCheckout");
-  const sessionId = params.get("session_id");
+  // Captured once from the URL that landed us here, then held in state —
+  // stripping the query string (below) must not also erase the only signal
+  // this component renders from, or the confirmed/failed outcome it just
+  // fetched would vanish the instant the URL is cleaned up.
+  const [captured] = useState(() => {
+    const params = new URLSearchParams(search);
+    return { outcome: params.get("addOnCheckout"), sessionId: params.get("session_id") };
+  });
+  const { outcome, sessionId } = captured;
 
   useEffect(() => {
     if (outcome !== "success" || !sessionId || firedFor.current === sessionId) return;
@@ -40,12 +45,13 @@ export function AddOnCheckoutReturnBanner({ onConfirmed }: { onConfirmed?: () =>
   }, [outcome, sessionId]);
 
   useEffect(() => {
-    if (!outcome || cleared) return;
+    if (!outcome) return;
     if (outcome === "cancelled" || confirm.isSuccess || confirm.isError) {
       window.history.replaceState(null, "", window.location.pathname);
-      setCleared(true);
     }
-  }, [outcome, confirm.isSuccess, confirm.isError, cleared]);
+    // Runs once the real outcome resolves; re-stripping an already-clean URL is a no-op.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [outcome, confirm.isSuccess, confirm.isError]);
 
   if (!outcome) return null;
 
