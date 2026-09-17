@@ -434,6 +434,25 @@ namespace BuildConsole.Services
         /// launch (see <see cref="_reservedSlots"/>).</summary>
         public int ReservedCount => _reservedSlots.Count;
 
+        /// <summary>Git #4542 — how many builds are claimed (DB row already `running`) but not yet
+        /// registered in <see cref="_running"/> because they're still inside <see cref="LaunchItem"/>
+        /// (worktree provisioning / prewarm / process spawn — a window that "can be long", see
+        /// <see cref="_launching"/>). A build in this window occupies a real slot even though it has no
+        /// <see cref="_running"/> entry yet, so it MUST count against the cap exactly like
+        /// <see cref="ReservedCount"/> does. Read under <see cref="_launchGate"/> because
+        /// <see cref="_launching"/> is mutated from thread-pool threads (forced launches run
+        /// <see cref="LaunchItem"/> off the UI thread).</summary>
+        public int LaunchingCount { get { lock (_launchGate) return _launching.Count; } }
+
+        /// <summary>Git #4542 — the single source of truth for "how many concurrency slots are
+        /// occupied right now", counting every build that holds a slot: actually running, reserved for
+        /// a limit-paused build that will resume, AND claimed-but-still-launching. Both capacity gates
+        /// — TickAsync's <c>freeSlots</c> and StartNowAsync's refusal — derive from this, so a build
+        /// mid-launch can never be treated as free headroom (the confirmed #4542 cause: 8 ran with the
+        /// cap set to 6). <see cref="_running"/>/<see cref="_reservedSlots"/> are UI-thread-only and
+        /// this is called on the UI thread; <see cref="LaunchingCount"/> takes its own lock.</summary>
+        private int OccupiedSlots => _running.Count + _reservedSlots.Count + LaunchingCount;
+
         /// <summary>Git #1805 — the real, configured concurrency cap (see <see cref="_maxConcurrent"/>,
         /// sourced from scripts/build-queue-watcher.config.json's maxConcurrent, default 8). Exposed
         /// so a manual per-item override (Start Now) can check it and refuse to launch a genuinely-full
@@ -874,14 +893,27 @@ namespace BuildConsole.Services
             //    Checked first, before any claim, so a full queue is never even attempted.
             //    Git #2106 — reserved (limit-paused, soon-to-resume) slots count against the cap
             //    too: launching into one would overcommit the moment the parked build resumes.
-            int occupied = _running.Count + _reservedSlots.Count;
+            // Git #4542 — count claimed-but-still-launching builds (_launching) here too, via
+            // OccupiedSlots, not just running + reserved: a build mid-provision holds a real slot and
+            // must be able to make Start Now refuse, exactly like a running or reserved one.
+            int occupied = OccupiedSlots;
             if (occupied >= _maxConcurrent)
             {
+                int launchingNow = LaunchingCount;
                 string reservedNote = _reservedSlots.Count > 0 ? $" + {_reservedSlots.Count} reserved for limit-paused builds resuming" : "";
-                string msg = $"Not launched — genuinely at capacity ({_running.Count} running{reservedNote}, cap {_maxConcurrent}). Start Now overrides waiting, never the concurrency cap itself.";
+                string launchingNote = launchingNow > 0 ? $" + {launchingNow} still launching" : "";
+                string msg = $"Not launched — genuinely at capacity ({_running.Count} running{reservedNote}{launchingNote}, cap {_maxConcurrent}). Start Now overrides waiting, never the concurrency cap itself.";
                 ActivityLog.Log("watcher", $"Start Now: queue #{queueItemId} ({title}) — {msg}");
                 return new StartNowResult(StartNowOutcome.AtCapacity, msg);
             }
+
+            // Git #4542 — reserve this slot in _launching synchronously, on the UI thread, BEFORE the
+            // ForceClaim await below. Otherwise two Start Now clicks (or a Start Now racing the periodic
+            // tick) could each pass the capacity check during the other's await — neither yet counted —
+            // and both launch, overshooting the cap. LaunchItem re-adds this id (idempotent) and clears
+            // it in its own finally; the ForceClaim-failure path below clears it so a failed claim never
+            // leaves a phantom-occupied slot.
+            lock (_launchGate) _launching.Add(queueItemId);
 
             // 2. A per-item manual Pause (BuildConsoleSettings.PausedBuildIds) is also a "wait",
             //    same as Run Now already treats it — clear it so this row isn't re-parked on the
@@ -908,6 +940,9 @@ namespace BuildConsole.Services
             }
             catch (Exception ex)
             {
+                // Git #4542 — the claim never happened, so release the slot we reserved above; leaving
+                // it in _launching would count a build that will never launch against the cap forever.
+                lock (_launchGate) _launching.Remove(queueItemId);
                 string msg = $"Couldn't claim: {ex.Message}";
                 ActivityLog.Log("watcher", $"Start Now: queue #{queueItemId} ({title}) — {msg}");
                 return new StartNowResult(StartNowOutcome.Failed, msg);
@@ -2368,7 +2403,12 @@ namespace BuildConsole.Services
                 }
             }
 
-            int freeSlots = _maxConcurrent - _running.Count - _reservedSlots.Count;
+            // Git #4542 — count claimed-but-still-launching builds (_launching) against the cap here,
+            // not just running + reserved. A build stays in _launching for the whole (potentially long)
+            // provisioning window with no _running entry yet; if it isn't subtracted, a completion-driven
+            // tick re-run — or a Start Now landing while a prior launch is mid-provision — sees phantom
+            // free capacity and over-claims past _maxConcurrent (the confirmed 8-with-cap-6 crash).
+            int freeSlots = _maxConcurrent - OccupiedSlots;
             if (freeSlots <= 0) return;
 
             List<QueueItem> next;
@@ -2380,36 +2420,56 @@ namespace BuildConsole.Services
             }
             catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't poll/claim next queue item(s): {ex.Message}"); return; }
 
-            // Git #2792 — overlap the expensive `git worktree add` across every claimed build
-            // BEFORE the sequential launch loop below, so a 6-slot batch no longer starts one
-            // build every couple of minutes (the "builds hang / start one-at-a-time" symptom).
-            // Idempotent: LaunchItem's own provisioning call then hits the fast reused=True path.
-            await PrewarmWorktreesAsync(next);
-
-            foreach (var item in next)
+            // Git #4542 — the instant these rows are claimed (DB flipped to `running`) they occupy real
+            // slots, so reserve them in _launching NOW — before the long PrewarmWorktreesAsync/launch
+            // window — so every capacity gate (this tick's own re-runs, Start Now) counts them
+            // immediately instead of only once each reaches _running at the tail of LaunchItemCore.
+            // LaunchItem re-adds each id (idempotent HashSet) and removes it in its own finally on the
+            // success path; the outer finally below is the leak-proof backstop for any id whose
+            // LaunchItem never ran (e.g. PrewarmWorktreesAsync threw), so a claimed slot can never wedge
+            // the cap permanently.
+            lock (_launchGate) { foreach (var it in next) _launching.Add(it.Id); }
+            try
             {
-                // Build Sets — resolve the set's expected member count (the wave size)
-                // so the dev-server coordinator knows how many members to wait for
-                // before firing the ONE deferred restart. Best-effort; a null just
-                // means the set relies on the drain-close backstop instead.
-                int? buildSetExpected = null;
-                if (!string.IsNullOrWhiteSpace(item.BuildSet) && _db != null)
+                // Git #2792 — overlap the expensive `git worktree add` across every claimed build
+                // BEFORE the sequential launch loop below, so a 6-slot batch no longer starts one
+                // build every couple of minutes (the "builds hang / start one-at-a-time" symptom).
+                // Idempotent: LaunchItem's own provisioning call then hits the fast reused=True path.
+                await PrewarmWorktreesAsync(next);
+
+                foreach (var item in next)
                 {
-                    try { buildSetExpected = await _db.CountBuildSetMembersAsync(item.BuildSet); }
-                    catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't count build-set members for '{item.BuildSet}': {ex.Message}"); }
+                    // Build Sets — resolve the set's expected member count (the wave size)
+                    // so the dev-server coordinator knows how many members to wait for
+                    // before firing the ONE deferred restart. Best-effort; a null just
+                    // means the set relies on the drain-close backstop instead.
+                    int? buildSetExpected = null;
+                    if (!string.IsNullOrWhiteSpace(item.BuildSet) && _db != null)
+                    {
+                        try { buildSetExpected = await _db.CountBuildSetMembersAsync(item.BuildSet); }
+                        catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't count build-set members for '{item.BuildSet}': {ex.Message}"); }
+                    }
+                    // Git #2096 — TickAsync fires on the UI thread — via the periodic DispatcherTimer.Tick
+                    // (Git #3824), the manual-refresh/resume call sites, and the Git #3774 exit-callback
+                    // trigger (marshaled onto the UI thread with Application.Current.Dispatcher.BeginInvoke
+                    // to preserve this invariant) — same as the
+                    // Click handlers #1881 fixed via SafeLaunch's Task.Run wrap. LaunchItem's tail
+                    // (RedirectedProcessLauncher.Launch, a synchronous Win32 CreateProcess call) and any
+                    // synchronous prefix before its first await ran directly on that UI thread here too —
+                    // unnoticed only because nobody is usually clicking when a background timer fires.
+                    // Wrapping in Task.Run hands the whole LaunchItem body to a thread-pool thread so a
+                    // real multi-item pickup can't sequentially stutter the UI thread once per item.
+                    try { await Task.Run(() => LaunchItem(item, buildSetExpected)); }
+                    catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't launch queue item {item.Id} ({item.Title}): {ex.Message}"); }
                 }
-                // Git #2096 — TickAsync fires on the UI thread — via the periodic DispatcherTimer.Tick
-                // (Git #3824), the manual-refresh/resume call sites, and the Git #3774 exit-callback
-                // trigger (marshaled onto the UI thread with Application.Current.Dispatcher.BeginInvoke
-                // to preserve this invariant) — same as the
-                // Click handlers #1881 fixed via SafeLaunch's Task.Run wrap. LaunchItem's tail
-                // (RedirectedProcessLauncher.Launch, a synchronous Win32 CreateProcess call) and any
-                // synchronous prefix before its first await ran directly on that UI thread here too —
-                // unnoticed only because nobody is usually clicking when a background timer fires.
-                // Wrapping in Task.Run hands the whole LaunchItem body to a thread-pool thread so a
-                // real multi-item pickup can't sequentially stutter the UI thread once per item.
-                try { await Task.Run(() => LaunchItem(item, buildSetExpected)); }
-                catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't launch queue item {item.Id} ({item.Title}): {ex.Message}"); }
+            }
+            finally
+            {
+                // Backstop (Git #4542): release any reservation LaunchItem didn't already clear on the
+                // success path — a no-op for every id that launched normally, but the guarantee that a
+                // pre-launch throw (e.g. PrewarmWorktreesAsync) can never leave a claimed slot counted
+                // as occupied forever.
+                lock (_launchGate) { foreach (var it in next) _launching.Remove(it.Id); }
             }
         }
 
