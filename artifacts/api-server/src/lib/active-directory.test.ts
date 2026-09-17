@@ -10,6 +10,10 @@ import {
   buildGroupDetail,
   filterGroupMembers,
   buildCustomerDetail,
+  assembleCustomerContainers,
+  type ContainerRow,
+  type DirectoryTreeRoleRow,
+  type CustomerRoleSummary,
   buildOuNodes,
   buildUserDetail,
   roleLinkageRequirement,
@@ -106,6 +110,103 @@ describe("buildMspTree", () => {
 
     const beacon = tree.find((m) => m.id === 2)!;
     expect(beacon.customers.find((c) => c.id === 12)!.users.map((u) => u.id)).toEqual([102]);
+  });
+});
+
+describe("buildMspTree — MSP Directory Containers (#4497)", () => {
+  const USERS: DirectoryTreeUserRow[] = [
+    // Contoso (10): alice filed in container 500, bob directly under tenant.
+    { id: 100, tenantId: 10, email: "alice@contoso.com", name: "Alice", mspRole: LEGACY_ROLE.customer, isActive: true, containerId: 500 },
+    { id: 101, tenantId: 10, email: "bob@contoso.com", name: "Bob", mspRole: LEGACY_ROLE.customer, isActive: true, containerId: null },
+    // Globex (12): carol filed in container 600.
+    { id: 102, tenantId: 12, email: "carol@globex.com", name: "Carol", mspRole: "Free", isActive: true, containerId: 600 },
+  ];
+  const CONTAINERS: ContainerRow[] = [
+    { id: 501, tenantId: 10, name: "Zebra Dept" },
+    { id: 500, tenantId: 10, name: "Alpha Dept" },
+    { id: 600, tenantId: 12, name: "Globex HQ" },
+  ];
+  const ROLES: DirectoryTreeRoleRow[] = [
+    { id: "r1", tenantId: 10, containerId: 500, key: "billing", name: "Billing Admin", isSystem: false },
+    { id: "r2", tenantId: 10, containerId: null, key: "viewer", name: "Viewer", isSystem: true },
+    // platform-scoped baseline role — belongs to no tenant subtree, must be dropped
+    { id: "r3", tenantId: null, containerId: null, key: "base", name: "Baseline", isSystem: true },
+  ];
+
+  it("files container-assigned users/roles under their container, sorted by name, and keeps unassigned ones directly under the tenant", () => {
+    const tree = buildMspTree(MSPS, CUSTOMERS, USERS, CONTAINERS, ROLES);
+    const contoso = tree.find((m) => m.id === 1)!.customers.find((c) => c.id === 10)!;
+
+    // Containers sorted by name: Alpha Dept (500) before Zebra Dept (501).
+    expect(contoso.containers.map((c) => c.id)).toEqual([500, 501]);
+
+    const alpha = contoso.containers.find((c) => c.id === 500)!;
+    expect(alpha.users.map((u) => u.id)).toEqual([100]);
+    expect(alpha.roles.map((r) => r.id)).toEqual(["r1"]);
+
+    // Empty container still present with real empty arrays.
+    const zebra = contoso.containers.find((c) => c.id === 501)!;
+    expect(zebra.users).toEqual([]);
+    expect(zebra.roles).toEqual([]);
+
+    // Unassigned members remain directly under the tenant.
+    expect(contoso.users.map((u) => u.id)).toEqual([101]);
+    expect(contoso.roles.map((r) => r.id)).toEqual(["r2"]);
+  });
+
+  it("drops a platform-scoped role (tenantId null) from every tenant subtree", () => {
+    const tree = buildMspTree(MSPS, CUSTOMERS, USERS, CONTAINERS, ROLES);
+    const allRoleIds = tree.flatMap((m) =>
+      m.customers.flatMap((c) => [...c.roles.map((r) => r.id), ...c.containers.flatMap((ct) => ct.roles.map((r) => r.id))]),
+    );
+    expect(allRoleIds).not.toContain("r3");
+  });
+
+  it("defaults containers/roles to empty arrays when none are passed (pre-#4497 callers unaffected)", () => {
+    const tree = buildMspTree(MSPS, CUSTOMERS);
+    for (const msp of tree) {
+      for (const c of msp.customers) {
+        expect(c.containers).toEqual([]);
+        expect(c.roles).toEqual([]);
+      }
+    }
+  });
+});
+
+describe("assembleCustomerContainers (#4497)", () => {
+  it("groups users/roles into their containers and returns the unassigned remainder", () => {
+    const result = assembleCustomerContainers({
+      containers: [
+        { id: 2, name: "Zebra" },
+        { id: 1, name: "Alpha" },
+      ],
+      users: [
+        { id: 100, email: "a@x.com", name: "A", mspRole: "Customer", isActive: true, lastLoginAt: null, containerId: 1 },
+        { id: 101, email: "b@x.com", name: "B", mspRole: "Customer", isActive: true, lastLoginAt: null, containerId: null },
+      ],
+      roles: [
+        { id: "r1", key: "k1", name: "R1", isSystem: false, containerId: 1 },
+        { id: "r2", key: "k2", name: "R2", isSystem: true, containerId: null },
+      ] satisfies CustomerRoleSummary[],
+    });
+
+    // Sorted by name.
+    expect(result.containers.map((c) => c.id)).toEqual([1, 2]);
+    const alpha = result.containers.find((c) => c.id === 1)!;
+    expect(alpha.users.map((u) => u.id)).toEqual([100]);
+    expect(alpha.roles.map((r) => r.id)).toEqual(["r1"]);
+    // Container members are stripped of the containerId field.
+    expect(alpha.users[0]).not.toHaveProperty("containerId");
+
+    expect(result.unassignedUsers.map((u) => u.id)).toEqual([101]);
+    expect(result.unassignedRoles.map((r) => r.id)).toEqual(["r2"]);
+  });
+
+  it("returns empty structures for a tenant with no containers/members", () => {
+    const result = assembleCustomerContainers({ containers: [], users: [], roles: [] });
+    expect(result.containers).toEqual([]);
+    expect(result.unassignedUsers).toEqual([]);
+    expect(result.unassignedRoles).toEqual([]);
   });
 });
 

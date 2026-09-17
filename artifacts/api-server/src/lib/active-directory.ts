@@ -33,7 +33,17 @@ export interface CustomerSummary {
   domain: string | null;
   tenantId: string | null;
   status: string;
+  /** Users nested directly under this tenant — i.e. `container_id IS NULL`.
+   * Users filed under a Container appear inside `containers[].users` instead;
+   * nothing is hidden by that split (#4497). */
   users: TreeUserSummary[];
+  /** Per-tenant RBAC roles (`customer_roles`) nested directly under this tenant
+   * — `container_id IS NULL`. Container-filed roles appear inside
+   * `containers[].roles` (#4497). */
+  roles: TreeRoleSummary[];
+  /** MSP Directory Containers (#4496/#4497) belonging to this tenant, each
+   * carrying its member users + roles. A plain local grouping, NOT an OU. */
+  containers: ContainerSummary[];
 }
 
 export interface MspTreeNode {
@@ -58,6 +68,9 @@ export interface DirectoryTreeUserRow {
   name: string | null;
   mspRole: string;
   isActive: boolean;
+  /** MSP Directory Container this user is filed under, or null/undefined for a
+   * user nested directly under its tenant (#4497). */
+  containerId?: number | null;
 }
 
 export interface TreeUserSummary {
@@ -66,6 +79,51 @@ export interface TreeUserSummary {
   name: string | null;
   mspRole: string;
   isActive: boolean;
+}
+
+// ── MSP Directory Containers (#4496/#4497) ───────────────────────────────────
+// A Container is a plain local grouping node (Tenant -> Container -> Users/Roles).
+// It is NOT an OU: no Graph object, no policy engine, no membership verification
+// — see the schema banner on `activeDirectoryContainersTable`. Membership is the
+// `container_id` FK carried on the `users` / `customer_roles` rows themselves.
+
+export interface ContainerRow {
+  id: number;
+  tenantId: number;
+  name: string;
+}
+
+export interface DirectoryTreeRoleRow {
+  id: string;
+  /** `customer_roles.tenant_id` — null for a platform-scoped baseline role,
+   * which belongs to no single tenant and so appears in no tenant subtree. */
+  tenantId: number | null;
+  containerId: number | null;
+  key: string;
+  name: string;
+  isSystem: boolean;
+}
+
+export interface TreeRoleSummary {
+  id: string;
+  key: string;
+  name: string;
+  isSystem: boolean;
+}
+
+export interface ContainerSummary {
+  id: number;
+  name: string;
+  users: TreeUserSummary[];
+  roles: TreeRoleSummary[];
+}
+
+function toTreeUserSummary(u: DirectoryTreeUserRow): TreeUserSummary {
+  return { id: u.id, email: u.email, name: u.name, mspRole: u.mspRole, isActive: u.isActive };
+}
+
+function toTreeRoleSummary(r: DirectoryTreeRoleRow): TreeRoleSummary {
+  return { id: r.id, key: r.key, name: r.name, isSystem: r.isSystem };
 }
 
 /**
@@ -79,24 +137,71 @@ export function buildMspTree(
   msps: MspRow[],
   customers: CustomerRow[],
   users: DirectoryTreeUserRow[] = [],
+  containers: ContainerRow[] = [],
+  roles: DirectoryTreeRoleRow[] = [],
 ): MspTreeNode[] {
-  const usersByCustomer = new Map<number, TreeUserSummary[]>();
+  // Users split into "filed under a Container" vs "directly under the tenant"
+  // (container_id NULL). The latter keeps the pre-#4497 behaviour exactly.
+  const unassignedUsersByTenant = new Map<number, TreeUserSummary[]>();
+  const usersByContainer = new Map<number, TreeUserSummary[]>();
   for (const u of users) {
-    const list = usersByCustomer.get(u.tenantId) ?? [];
-    list.push({ id: u.id, email: u.email, name: u.name, mspRole: u.mspRole, isActive: u.isActive });
-    usersByCustomer.set(u.tenantId, list);
+    const summary = toTreeUserSummary(u);
+    if (u.containerId != null) {
+      const list = usersByContainer.get(u.containerId) ?? [];
+      list.push(summary);
+      usersByContainer.set(u.containerId, list);
+    } else {
+      const list = unassignedUsersByTenant.get(u.tenantId) ?? [];
+      list.push(summary);
+      unassignedUsersByTenant.set(u.tenantId, list);
+    }
+  }
+
+  // Roles split the same way. A platform-scoped role (tenantId null, no
+  // container) belongs to no tenant subtree and is intentionally dropped here —
+  // it surfaces via the platform-wide RBAC views, not a tenant's directory node.
+  const unassignedRolesByTenant = new Map<number, TreeRoleSummary[]>();
+  const rolesByContainer = new Map<number, TreeRoleSummary[]>();
+  for (const r of roles) {
+    const summary = toTreeRoleSummary(r);
+    if (r.containerId != null) {
+      const list = rolesByContainer.get(r.containerId) ?? [];
+      list.push(summary);
+      rolesByContainer.set(r.containerId, list);
+    } else if (r.tenantId != null) {
+      const list = unassignedRolesByTenant.get(r.tenantId) ?? [];
+      list.push(summary);
+      unassignedRolesByTenant.set(r.tenantId, list);
+    }
+  }
+
+  const containersByTenant = new Map<number, ContainerRow[]>();
+  for (const c of containers) {
+    const list = containersByTenant.get(c.tenantId) ?? [];
+    list.push(c);
+    containersByTenant.set(c.tenantId, list);
   }
 
   const customersByMsp = new Map<number, CustomerSummary[]>();
   for (const c of customers) {
     const list = customersByMsp.get(c.mspId) ?? [];
+    const tenantContainers = [...(containersByTenant.get(c.id) ?? [])]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map<ContainerSummary>((ct) => ({
+        id: ct.id,
+        name: ct.name,
+        users: usersByContainer.get(ct.id) ?? [],
+        roles: rolesByContainer.get(ct.id) ?? [],
+      }));
     list.push({
       id: c.id,
       name: c.name,
       domain: c.domain,
       tenantId: c.tenantId,
       status: c.status,
-      users: usersByCustomer.get(c.id) ?? [],
+      users: unassignedUsersByTenant.get(c.id) ?? [],
+      roles: unassignedRolesByTenant.get(c.id) ?? [],
+      containers: tenantContainers,
     });
     customersByMsp.set(c.mspId, list);
   }
@@ -533,9 +638,31 @@ export interface CustomerDiagnosticRunSummary {
   completedAt: Date | null;
 }
 
+/** One RBAC role (`customer_roles`) as shown on the Customer canvas, carrying
+ * its Container membership so the canvas can group/ungroup it (#4497). */
+export interface CustomerRoleSummary {
+  id: string;
+  key: string;
+  name: string;
+  isSystem: boolean;
+  containerId: number | null;
+}
+
+/** An MSP Directory Container on the Customer canvas, with its member users +
+ * roles (#4496/#4497). A plain local grouping, NOT an OU. */
+export interface CustomerDetailContainer {
+  id: number;
+  name: string;
+  users: CustomerDetailUser[];
+  roles: CustomerRoleSummary[];
+}
+
 export interface CustomerDetail {
   customer: CustomerProfileRow;
   owningMsp: CustomerOwningMsp | null;
+  /** Every user of this tenant (unchanged pre-#4497 field) — regardless of
+   * Container. The Container-grouped view is `containers` below; this flat list
+   * is retained so the existing Customer pane keeps working. */
   users: CustomerDetailUser[];
   userCount: number;
   graphConsent: CustomerConsentStatus | null;
@@ -543,6 +670,57 @@ export interface CustomerDetail {
   writeConsent: CustomerConsentStatus | null;
   purchasedServices: CustomerPurchasedService[];
   recentDiagnosticRuns: CustomerDiagnosticRunSummary[];
+  /** This tenant's Containers, each with its member users + roles (#4497). */
+  containers: CustomerDetailContainer[];
+  /** RBAC roles filed directly under the tenant (`container_id IS NULL`) —
+   * container-filed roles live in `containers[].roles` (#4497). */
+  unassignedRoles: CustomerRoleSummary[];
+}
+
+/** Groups a tenant's containers with their member users + roles. Pure and
+ * DB-free so it is unit-testable against plain fixtures. Users/roles whose
+ * `containerId` is null are returned as the unassigned lists, matching the tree
+ * builder's "nothing is hidden" rule (#4497). */
+export function assembleCustomerContainers(params: {
+  containers: Array<{ id: number; name: string }>;
+  users: Array<CustomerDetailUser & { containerId: number | null }>;
+  roles: CustomerRoleSummary[];
+}): { containers: CustomerDetailContainer[]; unassignedUsers: CustomerDetailUser[]; unassignedRoles: CustomerRoleSummary[] } {
+  const usersByContainer = new Map<number, CustomerDetailUser[]>();
+  const unassignedUsers: CustomerDetailUser[] = [];
+  for (const u of params.users) {
+    const { containerId, ...rest } = u;
+    if (containerId != null) {
+      const list = usersByContainer.get(containerId) ?? [];
+      list.push(rest);
+      usersByContainer.set(containerId, list);
+    } else {
+      unassignedUsers.push(rest);
+    }
+  }
+
+  const rolesByContainer = new Map<number, CustomerRoleSummary[]>();
+  const unassignedRoles: CustomerRoleSummary[] = [];
+  for (const r of params.roles) {
+    if (r.containerId != null) {
+      const list = rolesByContainer.get(r.containerId) ?? [];
+      list.push(r);
+      rolesByContainer.set(r.containerId, list);
+    } else {
+      unassignedRoles.push(r);
+    }
+  }
+
+  const containers = [...params.containers]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map<CustomerDetailContainer>((c) => ({
+      id: c.id,
+      name: c.name,
+      users: usersByContainer.get(c.id) ?? [],
+      roles: rolesByContainer.get(c.id) ?? [],
+    }));
+
+  return { containers, unassignedUsers, unassignedRoles };
 }
 
 /**
@@ -560,6 +738,12 @@ export function buildCustomerDetail(params: {
   writeConsent: CustomerConsentStatus | null;
   purchasedServices: CustomerPurchasedService[];
   recentDiagnosticRuns: CustomerDiagnosticRunSummary[];
+  /** This tenant's Containers with their members, pre-assembled via
+   * `assembleCustomerContainers()`. Defaults to none (#4497). */
+  containers?: CustomerDetailContainer[];
+  /** RBAC roles filed directly under the tenant (container_id null). Defaults
+   * to none (#4497). */
+  unassignedRoles?: CustomerRoleSummary[];
 }): CustomerDetail {
   const {
     customer,
@@ -570,6 +754,8 @@ export function buildCustomerDetail(params: {
     writeConsent,
     purchasedServices,
     recentDiagnosticRuns,
+    containers = [],
+    unassignedRoles = [],
   } = params;
 
   return {
@@ -582,6 +768,8 @@ export function buildCustomerDetail(params: {
     writeConsent,
     purchasedServices,
     recentDiagnosticRuns,
+    containers,
+    unassignedRoles,
   };
 }
 

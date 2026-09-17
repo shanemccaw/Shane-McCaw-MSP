@@ -107,6 +107,15 @@ export const usersTable = pgTable("users", {
   mspRole: text("msp_role", { enum: LEGACY_ROLE_ORDER }).notNull().default("Free"),
   mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "restrict" }),
   tenantId: integer("tenant_id").references(() => tenantsTable.id, { onDelete: "restrict" }),
+  // MSP Directory Container membership (#4497). Nullable — a user with no
+  // container is normal, not an error state; it renders directly under its
+  // Tenant in the directory tree, unchanged. NOT an OU membership (see
+  // `activeDirectoryContainersTable`): this is a plain local grouping FK, no
+  // Graph object and no policy engine involved. ON DELETE SET NULL so removing
+  // a container un-files its members rather than deleting them. Forward
+  // reference (containers table is declared later) via AnyPgColumn, matching
+  // `managerUserId` above.
+  containerId: integer("container_id").references((): AnyPgColumn => activeDirectoryContainersTable.id, { onDelete: "set null" }),
   isActive: boolean("is_active").notNull().default(true),
   // #2460 — `can_approve_purchases` and `can_manage_team` are RETIRED.
   //
@@ -179,6 +188,7 @@ export const usersTable = pgTable("users", {
 }, (t) => [
   index("users_msp_id_idx").on(t.mspId),
   index("users_tenant_id_idx").on(t.tenantId),
+  index("users_container_id_idx").on(t.containerId),
   index("users_manager_user_id_idx").on(t.managerUserId),
   // #3971 / #4372 — the three `*Consented` rungs (`RetainerConsented`, `MonitoringConsented`,
   // `PackConsented`) have a tenant: consent is the moment a tenant becomes known, so they
@@ -5237,6 +5247,44 @@ export const pccTestCatalogTable = pgTable("pcc_test_catalog", {
 
 export type PccTestCatalogRow = typeof pccTestCatalogTable.$inferSelect;
 export type InsertPccTestCatalogRow = typeof pccTestCatalogTable.$inferInsert;
+
+// ── MSP Directory Containers (Feature #4496 / #4497) ─────────────────────────
+//
+// A "Container" is a plain, local grouping node in the MSP Directory tree that
+// realises the hierarchy MSP → Tenant → Container → Users (+ per-tenant RBAC
+// roles). It is a bucket the platform's OWN local `users` rows and
+// `customer_roles` rows can be filed under, and nothing more.
+//
+// !!! THIS IS NOT AN OU. !!! Do not confuse this with `active_directory_ous` /
+// `active_directory_ou_assignments` (Git #1952) above. Those model real
+// Microsoft Graph objects (a customer's actual M365/Azure AD users, verified
+// live via a Graph UPN lookup) and are the manual-override attachment point for
+// the standing-policy compliance engine (`policy-compliance-evaluator.ts`,
+// `policy-compliance-graph.ts`). A Container has NO Graph lookup, NO policy
+// semantics, NO object-membership verification, and NO separate assignments
+// table — membership is a single nullable `container_id` FK carried directly on
+// the `users` and `customer_roles` rows themselves. Shane confirmed the two are
+// completely separate systems; the OU tables and their routes/logic are
+// explicitly out of scope for this feature and are not touched by it.
+//
+// `tenant_id` is NOT NULL here (unlike `active_directory_ous.tenant_id`, which
+// is nullable for a platform/MSP-level OU): a Container only ever exists inside
+// exactly one real Tenant, matching the MSP → Tenant → Container → Users shape.
+// ON DELETE CASCADE — deleting a tenant removes its containers; the `users`/
+// `customer_roles` `container_id` FKs are ON DELETE SET NULL so a deleted
+// container simply un-files its members rather than deleting them.
+export const activeDirectoryContainersTable = pgTable("active_directory_containers", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("active_directory_containers_tenant_id_idx").on(t.tenantId),
+]);
+
+export type InsertActiveDirectoryContainer = typeof activeDirectoryContainersTable.$inferInsert;
+export type ActiveDirectoryContainer = typeof activeDirectoryContainersTable.$inferSelect;
 
 // ── Build Tracker (removed, Git #3653) ───────────────────────────────────────
 //

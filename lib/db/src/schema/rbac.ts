@@ -56,7 +56,8 @@
 
 import { pgTable, text, integer, uuid, boolean, timestamp, jsonb, primaryKey, uniqueIndex, index, foreignKey, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { usersTable } from "./index.ts";
+import { usersTable, activeDirectoryContainersTable } from "./index.ts";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { mspsTable, tenantsTable } from "./msp.ts";
 import { RBAC_SYSTEMS } from "../rbac/capabilities.ts";
 
@@ -222,10 +223,17 @@ export const customerRolesTable = pgTable("customer_roles", {
   description: text("description").notNull().default(""),
   /** Platform-defined baseline role: a customer admin may grant it but not delete it. */
   isSystem: boolean("is_system").notNull().default(false),
+  // MSP Directory Container membership (#4497). Nullable — a role with no
+  // container is normal and renders directly under its Tenant in the directory
+  // tree. This is the plain local grouping FK from Feature #4496, NOT an OU
+  // membership (no Graph object, no policy engine). ON DELETE SET NULL so
+  // deleting a container un-files its member roles rather than deleting them.
+  containerId: integer("container_id").references((): AnyPgColumn => activeDirectoryContainersTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("customer_roles_tenant_id_idx").on(t.tenantId),
+  index("customer_roles_container_id_idx").on(t.containerId),
   uniqueIndex("customer_roles_scoped_key_idx").on(t.tenantId, t.key).where(sql`tenant_id IS NOT NULL`),
   uniqueIndex("customer_roles_platform_key_idx").on(t.key).where(sql`tenant_id IS NULL`),
 ]);

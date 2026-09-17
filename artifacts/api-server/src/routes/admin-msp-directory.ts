@@ -30,6 +30,11 @@ import {
   clientServicesTable,
   mspDiagnosticRunsTable,
   activeDirectoryOusTable,
+  // MSP Directory Containers (#4496/#4497) — a plain local grouping of the
+  // platform's own users/roles under a tenant. NOT the OU table above (which,
+  // post-#4495, is only referenced here for the tree's OU nodes).
+  activeDirectoryContainersTable,
+  customerRolesTable,
   userSessionsTable,
   mfaEnrollmentsTable,
   passwordResetTokensTable,
@@ -104,6 +109,10 @@ import {
   filterGroupMembers,
   type DirectoryGroupRole,
   buildCustomerDetail,
+  assembleCustomerContainers,
+  type ContainerRow,
+  type DirectoryTreeRoleRow,
+  type CustomerRoleSummary,
   buildOuNodes,
   buildUserDetail,
   type UserMspLinkage,
@@ -189,7 +198,7 @@ router.get("/admin/msp-directory/roles", requireAdmin, (_req: Request, res: Resp
 // Groups (one node per RBAC role, with a live count).
 router.get("/admin/msp-directory/tree", requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const [msps, customers, tenantUserRows, roleCountRows, ous] = await Promise.all([
+    const [msps, customers, tenantUserRows, roleCountRows, ous, containers, customerRoleRows] = await Promise.all([
       db
         .select({
           id: mspsTable.id,
@@ -222,6 +231,7 @@ router.get("/admin/msp-directory/tree", requireAdmin, async (_req: Request, res:
           name: usersTable.name,
           mspRole: usersTable.mspRole,
           isActive: usersTable.isActive,
+          containerId: usersTable.containerId,
         })
         .from(usersTable)
         .where(isNotNull(usersTable.tenantId))
@@ -240,6 +250,28 @@ router.get("/admin/msp-directory/tree", requireAdmin, async (_req: Request, res:
           updatedAt: activeDirectoryOusTable.updatedAt,
         })
         .from(activeDirectoryOusTable),
+      // MSP Directory Containers (#4497) — one row per tenant Container, plus
+      // the per-tenant RBAC roles that may be filed under one. NOT the OU rows
+      // above; a Container is a plain local grouping node.
+      db
+        .select({
+          id: activeDirectoryContainersTable.id,
+          tenantId: activeDirectoryContainersTable.tenantId,
+          name: activeDirectoryContainersTable.name,
+        })
+        .from(activeDirectoryContainersTable)
+        .orderBy(asc(activeDirectoryContainersTable.name)),
+      db
+        .select({
+          id: customerRolesTable.id,
+          tenantId: customerRolesTable.tenantId,
+          containerId: customerRolesTable.containerId,
+          key: customerRolesTable.key,
+          name: customerRolesTable.name,
+          isSystem: customerRolesTable.isSystem,
+        })
+        .from(customerRolesTable)
+        .orderBy(asc(customerRolesTable.name)),
     ]);
 
     res.json({
@@ -247,6 +279,8 @@ router.get("/admin/msp-directory/tree", requireAdmin, async (_req: Request, res:
         msps,
         customers,
         tenantUserRows.map((u) => ({ ...u, tenantId: u.tenantId as number })),
+        containers satisfies ContainerRow[],
+        customerRoleRows satisfies DirectoryTreeRoleRow[],
       ),
       groups: buildGroupNodes(roleCountRows.map((r) => ({ role: r.role, count: Number(r.count) }))),
       ous: buildOuNodes(ous),
@@ -605,6 +639,8 @@ router.get("/admin/msp-directory/customer/:id", requireAdmin, async (req: Reques
       userRows,
       purchasedServiceRows,
       diagnosticRunRows,
+      containerRows,
+      roleRows,
     ] = await Promise.all([
       db.select({ id: mspsTable.id, name: mspsTable.name, slug: mspsTable.slug }).from(mspsTable).where(eq(mspsTable.id, customerRow.mspId)).limit(1),
       db
@@ -615,6 +651,7 @@ router.get("/admin/msp-directory/customer/:id", requireAdmin, async (req: Reques
           mspRole: usersTable.mspRole,
           isActive: usersTable.isActive,
           lastLoginAt: usersTable.lastLoginAt,
+          containerId: usersTable.containerId,
         })
         .from(usersTable)
         .where(eq(usersTable.tenantId, customerId))
@@ -645,7 +682,43 @@ router.get("/admin/msp-directory/customer/:id", requireAdmin, async (req: Reques
         .where(eq(mspDiagnosticRunsTable.customerId, customerId))
         .orderBy(desc(mspDiagnosticRunsTable.createdAt))
         .limit(RECENT_DIAGNOSTIC_RUN_LIMIT),
+      // MSP Directory Containers (#4497) for this tenant + the tenant's RBAC
+      // roles, for the Container-grouped view on the Customer canvas. A plain
+      // local grouping — no OU, no Graph, no policy engine.
+      db
+        .select({ id: activeDirectoryContainersTable.id, name: activeDirectoryContainersTable.name })
+        .from(activeDirectoryContainersTable)
+        .where(eq(activeDirectoryContainersTable.tenantId, customerId))
+        .orderBy(asc(activeDirectoryContainersTable.name)),
+      db
+        .select({
+          id: customerRolesTable.id,
+          key: customerRolesTable.key,
+          name: customerRolesTable.name,
+          isSystem: customerRolesTable.isSystem,
+          containerId: customerRolesTable.containerId,
+        })
+        .from(customerRolesTable)
+        .where(eq(customerRolesTable.tenantId, customerId))
+        .orderBy(asc(customerRolesTable.name)),
     ]);
+
+    // Split the tenant's users/roles into their Containers vs. directly under
+    // the tenant (container_id NULL). The flat `users` list stays the unchanged
+    // pre-#4497 shape; the Container-grouped view is assembled here.
+    const detailUsers = userRows.map((u) => ({
+      id: u.id,
+      email: u.email,
+      name: u.name,
+      mspRole: u.mspRole,
+      isActive: u.isActive,
+      lastLoginAt: u.lastLoginAt,
+    }));
+    const { containers: detailContainers, unassignedRoles } = assembleCustomerContainers({
+      containers: containerRows,
+      users: userRows,
+      roles: roleRows satisfies CustomerRoleSummary[],
+    });
 
     await createAuditLog({
       actorUserId: req.user!.id,
@@ -663,12 +736,14 @@ router.get("/admin/msp-directory/customer/:id", requireAdmin, async (req: Reques
       buildCustomerDetail({
         customer: customerProfile,
         owningMsp: owningMsp ?? null,
-        users: userRows,
+        users: detailUsers,
         graphConsent: consentPane(customerProfile.tenantId, consent.graph),
         sharePointConsent: consentPane(customerProfile.tenantId, consent.sharepoint),
         writeConsent: consentPane(customerProfile.tenantId, consent.writeBack),
         purchasedServices: purchasedServiceRows,
         recentDiagnosticRuns: diagnosticRunRows,
+        containers: detailContainers,
+        unassignedRoles,
       }),
     );
   } catch (err) {
@@ -2039,6 +2114,310 @@ router.delete("/admin/msp-directory/customer/:id", requireAdmin, async (req: Req
     tenantOnlySkipped,
     mspAuditLogsDetached,
   });
+});
+
+// ═══ MSP Directory Containers (Feature #4496 / #4497) ════════════════════════
+//
+// A "Container" is a plain local grouping node realising MSP -> Tenant ->
+// Container -> Users/Roles. It files the platform's OWN `users` and
+// `customer_roles` rows under a tenant via a nullable `container_id` FK carried
+// on those rows.
+//
+// It has NOTHING to do with the OU / policy-engine system — which, post-#4495,
+// lives entirely in `admin-active-directory-ou.ts` (`active_directory_ous` /
+// `active_directory_ou_assignments`, Git #1952: real Microsoft Graph objects
+// verified live via Graph UPN, feeding `policy-compliance-*`). No Graph lookup,
+// no object verification, no policy attachment, no separate assignments table.
+// The two systems must never be conflated. Same `requireAdmin`
+// (PlatformAdmin-only) gate as the rest of this file.
+
+// A Container's tenant is REQUIRED and must be a real tenant — a Container only
+// ever exists inside exactly one Tenant.
+async function resolveContainerTenantId(
+  body: unknown,
+): Promise<{ ok: true; tenantId: number } | { ok: false; error: string }> {
+  const raw = (body as Record<string, unknown> | null | undefined)?.tenantId;
+  const tenantId = Number(raw);
+  if (raw === undefined || raw === null || !Number.isInteger(tenantId)) {
+    return { ok: false, error: "tenantId is required and must be an integer" };
+  }
+  const [tenant] = await db.select({ id: tenantsTable.id }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
+  if (!tenant) return { ok: false, error: `Tenant '${tenantId}' does not exist` };
+  return { ok: true, tenantId };
+}
+
+// POST /admin/msp-directory/container
+// Body: { name: string, tenantId: number }. Creates a Container under a real tenant.
+router.post("/admin/msp-directory/container", requireAdmin, async (req: Request, res: Response) => {
+  const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+  if (!name) {
+    res.status(400).json({ error: "Container name is required" });
+    return;
+  }
+  const tenantResolution = await resolveContainerTenantId(req.body);
+  if (!tenantResolution.ok) {
+    res.status(400).json({ error: tenantResolution.error });
+    return;
+  }
+
+  try {
+    const [created] = await db
+      .insert(activeDirectoryContainersTable)
+      .values({ name, tenantId: tenantResolution.tenantId })
+      .returning();
+
+    await createAuditLog({
+      ...auditActor(req),
+      actionType: "msp_directory.container.create",
+      entityType: "active_directory_container",
+      entityId: created.id,
+      tenantId: created.tenantId,
+      metadata: { name: created.name, tenantId: created.tenantId },
+    });
+    log.info({ containerId: created.id, tenantId: created.tenantId }, "PlatformAdmin created a directory Container");
+
+    res.status(201).json(created);
+  } catch (err) {
+    log.error({ err }, "Failed to create directory Container");
+    res.status(500).json({ error: "Failed to create Container" });
+  }
+});
+
+// PATCH /admin/msp-directory/container/:id
+// Body: { name: string, tenantId?: number }. Renames a Container, and optionally
+// moves it to a different (still-required, non-null) tenant. Omitting tenantId
+// leaves the existing tenant attachment untouched.
+router.patch("/admin/msp-directory/container/:id", requireAdmin, async (req: Request, res: Response) => {
+  const containerId = Number(req.params.id);
+  const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+  if (!Number.isInteger(containerId)) {
+    res.status(400).json({ error: "Invalid container id" });
+    return;
+  }
+  if (!name) {
+    res.status(400).json({ error: "Container name is required" });
+    return;
+  }
+  const bodyHasTenantId = req.body != null && Object.prototype.hasOwnProperty.call(req.body, "tenantId");
+  let tenantId: number | undefined;
+  if (bodyHasTenantId) {
+    const tenantResolution = await resolveContainerTenantId(req.body);
+    if (!tenantResolution.ok) {
+      res.status(400).json({ error: tenantResolution.error });
+      return;
+    }
+    tenantId = tenantResolution.tenantId;
+  }
+
+  try {
+    const [updated] = await db
+      .update(activeDirectoryContainersTable)
+      .set({ name, ...(bodyHasTenantId ? { tenantId } : {}), updatedAt: new Date() })
+      .where(eq(activeDirectoryContainersTable.id, containerId))
+      .returning();
+    if (!updated) {
+      res.status(404).json({ error: "Container not found" });
+      return;
+    }
+
+    await createAuditLog({
+      ...auditActor(req),
+      actionType: "msp_directory.container.update",
+      entityType: "active_directory_container",
+      entityId: updated.id,
+      tenantId: updated.tenantId,
+      metadata: { name: updated.name, tenantId: updated.tenantId },
+    });
+    log.info({ containerId: updated.id }, "PlatformAdmin renamed/moved a directory Container");
+
+    res.json(updated);
+  } catch (err) {
+    log.error({ err, containerId }, "Failed to update directory Container");
+    res.status(500).json({ error: "Failed to update Container" });
+  }
+});
+
+// DELETE /admin/msp-directory/container/:id
+// Removes a Container. Members are NOT deleted — the `container_id` FK on
+// `users`/`customer_roles` is ON DELETE SET NULL, so its member users and roles
+// simply revert to being nested directly under their tenant.
+router.delete("/admin/msp-directory/container/:id", requireAdmin, async (req: Request, res: Response) => {
+  const containerId = Number(req.params.id);
+  if (!Number.isInteger(containerId)) {
+    res.status(400).json({ error: "Invalid container id" });
+    return;
+  }
+
+  try {
+    const [deleted] = await db
+      .delete(activeDirectoryContainersTable)
+      .where(eq(activeDirectoryContainersTable.id, containerId))
+      .returning();
+    if (!deleted) {
+      res.status(404).json({ error: "Container not found" });
+      return;
+    }
+
+    await createAuditLog({
+      ...auditActor(req),
+      actionType: "msp_directory.container.delete",
+      entityType: "active_directory_container",
+      entityId: deleted.id,
+      tenantId: deleted.tenantId,
+      metadata: { name: deleted.name, tenantId: deleted.tenantId },
+    });
+    log.info({ containerId: deleted.id }, "PlatformAdmin deleted a directory Container");
+
+    res.status(204).send();
+  } catch (err) {
+    log.error({ err, containerId }, "Failed to delete directory Container");
+    res.status(500).json({ error: "Failed to delete Container" });
+  }
+});
+
+// Shared validation for the two assignment routes below: a Container the caller
+// wants to file an object into must exist, and it must belong to the SAME
+// tenant as the object being filed (the Tenant -> Container -> object hierarchy
+// forbids filing a user/role into another tenant's Container). Passing
+// containerId null means "un-file" and always resolves ok with tenantId null.
+async function resolveContainerForAssignment(
+  raw: unknown,
+): Promise<{ ok: true; containerId: number | null; tenantId: number | null } | { ok: false; error: string }> {
+  if (raw === null || raw === undefined) return { ok: true, containerId: null, tenantId: null };
+  const containerId = Number(raw);
+  if (!Number.isInteger(containerId)) return { ok: false, error: "containerId must be an integer or null" };
+  const [container] = await db
+    .select({ id: activeDirectoryContainersTable.id, tenantId: activeDirectoryContainersTable.tenantId })
+    .from(activeDirectoryContainersTable)
+    .where(eq(activeDirectoryContainersTable.id, containerId))
+    .limit(1);
+  if (!container) return { ok: false, error: `Container '${containerId}' does not exist` };
+  return { ok: true, containerId: container.id, tenantId: container.tenantId };
+}
+
+// PATCH /admin/msp-directory/user/:id/container
+// Body: { containerId: number | null }. Files a user into a Container, or clears
+// it (null). A user can only be filed into a Container belonging to the user's
+// own tenant. Dedicated route (not folded into /role or /assignment) so the
+// grouping change is a single, clearly-audited action of its own.
+router.patch("/admin/msp-directory/user/:id/container", requireAdmin, async (req: Request, res: Response) => {
+  const userId = Number(req.params.id);
+  if (!Number.isInteger(userId)) {
+    res.status(400).json({ error: "Invalid user id" });
+    return;
+  }
+  if (!(req.body != null && Object.prototype.hasOwnProperty.call(req.body, "containerId"))) {
+    res.status(400).json({ error: "containerId is required (send null to clear)" });
+    return;
+  }
+  const resolution = await resolveContainerForAssignment(req.body.containerId);
+  if (!resolution.ok) {
+    res.status(400).json({ error: resolution.error });
+    return;
+  }
+
+  try {
+    const [current] = await db
+      .select({ containerId: usersTable.containerId, tenantId: usersTable.tenantId })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+      .limit(1);
+    if (!current) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    if (resolution.containerId !== null && resolution.tenantId !== current.tenantId) {
+      res.status(400).json({ error: "Container belongs to a different tenant than this user" });
+      return;
+    }
+
+    await db
+      .update(usersTable)
+      .set({ containerId: resolution.containerId, updatedAt: new Date() })
+      .where(eq(usersTable.id, userId));
+
+    await createAuditLog({
+      ...auditActor(req),
+      actionType: "msp_directory.user.container.set",
+      entityType: "user",
+      entityId: userId,
+      tenantId: current.tenantId,
+      metadata: { before: current.containerId, after: resolution.containerId },
+    });
+    log.info({ userId, containerId: resolution.containerId }, "PlatformAdmin set a user's directory Container");
+
+    res.json({ ok: true, id: userId, containerId: resolution.containerId });
+  } catch (err) {
+    log.error({ err, userId }, "Failed to set user's Container");
+    res.status(500).json({ error: "Failed to set user's Container" });
+  }
+});
+
+// PATCH /admin/msp-directory/role/:roleId/container
+// Body: { containerId: number | null }. Files a per-tenant RBAC role
+// (`customer_roles`, uuid id) into a Container, or clears it (null). A role can
+// only be filed into a Container belonging to the role's own tenant; a
+// platform-scoped baseline role (tenant_id null) belongs to no single tenant
+// and so cannot be filed into any tenant's Container.
+router.patch("/admin/msp-directory/role/:roleId/container", requireAdmin, async (req: Request, res: Response) => {
+  const roleId = typeof req.params.roleId === "string" ? req.params.roleId : "";
+  if (!roleId) {
+    res.status(400).json({ error: "Invalid role id" });
+    return;
+  }
+  if (!(req.body != null && Object.prototype.hasOwnProperty.call(req.body, "containerId"))) {
+    res.status(400).json({ error: "containerId is required (send null to clear)" });
+    return;
+  }
+  const resolution = await resolveContainerForAssignment(req.body.containerId);
+  if (!resolution.ok) {
+    res.status(400).json({ error: resolution.error });
+    return;
+  }
+
+  try {
+    const [current] = await db
+      .select({ containerId: customerRolesTable.containerId, tenantId: customerRolesTable.tenantId })
+      .from(customerRolesTable)
+      .where(eq(customerRolesTable.id, roleId))
+      .limit(1);
+    if (!current) {
+      res.status(404).json({ error: "Role not found" });
+      return;
+    }
+
+    if (resolution.containerId !== null) {
+      if (current.tenantId === null) {
+        res.status(400).json({ error: "A platform-scoped role cannot be filed into a tenant Container" });
+        return;
+      }
+      if (resolution.tenantId !== current.tenantId) {
+        res.status(400).json({ error: "Container belongs to a different tenant than this role" });
+        return;
+      }
+    }
+
+    await db
+      .update(customerRolesTable)
+      .set({ containerId: resolution.containerId, updatedAt: new Date() })
+      .where(eq(customerRolesTable.id, roleId));
+
+    await createAuditLog({
+      ...auditActor(req),
+      actionType: "msp_directory.role.container.set",
+      entityType: "customer_role",
+      entityId: roleId,
+      tenantId: current.tenantId,
+      metadata: { before: current.containerId, after: resolution.containerId },
+    });
+    log.info({ roleId, containerId: resolution.containerId }, "PlatformAdmin set a role's directory Container");
+
+    res.json({ ok: true, id: roleId, containerId: resolution.containerId });
+  } catch (err) {
+    log.error({ err, roleId }, "Failed to set role's Container");
+    res.status(500).json({ error: "Failed to set role's Container" });
+  }
 });
 
 export default router;
