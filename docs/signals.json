@@ -2386,7 +2386,7 @@
   },
   {
     "signal_key": "signal.identity.ca-device-compliance",
-    "source_key": "caDeviceCompliancePolicyExists",
+    "source_key": "caDeviceCompliancePolicyEnforcedCount",
     "pillar": "security",
     "description": "Auto-generated from identity:ca-device-compliance -- medium severity, security pillar.",
     "severity": "medium",

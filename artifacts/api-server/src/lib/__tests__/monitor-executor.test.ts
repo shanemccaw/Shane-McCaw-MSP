@@ -4281,3 +4281,157 @@ describe("Conditional Access checks — real policy state (#4512)", () => {
     });
   });
 });
+
+// identity:ca-device-compliance used to be exists(grantControls), so any
+// report-only/disabled policy with any grant cleared it and a tenant without
+// Entra ID P1 (whose CA policy list is a clean, empty 200) scored a warning
+// instead of a license gap. Found during #4512, fixed here with the same
+// mechanism. The mapping/severity/license values below are the ones
+// lib/db/migrations/manual/2026-09-17-ca-device-compliance-real-state-4534.sql
+// stores. Unlike #4512's three checks, there is no Security Defaults gate:
+// Security Defaults does not enforce device compliance.
+describe("Conditional Access device compliance check — real policy state (#4534)", () => {
+  const mockFetch = graphFetchForTenant as Mock;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const DEVICE_COMPLIANCE_MAPPING: MappingRule[] = [{
+    sourceField: "value",
+    targetField: "caDeviceCompliancePolicyEnforcedCount",
+    transform: "countWhere(\"{{state}} == 'enabled' && {{grantControls.builtInControls}} contains 'compliantDevice'\")",
+  }];
+  const DEVICE_COMPLIANCE_SEVERITY: SeverityRule[] = [
+    { severity: "warning", expression: "caDeviceCompliancePolicyEnforcedCount == 0", label: "No enforced Conditional Access policy requires device compliance" },
+  ];
+
+  let policySeq = 0;
+  const policy = (over: { state: string; builtInControls?: string[] }) => ({
+    id: `policy-${++policySeq}`,
+    displayName: "policy",
+    state: over.state,
+    grantControls: { operator: "OR", builtInControls: over.builtInControls ?? ["compliantDevice"] },
+  });
+
+  describe("ca-device-compliance mapping", () => {
+    it("does not count a report-only device-compliance policy — the warning still fires", () => {
+      const extracted = applyMapping([policy({ state: "enabledForReportingButNotEnforced" })], DEVICE_COMPLIANCE_MAPPING, []);
+      expect(extracted.caDeviceCompliancePolicyEnforcedCount).toBe(0);
+      expect(classifySeverity(DEVICE_COMPLIANCE_SEVERITY, extracted)?.severity).toBe("warning");
+    });
+
+    it("does not count a disabled policy or an enabled policy granting on something else (mfa, block)", () => {
+      const extracted = applyMapping([
+        policy({ state: "disabled" }),
+        policy({ state: "enabled", builtInControls: ["mfa"] }),
+        policy({ state: "enabled", builtInControls: ["block"] }),
+      ], DEVICE_COMPLIANCE_MAPPING, []);
+      expect(extracted.caDeviceCompliancePolicyEnforcedCount).toBe(0);
+      expect(classifySeverity(DEVICE_COMPLIANCE_SEVERITY, extracted)?.severity).toBe("warning");
+    });
+
+    it("counts an enabled policy requiring compliantDevice", () => {
+      const extracted = applyMapping([policy({ state: "enabled", builtInControls: ["compliantDevice"] })], DEVICE_COMPLIANCE_MAPPING, []);
+      expect(extracted.caDeviceCompliancePolicyEnforcedCount).toBe(1);
+      expect(classifySeverity(DEVICE_COMPLIANCE_SEVERITY, extracted)).toBeNull();
+    });
+  });
+
+  describe("executeMonitorCheck — Entra ID P1 license prerequisite, no Security Defaults gate", () => {
+    const deviceComplianceCheck = {
+      id: 4534,
+      checkId: "ca-device-compliance-uuid",
+      key: "identity:ca-device-compliance",
+      label: "CA Device Compliance Requirement",
+      description: null,
+      endpoint: "/identity/conditionalAccess/policies",
+      method: "GET",
+      requestBody: null,
+      selectParams: null,
+      filterParams: null,
+      properties: ["id", "displayName", "state"] as string[],
+      mapping: DEVICE_COMPLIANCE_MAPPING as Array<{ sourceField: string; targetField: string; transform?: string }>,
+      severityRules: DEVICE_COMPLIANCE_SEVERITY as Array<{ expression: string; severity: string; label?: string }>,
+      outputSchema: null,
+      engines: ["security"] as string[],
+      frequency: "daily" as const,
+      requiresCustomerScript: false,
+      scriptPackageId: null,
+      fanOutSource: null,
+      fanOutItemIdField: null,
+      fanOutMaxItems: null,
+      fanOutItemFilter: null,
+      fanOutItemNormalizer: null,
+      executorType: "graph" as const,
+      psCmdletKey: null,
+      psParams: null,
+      spOperation: null,
+      ppOperation: null,
+      armOperation: null,
+      gateEndpoint: null,
+      gateExpression: null,
+      requiredServicePlans: ["AAD_PREMIUM", "AAD_PREMIUM_P2"],
+      schemaVersion: 2,
+      status: "active" as const,
+      createdByAdminId: null,
+      updatedByAdminId: null,
+      isCustomerFacing: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const graphJson = (body: unknown, status = 200) => ({
+      ok: status >= 200 && status < 300,
+      status,
+      text: async () => JSON.stringify(body),
+      json: async () => body,
+      headers: { get: () => "application/json" },
+    });
+    // The shape of tenant 2080's real estate: no SKU carries an AAD_PREMIUM plan.
+    const skusWithoutP1 = () => graphJson({ value: [
+      { capabilityStatus: "Enabled", servicePlans: [{ servicePlanName: "EXCHANGE_S_ENTERPRISE", provisioningStatus: "Success" }] },
+    ] });
+    const skusWithP1 = () => graphJson({ value: [
+      { capabilityStatus: "Enabled", servicePlans: [{ servicePlanName: "AAD_PREMIUM", provisioningStatus: "Success" }] },
+    ] });
+
+    it("no Entra ID P1: license gap, not warning — the CA policy list is never read", async () => {
+      mockFetch.mockResolvedValueOnce(skusWithoutP1());
+
+      const result = await executeMonitorCheck({ check: deviceComplianceCheck, tenantId: "tenant-4534-nop1", triggerId: "run-nop1", skipIdempotency: true });
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetch.mock.calls[0][1]).toBe("/subscribedSkus?$select=capabilityStatus,servicePlans");
+      expect(result.status).toBe("license_gap");
+      expect(result.severityMatched).toBeNull();
+      expect(result.errorMessage).toBe("Requires Microsoft Entra ID P1 or P2");
+      expect(result.extractedProperties.hasAADP1orP2).toBe(false);
+    });
+
+    it("Entra ID P1 present, only a report-only policy: warning fires", async () => {
+      mockFetch
+        .mockResolvedValueOnce(skusWithP1())
+        .mockResolvedValueOnce(graphJson({ value: [policy({ state: "enabledForReportingButNotEnforced" })] }));
+
+      const result = await executeMonitorCheck({ check: deviceComplianceCheck, tenantId: "tenant-4534-reportonly", triggerId: "run-reportonly", skipIdempotency: true });
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(result.status).toBe("ok");
+      expect(result.extractedProperties.caDeviceCompliancePolicyEnforcedCount).toBe(0);
+      expect(result.severityMatched).toBe("warning");
+    });
+
+    it("Entra ID P1 present, an enabled compliantDevice policy: ok, no finding", async () => {
+      mockFetch
+        .mockResolvedValueOnce(skusWithP1())
+        .mockResolvedValueOnce(graphJson({ value: [policy({ state: "enabled", builtInControls: ["compliantDevice"] })] }));
+
+      const result = await executeMonitorCheck({ check: deviceComplianceCheck, tenantId: "tenant-4534-enforced", triggerId: "run-enforced", skipIdempotency: true });
+
+      expect(result.status).toBe("ok");
+      expect(result.extractedProperties.caDeviceCompliancePolicyEnforcedCount).toBe(1);
+      expect(result.severityMatched).toBeNull();
+    });
+  });
+});
