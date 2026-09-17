@@ -199,7 +199,10 @@ namespace BuildConsole.Services
             public int IdleFinalizeMs;
             public CancellationTokenSource? AutoFinalizeCts;
 
-            /// <summary>Active background subagents / workflows in flight for this build (tool_call registered, tool_result not yet landed). Guarded by the service _gate.</summary>
+            /// <summary>Foreground Agent/workflow tool calls in flight for this build (tool_call registered, tool_result not
+            /// yet landed) — see <see cref="IsSubagentOrBackgroundTool"/> (Git #4525) for which tool names qualify. A
+            /// `run_in_background` call never meaningfully appears here (its tool_result lands immediately); that case is
+            /// <see cref="BackgroundTasks"/> (#4520) instead. Guarded by the service _gate.</summary>
             public readonly Dictionary<string, SubagentActivityInfo> ActiveSubagents = new();
 
             /// <summary>Git #4520 — the CLI's own background tasks still running for this build (a `run_in_background` Bash, a
@@ -3709,11 +3712,19 @@ namespace BuildConsole.Services
             }
         }
 
-        /// <summary>Returns true for tool names that represent a long-running background subagent or workflow the user should be aware of (e.g. Task, workflow).</summary>
+        /// <summary>Returns true for tool names that represent a long-running sub-agent or workflow the user should be aware
+        /// of. Git #4525 — the CLI's real sub-agent tool is named <c>Agent</c> (the pre-rename <c>Task</c> name this used to
+        /// match hasn't appeared in a live queue log). Matching it here is what lets a FOREGROUND <c>Agent</c> call populate
+        /// <see cref="RunningEntry.ActiveSubagents"/> (added on its tool_call, removed on its matching tool_result) so Build
+        /// Watch's "⚡ running N background agent(s)" status line (<see cref="GetActiveSubagents"/>) shows it while it's
+        /// genuinely outstanding. A `run_in_background` (or Workflow-tool) Agent call returns its tool_result immediately and
+        /// is never meaningfully tracked here — that path is <see cref="RunningEntry.BackgroundTasks"/> (#4520) instead, fed
+        /// from the CLI's own stream-json task lifecycle.</summary>
         public static bool IsSubagentOrBackgroundTool(string? name)
         {
             if (string.IsNullOrWhiteSpace(name)) return false;
-            return name.Equals("Task", StringComparison.OrdinalIgnoreCase)
+            return name.Equals("Agent", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("Task", StringComparison.OrdinalIgnoreCase) // pre-rename name; kept in case an older CLI build is ever run
                 || name.IndexOf("subagent", StringComparison.OrdinalIgnoreCase) >= 0
                 || name.Equals("workflow", StringComparison.OrdinalIgnoreCase)
                 || name.Equals("background_task", StringComparison.OrdinalIgnoreCase);
@@ -4557,26 +4568,33 @@ namespace BuildConsole.Services
                     activeSubagents = entry.ActiveSubagents.Count;
                     var now = DateTime.UtcNow;
                     // Git #2106 — do NOT finalize a build whose top-level turn is idle ONLY because
-                    // it's waiting on its own background sub-agent(s)/workflow(s): a Task-tool
+                    // it's waiting on its own foreground sub-agent(s)/workflow(s): an Agent-tool
                     // invocation still in flight, tracked in ActiveSubagents (the same list Build
                     // Watch's status line reads via GetActiveSubagents). Closing stdin here would
-                    // force-exit the tracked PARENT while that background work is genuinely still
-                    // running — freeing the slot and, when the sub-agent runs as its own process,
-                    // leaving it orphaned and untracked outside the concurrency system entirely
-                    // (the confirmed "claude.exe stays alive... because they have a sub agent going"
-                    // mechanism). Re-arm the idle timer instead so we re-check after another idle
-                    // interval once the sub-agent(s) finish (ActiveSubagents empties on each
-                    // tool_result via AppendEvent); a genuinely long-running agent simply keeps
-                    // deferring until it's done. The re-arm chain terminates on its own the moment
-                    // the process actually exits (HasExited flips idle→false → no further re-arm).
+                    // force-exit the tracked PARENT while that work is genuinely still running —
+                    // freeing the slot and, when the sub-agent runs as its own process, leaving it
+                    // orphaned and untracked outside the concurrency system entirely (the confirmed
+                    // "claude.exe stays alive... because they have a sub agent going" mechanism).
+                    // Re-arm the idle timer instead so we re-check after another idle interval once
+                    // the sub-agent(s) finish (ActiveSubagents empties on each tool_result via
+                    // AppendEvent); a genuinely long-running agent simply keeps deferring until it's
+                    // done. The re-arm chain terminates on its own the moment the process actually
+                    // exits (HasExited flips idle→false → no further re-arm).
                     //
-                    // Git #4520 — the same holds for the CLI's OWN background tasks, which the #2106 check above
-                    // never saw: a `run_in_background` Bash (or a background Agent) returns its tool_result
-                    // immediately, so it is never outstanding in ActiveSubagents while the turn is idle. Confirmed
-                    // live on queue #3114 (GH #4469): the turn ended with a dev-server restart + an isolated API host
-                    // running in the background, stdin was closed exactly 15s later, the CLI exited 0 in 9s, the build
-                    // was recorded done/Verifying, and the resumed session reported both tasks "Orphaned by a previous
-                    // Claude Code process exit". BackgroundTasks tracks those tasks from the stream-json lifecycle.
+                    // Git #4525 — a FOREGROUND (non-backgrounded) Agent call structurally can't be outstanding
+                    // in ActiveSubagents while the turn reads idle in the first place (the turn can't end with a
+                    // foreground tool call still open), so this check is a defensive backstop rather than the
+                    // mechanism doing the real work in practice — and until #4525's name-match fix, it matched
+                    // the CLI's pre-rename `Task` tool name and so never populated at all for real `Agent` calls.
+                    //
+                    // Git #4520 — background work is the case this check can never see: a `run_in_background`
+                    // Bash (or a background Agent) returns its tool_result immediately, so it is never outstanding
+                    // in ActiveSubagents while the turn is idle. Confirmed live on queue #3114 (GH #4469): the turn
+                    // ended with a dev-server restart + an isolated API host running in the background, stdin was
+                    // closed exactly 15s later, the CLI exited 0 in 9s, the build was recorded done/Verifying, and
+                    // the resumed session reported both tasks "Orphaned by a previous Claude Code process exit".
+                    // BackgroundTasks tracks those tasks from the stream-json lifecycle and is what actually defers
+                    // finalize for background work — not this ActiveSubagents check.
                     decision = DecideIdleFinalize(
                         idle, activeSubagents, entry.BackgroundTasks.Count,
                         entry.AwaitingInputSince ?? now, entry.LastBackgroundTaskEndedUtc, entry.LastActivityUtc,
