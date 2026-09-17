@@ -118,7 +118,7 @@ export function encryptTotp(plaintext: string): string {
   return `${iv.toString("hex")}:${enc.toString("hex")}:${tag.toString("hex")}`;
 }
 
-function decryptTotp(ciphertext: string): string {
+export function decryptTotp(ciphertext: string): string {
   const [ivHex, encHex, tagHex] = ciphertext.split(":");
   const key = getTotpEncryptionKey();
   const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivHex, "hex"));
@@ -1268,7 +1268,7 @@ router.post("/auth/mfa/sms/send", mfaLimiter, async (req: Request, res: Response
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function sendSmsOtp(phone: string, code: string): Promise<void> {
+export async function sendSmsOtp(phone: string, code: string): Promise<void> {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
   const from = process.env.TWILIO_FROM_NUMBER;

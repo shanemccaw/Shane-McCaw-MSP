@@ -40,6 +40,7 @@ import {
   usersTable,
   checkoutSessionsTable,
   freeScanEngagementsTable,
+  freeScanAccountsTable,
   consentInviteTokensTable,
   remediationTrackerStepsTable,
   mspDiagnosticRunsTable,
@@ -209,8 +210,29 @@ describe.skipIf(!process.env.DATABASE_URL)("free-scan Remediate routes — live 
     expect(res.body.error).toBe("payment_required");
   });
 
-  it("moves to the write-consent stage once paid, with DERIVED scopes and the beyond-scope disclosure", async () => {
+  it("puts the account step (#4329) between payment and the write-consent gate", async () => {
     await markPaid();
+    const res = await request(app).post("/api/public/free-scan/remediate/read").send({ sessionId });
+    expect(res.status).toBe(200);
+    expect(res.body.stage).toBe("account");
+    expect(res.body.guide).toBeNull();
+  });
+
+  it("moves to the write-consent stage once paid and the account exists, with DERIVED scopes and the beyond-scope disclosure", async () => {
+    // The account step's own flow is covered by public-free-scan-account.live-db.test.ts;
+    // here only its completed state matters.
+    const [engagement] = await db
+      .select({ id: freeScanEngagementsTable.id })
+      .from(freeScanEngagementsTable)
+      .where(eq(freeScanEngagementsTable.customerId, customerId));
+    await db.insert(freeScanAccountsTable).values({
+      engagementId: engagement!.id,
+      email: `${suffix}@example.com`,
+      emailVerifiedAt: new Date(),
+      passwordHash: "not-a-real-hash-seeded-for-stage-only",
+      mfaMethod: "totp",
+      mfaEnrolledAt: new Date(),
+    });
     const res = await request(app).post("/api/public/free-scan/remediate/read").send({ sessionId });
 
     expect(res.status).toBe(200);

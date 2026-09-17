@@ -17,7 +17,12 @@
  *     `resolveFlowSession` → `resolveConsentedTenant` pair
  *     public-free-scan-results.ts uses; or
  *   • `returnToken` — the emailed return link (#1359), through
- *     `resolveFreeScanReturnLink`.
+ *     `resolveFreeScanReturnLink`; or
+ *   • `accountSession: true` — the paid Prospect's own scoped login (#4329),
+ *     resolved from its httpOnly session cookie by `resolveAccountSession`
+ *     (lib/free-scan-account.ts). That account opens this one engagement and
+ *     nothing else: it is not a JWT, never touches `users` or `client_services`,
+ *     and leaves #656's gate exactly as closed as it was.
  *
  * A caller never supplies a customerId and is never told one. The mutating
  * routes take their credential from the JSON BODY rather than the query string,
@@ -46,6 +51,7 @@ import { db, freeScanEngagementsTable, tenantsTable, type FreeScanEngagement } f
 import { eq } from "drizzle-orm";
 import { resolveFlowSession, resolveConsentedTenant } from "./consent.ts";
 import { resolveFreeScanReturnLink } from "../lib/free-scan-return-link.ts";
+import { resolveAccountSession } from "../lib/free-scan-account.ts";
 import {
   loadOrCreateEngagement,
   normaliseRequestedSelection,
@@ -93,8 +99,14 @@ export const credentialSchema = z
   .object({
     sessionId: z.string().optional(),
     returnToken: z.string().max(200).optional(),
+    // #4329 — the caller has no flow credential and is relying on its scoped
+    // account session cookie instead. Explicit, so a request carrying nothing at
+    // all is still the same 400 it always was.
+    accountSession: z.literal(true).optional(),
   })
-  .refine((v) => !!v.sessionId || !!v.returnToken, { message: "a sessionId or returnToken is required" });
+  .refine((v) => !!v.sessionId || !!v.returnToken || v.accountSession === true, {
+    message: "a sessionId, returnToken or accountSession is required",
+  });
 
 /**
  * Resolve the acting Prospect from whichever door the caller used, or respond
@@ -105,8 +117,9 @@ export const credentialSchema = z
  * copy of this would be a second place for that identity contract to drift.
  */
 export async function resolveActor(
-  credential: { sessionId?: string; returnToken?: string },
+  credential: { sessionId?: string; returnToken?: string; accountSession?: true },
   res: Response,
+  req: Request,
 ): Promise<FreeScanActor | null> {
   if (credential.sessionId) {
     const session = await resolveFlowSession(credential.sessionId, res);
@@ -118,6 +131,26 @@ export async function resolveActor(
       customerId: tenant.id,
       checkoutSessionId: session.id,
       email: contact.email,
+      fullName: contact.fullName,
+      company: contact.company,
+    };
+  }
+
+  if (!credential.returnToken && credential.accountSession === true) {
+    const signedIn = await resolveAccountSession(req);
+    if (!signedIn) {
+      res.status(401).json({ error: "account_signin_required" });
+      return null;
+    }
+    const { engagement, account } = signedIn;
+    const contact = engagement.checkoutSessionId
+      ? await resolveSessionContact(engagement.checkoutSessionId)
+      : { ...(await resolveProspectContact(engagement.customerId)), company: null };
+    return {
+      customerId: engagement.customerId,
+      checkoutSessionId: engagement.checkoutSessionId,
+      // The address this account proved, which is the one it signs in with.
+      email: account.email,
       fullName: contact.fullName,
       company: contact.company,
     };
@@ -150,7 +183,7 @@ router.get("/public/free-scan/sow", sowLimiter, noStore, async (req: Request, re
     res.status(400).json({ error: "session_invalid" });
     return;
   }
-  await respondWithSow({ sessionId }, res);
+  await respondWithSow({ sessionId }, req, res);
 });
 
 // POST alias for the return-link door — same read, token in the body.
@@ -162,14 +195,15 @@ router.post("/public/free-scan/sow/read", sowLimiter, noStore, async (req: Reque
     res.status(400).json({ error: "credential_required" });
     return;
   }
-  await respondWithSow(parsed.data, res);
+  await respondWithSow(parsed.data, req, res);
 });
 
 async function respondWithSow(
-  credential: { sessionId?: string; returnToken?: string },
+  credential: { sessionId?: string; returnToken?: string; accountSession?: true },
+  req: Request,
   res: Response,
 ): Promise<void> {
-  const actor = await resolveActor(credential, res);
+  const actor = await resolveActor(credential, res, req);
   if (!actor) return;
 
   try {
@@ -207,7 +241,7 @@ router.put("/public/free-scan/sow/scope", sowLimiter, noStore, async (req: Reque
     return;
   }
 
-  const actor = await resolveActor(parsed.data, res);
+  const actor = await resolveActor(parsed.data, res, req);
   if (!actor) return;
 
   try {
@@ -264,7 +298,7 @@ router.post("/public/free-scan/sow/sign", sowLimiter, noStore, async (req: Reque
     return;
   }
 
-  const actor = await resolveActor(parsed.data, res);
+  const actor = await resolveActor(parsed.data, res, req);
   if (!actor) return;
 
   try {
@@ -391,7 +425,7 @@ router.post("/public/free-scan/sow/payment-intent", sowLimiter, noStore, async (
     return;
   }
 
-  const actor = await resolveActor(parsed.data, res);
+  const actor = await resolveActor(parsed.data, res, req);
   if (!actor) return;
 
   const row = await loadOrCreateEngagement(actor);
@@ -503,7 +537,7 @@ router.post("/public/free-scan/sow/payment-confirmed", sowLimiter, noStore, asyn
     return;
   }
 
-  const actor = await resolveActor(parsed.data, res);
+  const actor = await resolveActor(parsed.data, res, req);
   if (!actor) return;
 
   const row = await loadOrCreateEngagement(actor);

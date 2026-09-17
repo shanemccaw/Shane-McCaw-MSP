@@ -1184,6 +1184,63 @@ export const freeScanEngagementsTable = pgTable("free_scan_engagements", {
 export type InsertFreeScanEngagement = typeof freeScanEngagementsTable.$inferInsert;
 export type FreeScanEngagement = typeof freeScanEngagementsTable.$inferSelect;
 
+// Git #4329 (Feature #1352, Free Scan) — the SCOPED login a paid Free Scan
+// Prospect creates in the design's `acctScreen` block (emailed code → password →
+// second factor). It opens that Prospect's own engagement — scan results and the
+// SOW they signed — and nothing else.
+//
+// Deliberately a table of its own, keyed on the engagement, and NOT a password
+// on `users` or an `mfa_enrollments` row: `/auth/login` accepts any `users` row
+// with a password hash, so putting the credential there would hand a Prospect
+// the general customer Portal. General Portal access stays behind
+// `hasRealEntitlement()` / `client_services` (routes/auth.ts, #656) exactly as it
+// was; nothing here writes to either. The session this account issues is signed
+// with a key derived for this purpose only (lib/free-scan-account.ts), so
+// `requireAuth` cannot verify it either.
+export const freeScanAccountsTable = pgTable("free_scan_accounts", {
+  id: serial("id").primaryKey(),
+  engagementId: integer("engagement_id").notNull().unique().references(() => freeScanEngagementsTable.id, { onDelete: "cascade" }),
+  // The billing address the code was sent to, lower-cased. The sign-in identifier.
+  email: text("email").notNull(),
+  // Emailed six-digit code. Only its bcrypt hash is stored; the attempt budget is
+  // counted before the guess is judged.
+  emailCodeHash: text("email_code_hash"),
+  emailCodeExpiresAt: timestamp("email_code_expires_at", { withTimezone: true }),
+  emailCodeAttempts: integer("email_code_attempts").notNull().default(0),
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+  passwordHash: text("password_hash"),
+  passwordSetAt: timestamp("password_set_at", { withTimezone: true }),
+  // Second factor. `totpSecretEncrypted` uses mfa.ts's encryptTotp (AES-256-GCM).
+  // While `mfaEnrolledAt` is null the secret / phone are the PENDING enrollment.
+  mfaMethod: text("mfa_method", { enum: ["totp", "sms"] }),
+  totpSecretEncrypted: text("totp_secret_encrypted"),
+  phone: text("phone"),
+  // SMS one-time code — used for both SMS enrollment and SMS sign-in.
+  smsCodeHash: text("sms_code_hash"),
+  smsCodeExpiresAt: timestamp("sms_code_expires_at", { withTimezone: true }),
+  smsCodeAttempts: integer("sms_code_attempts").notNull().default(0),
+  mfaEnrolledAt: timestamp("mfa_enrolled_at", { withTimezone: true }),
+  // Bumped on every credential change; a session token carrying an older value is dead.
+  sessionVersion: integer("session_version").notNull().default(0),
+  failedLoginCount: integer("failed_login_count").notNull().default(0),
+  lockedUntil: timestamp("locked_until", { withTimezone: true }),
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  // One sign-in identity per address among accounts that have one.
+  uniqueIndex("free_scan_accounts_email_uidx").on(sql`lower(${t.email})`).where(sql`password_hash IS NOT NULL`),
+  check("free_scan_accounts_mfa_method_check", sql`${t.mfaMethod} IS NULL OR ${t.mfaMethod} IN ('totp', 'sms')`),
+  // An enrolled account always has the whole credential behind it.
+  check(
+    "free_scan_accounts_complete_check",
+    sql`(${t.mfaEnrolledAt} IS NULL) OR (${t.passwordHash} IS NOT NULL AND ${t.emailVerifiedAt} IS NOT NULL AND ${t.mfaMethod} IS NOT NULL)`,
+  ),
+]);
+
+export type InsertFreeScanAccount = typeof freeScanAccountsTable.$inferInsert;
+export type FreeScanAccount = typeof freeScanAccountsTable.$inferSelect;
+
 // Git #415. Same shape as impersonationTokensTable/accountSetupTokensTable —
 // a short-lived, single-use bearer token headless Chromium exchanges (via
 // POST /auth/print-exchange) for a real short-lived JWT for the SAME user who

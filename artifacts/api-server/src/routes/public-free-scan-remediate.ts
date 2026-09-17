@@ -78,6 +78,7 @@ import { credentialSchema, resolveActor } from "./public-free-scan-sow.ts";
 import { loadOrCreateEngagement, selectionFromRow, type FreeScanActor } from "../lib/free-scan-engagement.ts";
 import { resolveFreeScanWriteScopes, type FreeScanWriteScopeResult } from "../lib/free-scan-write-scopes.ts";
 import { isKnownCheckKey } from "../lib/remediation-checklist.ts";
+import { accountStage, loadAccountForEngagement } from "../lib/free-scan-account.ts";
 import { buildAdminConsentUrl } from "../lib/graph.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
@@ -137,6 +138,11 @@ async function resolveTenantForWrite(
  *
  *   `not_paid`      — the Review step is not finished; the Remediate step has
  *                     nothing to offer yet and never mints a consent URL.
+ *   `account`       — paid, but the Prospect has not yet created the scoped
+ *                     login their engagement lives behind (#4329). This is the
+ *                     design's `{{ acctScreen }}`, which sits between payment
+ *                     and the write step. A screen order, not a security gate:
+ *                     the write-consent routes keep their own gates unchanged.
  *   `write_consent` — paid, and the real `writeBack` grant is absent. This is
  *                     the design's `{{ writeStage }}`.
  *   `guide`         — the grant landed, or the Prospect declined. Both go to the
@@ -144,10 +150,11 @@ async function resolveTenantForWrite(
  *                     and that difference is #1539's, computed from the same
  *                     `writeBack` key rather than from anything recorded here.
  */
-type RemediateStage = "not_paid" | "write_consent" | "guide";
+type RemediateStage = "not_paid" | "account" | "write_consent" | "guide";
 
-function resolveStage(row: FreeScanEngagement, writeStatus: string | null): RemediateStage {
+function resolveStage(row: FreeScanEngagement, writeStatus: string | null, accountComplete: boolean): RemediateStage {
   if (row.status !== "paid") return "not_paid";
+  if (!accountComplete) return "account";
   if (writeStatus === "granted") return "guide";
   if (row.writeConsentDecision === "declined") return "guide";
   return "write_consent";
@@ -165,14 +172,15 @@ router.post("/public/free-scan/remediate/read", remediateLimiter, noStore, async
     return;
   }
 
-  const actor = await resolveActor(parsed.data, res);
+  const actor = await resolveActor(parsed.data, res, req);
   if (!actor) return;
 
   try {
     const row = await loadOrCreateEngagement(actor);
     const tenant = await resolveTenantForWrite(actor.customerId);
     const writeStatus = tenant?.writeStatus ?? null;
-    const stage = resolveStage(row, writeStatus);
+    const account = row.status === "paid" ? await loadAccountForEngagement(row.id) : null;
+    const stage = resolveStage(row, writeStatus, accountStage(account) === "complete");
 
     const selection = selectionFromRow(row);
 
@@ -246,7 +254,7 @@ router.post("/public/free-scan/remediate/write-consent-url", remediateLimiter, n
     return;
   }
 
-  const actor = await resolveActor(parsed.data, res);
+  const actor = await resolveActor(parsed.data, res, req);
   if (!actor) return;
 
   const row = await loadOrCreateEngagement(actor);
@@ -360,7 +368,7 @@ router.post("/public/free-scan/remediate/decline-write", remediateLimiter, noSto
     return;
   }
 
-  const actor = await resolveActor(parsed.data, res);
+  const actor = await resolveActor(parsed.data, res, req);
   if (!actor) return;
 
   const row = await loadOrCreateEngagement(actor);
@@ -419,7 +427,7 @@ router.put("/public/free-scan/remediate/checklist/:checkKey", remediateLimiter, 
     return;
   }
 
-  const actor = await resolveActor(parsed.data, res);
+  const actor = await resolveActor(parsed.data, res, req);
   if (!actor) return;
 
   const row = await loadOrCreateEngagement(actor);
