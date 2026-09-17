@@ -214,14 +214,16 @@
     {
       "name": "U1 -- /portal/sops resolves to the app (RequireAuth gate, not a 404) with no session.",
       "action": "goto",
-      "target": "/portal/sops"
+      "target": "/portal/sops",
+      "sessionTag": "root-redirect-4454"
     },
     {
       "name": "U2 -- Git #4454: an unauthenticated visit redirects straight to the sign-in form (no interstitial) -- proves the route is wired to a real page component, not a dead link.",
       "action": "expect",
       "selector": "[data-testid='login-email']",
       "state": "visible",
-      "critical": true
+      "critical": true,
+      "sessionTag": "root-redirect-4454"
     },
     {
       "name": "goto the real login page.",
