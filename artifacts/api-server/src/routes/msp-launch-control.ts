@@ -76,7 +76,7 @@ import {
   recordLaunchControlExecutionOutcome,
 } from "../lib/launch-control-change-request.ts";
 import {
-  getSubscribedSkuPartNumbersForTenant,
+  getProvisionedServicePlanNamesForTenant,
   tenantHasRequiredLicense,
   describeRequiredLicense,
 } from "../lib/license-gate.ts";
@@ -233,13 +233,16 @@ router.get(
       // dispatch note's explicit "don't hammer Graph per action-picker
       // render." No connected tenant means no license can ever be confirmed
       // — fails closed (any row with a requirement shows license_required).
-      const tenantSkus = customerTenant?.tenantId
-        ? await getSubscribedSkuPartNumbersForTenant(customerTenant.tenantId)
-        : { skuPartNumbers: new Set<string>(), error: "Selected customer has no connected tenant" };
+      // Git #4535 — tested against provisioned service plans, not
+      // skuPartNumbers, so Entra ID P1 bundled in E3/E5/Business Premium/EMS
+      // counts.
+      const tenantPlans = customerTenant?.tenantId
+        ? await getProvisionedServicePlanNamesForTenant(customerTenant.tenantId)
+        : { servicePlanNames: new Set<string>(), error: "Selected customer has no connected tenant" };
 
       const actions = catalog.map((row) => {
         const requiredLicenseSkus = (row.requiredLicenseSkus ?? []) as string[];
-        const hasRequiredLicense = tenantHasRequiredLicense(requiredLicenseSkus, tenantSkus.skuPartNumbers);
+        const hasRequiredLicense = tenantHasRequiredLicense(requiredLicenseSkus, tenantPlans.servicePlanNames);
         const template = row.templateId ? templatesById.get(row.templateId) : undefined;
         return {
           ...row,
@@ -277,7 +280,7 @@ router.get(
           mspEnabled: msp?.writeBackEnabled ?? false,
           consentStatus: consent?.writeBack?.status ?? null,
         },
-        licenseRead: { error: tenantSkus.error },
+        licenseRead: { error: tenantPlans.error },
       });
     } catch (err) {
       log.error({ err, mspId, customerId }, "GET /msp/:mspId/launch-control/actions failed");
@@ -490,13 +493,13 @@ router.post(
         return;
       }
 
-      const [tier, customerTier, tenantSkus] = await Promise.all([
+      const [tier, customerTier, tenantPlans] = await Promise.all([
         loadTier(mspId),
         resolveCustomerMonitoringTier(customerId),
-        getSubscribedSkuPartNumbersForTenant(customer.tenantId),
+        getProvisionedServicePlanNamesForTenant(customer.tenantId),
       ]);
       const requiredLicenseSkus = (catalogRow.requiredLicenseSkus ?? []) as string[];
-      const hasRequiredLicense = tenantHasRequiredLicense(requiredLicenseSkus, tenantSkus.skuPartNumbers);
+      const hasRequiredLicense = tenantHasRequiredLicense(requiredLicenseSkus, tenantPlans.servicePlanNames);
       const availability = computeAvailability(catalogRow, tier, resolveTierRank(customerTier), hasRequiredLicense);
       if (availability === "license_required") {
         // Git #3947 — proactive gate: block BEFORE raising a real Change
@@ -506,7 +509,7 @@ router.post(
         // this check and the write actually firing).
         const description = describeRequiredLicense(requiredLicenseSkus);
         log.info(
-          { mspId, catalogActionId, customerId, tenantId: customer.tenantId, requiredLicenseSkus, skuReadError: tenantSkus.error },
+          { mspId, catalogActionId, customerId, tenantId: customer.tenantId, requiredLicenseSkus, skuReadError: tenantPlans.error },
           "msp-launch-control: execute blocked by proactive license precheck",
         );
         res.status(409).json({

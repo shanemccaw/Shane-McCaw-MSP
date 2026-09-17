@@ -8,7 +8,15 @@
  * available at all) whether the customer's tenant actually holds one of a
  * catalog row's `required_license_skus`.
  *
- * The live SKU read follows the same pattern already proven in
+ * Git #4535 — that check is made against the tenant's provisioned SERVICE
+ * PLANS, never its skuPartNumbers. The first version of this gate compared
+ * `required_license_skus` against skuPartNumbers, so a tenant holding Entra ID
+ * P1 through a bundle (Microsoft 365 E3/E5, Business Premium, EMS) read as
+ * unlicensed and every Conditional Access write was blocked. The catalog's
+ * values (`AAD_PREMIUM`, `AAD_PREMIUM_P2`) are real servicePlanNames as well as
+ * standalone skuPartNumbers, so the plan set answers for both.
+ *
+ * The live read follows the same pattern already proven in
  * `account-security-graph.ts`'s `getDeviceComplianceSignal` (a real-time
  * `/subscribedSkus` precondition check before a Graph call that would
  * otherwise fail with an unhelpful error) — reused here rather than
@@ -28,68 +36,7 @@ import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "integration.azure" });
 
-interface GraphSubscribedSku {
-  skuPartNumber?: string;
-  capabilityStatus?: string;
-}
-
-interface GraphSubscribedSkusPage {
-  value?: GraphSubscribedSku[];
-}
-
-export interface TenantLicenseSkuResult {
-  /** The tenant's currently-enabled skuPartNumber values, lowercased-free (Graph's own casing). Empty on error. */
-  skuPartNumbers: Set<string>;
-  /** Set only when the read failed — callers should treat this as "unknown," not "no licenses," when deciding how to render it. */
-  error: string | null;
-}
-
 const SUBSCRIBED_SKU_CACHE_TTL_MS = 60_000;
-const subscribedSkuCache = new Map<string, { value: TenantLicenseSkuResult; expiresAt: number }>();
-
-/**
- * The tenant's real, live, currently-enabled `skuPartNumber` set, read
- * straight from Microsoft Graph `/subscribedSkus` (never from a stored
- * monitoring snapshot, which can be stale or entirely absent for a
- * never-scanned tenant — not acceptable for an execute-time precondition
- * gate). Never throws: a read failure comes back on `.error` so a caller
- * fails closed (treats the requirement as unsatisfied) rather than rendering
- * a falsely-green "included" state it can't actually back up.
- */
-export async function getSubscribedSkuPartNumbersForTenant(tenantId: string): Promise<TenantLicenseSkuResult> {
-  const cached = subscribedSkuCache.get(tenantId);
-  if (cached && Date.now() < cached.expiresAt) return cached.value;
-
-  try {
-    const res = await graphFetchForTenant(tenantId, "/subscribedSkus?$select=skuPartNumber,capabilityStatus");
-    if (!res.ok) {
-      const text = await res.text();
-      log.warn({ tenantId, status: res.status, body: text.slice(0, 400) }, "license-gate: /subscribedSkus call failed");
-      return { skuPartNumbers: new Set(), error: `Graph /subscribedSkus returned ${res.status}` };
-    }
-    const body = (await res.json()) as GraphSubscribedSkusPage;
-    const skuPartNumbers = new Set(
-      (body.value ?? [])
-        .filter((sku) => sku.capabilityStatus === "Enabled" && typeof sku.skuPartNumber === "string")
-        .map((sku) => sku.skuPartNumber as string),
-    );
-    const value: TenantLicenseSkuResult = { skuPartNumbers, error: null };
-    subscribedSkuCache.set(tenantId, { value, expiresAt: Date.now() + SUBSCRIBED_SKU_CACHE_TTL_MS });
-    return value;
-  } catch (err) {
-    if (err instanceof ConsentRevokedError) {
-      return { skuPartNumbers: new Set(), error: "Admin consent for this tenant has been revoked or was never granted" };
-    }
-    if (err instanceof LicenseGapError) {
-      // A license gap on reading /subscribedSkus itself would be unusual —
-      // that read requires only Organization.Read.All — but handle it the
-      // same honest way rather than letting it propagate as an unhandled 500.
-      return { skuPartNumbers: new Set(), error: `Graph reported a license gap reading /subscribedSkus: ${err.feature}` };
-    }
-    log.warn({ err, tenantId }, "license-gate: getSubscribedSkuPartNumbersForTenant unexpected error");
-    return { skuPartNumbers: new Set(), error: err instanceof Error ? err.message : String(err) };
-  }
-}
 
 interface GraphServicePlan {
   servicePlanName?: string;
@@ -128,15 +75,19 @@ const servicePlanCache = new Map<string, { value: TenantServicePlanResult; expir
  * inside many SKUs — Microsoft 365 E3/E5 (`SPE_E3`/`SPE_E5`), Business Premium
  * (`SPB`), EMS — not only as the standalone `AAD_PREMIUM` SKU. A skuPartNumber
  * membership test reads every one of those bundles as unlicensed, so a monitor
- * check's license prerequisite is tested against service plans instead.
+ * check's license prerequisite (#4512), Launch Control's action gate and a
+ * Config Pack's license precondition (#4535) are all tested against service
+ * plans instead.
  *
  * "Provisioned" is the one condition settled on #1516 and already used by
  * tenant-workloads.ts and account-security-graph.ts: `provisioningStatus ===
- * "Success"`. Read live rather than from a stored snapshot, for the same reason
- * as the SKU read above, with the same short per-tenant cache so a package run
- * gating several checks on one license makes one call. Never throws; a paged
- * response is reported as an error rather than as a smaller, falsely
- * unlicensed estate.
+ * "Success"`. Read straight from Graph, never from a stored monitoring
+ * snapshot, which can be stale or entirely absent for a never-scanned tenant —
+ * not acceptable for an execute-time precondition. Cached per tenant for a
+ * short TTL so a listing render or package run makes one call. Never throws: a
+ * failed or paged read comes back on `.error`, and callers fail closed on it
+ * rather than rendering a smaller, falsely unlicensed (or falsely included)
+ * estate.
  */
 export async function getProvisionedServicePlanNamesForTenant(tenantId: string): Promise<TenantServicePlanResult> {
   const cached = servicePlanCache.get(tenantId);
@@ -180,15 +131,16 @@ export async function getProvisionedServicePlanNamesForTenant(tenantId: string):
 /**
  * The single clean membership check, shared by server-side execute
  * enforcement and the GET listing's availability computation — ANY ONE of
- * `requiredSkus` present (and Enabled) in `tenantSkuPartNumbers` satisfies
- * the gate. No requirement at all (null/empty) always passes.
+ * `requiredSkus` present in `tenantServicePlanNames` (from
+ * getProvisionedServicePlanNamesForTenant) satisfies the gate. No requirement
+ * at all (null/empty) always passes.
  */
 export function tenantHasRequiredLicense(
   requiredSkus: readonly string[] | null | undefined,
-  tenantSkuPartNumbers: ReadonlySet<string>,
+  tenantServicePlanNames: ReadonlySet<string>,
 ): boolean {
   if (!requiredSkus || requiredSkus.length === 0) return true;
-  return requiredSkus.some((sku) => tenantSkuPartNumbers.has(sku));
+  return requiredSkus.some((sku) => tenantServicePlanNames.has(sku));
 }
 
 // Known display names for the SKU part numbers this platform actually gates

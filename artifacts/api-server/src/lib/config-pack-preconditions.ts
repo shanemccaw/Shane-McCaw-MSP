@@ -27,8 +27,8 @@
  *      #4518 may choose: if a pack's CA policy is deliberately report-only, its
  *      Security Defaults step simply never runs.
  *
- * Pure: the caller loads the step rows and the tenant SKU set once, so this
- * module is unit-testable without db or Graph.
+ * Pure: the caller loads the step rows and the tenant service plan set once, so
+ * this module is unit-testable without db or Graph.
  *
  *   0. Conditional Access enforcement (Git #4522, Shane's #4518 decision). A step
  *      whose resolved write leaves a CA policy ENFORCING — a create with
@@ -49,7 +49,7 @@ import { interp } from "./interp.ts";
 import {
   describeRequiredLicense,
   tenantHasRequiredLicense,
-  type TenantLicenseSkuResult,
+  type TenantServicePlanResult,
 } from "./license-gate.ts";
 import { ConfigPackError } from "./config-pack-graph.ts";
 import {
@@ -122,10 +122,12 @@ function stringList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 }
 
-function licenseSatisfied(step: PackPreconditionStep, tenantSkus: TenantLicenseSkuResult | null): boolean {
+/** Git #4535 — matched against provisioned service plans, so Entra ID P1 held
+ *  through a bundle (E3/E5/Business Premium/EMS) satisfies an AAD_PREMIUM list. */
+function licenseSatisfied(step: PackPreconditionStep, tenantPlans: TenantServicePlanResult | null): boolean {
   if (step.requiredLicenseSkuLists.length === 0) return true;
-  if (!tenantSkus || tenantSkus.error) return false;
-  return step.requiredLicenseSkuLists.every((skus) => tenantHasRequiredLicense(skus, tenantSkus.skuPartNumbers));
+  if (!tenantPlans || tenantPlans.error) return false;
+  return step.requiredLicenseSkuLists.every((skus) => tenantHasRequiredLicense(skus, tenantPlans.servicePlanNames));
 }
 
 /** True when the step would leave Security Defaults anything but enabled.
@@ -203,7 +205,7 @@ export function enforcingPolicyShapeGap(body: Record<string, unknown>): string |
 
 /**
  * The first precondition the pack fails on this tenant, as the typed refusal the
- * run path throws — or null when every precondition holds. `tenantSkus` is null
+ * run path throws — or null when every precondition holds. `tenantPlans` is null
  * only when no step carries a license requirement (nothing was read).
  */
 export function evaluateConfigPackPreconditions(opts: {
@@ -213,12 +215,12 @@ export function evaluateConfigPackPreconditions(opts: {
   subject?: string;
   steps: PackPreconditionStep[];
   payload: Record<string, unknown>;
-  tenantSkus: TenantLicenseSkuResult | null;
+  tenantPlans: TenantServicePlanResult | null;
   /** #4522 — only a Config Pack run passes this, from its explicit run parameter.
    *  Omitted means monitor-first: execute_action and SOP runs never enforce. */
   caEnforcementMode?: CaEnforcementMode;
 }): ConfigPackError | null {
-  const { packKey, steps, tenantSkus } = opts;
+  const { packKey, steps, tenantPlans } = opts;
   // Same default the executor resolves {{caPolicyState}} with (report-only).
   const payload = withCaPolicyStateDefault(opts.payload);
   const subject = opts.subject ?? `Pack '${packKey}'`;
@@ -245,12 +247,12 @@ export function evaluateConfigPackPreconditions(opts: {
   }
 
   // ── 1. License ──
-  const unlicensed = steps.filter((s) => !licenseSatisfied(s, tenantSkus));
+  const unlicensed = steps.filter((s) => !licenseSatisfied(s, tenantPlans));
   if (unlicensed.length > 0) {
     const requiredLicenses = [
       ...new Set(unlicensed.flatMap((s) => s.requiredLicenseSkuLists.map((skus) => describeRequiredLicense(skus)))),
     ];
-    const skuReadError = tenantSkus?.error ?? null;
+    const skuReadError = tenantPlans?.error ?? null;
     const reason = skuReadError
       ? `the tenant's licenses could not be read (${skuReadError}), so the requirement cannot be confirmed`
       : "the tenant does not currently hold that license";

@@ -88,16 +88,29 @@ afterAll(async () => {
 });
 
 // #4513 — the tenant's live license set. Default: the testbed tenant's real SKUs
-// (tenant-scans/2026-09-17-testbed-full-scan.json) — no Entra ID P1.
-const TESTBED_SKUS = ["FLOW_FREE", "ENTERPRISEPACK", "POWER_BI_STANDARD", "Power_Pages_vTrial_for_Makers"];
+// (tenant-scans/2026-09-17-testbed-full-scan.json) — no Entra ID P1. #4535 — the
+// gate reads provisioned service plans, so each SKU carries a sample of its real plans.
+type MockSku = { skuPartNumber: string; servicePlanNames: string[] };
+const TESTBED_SKUS: MockSku[] = [
+  { skuPartNumber: "FLOW_FREE", servicePlanNames: ["EXCHANGE_S_FOUNDATION", "DYN365_CDS_VIRAL", "FLOW_P2_VIRAL"] },
+  { skuPartNumber: "ENTERPRISEPACK", servicePlanNames: ["EXCHANGE_S_ENTERPRISE", "SHAREPOINTENTERPRISE", "TEAMS1", "RMS_S_ENTERPRISE"] },
+  { skuPartNumber: "POWER_BI_STANDARD", servicePlanNames: ["PURVIEW_DISCOVERY", "EXCHANGE_S_FOUNDATION", "BI_AZURE_P0"] },
+  { skuPartNumber: "Power_Pages_vTrial_for_Makers", servicePlanNames: ["POWER_PAGES_VTRIAL", "EXCHANGE_S_FOUNDATION", "DYN365_CDS_VIRAL"] },
+];
 
-function mockTenantReads(skuPartNumbers: string[] = TESTBED_SKUS) {
+function mockTenantReads(skus: MockSku[] = TESTBED_SKUS) {
   mockGraphFetchForTenant.mockReset().mockImplementation(async (_tenantId: string, path: string) => {
     if (path.startsWith("/subscribedSkus")) {
       return {
         ok: true,
         status: 200,
-        json: async () => ({ value: skuPartNumbers.map((skuPartNumber) => ({ skuPartNumber, capabilityStatus: "Enabled" })) }),
+        json: async () => ({
+          value: skus.map(({ skuPartNumber, servicePlanNames }) => ({
+            skuPartNumber,
+            capabilityStatus: "Enabled",
+            servicePlans: servicePlanNames.map((servicePlanName) => ({ servicePlanName, provisioningStatus: "Success" })),
+          })),
+        }),
       };
     }
     if (path.startsWith("/policies/identitySecurityDefaultsEnforcementPolicy")) {
@@ -188,7 +201,11 @@ describe("buildConfigPackDryRun (real tenant state, real substitution)", () => {
 
   it("#4513: on a P1 tenant, refuses quickstart-v1 because its CA replacement is report-only (live seeded rows)", async () => {
     // A tenant the license cache has not seen yet, so this read is really served.
-    mockTenantReads(["ENTERPRISEPACK", "AAD_PREMIUM"]);
+    // #4535 — P1 held only inside a Microsoft 365 E5 bundle, with no standalone
+    // AAD_PREMIUM SKU: the license precondition passes and the next rule decides.
+    mockTenantReads([
+      { skuPartNumber: "SPE_E5", servicePlanNames: ["EXCHANGE_S_ENTERPRISE", "AAD_PREMIUM", "AAD_PREMIUM_P2", "INTUNE_A"] },
+    ]);
     const dry = await buildConfigPackDryRun("quickstart-v1", readOnlyCustomerId);
     expect(dry.executable).toBe(false);
     expect(dry.refusal?.code).toBe("security_defaults_replacement_not_enforcing");

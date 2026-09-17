@@ -96,11 +96,11 @@ vi.mock("./workflow-executor.ts", () => ({
   fireWorkflowForDefinition: (...a: unknown[]) => fireWorkflowForDefinition(...a),
 }));
 vi.mock("./graph.ts", () => ({ graphFetchForTenant: vi.fn() }));
-// #4513 — the tenant's live SKU read; spied so a test can prove it happened.
-const getSubscribedSkuPartNumbersForTenant = vi.fn();
+// #4513/#4535 — the tenant's live service plan read; spied so a test can prove it happened.
+const getProvisionedServicePlanNamesForTenant = vi.fn();
 vi.mock("./license-gate.ts", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  getSubscribedSkuPartNumbersForTenant: (...a: unknown[]) => getSubscribedSkuPartNumbersForTenant(...a),
+  getProvisionedServicePlanNamesForTenant: (...a: unknown[]) => getProvisionedServicePlanNamesForTenant(...a),
 }));
 vi.mock("../routes/break-glass-verification.ts", () => ({ generateStrongPassword: () => "PW-generated" }));
 
@@ -129,7 +129,7 @@ beforeEach(() => {
   baselineTemplates = [];
   writeActionCatalog = [];
   fireWorkflowForDefinition.mockReset();
-  getSubscribedSkuPartNumbersForTenant.mockReset();
+  getProvisionedServicePlanNamesForTenant.mockReset();
 });
 
 describe("runConfigPackForCustomer testbed enforcement", () => {
@@ -186,17 +186,17 @@ describe("runConfigPackForCustomer tenant preconditions (#4513)", () => {
     // #4522 — the real template resolves {{caPolicyState}}; an enforcing replacement
     // only exists under the explicit "immediate" mode.
     withCaState("{{caPolicyState}}");
-    getSubscribedSkuPartNumbersForTenant.mockResolvedValue({ skuPartNumbers: new Set(["ENTERPRISEPACK"]), error: null });
+    getProvisionedServicePlanNamesForTenant.mockResolvedValue({ servicePlanNames: new Set(["EXCHANGE_S_ENTERPRISE", "SHAREPOINTENTERPRISE"]), error: null });
     await expect(
       runConfigPackForCustomer({ packKey: "sample-pack", customerId: TESTBED_CUSTOMER.id, caEnforcementMode: "immediate" }),
     ).rejects.toMatchObject({ code: "license_required" });
-    expect(getSubscribedSkuPartNumbersForTenant).toHaveBeenCalledWith(TESTBED_CUSTOMER.tenantId);
+    expect(getProvisionedServicePlanNamesForTenant).toHaveBeenCalledWith(TESTBED_CUSTOMER.tenantId);
     expect(fireWorkflowForDefinition).not.toHaveBeenCalled();
   });
 
   it("refuses a licensed tenant when the CA replacement is report-only, and never fires", async () => {
     withCaState("enabledForReportingButNotEnforced");
-    getSubscribedSkuPartNumbersForTenant.mockResolvedValue({ skuPartNumbers: new Set(["AAD_PREMIUM"]), error: null });
+    getProvisionedServicePlanNamesForTenant.mockResolvedValue({ servicePlanNames: new Set(["EXCHANGE_S_ENTERPRISE", "AAD_PREMIUM"]), error: null });
     await expect(
       runConfigPackForCustomer({ packKey: "sample-pack", customerId: TESTBED_CUSTOMER.id }),
     ).rejects.toMatchObject({ code: "security_defaults_replacement_not_enforcing" });
@@ -206,7 +206,7 @@ describe("runConfigPackForCustomer tenant preconditions (#4513)", () => {
   // #4522 — monitor-first by default.
   it("resolves {{caPolicyState}} report-only when no mode is chosen, so Security Defaults stays on", async () => {
     withCaState("{{caPolicyState}}");
-    getSubscribedSkuPartNumbersForTenant.mockResolvedValue({ skuPartNumbers: new Set(["AAD_PREMIUM"]), error: null });
+    getProvisionedServicePlanNamesForTenant.mockResolvedValue({ servicePlanNames: new Set(["EXCHANGE_S_ENTERPRISE", "AAD_PREMIUM"]), error: null });
     await expect(
       runConfigPackForCustomer({ packKey: "sample-pack", customerId: TESTBED_CUSTOMER.id }),
     ).rejects.toMatchObject({

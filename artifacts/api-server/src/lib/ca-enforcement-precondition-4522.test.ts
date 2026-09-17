@@ -34,9 +34,10 @@ import {
 } from "./ca-enforcement-mode.ts";
 import { evaluateConfigPackPreconditions, type PackPreconditionStep } from "./config-pack-preconditions.ts";
 import { runTemplateResolveSteps, type BaselineTemplateResolveStep } from "./resolve-then-write.ts";
-import type { TenantLicenseSkuResult } from "./license-gate.ts";
+import type { TenantServicePlanResult } from "./license-gate.ts";
 
-const P1: TenantLicenseSkuResult = { skuPartNumbers: new Set(["ENTERPRISEPACK", "AAD_PREMIUM"]), error: null };
+// #4535 — provisioned service plans: P1 held through a Microsoft 365 E5 bundle.
+const P1: TenantServicePlanResult = { servicePlanNames: new Set(["EXCHANGE_S_ENTERPRISE", "AAD_PREMIUM", "AAD_PREMIUM_P2"]), error: null };
 
 // Real baseline_action_templates rows after the #4522 migration.
 const mfaAllUsers: PackPreconditionStep = {
@@ -124,7 +125,7 @@ describe("classifyCaEnforcementWrite", () => {
 
 describe("precondition rule 0 — CA enforcement only by explicit choice", () => {
   const evaluate = (steps: PackPreconditionStep[], payload: Record<string, unknown>, mode?: "monitor-first" | "immediate") =>
-    evaluateConfigPackPreconditions({ packKey: "p", steps, payload, tenantSkus: P1, ...(mode ? { caEnforcementMode: mode } : {}) });
+    evaluateConfigPackPreconditions({ packKey: "p", steps, payload, tenantPlans: P1, ...(mode ? { caEnforcementMode: mode } : {}) });
 
   it("lets a monitor-first CA create through — {{caPolicyState}} resolves report-only", () => {
     expect(evaluate([mfaAllUsers], { breakGlassGroupId: "g", caEnforcementMode: "monitor-first", caPolicyState: CA_STATE_REPORT_ONLY }, "monitor-first"))
@@ -154,7 +155,7 @@ describe("precondition rule 0 — CA enforcement only by explicit choice", () =>
   it("is refused ahead of the license rule, whatever the tenant holds", () => {
     const refusal = evaluateConfigPackPreconditions({
       packKey: "p", steps: [enforceExisting, mfaAllUsers], payload: { policyId: POLICY_ID, breakGlassGroupId: "g" },
-      tenantSkus: { skuPartNumbers: new Set(["ENTERPRISEPACK"]), error: null },
+      tenantPlans: { servicePlanNames: new Set(["EXCHANGE_S_ENTERPRISE", "SHAREPOINTENTERPRISE"]), error: null },
     });
     expect(refusal?.code).toBe("ca_enforcement_requires_promotion");
   });

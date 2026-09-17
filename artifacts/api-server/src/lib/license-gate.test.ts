@@ -51,7 +51,6 @@ vi.mock("./logger.ts", () => {
 
 import { ConsentRevokedError, LicenseGapError } from "./graph.ts";
 import {
-  getSubscribedSkuPartNumbersForTenant,
   getProvisionedServicePlanNamesForTenant,
   tenantHasRequiredLicense,
   describeRequiredLicense,
@@ -64,62 +63,6 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 beforeEach(() => {
   mockGraphFetchForTenant.mockReset();
-});
-
-describe("getSubscribedSkuPartNumbersForTenant", () => {
-  it("returns the tenant's Enabled skuPartNumbers from a real /subscribedSkus shape", async () => {
-    mockGraphFetchForTenant.mockResolvedValueOnce(
-      jsonResponse({
-        value: [
-          { skuPartNumber: "SPE_E3", capabilityStatus: "Enabled" },
-          { skuPartNumber: "AAD_PREMIUM", capabilityStatus: "Enabled" },
-          { skuPartNumber: "FLOW_FREE", capabilityStatus: "Suspended" },
-        ],
-      }),
-    );
-
-    const result = await getSubscribedSkuPartNumbersForTenant("tenant-a");
-    expect(result.error).toBeNull();
-    expect(result.skuPartNumbers).toEqual(new Set(["SPE_E3", "AAD_PREMIUM"]));
-    expect(mockGraphFetchForTenant).toHaveBeenCalledWith("tenant-a", "/subscribedSkus?$select=skuPartNumber,capabilityStatus");
-  });
-
-  it("caches per tenant for the TTL window — a second call within it does not re-hit Graph", async () => {
-    mockGraphFetchForTenant.mockResolvedValueOnce(
-      jsonResponse({ value: [{ skuPartNumber: "AAD_PREMIUM_P2", capabilityStatus: "Enabled" }] }),
-    );
-
-    const first = await getSubscribedSkuPartNumbersForTenant("tenant-cache");
-    const second = await getSubscribedSkuPartNumbersForTenant("tenant-cache");
-    expect(first.skuPartNumbers).toEqual(second.skuPartNumbers);
-    expect(mockGraphFetchForTenant).toHaveBeenCalledTimes(1);
-  });
-
-  it("fails closed (empty set + error) on a non-OK response, never throwing", async () => {
-    mockGraphFetchForTenant.mockResolvedValueOnce(new Response("forbidden", { status: 403 }));
-
-    const result = await getSubscribedSkuPartNumbersForTenant("tenant-b");
-    expect(result.skuPartNumbers.size).toBe(0);
-    expect(result.error).toContain("403");
-  });
-
-  it("surfaces a real ConsentRevokedError as an honest error, not a thrown exception", async () => {
-    mockGraphFetchForTenant.mockRejectedValueOnce(new ConsentRevokedError("tenant-c"));
-
-    const result = await getSubscribedSkuPartNumbersForTenant("tenant-c");
-    expect(result.skuPartNumbers.size).toBe(0);
-    expect(result.error).toMatch(/consent/i);
-  });
-
-  it("surfaces a real LicenseGapError as an honest error, not a thrown exception", async () => {
-    mockGraphFetchForTenant.mockRejectedValueOnce(
-      new LicenseGapError("tenant-d", "Microsoft Entra ID Premium (P1/P2)", "Authorization_RequestDenied", "{}", 403),
-    );
-
-    const result = await getSubscribedSkuPartNumbersForTenant("tenant-d");
-    expect(result.skuPartNumbers.size).toBe(0);
-    expect(result.error).toContain("Microsoft Entra ID Premium (P1/P2)");
-  });
 });
 
 describe("getProvisionedServicePlanNamesForTenant (#4512)", () => {
@@ -148,6 +91,71 @@ describe("getProvisionedServicePlanNamesForTenant (#4512)", () => {
     expect(mockGraphFetchForTenant).toHaveBeenCalledWith("tenant-plans-a", "/subscribedSkus?$select=capabilityStatus,servicePlans");
   });
 
+  // #4535 — the gate's own regression. The removed skuPartNumber test used a
+  // tenant holding SPE_E3 AND a standalone AAD_PREMIUM SKU, so it passed while
+  // every bundle-only tenant was blocked. These tenants hold P1/P2 ONLY inside a
+  // bundle: no skuPartNumber matches the catalog's ["AAD_PREMIUM","AAD_PREMIUM_P2"].
+  it.each([
+    ["SPE_E5", ["AAD_PREMIUM", "AAD_PREMIUM_P2", "EXCHANGE_S_ENTERPRISE", "INTUNE_A"]],
+    ["SPE_E3", ["AAD_PREMIUM", "EXCHANGE_S_ENTERPRISE", "INTUNE_A"]],
+    ["SPB", ["AAD_PREMIUM", "EXCHANGE_S_STANDARD", "INTUNE_A"]],
+    ["EMS", ["AAD_PREMIUM", "INTUNE_A", "RMS_S_PREMIUM"]],
+  ])("licenses a tenant holding Entra ID P1 only through the %s bundle", async (skuPartNumber, planNames) => {
+    mockGraphFetchForTenant.mockResolvedValueOnce(
+      jsonResponse({
+        value: [
+          {
+            skuPartNumber,
+            capabilityStatus: "Enabled",
+            servicePlans: planNames.map((servicePlanName) => ({ servicePlanName, provisioningStatus: "Success" })),
+          },
+        ],
+      }),
+    );
+
+    const result = await getProvisionedServicePlanNamesForTenant(`tenant-bundle-${skuPartNumber}`);
+    expect(result.error).toBeNull();
+    expect(result.servicePlanNames.has(skuPartNumber)).toBe(false);
+    expect(tenantHasRequiredLicense(["AAD_PREMIUM", "AAD_PREMIUM_P2"], result.servicePlanNames)).toBe(true);
+  });
+
+  it("does not license a tenant whose bundle carries no provisioned P1 plan (the testbed's real Office 365 E3)", async () => {
+    // tenant-scans/2026-09-17-testbed-full-scan.json: ENTERPRISEPACK ships no
+    // AAD_PREMIUM plan at all, and a plan switched off on a bundle does not count.
+    mockGraphFetchForTenant.mockResolvedValueOnce(
+      jsonResponse({
+        value: [
+          {
+            skuPartNumber: "ENTERPRISEPACK",
+            capabilityStatus: "Enabled",
+            servicePlans: [
+              { servicePlanName: "EXCHANGE_S_ENTERPRISE", provisioningStatus: "Success" },
+              { servicePlanName: "INTUNE_O365", provisioningStatus: "PendingActivation" },
+            ],
+          },
+          { skuPartNumber: "SPB", capabilityStatus: "Enabled", servicePlans: [{ servicePlanName: "AAD_PREMIUM", provisioningStatus: "Disabled" }] },
+        ],
+      }),
+    );
+
+    const result = await getProvisionedServicePlanNamesForTenant("tenant-no-p1");
+    expect(result.error).toBeNull();
+    expect(tenantHasRequiredLicense(["AAD_PREMIUM", "AAD_PREMIUM_P2"], result.servicePlanNames)).toBe(false);
+  });
+
+  it("caches per tenant for the TTL window — a second call within it does not re-hit Graph", async () => {
+    mockGraphFetchForTenant.mockResolvedValueOnce(
+      jsonResponse({
+        value: [{ skuPartNumber: "SPE_E5", capabilityStatus: "Enabled", servicePlans: [{ servicePlanName: "AAD_PREMIUM_P2", provisioningStatus: "Success" }] }],
+      }),
+    );
+
+    const first = await getProvisionedServicePlanNamesForTenant("tenant-plans-cache");
+    const second = await getProvisionedServicePlanNamesForTenant("tenant-plans-cache");
+    expect(first.servicePlanNames).toEqual(second.servicePlanNames);
+    expect(mockGraphFetchForTenant).toHaveBeenCalledTimes(1);
+  });
+
   it("reports an error, not an empty estate, for a non-OK or paged response", async () => {
     mockGraphFetchForTenant.mockResolvedValueOnce(new Response("forbidden", { status: 403 }));
     const denied = await getProvisionedServicePlanNamesForTenant("tenant-plans-b");
@@ -164,20 +172,29 @@ describe("getProvisionedServicePlanNamesForTenant (#4512)", () => {
     expect(result.servicePlanNames.size).toBe(0);
     expect(result.error).toMatch(/consent/i);
   });
+
+  it("surfaces a LicenseGapError as an honest error, not a thrown exception", async () => {
+    mockGraphFetchForTenant.mockRejectedValueOnce(
+      new LicenseGapError("tenant-plans-e", "Microsoft Entra ID Premium (P1/P2)", "Authorization_RequestDenied", "{}", 403),
+    );
+    const result = await getProvisionedServicePlanNamesForTenant("tenant-plans-e");
+    expect(result.servicePlanNames.size).toBe(0);
+    expect(result.error).toContain("Microsoft Entra ID Premium (P1/P2)");
+  });
 });
 
 describe("tenantHasRequiredLicense", () => {
   it("passes when no requirement is set (null or empty)", () => {
     expect(tenantHasRequiredLicense(null, new Set())).toBe(true);
-    expect(tenantHasRequiredLicense([], new Set(["SPE_E3"]))).toBe(true);
+    expect(tenantHasRequiredLicense([], new Set(["EXCHANGE_S_ENTERPRISE"]))).toBe(true);
   });
 
-  it("passes when ANY ONE of the required SKUs is present", () => {
+  it("passes when ANY ONE of the required plans is present", () => {
     expect(tenantHasRequiredLicense(["AAD_PREMIUM", "AAD_PREMIUM_P2"], new Set(["AAD_PREMIUM_P2"]))).toBe(true);
   });
 
-  it("fails when none of the required SKUs are present", () => {
-    expect(tenantHasRequiredLicense(["AAD_PREMIUM", "AAD_PREMIUM_P2"], new Set(["SPE_E3"]))).toBe(false);
+  it("fails when none of the required plans are present", () => {
+    expect(tenantHasRequiredLicense(["AAD_PREMIUM", "AAD_PREMIUM_P2"], new Set(["EXCHANGE_S_ENTERPRISE", "INTUNE_O365"]))).toBe(false);
   });
 });
 

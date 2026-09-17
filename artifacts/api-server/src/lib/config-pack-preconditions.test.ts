@@ -26,7 +26,7 @@ import {
   isSecurityDefaultsDisableStep,
   type PackPreconditionStep,
 } from "./config-pack-preconditions.ts";
-import type { TenantLicenseSkuResult } from "./license-gate.ts";
+import type { TenantServicePlanResult } from "./license-gate.ts";
 
 const P1_SKUS = ["AAD_PREMIUM", "AAD_PREMIUM_P2"];
 
@@ -63,17 +63,20 @@ const restrictGuests: PackPreconditionStep = {
   requiredLicenseSkuLists: [],
 };
 
-const skus = (...parts: string[]): TenantLicenseSkuResult => ({ skuPartNumbers: new Set(parts), error: null });
-// The testbed tenant's real SKU set from tenant-scans/2026-09-17-testbed-full-scan.json.
-const NO_P1 = skus("FLOW_FREE", "ENTERPRISEPACK", "POWER_BI_STANDARD", "Power_Pages_vTrial_for_Makers");
-const WITH_P1 = skus("ENTERPRISEPACK", "AAD_PREMIUM");
+const plans = (...names: string[]): TenantServicePlanResult => ({ servicePlanNames: new Set(names), error: null });
+// #4535 — license is matched against provisioned service plans, not skuPartNumbers.
+// A sample of the testbed tenant's real provisioned plans (ENTERPRISEPACK, FLOW_FREE,
+// POWER_BI_STANDARD) from tenant-scans/2026-09-17-testbed-full-scan.json — no Entra ID P1.
+const NO_P1 = plans("EXCHANGE_S_ENTERPRISE", "SHAREPOINTENTERPRISE", "TEAMS1", "RMS_S_ENTERPRISE", "FLOW_P2_VIRAL", "BI_AZURE_P0");
+// P1 held only through a Microsoft 365 E5 bundle: no standalone AAD_PREMIUM SKU exists.
+const WITH_P1 = plans("EXCHANGE_S_ENTERPRISE", "AAD_PREMIUM", "AAD_PREMIUM_P2", "INTUNE_A");
 const payload = { breakGlassGroupId: "" };
 
 // #4522 — an enforcing CA create is only allowed under the explicit "immediate"
 // override, so the license and Security Defaults rules below are exercised in that
 // mode; the monitor-first refusal has its own suite (ca-enforcement-precondition-4522.test.ts).
-const evaluate = (steps: PackPreconditionStep[], tenantSkus: TenantLicenseSkuResult | null) =>
-  evaluateConfigPackPreconditions({ packKey: "quickstart-v1", steps, payload, tenantSkus, caEnforcementMode: "immediate" });
+const evaluate = (steps: PackPreconditionStep[], tenantPlans: TenantServicePlanResult | null) =>
+  evaluateConfigPackPreconditions({ packKey: "quickstart-v1", steps, payload, tenantPlans, caEnforcementMode: "immediate" });
 
 describe("license precondition", () => {
   it("refuses license_required when a step's recorded SKUs are not held (tenant 2080's case)", () => {
@@ -91,8 +94,13 @@ describe("license precondition", () => {
     expect(evaluate([disableSecurityDefaults, caBaseline("enabled")], NO_P1)?.code).toBe("license_required");
   });
 
+  it("passes a tenant holding P1 only through a bundle (Microsoft 365 E5 / Business Premium)", () => {
+    expect(evaluate([caBaseline("enabled")], WITH_P1)).toBeNull();
+    expect(evaluate([caBaseline("enabled")], plans("AAD_PREMIUM", "EXCHANGE_S_STANDARD", "INTUNE_A"))).toBeNull();
+  });
+
   it("fails closed when the tenant's licenses could not be read", () => {
-    const unreadable: TenantLicenseSkuResult = { skuPartNumbers: new Set(), error: "Graph /subscribedSkus returned 403" };
+    const unreadable: TenantServicePlanResult = { servicePlanNames: new Set(), error: "Graph /subscribedSkus returned 403" };
     const refusal = evaluate([caBaseline("enabled")], unreadable);
     expect(refusal?.code).toBe("license_required");
     expect(refusal?.details).toMatchObject({ skuReadError: "Graph /subscribedSkus returned 403" });
@@ -100,8 +108,8 @@ describe("license precondition", () => {
 
   it("requires every recorded list when a template has more than one catalog row", () => {
     const step = caBaseline("enabled", { requiredLicenseSkuLists: [P1_SKUS, ["INTUNE_A"]] });
-    expect(evaluate([step], WITH_P1)?.code).toBe("license_required");
-    expect(evaluate([step], skus("AAD_PREMIUM", "INTUNE_A"))).toBeNull();
+    expect(evaluate([step], plans("EXCHANGE_S_ENTERPRISE", "AAD_PREMIUM"))?.code).toBe("license_required");
+    expect(evaluate([step], plans("AAD_PREMIUM", "INTUNE_A"))).toBeNull();
   });
 
   it("passes a pack with no license requirements without reading licenses", () => {
@@ -137,8 +145,8 @@ describe("Security Defaults precondition", () => {
   it("resolves a {{state}} variable the same way execution does, and an unresolved one is not 'enabled'", () => {
     const variableState = caBaseline("{{caState}}");
     const steps = [disableSecurityDefaults, variableState];
-    expect(evaluateConfigPackPreconditions({ packKey: "p", steps, payload: { caState: "enabled" }, tenantSkus: WITH_P1, caEnforcementMode: "immediate" })).toBeNull();
-    expect(evaluateConfigPackPreconditions({ packKey: "p", steps, payload: {}, tenantSkus: WITH_P1 })?.code).toBe(
+    expect(evaluateConfigPackPreconditions({ packKey: "p", steps, payload: { caState: "enabled" }, tenantPlans: WITH_P1, caEnforcementMode: "immediate" })).toBeNull();
+    expect(evaluateConfigPackPreconditions({ packKey: "p", steps, payload: {}, tenantPlans: WITH_P1 })?.code).toBe(
       "security_defaults_replacement_not_enforcing",
     );
   });
@@ -202,7 +210,7 @@ describe("evaluateConfigPackPreconditions subject (#4528)", () => {
       subject: "SOP 'SOP-SEED-IAM-03'",
       steps: [caBaseline("enabled")],
       payload: {},
-      tenantSkus: { skuPartNumbers: new Set(["ENTERPRISEPACK"]), error: null },
+      tenantPlans: NO_P1,
       caEnforcementMode: "immediate",
     });
     expect(refusal?.code).toBe("license_required");
@@ -211,7 +219,7 @@ describe("evaluateConfigPackPreconditions subject (#4528)", () => {
 
   it("refuses a lone Security Defaults disable (an execute_action has no replacement)", () => {
     const refusal = evaluateConfigPackPreconditions({
-      packKey: "a", subject: "Action 'a'", steps: [disableSecurityDefaults], payload: {}, tenantSkus: null,
+      packKey: "a", subject: "Action 'a'", steps: [disableSecurityDefaults], payload: {}, tenantPlans: null,
     });
     expect(refusal?.code).toBe("security_defaults_replacement_not_enforcing");
   });

@@ -31,7 +31,7 @@ vi.mock("../middlewares/requireAuth.ts", async (importOriginal) => ({
 import { db, baselineActionTemplatesTable, tenantsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import executeActionRouter from "../routes/admin-execute-action.ts";
-import { getSubscribedSkuPartNumbersForTenant } from "./license-gate.ts";
+import { getProvisionedServicePlanNamesForTenant } from "./license-gate.ts";
 import { runSopForCustomer } from "./sop-execution.ts";
 import {
   loadRequiredLicenseSkuListsByTemplate,
@@ -56,9 +56,10 @@ beforeAll(async () => {
     .limit(1);
   if (!row?.tenantId) throw new Error("testbed customer McCawSoft not found");
   customer = { id: row.id, mspId: row.mspId, tenantId: row.tenantId };
-  const skus = await getSubscribedSkuPartNumbersForTenant(customer.tenantId);
-  expect(skus.error).toBeNull();
-  lacksP1 = !P1.some((s) => skus.skuPartNumbers.has(s));
+  // #4535 — the gate reads provisioned service plans, so this must too.
+  const plans = await getProvisionedServicePlanNamesForTenant(customer.tenantId);
+  expect(plans.error).toBeNull();
+  lacksP1 = !P1.some((s) => plans.servicePlanNames.has(s));
 });
 
 describe("execute_action (#4528)", () => {

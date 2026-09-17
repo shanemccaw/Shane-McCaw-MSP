@@ -28,7 +28,7 @@
 
 import { db, baselineActionTemplatesTable, writeActionCatalogTable } from "@workspace/db";
 import { inArray, isNotNull } from "drizzle-orm";
-import { getSubscribedSkuPartNumbersForTenant } from "./license-gate.ts";
+import { getProvisionedServicePlanNamesForTenant } from "./license-gate.ts";
 import {
   evaluateConfigPackPreconditions,
   graphWriteShape,
@@ -125,11 +125,13 @@ export async function resolveTenantWritePreconditionRefusal(opts: {
   const { packKey, subject, steps, tenantId, payload, caEnforcementMode } = opts;
   if (steps.length === 0) return null;
 
-  const tenantSkus = steps.some((s) => s.requiredLicenseSkuLists.length > 0)
-    ? await getSubscribedSkuPartNumbersForTenant(tenantId)
+  // Git #4535 — provisioned service plans, not servicePlanNames: Entra ID P1/P2
+  // bundled in E3/E5/Business Premium/EMS satisfies an AAD_PREMIUM requirement.
+  const tenantPlans = steps.some((s) => s.requiredLicenseSkuLists.length > 0)
+    ? await getProvisionedServicePlanNamesForTenant(tenantId)
     : null;
 
-  const refusal = evaluateConfigPackPreconditions({ packKey, subject, steps, payload, tenantSkus, caEnforcementMode });
+  const refusal = evaluateConfigPackPreconditions({ packKey, subject, steps, payload, tenantPlans, caEnforcementMode });
   if (refusal) {
     log.warn(
       { packKey, tenantId, code: refusal.code, details: refusal.details },
