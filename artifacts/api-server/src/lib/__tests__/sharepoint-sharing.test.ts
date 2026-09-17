@@ -576,6 +576,8 @@ describe("compliance:eeeu-site-sharing — end to end through the fan-out execut
     spOperation: null,
     ppOperation: null,
     armOperation: null,
+    gateEndpoint: null,
+    gateExpression: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,

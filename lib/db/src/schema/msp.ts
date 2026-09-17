@@ -2356,6 +2356,22 @@ export const monitorChecksTable = pgTable("monitor_checks", {
    * NULL unless executorType = 'azure-rm'.
    */
   armOperation: text("arm_operation"),
+  // ── Prerequisite gate (#4503, additive, NULL for every other check) ──────────
+  /**
+   * Some Graph endpoints score a feature that most tenants have never turned on
+   * (Application Proxy connector groups scored `0` for every tenant without App
+   * Proxy at all — indistinguishable from "App Proxy is on but has none"). When
+   * `gateEndpoint`/`gateExpression` are both set, the executor fetches this
+   * singleton endpoint FIRST and evaluates `gateExpression` (the same
+   * condition-grammar severity_rules use) against its response. If the gate
+   * expression is false, the check's own `endpoint` is never fetched and no
+   * severity rule is evaluated — the check persists as `status: 'ok'`,
+   * `severityMatched: null` (an honest "not applicable to this tenant", not a
+   * finding). NULL (every existing check) leaves the one-fetch path unchanged.
+   */
+  gateEndpoint: text("gate_endpoint"),
+  /** Condition-grammar expression evaluated against the gate endpoint's response, e.g. `{{isEnabled}} == true`. NULL unless gateEndpoint is set. */
+  gateExpression: text("gate_expression"),
   schemaVersion: integer("schema_version").notNull().default(1),
   status: text("status", { enum: MONITOR_CHECK_STATUS }).notNull().default("active"),
   /**

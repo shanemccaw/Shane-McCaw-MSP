@@ -3765,6 +3765,46 @@ export async function executeMonitorCheck(opts: {
       return await runFanOutCheck({ check, tenantId, triggerId, idempotencyKey, includeItems: opts.includeItems, persistProfile });
     }
 
+    // Prerequisite gate (#4503): some Graph endpoints score a feature most
+    // tenants have never turned on (Application Proxy connector groups scored
+    // `0` for every tenant without App Proxy at all — indistinguishable from
+    // "App Proxy is on but has none configured"). When gateEndpoint/gateExpression
+    // are both set, fetch the gate singleton FIRST and only proceed to the
+    // check's own endpoint if gateExpression matches. NULL (every other check)
+    // leaves this branch dead and the one-fetch path unchanged.
+    if (check.gateEndpoint && check.gateExpression) {
+      const { items: gateItems } = await graphFetchPaginated(tenantId, check.gateEndpoint, "GET");
+      const gateData = (gateItems[0] ?? {}) as Record<string, unknown>;
+      if (!evalConditionGrammar(check.gateExpression, gateData)) {
+        // Gate not satisfied — an honest "not applicable to this tenant," not a
+        // zero-count finding. Persisted the same way any other no-match result is.
+        const profileId = await persistCheckProfile(persistProfile, {
+          tenantId,
+          checkKey: check.key,
+          checkSchemaVersion: check.schemaVersion,
+          triggerId,
+          idempotencyKey,
+          status: "ok",
+          rawResponse: gateData,
+          extractedProperties: { _gateSkipped: true, ...gateData },
+          severityMatched: null,
+          itemCount: 0,
+          pageCount: 1,
+        });
+
+        return {
+          checkKey: check.key,
+          status: "ok",
+          extractedProperties: { _gateSkipped: true, ...gateData },
+          severityMatched: null,
+          itemCount: 0,
+          pageCount: 1,
+          profileId,
+          ...(opts.includeItems ? { items: [] } : {}),
+        };
+      }
+    }
+
     const finalEndpoint = appendQueryParams(check.endpoint, check.selectParams, check.filterParams);
 
     // 1. Paginated Graph API fetch
