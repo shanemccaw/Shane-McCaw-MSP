@@ -8,6 +8,9 @@
  * yet" path (which fires the #3946 backstop's fire-and-forget trigger) never
  * makes a real Graph call — only the ROUTE's ordering/shape is under test
  * here, not the scan engine underneath.
+ *
+ * Skips cleanly with no `DATABASE_URL`. Every row is synthetic and removed in
+ * `afterAll`.
  */
 
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
@@ -23,6 +26,14 @@ import {
   mspDiagnosticFindingsTable,
 } from "@workspace/db";
 import { inArray } from "drizzle-orm";
+
+// This router transitively pulls in workflow-executor → the Anthropic AI
+// integration client, which throws at LOAD time with these unset. Same three
+// stubs public-free-scan-remediate.live-db.test.ts sets for the same reason;
+// nothing under test calls any of them.
+process.env.JWT_SECRET ??= "free-scan-results-test-secret";
+process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL ??= "https://anthropic.test";
+process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY ??= "test-anthropic-key";
 
 const mockRunDiagnostics = vi.fn().mockResolvedValue(undefined);
 vi.mock("../lib/diagnostics-runner.ts", () => ({
