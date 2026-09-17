@@ -104,6 +104,22 @@ function serviceStateOf(result: CheckResult): string | null {
 }
 
 /**
+ * Replaces `<propertyName>` placeholders in a severity rule's own label with
+ * the matching key from the finding's `extractedProperties` (#4479 — a rule
+ * label like "No DMARC record found at _dmarc.<domain>" otherwise reaches the
+ * customer with the literal placeholder still in it). A placeholder with no
+ * matching extracted property is left as-is rather than blanked out.
+ */
+function interpolateSeverityLabel(label: string, result: CheckResult): string {
+  const props = result.extractedProperties as Record<string, unknown> | undefined;
+  if (!props) return label;
+  return label.replace(/<([a-zA-Z_]+)>/g, (match, key: string) => {
+    const value = props[key];
+    return typeof value === "string" && value.trim() ? value : match;
+  });
+}
+
+/**
  * The finding's headline — what the customer actually reads on the Reveal's
  * pillar satellites, the report, and every findings list.
  *
@@ -131,7 +147,7 @@ export function buildFindingTitle(result: CheckResult): string {
   // below it is a fallback for a rule that genuinely carries no label — the
   // generic band text is the last resort, not the normal case it used to be.
   const label = result.severityLabel?.trim();
-  if (label) return label;
+  if (label) return interpolateSeverityLabel(label, result);
   if (result.severityMatched) return `${result.severityMatched} finding detected`;
   if (result.status === "partial") return "Partial coverage — some items could not be scanned";
   return "Check passed";
