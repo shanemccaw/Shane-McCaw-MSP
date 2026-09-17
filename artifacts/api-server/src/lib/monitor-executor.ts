@@ -34,7 +34,7 @@ import {
   recordTenantServiceState,
   serviceDisplayName,
 } from "./service-availability.ts";
-import { maybeCollectDriftForCheck, type DriftAttributionFactory } from "./drift-collector.ts";
+import { maybeCollectDriftForCheck, recordDriftCollectionStatus, type DriftAttributionFactory } from "./drift-collector.ts";
 import { buildDriftScopeAttribution } from "./drift-change-attribution.ts";
 import { driftSpecForCheck } from "./drift-check-specs.ts";
 import { callPsExecution, PsExecutionError } from "./ps-execution-client.ts";
@@ -148,6 +148,14 @@ const FAN_OUT_SAMPLE_ERROR_LIMIT = 5;
  * Graph items for graph/powershell/sharepoint-admin/dns, or the NORMALISED
  * per-source-item rows (`combinedItems`) for a fan-out, which is the shape the
  * fan-out's own mapping already counts.
+ *
+ * `persistProfile` gates this the same way it gates `persistCheckProfile`
+ * (#4536) — a `persistProfile: false` caller (a verification script, the
+ * Simulator Studio trace) is explicitly not the tenant's live signal, and
+ * drift history is exactly that: writing `drift_events` /
+ * `drift_baseline_snapshots` for a non-scoring pass would corrupt the
+ * tenant's real drift timeline the same way writing `tenant_monitor_profiles`
+ * would corrupt its score.
  */
 async function collectDriftForCompletedCheck(
   check: MonitorCheck,
@@ -155,7 +163,9 @@ async function collectDriftForCompletedCheck(
   items: unknown[],
   extracted: Record<string, unknown>,
   status: CheckResult["status"],
+  persistProfile: boolean,
 ): Promise<void> {
+  if (!persistProfile) return;
   try {
     const spec = driftSpecForCheck(check.key);
     if (!spec) return; // not a drift-tracked check — an intended no-op, not a gap
@@ -2476,7 +2486,7 @@ async function runPowerShellCheck(opts: {
   // output shape is confirmed stable. No PS check has a spec yet (see the
   // registry's note on non-deterministic operational readings), so this is a
   // no-op today — but the executor type is wired, not skipped.
-  await collectDriftForCompletedCheck(check, tenantId, items, extracted, "ok");
+  await collectDriftForCompletedCheck(check, tenantId, items, extracted, "ok", opts.persistProfile);
 
   // The container's contract (#210) is one synchronous request/response — no
   // @odata.nextLink, no CSV — so pageCount is always 1.
@@ -2693,7 +2703,7 @@ async function runSharePointAdminCheck(opts: {
   // drift-tracked: the tenant-wide sharing-capability enum is the most stable
   // drift signal there is, and a change to it is a single `replace` at
   // /sharingCapability. Non-fatal, opt-in per check via drift-check-specs.ts.
-  await collectDriftForCompletedCheck(check, tenantId, items, extracted, "ok");
+  await collectDriftForCompletedCheck(check, tenantId, items, extracted, "ok", opts.persistProfile);
 
   // One CSOM round trip, one answer — there is no paging concept here, so
   // pageCount is always 1 (same reasoning as the PowerShell path).
@@ -2901,7 +2911,7 @@ async function runPowerPlatformCheck(opts: {
 
   // Configuration Drift (#1287) — opt-in per check via drift-check-specs.ts, so
   // this is an intended no-op until a Power Platform check is registered there.
-  await collectDriftForCompletedCheck(check, tenantId, items, extracted, "ok");
+  await collectDriftForCompletedCheck(check, tenantId, items, extracted, "ok", opts.persistProfile);
 
   // One BAP round trip, one answer — the admin endpoints used here return a
   // whole collection in a single response, so there is no paging concept and
@@ -3079,7 +3089,7 @@ async function runDnsCheck(opts: {
   // the SPF/DMARC record strings and the DKIM selectors found are a deterministic
   // public-DNS posture, so an edited record or a vanished DKIM key is a `replace`.
   // Non-fatal, opt-in per check via drift-check-specs.ts.
-  await collectDriftForCompletedCheck(check, tenantId, items, extracted, "ok");
+  await collectDriftForCompletedCheck(check, tenantId, items, extracted, "ok", opts.persistProfile);
 
   // One DNS lookup set, one answer — no paging concept here either.
   const pageCount = 1;
@@ -3218,7 +3228,7 @@ async function runAzureRmCheck(opts: {
   const unauthorizedScopes = ctx.scopeOutcomes.filter((o) => !o.ok && o.httpStatus === 403);
   const status: CheckResult["status"] = unauthorizedScopes.length > 0 ? "partial" : "ok";
 
-  await collectDriftForCompletedCheck(check, tenantId, items, extracted, status);
+  await collectDriftForCompletedCheck(check, tenantId, items, extracted, status, opts.persistProfile);
 
   // One GET per scope, and armGetAll already exhausted nextLink within each —
   // there is no per-check paging concept left to report, the same as the
@@ -3665,7 +3675,7 @@ async function runFanOutCheck(opts: {
   // guard (recorded as not_comparable with a specific reason) rather than
   // diffing a partial site set and fabricating "shares were revoked". Today:
   // compliance:eeeu-site-sharing (External Sharing Drift, #1333).
-  await collectDriftForCompletedCheck(check, tenantId, combinedItems, extracted, status);
+  await collectDriftForCompletedCheck(check, tenantId, combinedItems, extracted, status, opts.persistProfile);
 
   const pageCount = enumResult.pageCount + perItemPageTotal;
   const rawResponse = {
@@ -3885,6 +3895,25 @@ export async function executeMonitorCheck(opts: {
       if (!evalConditionGrammar(check.gateExpression, gateData)) {
         // Gate not satisfied — an honest "not applicable to this tenant," not a
         // zero-count finding. Persisted the same way any other no-match result is.
+
+        // #4536 — this return skips step 4b entirely, so a drift-tracked check
+        // gated off this run (e.g. identity:ca-policy-count on a Security
+        // Defaults tenant) would otherwise leave its drift_collection_status
+        // row at whatever it last was, reading as stale "tracked" data rather
+        // than an honest "not collected this run." Record it the same way
+        // maybeCollectDriftForCheck already records any other non-comparable
+        // run, respecting the same persistProfile gate as the drift hook below.
+        if (persistProfile) {
+          const spec = driftSpecForCheck(check.key);
+          if (spec) {
+            await recordDriftCollectionStatus(tenantId, spec.domainKey, {
+              status: "not_comparable",
+              reason: "gate_not_satisfied",
+              checkKey: check.key,
+            });
+          }
+        }
+
         const profileId = await persistCheckProfile(persistProfile, {
           tenantId,
           checkKey: check.key,
@@ -3975,7 +4004,7 @@ export async function executeMonitorCheck(opts: {
     // per check via drift-check-specs.ts. Diffs the RAW `items` (the real config)
     // not the lossy mapped `extracted`. Graph checks with a spec today:
     // identity:ca-policy-count and governance:public-teams-discoverable.
-    await collectDriftForCompletedCheck(check, tenantId, items, extracted, "ok");
+    await collectDriftForCompletedCheck(check, tenantId, items, extracted, "ok", persistProfile);
 
     // 5. Persist result
     const profileId = await persistCheckProfile(persistProfile, {
