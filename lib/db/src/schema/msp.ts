@@ -4527,6 +4527,7 @@ export const configPackTemplatesTable = pgTable("config_pack_templates", {
   index("config_pack_templates_pack_id_idx").on(t.packId),
   index("config_pack_templates_template_id_idx").on(t.templateId),
   index("config_pack_templates_check_key_idx").on(t.checkKey),
+  uniqueIndex("config_pack_templates_pack_template_check_uniq").on(t.packId, t.templateId, sql`coalesce(${t.checkKey}, '')`),
 ]);
 
 export const insertConfigPackTemplateSchema = createInsertSchema(configPackTemplatesTable).omit({ id: true });
