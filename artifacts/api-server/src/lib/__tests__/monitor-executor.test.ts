@@ -1694,6 +1694,7 @@ describe("executeMonitorCheck", () => {
     armOperation: null,
     gateEndpoint: null,
     gateExpression: null,
+    requiredServicePlans: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -1860,6 +1861,7 @@ describe("executeMonitorCheck — cached result label recovery", () => {
     armOperation: null,
     gateEndpoint: null,
     gateExpression: null,
+    requiredServicePlans: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -2283,6 +2285,7 @@ describe("executeMonitorCheck — fan-out (group-scoped)", () => {
     armOperation: null,
     gateEndpoint: null,
     gateExpression: null,
+    requiredServicePlans: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -2525,6 +2528,7 @@ describe("executeMonitorCheck — PowerShell-backed (executorType='powershell')"
     armOperation: null,
     gateEndpoint: null,
     gateExpression: null,
+    requiredServicePlans: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -2707,6 +2711,7 @@ describe("executeMonitorCheck — SharePoint-admin-backed (executorType='sharepo
     armOperation: null,
     gateEndpoint: null,
     gateExpression: null,
+    requiredServicePlans: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -2884,6 +2889,7 @@ describe("executeMonitorCheck — Power-Platform-backed (executorType='power-pla
     armOperation: null,
     gateEndpoint: null,
     gateExpression: null,
+    requiredServicePlans: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -3610,6 +3616,7 @@ describe("executeMonitorCheck — DNS-backed (executorType='dns', #496)", () => 
     armOperation: null,
     gateEndpoint: null,
     gateExpression: null,
+    requiredServicePlans: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -3783,6 +3790,7 @@ describe("executeMonitorCheck — azure-rm transport (#1871)", () => {
     armOperation: "list-custom-role-definitions",
     gateEndpoint: null,
     gateExpression: null,
+    requiredServicePlans: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -3966,6 +3974,7 @@ describe("executeMonitorCheck — prerequisite gate (#4503)", () => {
     armOperation: null,
     gateEndpoint: "https://graph.microsoft.com/beta/onPremisesPublishingProfiles/applicationProxy",
     gateExpression: "{{isEnabled}} == true",
+    requiredServicePlans: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -4014,5 +4023,261 @@ describe("executeMonitorCheck — prerequisite gate (#4503)", () => {
     expect(result.status).toBe("ok");
     expect(result.severityMatched).toBe("info");
     expect(result.extractedProperties.connectorGroupCount).toBe(0);
+  });
+});
+
+// ── #4512: the Conditional Access criticals test real policy state ───────────
+//
+// ca-mfa-coverage / ca-legacy-auth-block / ca-policy-count used to be
+// exists(grantControls) / exists(conditions) / count(id), so one report-only
+// policy cleared all three, Security Defaults was ignored, and a tenant without
+// Entra ID P1 (whose CA policy list is a clean, empty 200) scored critical. The
+// mapping/severity/gate/license values below are the ones
+// lib/db/migrations/manual/2026-09-17-ca-checks-real-state-4512.sql stores.
+
+describe("Conditional Access checks — real policy state (#4512)", () => {
+  const mockFetch = graphFetchForTenant as Mock;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const MFA_MAPPING: MappingRule[] = [{
+    sourceField: "value",
+    targetField: "caMfaEnforcedPolicyCount",
+    transform: "countWhere(\"{{state}} == 'enabled' && {{conditions.users.includeUsers}} contains 'All' && {{conditions.applications.includeApplications}} contains 'All' && {{grantControls.builtInControls}} contains 'mfa' || {{state}} == 'enabled' && {{conditions.users.includeUsers}} contains 'All' && {{conditions.applications.includeApplications}} contains 'All' && {{grantControls.authenticationStrength.id}} != null\")",
+  }];
+  const MFA_SEVERITY: SeverityRule[] = [
+    { severity: "critical", expression: "caMfaEnforcedPolicyCount == 0", label: "No enforced Conditional Access policy requires MFA for all users" },
+  ];
+  const LEGACY_MAPPING: MappingRule[] = [{
+    sourceField: "value",
+    targetField: "caLegacyAuthBlockEnforcedPolicyCount",
+    transform: "countWhere(\"{{state}} == 'enabled' && {{conditions.users.includeUsers}} contains 'All' && {{conditions.clientAppTypes}} contains 'exchangeActiveSync' && {{conditions.clientAppTypes}} contains 'other' && {{grantControls.builtInControls}} contains 'block'\")",
+  }];
+  const COUNT_MAPPING: MappingRule[] = [
+    { sourceField: "id", targetField: "caPolicyCount", transform: "count" },
+    { sourceField: "value", targetField: "caPolicyCountEnabled", transform: "countWhere(\"{{state}} == 'enabled'\")" },
+    { sourceField: "value", targetField: "caPolicyCountReportOnly", transform: "countWhere(\"{{state}} == 'enabledForReportingButNotEnforced'\")" },
+  ];
+  const COUNT_SEVERITY: SeverityRule[] = [
+    { severity: "critical", expression: "caPolicyCountEnabled == 0 && caPolicyCountReportOnly > 0", label: "No Conditional Access policy is enforced — report-only policies ({{caPolicyCountReportOnly}}) challenge no one" },
+    { severity: "critical", expression: "caPolicyCountEnabled == 0", label: "No Conditional Access policy is enforced — zero Zero Trust enforcement on this tenant" },
+  ];
+
+  // Real Graph v1.0 conditionalAccessPolicy shape, trimmed to the fields read.
+  let policySeq = 0;
+  const policy = (over: {
+    state: string;
+    includeUsers?: string[];
+    includeApplications?: string[];
+    clientAppTypes?: string[];
+    builtInControls?: string[];
+    authenticationStrength?: { id: string } | null;
+  }) => ({
+    id: `policy-${++policySeq}`,
+    displayName: "policy",
+    state: over.state,
+    conditions: {
+      users: { includeUsers: over.includeUsers ?? ["All"], excludeUsers: [] },
+      applications: { includeApplications: over.includeApplications ?? ["All"] },
+      clientAppTypes: over.clientAppTypes ?? ["all"],
+    },
+    grantControls: {
+      operator: "OR",
+      builtInControls: over.builtInControls ?? ["mfa"],
+      authenticationStrength: over.authenticationStrength ?? null,
+    },
+  });
+
+  describe("ca-mfa-coverage mapping", () => {
+    it("does not count a report-only MFA-for-all-users policy — the critical still fires", () => {
+      const extracted = applyMapping([policy({ state: "enabledForReportingButNotEnforced" })], MFA_MAPPING, []);
+      expect(extracted.caMfaEnforcedPolicyCount).toBe(0);
+      expect(classifySeverity(MFA_SEVERITY, extracted)?.severity).toBe("critical");
+    });
+
+    it("does not count a disabled policy, a pilot-group policy, a single-app policy or a block-only grant", () => {
+      const extracted = applyMapping([
+        policy({ state: "disabled" }),
+        policy({ state: "enabled", includeUsers: ["3f1c0a52-0000-0000-0000-000000000001"] }),
+        policy({ state: "enabled", includeApplications: ["797f4846-ba00-4fd7-ba43-dac1f8f63013"] }),
+        policy({ state: "enabled", builtInControls: ["block"] }),
+      ], MFA_MAPPING, []);
+      expect(extracted.caMfaEnforcedPolicyCount).toBe(0);
+    });
+
+    it("counts an enabled policy requiring mfa, or an authentication strength, for all users on all apps", () => {
+      const extracted = applyMapping([
+        policy({ state: "enabled", builtInControls: ["mfa"] }),
+        policy({ state: "enabled", builtInControls: [], authenticationStrength: { id: "00000000-0000-0000-0000-000000000002" } }),
+      ], MFA_MAPPING, []);
+      expect(extracted.caMfaEnforcedPolicyCount).toBe(2);
+      expect(classifySeverity(MFA_SEVERITY, extracted)).toBeNull();
+    });
+  });
+
+  describe("ca-legacy-auth-block mapping", () => {
+    const legacy = { clientAppTypes: ["exchangeActiveSync", "other"], builtInControls: ["block"] };
+
+    it("does not count a report-only legacy-auth block", () => {
+      const extracted = applyMapping([policy({ state: "enabledForReportingButNotEnforced", ...legacy })], LEGACY_MAPPING, []);
+      expect(extracted.caLegacyAuthBlockEnforcedPolicyCount).toBe(0);
+    });
+
+    it("does not count an enabled policy that blocks modern clients, grants mfa, or misses a legacy client type", () => {
+      const extracted = applyMapping([
+        policy({ state: "enabled", clientAppTypes: ["browser", "mobileAppsAndDesktopClients"], builtInControls: ["block"] }),
+        policy({ state: "enabled", clientAppTypes: ["exchangeActiveSync", "other"], builtInControls: ["mfa"] }),
+        policy({ state: "enabled", clientAppTypes: ["exchangeActiveSync"], builtInControls: ["block"] }),
+      ], LEGACY_MAPPING, []);
+      expect(extracted.caLegacyAuthBlockEnforcedPolicyCount).toBe(0);
+    });
+
+    it("counts an enabled block on exchangeActiveSync and other clients for all users", () => {
+      const extracted = applyMapping([policy({ state: "enabled", ...legacy })], LEGACY_MAPPING, []);
+      expect(extracted.caLegacyAuthBlockEnforcedPolicyCount).toBe(1);
+    });
+  });
+
+  describe("ca-policy-count mapping", () => {
+    it("counts enabled and report-only separately, and only enabled policies clear the critical", () => {
+      const reportOnly = applyMapping([
+        policy({ state: "enabledForReportingButNotEnforced" }),
+        policy({ state: "enabledForReportingButNotEnforced" }),
+        policy({ state: "disabled" }),
+      ], COUNT_MAPPING, ["id", "displayName", "state"]);
+      expect(reportOnly.caPolicyCount).toBe(3);
+      expect(reportOnly.caPolicyCountEnabled).toBe(0);
+      expect(reportOnly.caPolicyCountReportOnly).toBe(2);
+      expect(classifySeverity(COUNT_SEVERITY, reportOnly)).toEqual({
+        severity: "critical",
+        label: "No Conditional Access policy is enforced — report-only policies (2) challenge no one",
+      });
+
+      const enforced = applyMapping([policy({ state: "enabled" }), policy({ state: "enabledForReportingButNotEnforced" })], COUNT_MAPPING, []);
+      expect(enforced.caPolicyCountEnabled).toBe(1);
+      expect(enforced.caPolicyCountReportOnly).toBe(1);
+      expect(classifySeverity(COUNT_SEVERITY, enforced)).toBeNull();
+    });
+  });
+
+  describe("executeMonitorCheck — Security Defaults gate and Entra ID P1 license prerequisite", () => {
+    const caCheck = {
+      id: 13,
+      checkId: "ca-mfa-coverage-uuid",
+      key: "identity:ca-mfa-coverage",
+      label: "CA MFA Requirement Coverage",
+      description: null,
+      endpoint: "/identity/conditionalAccess/policies",
+      method: "GET",
+      requestBody: null,
+      selectParams: null,
+      filterParams: null,
+      properties: ["id", "displayName", "state"] as string[],
+      mapping: MFA_MAPPING as Array<{ sourceField: string; targetField: string; transform?: string }>,
+      severityRules: MFA_SEVERITY as Array<{ expression: string; severity: string; label?: string }>,
+      outputSchema: null,
+      engines: ["security"] as string[],
+      frequency: "daily" as const,
+      requiresCustomerScript: false,
+      scriptPackageId: null,
+      fanOutSource: null,
+      fanOutItemIdField: null,
+      fanOutMaxItems: null,
+      fanOutItemFilter: null,
+      fanOutItemNormalizer: null,
+      executorType: "graph" as const,
+      psCmdletKey: null,
+      psParams: null,
+      spOperation: null,
+      ppOperation: null,
+      armOperation: null,
+      gateEndpoint: "/policies/identitySecurityDefaultsEnforcementPolicy",
+      gateExpression: "{{isEnabled}} != true",
+      requiredServicePlans: ["AAD_PREMIUM", "AAD_PREMIUM_P2"],
+      schemaVersion: 2,
+      status: "active" as const,
+      createdByAdminId: null,
+      updatedByAdminId: null,
+      isCustomerFacing: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const graphJson = (body: unknown, status = 200) => ({
+      ok: status >= 200 && status < 300,
+      status,
+      text: async () => JSON.stringify(body),
+      json: async () => body,
+      headers: { get: () => "application/json" },
+    });
+    const securityDefaults = (isEnabled: boolean) =>
+      graphJson({ id: "00000000-0000-0000-0000-000000000005", displayName: "Security Defaults", isEnabled });
+    // The shape of tenant 2080's real estate: no SKU carries an AAD_PREMIUM plan.
+    const skusWithoutP1 = () => graphJson({ value: [
+      { capabilityStatus: "Enabled", servicePlans: [{ servicePlanName: "EXCHANGE_S_ENTERPRISE", provisioningStatus: "Success" }] },
+      { capabilityStatus: "Enabled", servicePlans: [{ servicePlanName: "FLOW_P2_VIRAL", provisioningStatus: "Success" }] },
+    ] });
+    // P1 bundled inside Microsoft 365 E3 (SPE_E3) — not the standalone AAD_PREMIUM SKU.
+    const skusWithBundledP1 = () => graphJson({ value: [
+      { capabilityStatus: "Enabled", servicePlans: [
+        { servicePlanName: "EXCHANGE_S_ENTERPRISE", provisioningStatus: "Success" },
+        { servicePlanName: "AAD_PREMIUM", provisioningStatus: "Success" },
+      ] },
+    ] });
+
+    it("Security Defaults on: suppressed — no license read, no policy fetch, no finding", async () => {
+      mockFetch.mockResolvedValueOnce(securityDefaults(true));
+
+      const result = await executeMonitorCheck({ check: caCheck, tenantId: "tenant-4512-sd", triggerId: "run-sd", skipIdempotency: true });
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(result.status).toBe("ok");
+      expect(result.severityMatched).toBeNull();
+      expect(result.extractedProperties._gateSkipped).toBe(true);
+      expect(result.extractedProperties.isEnabled).toBe(true);
+    });
+
+    it("Security Defaults off, no Entra ID P1: license gap, not critical — the CA policy list is never read", async () => {
+      mockFetch.mockResolvedValueOnce(securityDefaults(false)).mockResolvedValueOnce(skusWithoutP1());
+
+      const result = await executeMonitorCheck({ check: caCheck, tenantId: "tenant-4512-nop1", triggerId: "run-nop1", skipIdempotency: true });
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(mockFetch.mock.calls[1][1]).toBe("/subscribedSkus?$select=capabilityStatus,servicePlans");
+      expect(result.status).toBe("license_gap");
+      expect(result.severityMatched).toBeNull();
+      expect(result.errorMessage).toBe("Requires Microsoft Entra ID P1 or P2");
+      expect(result.licenseFeature).toBe("Microsoft Entra ID P1 or P2");
+      expect(result.extractedProperties.hasAADP1orP2).toBe(false);
+    });
+
+    it("Security Defaults off, P1 bundled in SPE_E3, only a report-only policy: critical", async () => {
+      mockFetch
+        .mockResolvedValueOnce(securityDefaults(false))
+        .mockResolvedValueOnce(skusWithBundledP1())
+        .mockResolvedValueOnce(graphJson({ value: [policy({ state: "enabledForReportingButNotEnforced" })] }));
+
+      const result = await executeMonitorCheck({ check: caCheck, tenantId: "tenant-4512-e3", triggerId: "run-e3", skipIdempotency: true });
+
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(result.status).toBe("ok");
+      expect(result.extractedProperties.caMfaEnforcedPolicyCount).toBe(0);
+      expect(result.severityMatched).toBe("critical");
+    });
+
+    it("a failed license read never manufactures a gap — the check runs and scores the real policies", async () => {
+      mockFetch
+        .mockResolvedValueOnce(securityDefaults(false))
+        .mockResolvedValueOnce({ ...graphJson({}, 403), text: async () => "forbidden" })
+        .mockResolvedValueOnce(graphJson({ value: [policy({ state: "enabled" })] }));
+
+      const result = await executeMonitorCheck({ check: caCheck, tenantId: "tenant-4512-skuerr", triggerId: "run-skuerr", skipIdempotency: true });
+
+      expect(result.status).toBe("ok");
+      expect(result.extractedProperties.caMfaEnforcedPolicyCount).toBe(1);
+      expect(result.severityMatched).toBeNull();
+    });
   });
 });

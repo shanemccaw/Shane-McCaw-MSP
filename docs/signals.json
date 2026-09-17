@@ -2401,7 +2401,7 @@
   },
   {
     "signal_key": "signal.identity.ca-legacy-auth-block",
-    "source_key": "caLegacyAuthBlockExists",
+    "source_key": "caLegacyAuthBlockEnforcedPolicyCount",
     "pillar": "security",
     "description": "Auto-generated from identity:ca-legacy-auth-block -- high severity, security pillar.",
     "severity": "high",
@@ -2416,7 +2416,7 @@
   },
   {
     "signal_key": "signal.identity.ca-mfa-coverage",
-    "source_key": "caMfaPolicyExists",
+    "source_key": "caMfaEnforcedPolicyCount",
     "pillar": "security",
     "description": "Auto-generated from identity:ca-mfa-coverage -- critical severity, security pillar.",
     "severity": "critical",
@@ -2431,7 +2431,7 @@
   },
   {
     "signal_key": "signal.identity.ca-policy-count",
-    "source_key": "caPolicyCount",
+    "source_key": "caPolicyCountEnabled",
     "pillar": "security",
     "description": "Auto-generated from identity:ca-policy-count -- medium severity, security pillar.",
     "severity": "medium",

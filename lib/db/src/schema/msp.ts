@@ -2372,6 +2372,21 @@ export const monitorChecksTable = pgTable("monitor_checks", {
   gateEndpoint: text("gate_endpoint"),
   /** Condition-grammar expression evaluated against the gate endpoint's response, e.g. `{{isEnabled}} == true`. NULL unless gateEndpoint is set. */
   gateExpression: text("gate_expression"),
+  // ── License prerequisite (#4512, additive, NULL for every other check) ──────
+  /**
+   * Real Graph `servicePlanName` values, ANY ONE of which the tenant must have
+   * provisioned for this check to mean anything — e.g. `["AAD_PREMIUM",
+   * "AAD_PREMIUM_P2"]` on the Conditional Access checks. Some endpoints answer
+   * an unlicensed tenant with a clean empty list rather than a 403 (the CA
+   * policy list does), which the check would otherwise score as a real zero.
+   * When set, the executor reads the tenant's live `/subscribedSkus` service
+   * plans after any gate and, if none is provisioned, persists the check as
+   * `status: 'license_gap'` — the same result a license-gated 403 produces —
+   * instead of evaluating severity. Service plans rather than skuPartNumbers,
+   * because P1 ships inside bundles (SPE_E3, SPB, EMS) under other SKU names.
+   * A failed license read never manufactures a gap: the check runs normally.
+   */
+  requiredServicePlans: jsonb("required_service_plans").$type<string[] | null>(),
   schemaVersion: integer("schema_version").notNull().default(1),
   status: text("status", { enum: MONITOR_CHECK_STATUS }).notNull().default("active"),
   /**

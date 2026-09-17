@@ -64,6 +64,7 @@ import {
 import { normalizeSiteSharing, SHAREPOINT_SITE_SHARING_NORMALIZER } from "./sharepoint-sharing.ts";
 import { normalizeDriveSharing, ONEDRIVE_DRIVE_SHARING_NORMALIZER } from "./onedrive-sharing.ts";
 import { syncTenantServicePlans } from "./tenant-workloads.ts";
+import { getProvisionedServicePlanNamesForTenant, tenantHasRequiredLicense, licenseFeatureName } from "./license-gate.ts";
 import { logger } from "./logger.ts";
 const log = logger.child({ channel: "engine.monitor" });
 
@@ -3908,6 +3909,33 @@ export async function executeMonitorCheck(opts: {
           profileId,
           ...(opts.includeItems ? { items: [] } : {}),
         };
+      }
+    }
+
+    // License prerequisite (#4512): the Conditional Access policy list answers a
+    // tenant without Entra ID P1 with a clean 200 and zero policies, which the
+    // CA checks scored as "no policy exists" → critical. When a check names the
+    // service plans it needs, confirm one is provisioned before fetching, and
+    // report a missing one through the same LicenseGapError path a
+    // license-gated 403 already takes (caught below → status 'license_gap').
+    // Runs after the gate, so a gate that already settled the question (e.g.
+    // Security Defaults on) is not overridden by a license gap. A failed read
+    // is "unknown" and never manufactures a gap — the check runs as before.
+    if (Array.isArray(check.requiredServicePlans) && check.requiredServicePlans.length > 0) {
+      const plans = await getProvisionedServicePlanNamesForTenant(tenantId);
+      if (plans.error) {
+        log.warn(
+          { checkKey: check.key, tenantId, requiredServicePlans: check.requiredServicePlans, error: plans.error },
+          "monitor-executor: license prerequisite could not be read — running the check without it",
+        );
+      } else if (!tenantHasRequiredLicense(check.requiredServicePlans, plans.servicePlanNames)) {
+        throw new LicenseGapError(
+          tenantId,
+          licenseFeatureName(check.requiredServicePlans),
+          "requiredServicePlanNotProvisioned",
+          JSON.stringify({ requiredServicePlans: check.requiredServicePlans }),
+          null,
+        );
       }
     }
 

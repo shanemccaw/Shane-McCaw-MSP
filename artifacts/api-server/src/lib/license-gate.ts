@@ -91,6 +91,92 @@ export async function getSubscribedSkuPartNumbersForTenant(tenantId: string): Pr
   }
 }
 
+interface GraphServicePlan {
+  servicePlanName?: string;
+  provisioningStatus?: string;
+}
+
+interface GraphSubscribedSkuWithPlans {
+  capabilityStatus?: string;
+  servicePlans?: GraphServicePlan[];
+}
+
+interface GraphSubscribedSkusWithPlansPage {
+  value?: GraphSubscribedSkuWithPlans[];
+  "@odata.nextLink"?: string;
+}
+
+export interface TenantServicePlanResult {
+  /** `servicePlanName` of every provisioned plan across the tenant's usable SKUs. Empty on error. */
+  servicePlanNames: Set<string>;
+  /** Set only when the read failed — callers must treat this as "unknown," never as "unlicensed". */
+  error: string | null;
+}
+
+/**
+ * SKU states whose service plans the tenant can actually use. `Warning` is the
+ * post-expiry grace period, during which every feature still works.
+ */
+const USABLE_SKU_CAPABILITY_STATUSES = new Set(["Enabled", "Warning"]);
+
+const servicePlanCache = new Map<string, { value: TenantServicePlanResult; expiresAt: number }>();
+
+/**
+ * Git #4512 — the tenant's live, provisioned service plan names.
+ *
+ * A capability like Entra ID P1 ships as a SERVICE PLAN (`AAD_PREMIUM`) bundled
+ * inside many SKUs — Microsoft 365 E3/E5 (`SPE_E3`/`SPE_E5`), Business Premium
+ * (`SPB`), EMS — not only as the standalone `AAD_PREMIUM` SKU. A skuPartNumber
+ * membership test reads every one of those bundles as unlicensed, so a monitor
+ * check's license prerequisite is tested against service plans instead.
+ *
+ * "Provisioned" is the one condition settled on #1516 and already used by
+ * tenant-workloads.ts and account-security-graph.ts: `provisioningStatus ===
+ * "Success"`. Read live rather than from a stored snapshot, for the same reason
+ * as the SKU read above, with the same short per-tenant cache so a package run
+ * gating several checks on one license makes one call. Never throws; a paged
+ * response is reported as an error rather than as a smaller, falsely
+ * unlicensed estate.
+ */
+export async function getProvisionedServicePlanNamesForTenant(tenantId: string): Promise<TenantServicePlanResult> {
+  const cached = servicePlanCache.get(tenantId);
+  if (cached && Date.now() < cached.expiresAt) return cached.value;
+
+  try {
+    const res = await graphFetchForTenant(tenantId, "/subscribedSkus?$select=capabilityStatus,servicePlans");
+    if (!res.ok) {
+      const text = await res.text();
+      log.warn({ tenantId, status: res.status, body: text.slice(0, 400) }, "license-gate: /subscribedSkus service plan read failed");
+      return { servicePlanNames: new Set(), error: `Graph /subscribedSkus returned ${res.status}` };
+    }
+    const body = (await res.json()) as GraphSubscribedSkusWithPlansPage;
+    if (typeof body["@odata.nextLink"] === "string" && body["@odata.nextLink"].length > 0) {
+      return { servicePlanNames: new Set(), error: "Graph /subscribedSkus returned a paged response, so its service plan estate would be incomplete" };
+    }
+    const servicePlanNames = new Set<string>();
+    for (const sku of body.value ?? []) {
+      if (!USABLE_SKU_CAPABILITY_STATUSES.has(sku.capabilityStatus ?? "")) continue;
+      for (const plan of sku.servicePlans ?? []) {
+        if (plan.provisioningStatus === "Success" && typeof plan.servicePlanName === "string") {
+          servicePlanNames.add(plan.servicePlanName);
+        }
+      }
+    }
+    const value: TenantServicePlanResult = { servicePlanNames, error: null };
+    servicePlanCache.set(tenantId, { value, expiresAt: Date.now() + SUBSCRIBED_SKU_CACHE_TTL_MS });
+    return value;
+  } catch (err) {
+    if (err instanceof ConsentRevokedError) {
+      return { servicePlanNames: new Set(), error: "Admin consent for this tenant has been revoked or was never granted" };
+    }
+    if (err instanceof LicenseGapError) {
+      return { servicePlanNames: new Set(), error: `Graph reported a license gap reading /subscribedSkus: ${err.feature}` };
+    }
+    log.warn({ err, tenantId }, "license-gate: getProvisionedServicePlanNamesForTenant unexpected error");
+    return { servicePlanNames: new Set(), error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 /**
  * The single clean membership check, shared by server-side execute
  * enforcement and the GET listing's availability computation — ANY ONE of
@@ -122,10 +208,21 @@ const LICENSE_SKU_DISPLAY: Record<string, { family: string; label: string }> = {
  * thing.
  */
 export function describeRequiredLicense(requiredSkus: readonly string[]): string {
+  return `Requires ${licenseFeatureName(requiredSkus)}`;
+}
+
+/**
+ * The bare feature name behind describeRequiredLicense, e.g. "Microsoft Entra
+ * ID P1 or P2" — for callers that supply their own verb, such as a
+ * LicenseGapError's `feature` (executeMonitorCheck prefixes "Requires "). The
+ * Entra ID keys above are both real skuPartNumbers and real servicePlanNames,
+ * so this reads either vocabulary.
+ */
+export function licenseFeatureName(requiredSkus: readonly string[]): string {
   const known = requiredSkus.map((sku) => LICENSE_SKU_DISPLAY[sku]);
   const allKnown = known.every((k): k is { family: string; label: string } => Boolean(k));
   if (allKnown && new Set(known.map((k) => k!.family)).size === 1) {
-    return `Requires ${known[0]!.family} ${known.map((k) => k!.label).join(" or ")}`;
+    return `${known[0]!.family} ${known.map((k) => k!.label).join(" or ")}`;
   }
-  return `Requires ${requiredSkus.join(" or ")}`;
+  return requiredSkus.join(" or ");
 }
