@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { useScanStateContext } from "@/components/shell/scanStateContext";
 import type { PillarSummaryPayloadWire } from "./types";
 
 const PILLARS_URL = "/api/portal/pillars";
@@ -26,9 +27,17 @@ export interface PillarPageState {
  * fixture fallback on a failed or empty read — a real read failure renders
  * the honest error state, and a genuinely never-scanned tenant renders the
  * honest never-scanned state, never a fabricated card.
+ *
+ * Git #4557 — also refetches the instant `PortalShell`'s real scan phase
+ * (`useScanState`, shared via `scanStateContext` since this hook runs below
+ * the shell, not inside it) transitions into `complete`/`partial`. Without
+ * this, a pillar page already open when a scan finishes kept showing
+ * whatever was true at mount — "never scanned" / stale findings — until a
+ * full reload happened to refire the fetch effect.
  */
 export function usePillarPage(): PillarPageState {
   const { fetchWithAuth, user } = useAuth();
+  const scanPhase = useScanStateContext()?.phase ?? null;
   const [payload, setPayload] = useState<PillarSummaryPayloadWire | null>(null);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
@@ -65,7 +74,7 @@ export function usePillarPage(): PillarPageState {
     return () => {
       cancelled = true;
     };
-  }, [user, fetchWithAuth, attempt]);
+  }, [user, fetchWithAuth, attempt, scanPhase]);
 
   const refetch = useCallback(() => setAttempt((n) => n + 1), []);
 

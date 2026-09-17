@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { PILLAR_KEYS, severityForScore, type PillarKey, type Severity } from "@workspace/copilot-scan-scene/journeyTokens";
+import type { ScanPhase } from "./scanTypes";
 
 /**
  * Minimal client-side mirror of the real `GET /api/portal/pillars` wire shape
@@ -50,8 +51,15 @@ const EMPTY_SCORES: Readonly<Record<PillarKey, PillarShellScore>> = Object.fromE
  * frame-level wash (README: "The severity wash from the design export lives
  * here, at the frame level"). Both come from the same fetch so the tab
  * scores and the wash can never disagree about what was actually observed.
+ *
+ * `scanPhase` (Git #4557) is `PortalShell`'s own real, reactive scan phase
+ * (SSE + adaptive poll, `useScanState`) — passed in so a phase transition
+ * into `complete`/`partial` refetches this summary instead of it only ever
+ * reflecting whatever was true when the shell first mounted. A tab open
+ * while a scan finishes used to keep reading "never scanned"/a stale score
+ * until the next full page load.
  */
-export function usePillarSummaryShell(): PillarSummaryShellState {
+export function usePillarSummaryShell(scanPhase: ScanPhase): PillarSummaryShellState {
   const { fetchWithAuth, user } = useAuth();
   const [scores, setScores] = useState<Readonly<Record<PillarKey, PillarShellScore>>>(EMPTY_SCORES);
   const [loading, setLoading] = useState(true);
@@ -92,7 +100,7 @@ export function usePillarSummaryShell(): PillarSummaryShellState {
     return () => {
       cancelled = true;
     };
-  }, [user, fetchWithAuth]);
+  }, [user, fetchWithAuth, scanPhase]);
 
   const scoredValues = PILLAR_KEYS.map((k) => scores[k]).filter((s) => s.scored && s.score !== null);
   const overallSeverity: Severity | "none" =

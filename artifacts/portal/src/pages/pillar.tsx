@@ -105,7 +105,11 @@ export default function PillarPage() {
         <span className="text-[20px] font-bold text-[#f8fafc]" style={{ letterSpacing: "-.01em" }}>
           {identity.label}
         </span>
-        <div className="ml-auto flex items-center gap-[6px] text-[11px]" style={{ color: showError ? RED : "#64748b" }}>
+        <div
+          className="ml-auto flex items-center gap-[6px] text-[11px]"
+          style={{ color: showError ? RED : "#64748b" }}
+          data-testid="pillar-state-line"
+        >
           <span className="size-[6px] rounded-full" style={{ background: stateDot }} />
           {stateLine}
           {payload?.activeRunId ? " · scan in progress" : ""}

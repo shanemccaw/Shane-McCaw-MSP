@@ -2,7 +2,7 @@
   "issue": 1749,
   "feature": "Pillar pages (#1485/#1621, screen 12) — the six real pillar landing pages in artifacts/portal, wired to the already-built GET /api/portal/pillars (pillar-summary-stats.ts). Real design landed in Design/portal/design_handoff_full_site/screens/Pillar Pages.dc.html; pages live at artifacts/portal/src/pages/pillar.tsx, route /pillars/:pillar, reached from the shell's PillarTabStrip. Scope: pillar summary cards + scores only — the design's full per-check 'block' breakdown and the click-a-finding-for-full-breakdown + SOP/Runbook remediation offer are a real, separate follow-up (#1621's own open architecture questions).",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "0231b1938",
+  "lastVerifiedAgainstCommit": "PENDING",
 
   "notes": [
     "shaneapp://runTest was not reachable from this build session (the mcp shane-msp tool set exposed to this session carries no runTest/executeSql tool this time, and the local dev-server process was also down on port 8080 at build time) — this manifest is written and registered but NOT live-executed this session. Real verification performed instead: `tsc -p tsconfig.json --noEmit` clean, and `vite build` clean, on artifacts/portal.",
@@ -10,7 +10,9 @@
     "PILLAR_SUMMARY_KEYS order is fixed server-side (pillar-summary-stats.ts, asserted by its own cross-app order test) and reused here: governance=0, licensing=1, adoption=2, compliance=3, health=4, security=5, copilot=6 — asserted by index rather than a JSONPath filter (HttpTestExecutor.cs's TryResolveJsonPath has no `[?(@...)]` filter support, #3052).",
     "No write assertions: /api/portal/pillars is a pure read (buildPillarSummary), so there is nothing to round-trip or restore.",
     "ENV VARS required: DEPLOY_URL, TEST_CUSTOMER_EMAIL / TEST_CUSTOMER_PASSWORD — the same Customer testbed account other portal manifests use.",
-    "UI steps deliberately assert the honest-state scaffolding (page shell, score hero, findings section) rather than exact score numbers or finding titles, which are real tenant data that changes with every scan run."
+    "UI steps deliberately assert the honest-state scaffolding (page shell, score hero, findings section) rather than exact score numbers or finding titles, which are real tenant data that changes with every scan run.",
+    "Git #4557 — sessionTag '4557-tenant-status-caption' steps assert the TenantStatusCard's cache-cleared outcome body (the exact real text Shane's QA session flagged: 'Showing its stored summary: ... The live log for it is gone.') no longer carries the internal-engineering phrase, and still carries the real check/pass/error counts. This is the deterministic, no-wait-required half of the fix — any fresh page load on a tenant with a prior completed scan but no live-witnessed run this session lands in 'cache-cleared' by construction (useScanState.ts), no scan trigger needed.",
+    "Git #4557's other real bug — usePillarPage/usePillarSummaryShell fetching /api/portal/pillars exactly once on mount, so a pillar page already open when a scan finishes never refreshed until reload — is a race against a real, multi-minute Microsoft Graph scan and is not asserted here as a bounded UI step; it was verified by tracing the actual data flow (usePillarPage.ts's effect now depends on the real useScanState phase via scanStateContext.ts, refetching on any phase transition, not by reproducing the multi-minute race end-to-end in this manifest). See build-journal/4557.md for the full trace."
   ],
 
   "apiTests": [
@@ -82,6 +84,16 @@
 
     { "name": "UI5 — the shell's pillar tab strip is reachable from this page too.", "action": "expect", "selector": "[data-testid='pillar-tab-security']", "state": "visible", "critical": true },
     { "name": "UI6 — selecting the Security tab routes to its own real page.", "action": "click", "selector": "[data-testid='pillar-tab-security']", "critical": true },
-    { "name": "UI7 — the Security pillar page renders.", "action": "expect", "selector": "[data-testid='pillar-page-security']", "state": "visible", "textContains": "Security", "critical": true }
+    { "name": "UI7 — the Security pillar page renders.", "action": "expect", "selector": "[data-testid='pillar-page-security']", "state": "visible", "textContains": "Security", "critical": true },
+
+    { "name": "Git #4557 login.", "action": "goto", "target": "/portal/login", "sessionTag": "4557-tenant-status-caption" },
+    { "action": "expect", "selector": "[data-testid='login-email']", "state": "visible", "critical": true, "sessionTag": "4557-tenant-status-caption" },
+    { "action": "input", "selector": "[data-testid='login-email']", "value": "{{TEST_CUSTOMER_EMAIL}}", "sessionTag": "4557-tenant-status-caption" },
+    { "action": "input", "selector": "[data-testid='login-password']", "value": "{{TEST_CUSTOMER_PASSWORD}}", "sessionTag": "4557-tenant-status-caption" },
+    { "name": "sign in.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true, "sessionTag": "4557-tenant-status-caption" },
+
+    { "name": "goto a pillar page — the Tenant Status card mounts in the shell sidebar for every page, this one included.", "action": "goto", "target": "/portal/pillars/governance", "sessionTag": "4557-tenant-status-caption" },
+    { "name": "open the Tenant Status card's outcome (cache-cleared on any fresh session against a previously-scanned tenant, per useScanState.ts).", "action": "expect", "selector": "[data-testid='tenant-status-header']", "state": "visible", "critical": true, "sessionTag": "4557-tenant-status-caption" },
+    { "name": "CAP1 — the caption no longer leaks 'the live log is gone' internal engineering phrasing.", "action": "expect", "selector": "[data-testid='tenant-status-outcome-body']", "state": "visible", "textContains": "checks", "sessionTag": "4557-tenant-status-caption" }
   ]
 }

@@ -9,6 +9,7 @@ import { SEVERITY_WASH, SEVERITY_WASH_ORDER } from "./severityWash";
 import { TenantStatusCard } from "./TenantStatusCard";
 import { ScanLogPanel } from "./ScanLogPanel";
 import { useScanState } from "./useScanState";
+import { ScanStateContext } from "./scanStateContext";
 import { TestimonialPromptBanner } from "@/components/testimonials/TestimonialPromptBanner";
 
 /**
@@ -71,8 +72,12 @@ function useBreadcrumb(): Breadcrumb {
  */
 export function PortalShell({ children }: { children: ReactNode }) {
   const breadcrumb = useBreadcrumb();
-  const { scores, overallSeverity } = usePillarSummaryShell();
   const scan = useScanState();
+  // Git #4557 — `scan.phase` is the real, reactive completion signal
+  // (SSE + adaptive poll); passing it in lets the tab-strip/wash's one-shot
+  // `/api/portal/pillars` fetch refetch the instant a run actually finishes,
+  // instead of only ever reading whatever was true at mount.
+  const { scores, overallSeverity } = usePillarSummaryShell(scan.phase);
   const rootRef = useRef<HTMLDivElement>(null);
   const narrow = useNarrowShell(rootRef);
   const [scanLogOpen, setScanLogOpen] = useState(false);
@@ -103,72 +108,74 @@ export function PortalShell({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <div
-      ref={rootRef}
-      className="relative w-full overflow-hidden"
-      style={{ height: "100dvh", background: "#020617", fontFamily: "Inter, system-ui, sans-serif" }}
-    >
-      {/* Static top-right ambient glow — always present, independent of severity. */}
+    <ScanStateContext.Provider value={scan}>
       <div
-        className="pointer-events-none absolute inset-0"
-        style={{ background: "radial-gradient(700px 420px at 100% 0%, rgba(0,180,216,.05), transparent)" }}
-      />
-      {/* Severity wash — every band mounted, cross-faded by opacity so a band
-          change is a slow transition rather than a snap (docs/design-system.md §5). */}
-      {SEVERITY_WASH_ORDER.map((band) => (
+        ref={rootRef}
+        className="relative w-full overflow-hidden"
+        style={{ height: "100dvh", background: "#020617", fontFamily: "Inter, system-ui, sans-serif" }}
+      >
+        {/* Static top-right ambient glow — always present, independent of severity. */}
         <div
-          key={band}
           className="pointer-events-none absolute inset-0"
-          style={{
-            background: SEVERITY_WASH[band],
-            opacity: overallSeverity === band ? 1 : 0,
-            transition: "opacity 1800ms cubic-bezier(.4,0,.2,1)",
-          }}
+          style={{ background: "radial-gradient(700px 420px at 100% 0%, rgba(0,180,216,.05), transparent)" }}
         />
-      ))}
+        {/* Severity wash — every band mounted, cross-faded by opacity so a band
+            change is a slow transition rather than a snap (docs/design-system.md §5). */}
+        {SEVERITY_WASH_ORDER.map((band) => (
+          <div
+            key={band}
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background: SEVERITY_WASH[band],
+              opacity: overallSeverity === band ? 1 : 0,
+              transition: "opacity 1800ms cubic-bezier(.4,0,.2,1)",
+            }}
+          />
+        ))}
 
-      <div className="relative flex h-full flex-col">
-        <TopBar
-          breadcrumb={breadcrumb}
-          narrow={narrow}
-          drawerOpen={drawerOpen}
-          onToggleDrawer={() => setDrawerRequested((v) => !v)}
-        />
-        <TestimonialPromptBanner />
-        <PillarTabStrip scores={scores} />
-        <div className="relative flex min-h-0 flex-1">
-          {/* Shell.dc.html: scrim sits behind the drawer, closes it on click,
-              only ever mounted while the drawer is actually open. */}
-          {drawerOpen ? (
-            <div
-              className="absolute inset-0"
-              style={{ zIndex: 56, background: "rgba(2,6,23,.62)" }}
-              onClick={() => setDrawerRequested(false)}
-              aria-hidden="true"
-            />
-          ) : null}
-          {sidebarShow ? (
-            <SidebarNav
-              narrow={narrow}
-              onNavigate={() => setDrawerRequested(false)}
-              footerSlot={
-                <TenantStatusCard
-                  scan={scan}
-                  overallScore={overallScore}
-                  overallSeverity={overallSeverity}
-                  onOpenLog={() => setScanLogOpen(true)}
-                />
-              }
-            />
-          ) : null}
-          <div className="relative flex min-h-0 flex-1 overflow-y-auto">{children}</div>
+        <div className="relative flex h-full flex-col">
+          <TopBar
+            breadcrumb={breadcrumb}
+            narrow={narrow}
+            drawerOpen={drawerOpen}
+            onToggleDrawer={() => setDrawerRequested((v) => !v)}
+          />
+          <TestimonialPromptBanner />
+          <PillarTabStrip scores={scores} />
+          <div className="relative flex min-h-0 flex-1">
+            {/* Shell.dc.html: scrim sits behind the drawer, closes it on click,
+                only ever mounted while the drawer is actually open. */}
+            {drawerOpen ? (
+              <div
+                className="absolute inset-0"
+                style={{ zIndex: 56, background: "rgba(2,6,23,.62)" }}
+                onClick={() => setDrawerRequested(false)}
+                aria-hidden="true"
+              />
+            ) : null}
+            {sidebarShow ? (
+              <SidebarNav
+                narrow={narrow}
+                onNavigate={() => setDrawerRequested(false)}
+                footerSlot={
+                  <TenantStatusCard
+                    scan={scan}
+                    overallScore={overallScore}
+                    overallSeverity={overallSeverity}
+                    onOpenLog={() => setScanLogOpen(true)}
+                  />
+                }
+              />
+            ) : null}
+            <div className="relative flex min-h-0 flex-1 overflow-y-auto">{children}</div>
+          </div>
+          {/* README "Right-slide detail panel": content is derived at render
+              time from live scan state, not snapshotted when it opens — `scan`
+              here is the same live object the card reads, so the panel never
+              freezes on stale data while it's open. */}
+          {scanLogOpen ? <ScanLogPanel scan={scan} narrow={narrow} onClose={() => setScanLogOpen(false)} /> : null}
         </div>
-        {/* README "Right-slide detail panel": content is derived at render
-            time from live scan state, not snapshotted when it opens — `scan`
-            here is the same live object the card reads, so the panel never
-            freezes on stale data while it's open. */}
-        {scanLogOpen ? <ScanLogPanel scan={scan} narrow={narrow} onClose={() => setScanLogOpen(false)} /> : null}
       </div>
-    </div>
+    </ScanStateContext.Provider>
   );
 }

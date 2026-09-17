@@ -101,8 +101,8 @@ export function TenantStatusCard({
     outcomeInk = "#c2a63d";
     outcomeFill = "transparent";
   } else if (phase === "cache-cleared") {
-    outcomeHead = "That run finished before this page opened";
-    outcomeBody = `Showing its stored summary: ${scan.total} checks · ${scan.checksOk} passed · ${scan.checksError} errored${scan.checksLicenseGap > 0 ? ` · ${scan.checksLicenseGap} license gaps` : ""}. The live log for it is gone.`;
+    outcomeHead = "Latest scan complete";
+    outcomeBody = `${scan.total} checks · ${scan.checksOk} passed · ${scan.checksError} errored${scan.checksLicenseGap > 0 ? ` · ${scan.checksLicenseGap} license gaps` : ""}`;
     outcomeInk = "#60a5fa";
     outcomeFill = "transparent";
     outcomeStyle = "dashed";
@@ -204,7 +204,7 @@ export function TenantStatusCard({
               {outcomeHead}
             </span>
           </div>
-          <div className="pt-[3px] text-[11px]" style={{ color: "#64748b" }}>
+          <div className="pt-[3px] text-[11px]" style={{ color: "#64748b" }} data-testid="tenant-status-outcome-body">
             {outcomeBody}
           </div>
         </div>
