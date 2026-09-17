@@ -115,6 +115,9 @@ export function SimulatorConfigPackCanvas({ pack }: { pack: ConfigPackNode }) {
   const [loadingPlan, setLoadingPlan] = useState(false);
 
   const [operatorVars, setOperatorVars] = useState<Record<string, string>>({});
+  // #4522 — Conditional Access enforcement for this run. monitor-first (report-only)
+  // is the default; immediate is an explicit, audited override.
+  const [caEnforcementMode, setCaEnforcementMode] = useState<"monitor-first" | "immediate">("monitor-first");
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -257,7 +260,7 @@ export function SimulatorConfigPackCanvas({ pack }: { pack: ConfigPackNode }) {
       const res = await fetchWithAuth(`/api/admin/config-packs/${encodeURIComponent(pack.packKey)}/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customerId, variables: operatorVars }),
+        body: JSON.stringify({ customerId, variables: operatorVars, caEnforcementMode }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -374,6 +377,47 @@ export function SimulatorConfigPackCanvas({ pack }: { pack: ConfigPackNode }) {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Conditional Access enforcement mode (#4522) */}
+      {plan && (
+        <fieldset className="mb-3 rounded border border-border p-2" disabled={runId != null}>
+          <legend className="px-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Conditional Access enforcement</legend>
+          <label className="flex cursor-pointer items-start gap-2 py-1 text-[11px]">
+            <input
+              type="radio"
+              name="caEnforcementMode"
+              checked={caEnforcementMode === "monitor-first"}
+              onChange={() => setCaEnforcementMode("monitor-first")}
+              data-testid="ca-enforcement-monitor-first"
+              className="mt-0.5"
+            />
+            <span>
+              <strong className="text-foreground">Monitor first (default)</strong>
+              <span className="text-muted-foreground"> — Conditional Access policies are created report-only. Turn each one on later from Launch Control, after reviewing its sign-in impact.</span>
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-2 py-1 text-[11px]">
+            <input
+              type="radio"
+              name="caEnforcementMode"
+              checked={caEnforcementMode === "immediate"}
+              onChange={() => setCaEnforcementMode("immediate")}
+              data-testid="ca-enforcement-immediate"
+              className="mt-0.5"
+            />
+            <span>
+              <strong className="text-foreground">Enforce immediately</strong>
+              <span className="text-muted-foreground"> — policies are created on, with no report-only period and no sign-in review. Recorded on the run and in the audit log.</span>
+            </span>
+          </label>
+          {caEnforcementMode === "immediate" && (
+            <div className="mt-1 flex items-start gap-2 rounded border border-red-500/40 bg-red-500/10 px-2 py-1.5 text-[11px] text-red-300">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>Users the policies block or challenge are affected from the moment each step runs.</span>
+            </div>
+          )}
+        </fieldset>
       )}
 
       {/* Plan error (inactive/empty pack, dependency cycle, unknown dep) */}
@@ -536,6 +580,16 @@ export function SimulatorConfigPackCanvas({ pack }: { pack: ConfigPackNode }) {
                   </div>
                 );
               })}
+            </div>
+
+            <div
+              data-testid="ca-enforcement-confirm"
+              className={`mb-3 rounded border p-2 text-[11px] ${caEnforcementMode === "immediate" ? "border-red-500/40 bg-red-500/10 text-red-300" : "border-border bg-card text-muted-foreground"}`}
+            >
+              <span className="font-semibold text-foreground">Conditional Access enforcement: </span>
+              {caEnforcementMode === "immediate"
+                ? "enforce immediately — policies are created on, skipping report-only."
+                : "monitor first — policies are created report-only."}
             </div>
 
             {plan.operatorVariables.length > 0 && (

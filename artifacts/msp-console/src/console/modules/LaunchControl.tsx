@@ -37,8 +37,19 @@ import {
   type LaunchControlError,
   type LaunchControlHistoryRow,
 } from "@/api/launch-control-api";
+import {
+  useCaPolicies,
+  useCaPolicyImpact,
+  usePromoteCaPolicy,
+  type CaPolicy,
+  type CaPolicyImpact,
+  type CaPromotionError,
+  type CaPromotionRow,
+} from "@/api/ca-promotion-api";
 
-type Tab = "actions" | "history";
+// #4522 — "promotion": report-only Conditional Access policies, their real sign-in
+// impact, and the gated promote-to-enforced step (Shane's #4518 decision).
+type Tab = "actions" | "history" | "promotion";
 type Filter = "all" | LaunchControlAvailability;
 type ToneKey = "green" | "amber" | "red" | "blue" | "violet" | "slate";
 
@@ -71,6 +82,9 @@ const ACTIONS_ROUTE = "GET /api/msp/:mspId/launch-control/actions?customerId=";
 const HISTORY_ROUTE = "GET /api/msp/:mspId/launch-control/history?customerId=";
 const EXECUTE_ROUTE = "POST /api/msp/:mspId/launch-control/execute";
 const ROLLBACK_ROUTE = "POST /api/msp/:mspId/launch-control/rollback/:auditLogId";
+const CA_POLICIES_ROUTE = "GET /api/msp/:mspId/customers/:customerId/ca-policies";
+const CA_IMPACT_ROUTE = "GET /api/msp/:mspId/customers/:customerId/ca-policies/:policyId/impact";
+const CA_PROMOTE_ROUTE = "POST /api/msp/:mspId/customers/:customerId/ca-policies/:policyId/promote";
 
 function noSafePath(a: LaunchControlAction): boolean {
   return a.safeOrGated === null || a.status === "blocked_no_workaround";
@@ -163,6 +177,7 @@ function sourceLabel(source: string | null): string {
     case "launch_control": return "from Launch Control";
     case "launch_control_rollback": return "an undo from Launch Control";
     case "simulator": return "from the simulator";
+    case "ca_promotion": return "a Conditional Access promotion";
     case null: return "source not recorded";
     default: return `from ${source}`;
   }
@@ -187,7 +202,7 @@ function Pill({ tone, children }: { tone: ToneKey; children: React.ReactNode }) 
   );
 }
 
-function ChipButton({ active, label, count, onClick, height = 30 }: { active: boolean; label: string; count: number; onClick: () => void; height?: number }) {
+function ChipButton({ active, label, count, onClick, height = 30 }: { active: boolean; label: string; count: number | null; onClick: () => void; height?: number }) {
   return (
     <button
       onClick={onClick}
@@ -199,7 +214,7 @@ function ChipButton({ active, label, count, onClick, height = 30 }: { active: bo
       }}
     >
       {label}
-      <span style={{ fontSize: 10.5, color: active ? "#60a5fa" : text.faint }}>{count}</span>
+      {count !== null && <span style={{ fontSize: 10.5, color: active ? "#60a5fa" : text.faint }}>{count}</span>}
     </button>
   );
 }
@@ -242,6 +257,10 @@ export function LaunchControl({ mspId, customerId, customerName }: { mspId: numb
   const [tab, setTab] = useState<Tab>("actions");
   const [filter, setFilter] = useState<Filter>("all");
   const [selId, setSelId] = useState<number | null>(null);
+  // Live Graph reads (policies + sign-in logs) — only fetched once the tab is opened.
+  const [promotionOpened, setPromotionOpened] = useState(false);
+  const caPoliciesQuery = useCaPolicies(mspId, customerId, promotionOpened);
+  const reportOnlyCount = caPoliciesQuery.data ? caPoliciesQuery.data.policies.filter((p) => p.reportOnly).length : null;
 
   const data = actionsQuery.data;
   const actions = useMemo(() => data?.actions ?? [], [data]);
@@ -271,6 +290,12 @@ export function LaunchControl({ mspId, customerId, customerName }: { mspId: numb
       <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
         <ChipButton active={tab === "actions"} label="Actions" count={actions.length} onClick={() => setTab("actions")} />
         <ChipButton active={tab === "history"} label="What has been run" count={history.length} onClick={() => setTab("history")} />
+        <ChipButton
+          active={tab === "promotion"}
+          label="Report-only policies"
+          count={reportOnlyCount}
+          onClick={() => { setPromotionOpened(true); setTab("promotion"); }}
+        />
         <div style={{ flex: 1 }} />
         <ContextChip
           icon="layers"
@@ -302,6 +327,10 @@ export function LaunchControl({ mspId, customerId, customerName }: { mspId: numb
         />
       )}
 
+      {tab === "promotion" && (
+        <PromotionTab mspId={mspId} customerId={customerId} customerName={customerName} query={caPoliciesQuery} />
+      )}
+
       {sel && (
         <ConfirmDrawer
           key={sel.id}
@@ -317,7 +346,7 @@ export function LaunchControl({ mspId, customerId, customerName }: { mspId: numb
       <div style={{ display: "flex", alignItems: "center", gap: 9, paddingTop: 2 }}>
         <Icon name="info" size={13} color={text.faint} style={{ flex: "0 0 13px" }} />
         <span style={{ fontSize: 11, color: text.faint, textWrap: "pretty" }}>
-          The action list, the plan check, the live licence check and the audit trail are all live. {readyCount} of {actions.length} actions have a procedure attached and marked ready to run, and {reversibleCount} of those can be undone. Writes are limited to a test tenant for now. Conditional Access actions are additionally refused as a licence gap when the tenant holds no Entra ID P1 or P2.
+          The action list, the plan check, the live licence check and the audit trail are all live. {readyCount} of {actions.length} actions have a procedure attached and marked ready to run, and {reversibleCount} of those can be undone. Writes are limited to a test tenant for now. Conditional Access actions are additionally refused as a licence gap when the tenant holds no Entra ID P1 or P2. Turning a report-only Conditional Access policy on is not a single action: it goes through Report-only policies, after its sign-in impact has been reviewed.
         </span>
       </div>
     </div>
@@ -736,6 +765,408 @@ function HistoryTab({
           Every attempt on record so far came from the internal simulator. Nothing has been run against a customer from this screen.
         </span>
       )}
+    </div>
+  );
+}
+
+// ── Report-only Conditional Access policies (#4522) ─────────────────────────
+
+const CA_STATE_LABEL: Record<string, [ToneKey, string]> = {
+  enabledForReportingButNotEnforced: ["amber", "report-only"],
+  enabled: ["green", "enforced"],
+  disabled: ["slate", "off"],
+};
+
+function stateLabel(state: string | null): [ToneKey, string] {
+  return (state && CA_STATE_LABEL[state]) || ["slate", state ?? "unknown state"];
+}
+
+function daysLabel(days: number | null): string {
+  if (days === null) return "no change date recorded";
+  return days === 1 ? "1 day" : `${days} days`;
+}
+
+function readStatusMessage(status: string, detail: string | null): string {
+  switch (status) {
+    case "entra_premium_required": return detail ?? "This tenant has no Entra ID P1 or P2, so it has no Conditional Access policies or sign-in logs to read.";
+    case "consent_revoked": return "Admin consent for this tenant has been revoked or was never granted, so nothing can be read.";
+    case "policy_not_found": return detail ?? "This policy no longer exists on the tenant.";
+    default: return detail ?? "Microsoft Graph did not answer this read.";
+  }
+}
+
+function promotionOutcomeLabel(row: CaPromotionRow): [ToneKey, string] {
+  switch (row.outcome) {
+    case "succeeded": return ["green", "enforced"];
+    case "failed": return ["red", "write failed"];
+    case "refused": return ["amber", "refused"];
+    default: return ["blue", "in progress"];
+  }
+}
+
+function PromotionTab({
+  mspId,
+  customerId,
+  customerName,
+  query,
+}: {
+  mspId: number;
+  customerId: number;
+  customerName: string;
+  query: ReturnType<typeof useCaPolicies>;
+}) {
+  const [openPolicyId, setOpenPolicyId] = useState<string | null>(null);
+
+  if (query.isLoading) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, color: text.muted, fontSize: 12 }}>
+        <Icon name="loader" size={14} className="animate-spin" /> Reading this tenant's Conditional Access policies…
+      </div>
+    );
+  }
+  if (query.isError || !query.data) {
+    return query.error ? <Advisory error={query.error} route={CA_POLICIES_ROUTE} /> : null;
+  }
+
+  const data = query.data;
+  const reportOnly = data.policies.filter((p) => p.reportOnly);
+  const others = data.policies.filter((p) => !p.reportOnly);
+  const open = openPolicyId ? data.policies.find((p) => p.id === openPolicyId) ?? null : null;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }} data-testid="lc-ca-promotion">
+      <div style={{ display: "flex", gap: 10, padding: "12px 13px", borderRadius: 10, border: "1px solid rgba(96,165,250,.22)", background: "rgba(37,99,235,.08)" }}>
+        <Icon name="shield-check" size={15} color="#60a5fa" style={{ flex: "0 0 15px", marginTop: 2 }} />
+        <span style={{ fontSize: 11.5, color: text.secondary, textWrap: "pretty" }}>
+          Conditional Access policies are created report-only first. A report-only policy is evaluated on every sign-in but blocks nobody,
+          so its sign-in log shows exactly who it would have blocked or challenged. Review that before turning it on.
+        </span>
+      </div>
+
+      {data.status !== "ok" && (
+        <div data-testid="lc-ca-read-status" style={{ border: "1px solid rgba(251,191,36,.26)", borderRadius: 12, background: "rgba(251,191,36,.06)", padding: "14px 15px", display: "flex", gap: 11 }}>
+          <Icon name="circle-alert" size={16} color="#fbbf24" style={{ marginTop: 2, flex: "0 0 16px" }} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "#fcd34d" }}>The policies could not be read</span>
+            <span style={{ fontSize: 11.5, color: text.muted, textWrap: "pretty" }}>{readStatusMessage(data.status, data.detail)}</span>
+            <span style={{ fontFamily: "Menlo, monospace", fontSize: 11, color: text.faint }}>{CA_POLICIES_ROUTE}</span>
+          </div>
+        </div>
+      )}
+
+      {data.status === "ok" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".12em", color: text.label }}>IN REPORT-ONLY</span>
+          {reportOnly.length === 0 ? (
+            <span style={{ fontSize: 12, color: text.muted }}>{customerName} has no report-only Conditional Access policies.</span>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(330px,1fr))", gap: 10 }}>
+              {reportOnly.map((p) => (
+                <PolicyCard key={p.id} policy={p} onOpen={() => setOpenPolicyId(p.id)} />
+              ))}
+            </div>
+          )}
+          {others.length > 0 && (
+            <>
+              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".12em", color: text.label, marginTop: 6 }}>EVERY OTHER POLICY</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {others.map((p) => {
+                  const [tone, label] = stateLabel(p.state);
+                  return (
+                    <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 12, color: text.secondary }}>
+                      <Pill tone={tone}>{label}</Pill>
+                      <span style={{ textWrap: "pretty" }}>{p.displayName ?? p.id}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {data.promotions.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".12em", color: text.label }}>PROMOTION ATTEMPTS</span>
+          {data.promotions.map((row) => {
+            const [tone, label] = promotionOutcomeLabel(row);
+            const s = row.impactSnapshot?.summary;
+            return (
+              <div key={row.id} data-testid={`lc-ca-promotion-${row.id}`} style={{ border: "1px solid rgba(148,163,184,.16)", borderRadius: 11, background: "rgba(15,23,42,.6)", padding: "11px 13px", display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 600, color: text.strong }}>{row.policyDisplayName ?? row.policyId}</span>
+                  <Pill tone={tone}>{label}</Pill>
+                  {row.impactAcknowledged && <Pill tone="slate">impact acknowledged</Pill>}
+                </div>
+                {s && (
+                  <span style={{ fontSize: 11.5, color: text.muted }}>
+                    Reviewed: {s.wouldBlock ?? 0} would have been blocked, {s.wouldInterrupt ?? 0} interrupted, {s.affectedUserCount ?? 0} users affected, {s.evaluated ?? 0} sign-ins evaluated.
+                  </span>
+                )}
+                {row.outcomeReason && <span style={{ fontSize: 11.5, color: text.muted, textWrap: "pretty" }}>{row.outcomeReason}</span>}
+                {row.operatorNote && <span style={{ fontSize: 11.5, color: text.secondary, textWrap: "pretty" }}>Note: {row.operatorNote}</span>}
+                <span style={{ fontSize: 11, color: text.faint }}>
+                  {row.actorName ?? "unknown operator"} · {formatWhen(row.createdAt)}
+                  {row.changeRequestId ? ` · change request ${row.changeRequestId}` : ""}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {open && (
+        <PromotionDrawer
+          key={open.id}
+          mspId={mspId}
+          customerId={customerId}
+          customerName={customerName}
+          policy={open}
+          onClose={() => setOpenPolicyId(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function PolicyCard({ policy: p, onOpen }: { policy: CaPolicy; onOpen: () => void }) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      data-testid={`lc-ca-policy-${p.id}`}
+      onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
+      style={{ border: "1px solid rgba(251,191,36,.22)", borderRadius: 11, background: "rgba(15,23,42,.6)", padding: 13, display: "flex", flexDirection: "column", gap: 8, cursor: "pointer" }}
+    >
+      <span style={{ fontSize: 12.5, fontWeight: 600, color: text.strong, textWrap: "pretty" }}>{p.displayName ?? p.id}</span>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <Pill tone="amber">report-only</Pill>
+        <Pill tone="slate">{daysLabel(p.daysInCurrentState)} in this state</Pill>
+      </div>
+      <span style={{ fontSize: 11.5, color: "#93c5fd" }}>Review its sign-in impact</span>
+    </div>
+  );
+}
+
+function PromotionDrawer({
+  mspId,
+  customerId,
+  customerName,
+  policy,
+  onClose,
+}: {
+  mspId: number;
+  customerId: number;
+  customerName: string;
+  policy: CaPolicy;
+  onClose: () => void;
+}) {
+  const impactQuery = useCaPolicyImpact(mspId, customerId, policy.id);
+  const promote = usePromoteCaPolicy(mspId, customerId);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [note, setNote] = useState("");
+  const [armed, setArmed] = useState(false);
+  const [outcome, setOutcome] = useState<RunOutcome | null>(null);
+
+  const impact: CaPolicyImpact | undefined = impactQuery.data;
+  const summary = impact?.summary ?? null;
+  const readiness = impact?.readiness ?? null;
+  const verified = impact?.status === "ok" && !!summary && !!readiness && !!impact.fingerprint;
+  const needsAck = !!readiness?.requiresAcknowledgement;
+  const writesAvailable = !!impact?.promotionWritesAvailable;
+  const canPromote = verified && !!readiness?.eligible && writesAvailable && (!needsAck || acknowledged) && !promote.isPending;
+
+  const holdReason = !impact
+    ? null
+    : impact.status !== "ok"
+      ? `Held back: the impact could not be verified. ${readStatusMessage(impact.status, impact.detail)}`
+      : readiness && !readiness.eligible
+        ? `Held back: ${readiness.ineligibleReason}`
+        : !writesAvailable
+          ? "Held back: writes are limited to a test tenant for now."
+          : needsAck && !acknowledged
+            ? "Held back until you acknowledge the impact above."
+            : "The server reads the sign-ins again when you confirm and refuses if anything changed since this review. A change request is raised before the policy is turned on.";
+
+  const submit = () => {
+    if (!canPromote || !impact?.fingerprint) return;
+    if (!armed) { setArmed(true); return; }
+    setArmed(false);
+    setOutcome(null);
+    promote.mutate(
+      { policyId: policy.id, reviewedFingerprint: impact.fingerprint, acknowledgeImpact: acknowledged, note },
+      {
+        onSuccess: (res) => {
+          if (res.outcome === "succeeded") {
+            setOutcome({ kind: "ok", message: `Turned on. Recorded as ${res.changeRequest.code} (promotion ${res.promotionId}).` });
+            toast.success(`${policy.displayName ?? "Policy"} is now enforced on ${customerName}`);
+          } else {
+            setOutcome({ kind: "fail", message: `Microsoft answered ${res.status}${res.errorType ? ` (${res.errorType.replace(/_/g, " ")})` : ""}. Recorded as ${res.changeRequest.code}.` });
+            toast.error("The policy was not turned on");
+          }
+        },
+        onError: (err: CaPromotionError) => {
+          if (err.code === "impact_changed") setAcknowledged(false);
+          setOutcome({ kind: "fail", message: err.message });
+          toast.error(err.message);
+        },
+      },
+    );
+  };
+
+  const facts: { label: string; value: string; color: string }[] = summary && impact?.window
+    ? [
+        { label: "IN REPORT-ONLY", value: daysLabel(impact.window.reportOnlyDays), color: text.secondary },
+        { label: "WOULD HAVE BEEN BLOCKED", value: String(summary.wouldBlock), color: summary.wouldBlock > 0 ? "#f87171" : "#6ee7b7" },
+        { label: "WOULD HAVE BEEN CHALLENGED", value: String(summary.wouldInterrupt), color: summary.wouldInterrupt > 0 ? "#fbbf24" : "#6ee7b7" },
+        { label: "USERS AFFECTED", value: String(summary.affectedUserCount), color: summary.affectedUserCount > 0 ? "#fbbf24" : "#6ee7b7" },
+        { label: "ALREADY SATISFIED", value: String(summary.wouldSatisfy), color: text.secondary },
+        { label: "SIGN-INS READ", value: `${summary.signInsScanned}${impact.complete ? "" : " (not all)"}`, color: impact.complete ? text.secondary : "#fcd34d" },
+      ]
+    : [];
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(2,6,23,.68)", backdropFilter: "blur(3px)", zIndex: 90, display: "flex", justifyContent: "flex-end" }}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        data-testid="lc-ca-promotion-drawer"
+        style={{ width: "min(560px,95%)", height: "100%", background: "#0b1728", borderLeft: "1px solid rgba(148,163,184,.2)", padding: 20, display: "flex", flexDirection: "column", gap: 15, overflowY: "auto", minWidth: 0 }}
+      >
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0, flex: 1 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".12em", color: "#93c5fd" }}>CONDITIONAL ACCESS · REPORT-ONLY</span>
+            <span style={{ fontSize: 17, fontWeight: 700, color: text.title, letterSpacing: "-.01em", textWrap: "pretty" }}>{policy.displayName ?? policy.id}</span>
+            <span style={{ fontSize: 12, color: text.muted, textWrap: "pretty" }}>What this policy would have done to {customerName}'s sign-ins had it been on.</span>
+          </div>
+          <button onClick={onClose} aria-label="Close" style={{ width: 28, height: 28, flex: "0 0 28px", borderRadius: 8, border: "1px solid transparent", background: "transparent", color: text.muted, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Icon name="x" size={14} />
+          </button>
+        </div>
+
+        {impactQuery.isLoading && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, color: text.muted, fontSize: 12 }}>
+            <Icon name="loader" size={14} className="animate-spin" /> Reading this policy's sign-ins from the tenant…
+          </div>
+        )}
+        {impactQuery.error && <Advisory error={impactQuery.error} route={CA_IMPACT_ROUTE} />}
+
+        {impact && impact.status !== "ok" && (
+          <div data-testid="lc-ca-impact-unverifiable" style={{ display: "flex", gap: 10, padding: "11px 12px", borderRadius: 9, border: `1px solid ${TONE.red.line}`, background: TONE.red.tint }}>
+            <Icon name="circle-x" size={14} color={TONE.red.color} style={{ flex: "0 0 14px", marginTop: 2 }} />
+            <span style={{ fontSize: 11.5, color: text.secondary, textWrap: "pretty" }}>{readStatusMessage(impact.status, impact.detail)}</span>
+          </div>
+        )}
+
+        {facts.length > 0 && (
+          <div data-testid="lc-ca-impact-facts" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 11 }}>
+            {facts.map((f) => (
+              <div key={f.label} style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+                <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".1em", color: text.faint }}>{f.label}</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: f.color }}>{f.value}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {impact?.window && impact.status === "ok" && (
+          <span style={{ fontSize: 11, color: text.faint, textWrap: "pretty" }}>
+            Sign-ins from {formatWhen(impact.window.from)} to {formatWhen(impact.window.to)}. {impact.coverageNote}
+          </span>
+        )}
+
+        {summary && summary.affectedUsers.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".12em", color: text.faint }}>WHO IT WOULD AFFECT</span>
+            {summary.affectedUsers.map((u) => (
+              <div key={u.userId ?? u.userPrincipalName ?? ""} style={{ display: "flex", alignItems: "baseline", gap: 9, flexWrap: "wrap", fontSize: 12 }}>
+                <span style={{ color: text.strong }}>{u.userDisplayName ?? u.userPrincipalName ?? u.userId}</span>
+                {u.userPrincipalName && <span style={{ color: text.faint, fontSize: 11 }}>{u.userPrincipalName}</span>}
+                <span style={{ color: text.muted, fontSize: 11.5 }}>
+                  {u.wouldBlock > 0 ? `${u.wouldBlock} blocked` : ""}{u.wouldBlock > 0 && u.wouldInterrupt > 0 ? ", " : ""}{u.wouldInterrupt > 0 ? `${u.wouldInterrupt} challenged` : ""}
+                  {u.lastImpactAt ? ` · last ${formatWhen(u.lastImpactAt)}` : ""}
+                </span>
+              </div>
+            ))}
+            {summary.affectedUserCount > summary.affectedUsers.length && (
+              <span style={{ fontSize: 11, color: text.faint }}>and {summary.affectedUserCount - summary.affectedUsers.length} more</span>
+            )}
+          </div>
+        )}
+
+        {summary && summary.impactEvents.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".12em", color: text.faint }}>MOST RECENT AFFECTED SIGN-INS</span>
+            {summary.impactEvents.map((e, i) => (
+              <div key={`${e.createdDateTime}-${i}`} style={{ display: "flex", gap: 9, alignItems: "baseline", flexWrap: "wrap", fontSize: 11.5 }}>
+                <Pill tone={e.outcome === "would_block" ? "red" : "amber"}>{e.outcome === "would_block" ? "blocked" : "challenged"}</Pill>
+                <span style={{ color: text.secondary }}>{e.userPrincipalName ?? e.userDisplayName ?? "unknown user"}</span>
+                <span style={{ color: text.muted }}>{e.appDisplayName ?? "unknown app"}{e.clientAppUsed ? ` · ${e.clientAppUsed}` : ""}</span>
+                {e.createdDateTime && <span style={{ color: text.faint, fontSize: 11 }}>{formatWhen(e.createdDateTime)}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {readiness?.eligible && needsAck && (
+          <label data-testid="lc-ca-acknowledge" style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "11px 12px", borderRadius: 9, border: `1px solid ${TONE.amber.line}`, background: TONE.amber.tint, cursor: "pointer" }}>
+            <input type="checkbox" checked={acknowledged} onChange={(e) => { setAcknowledged(e.target.checked); setArmed(false); }} style={{ marginTop: 3 }} />
+            <span style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              {readiness.acknowledgementReasons.map((r) => (
+                <span key={r} style={{ fontSize: 11.5, color: "#fcd34d", textWrap: "pretty" }}>{r}</span>
+              ))}
+              <span style={{ fontSize: 12, fontWeight: 600, color: text.strong }}>I have reviewed this and want the policy enforced anyway.</span>
+            </span>
+          </label>
+        )}
+
+        {verified && (
+          <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".12em", color: text.faint }}>NOTE FOR THE RECORD (OPTIONAL)</span>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={2}
+              maxLength={2000}
+              data-testid="lc-ca-note"
+              style={{ padding: "8px 11px", borderRadius: 8, border: "1px solid rgba(148,163,184,.2)", background: "rgba(2,6,23,.6)", color: text.strong, fontSize: 12.5, outline: "none", resize: "vertical" }}
+            />
+          </label>
+        )}
+
+        {outcome && (
+          <div data-testid="lc-ca-promotion-outcome" style={{ display: "flex", gap: 10, padding: "11px 12px", borderRadius: 9, border: `1px solid ${TONE[outcome.kind === "ok" ? "green" : "red"].line}`, background: TONE[outcome.kind === "ok" ? "green" : "red"].tint }}>
+            <Icon name={outcome.kind === "ok" ? "circle-check-big" : "circle-x"} size={14} color={TONE[outcome.kind === "ok" ? "green" : "red"].color} style={{ flex: "0 0 14px", marginTop: 2 }} />
+            <span style={{ fontSize: 11.5, color: text.secondary, textWrap: "pretty", wordBreak: "break-word" }}>{outcome.message}</span>
+          </div>
+        )}
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 9, marginTop: "auto", paddingTop: 13, borderTop: "1px solid rgba(148,163,184,.12)" }}>
+          {holdReason && <span style={{ fontSize: 11.5, color: canPromote ? text.muted : "#fcd34d", textWrap: "pretty" }}>{holdReason}</span>}
+          <span style={{ fontFamily: "Menlo, monospace", fontSize: 11, color: text.faint }}>{CA_PROMOTE_ROUTE}</span>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button
+              onClick={submit}
+              disabled={!canPromote}
+              data-testid="lc-ca-promote"
+              style={{
+                flex: 1, height: 38, borderRadius: 8,
+                border: `1px solid ${canPromote ? (armed ? "rgba(251,191,36,.5)" : actionTone.base) : "rgba(148,163,184,.2)"}`,
+                background: canPromote ? (armed ? "rgba(251,191,36,.14)" : actionTone.base) : "transparent",
+                color: canPromote ? (armed ? "#fcd34d" : "#fff") : text.label,
+                fontSize: 13, fontWeight: 600, cursor: canPromote ? "pointer" : "not-allowed", opacity: canPromote || promote.isPending ? 1 : 0.6,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              }}
+            >
+              <Icon name={promote.isPending ? "loader" : canPromote ? "shield-check" : "lock"} size={14} className={promote.isPending ? "animate-spin" : undefined} />
+              {armed ? `Confirm: turn this policy on for ${customerName}` : "Turn this policy on"}
+            </button>
+            <button onClick={onClose} style={{ height: 38, padding: "0 15px", borderRadius: 8, border: "1px solid rgba(148,163,184,.22)", background: "transparent", color: text.secondary, fontSize: 13, cursor: "pointer" }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
