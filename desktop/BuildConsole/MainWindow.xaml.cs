@@ -3969,12 +3969,24 @@ namespace BuildConsole
                 Background = (Brush)FindResource("BaseBrush")
             };
             webContainer.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            webContainer.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // Git #4442 — page auto-check banner
             webContainer.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
+            // Git #4442 — Test Mode's page auto-check reports into this tab's own banner, directly under
+            // its toolbar (collapsed until a check has something to say).
+            var autoCheckBanner = new BuildConsole.Controls.PageAutoCheckBanner();
+            autoCheckBanner.AttachTo(wv);
+            autoCheckBanner.ViewDriftRequested += outcome =>
+            {
+                if (OpenPageAutoCheckDrift(outcome)) autoCheckBanner.Hide();
+            };
+
             Grid.SetRow(navBar, 0);
-            Grid.SetRow(wrappedWv, 1);
+            Grid.SetRow(autoCheckBanner, 1);
+            Grid.SetRow(wrappedWv, 2);
 
             webContainer.Children.Add(navBar);
+            webContainer.Children.Add(autoCheckBanner);
             webContainer.Children.Add(wrappedWv);
             webContainer.Children.Add(popup);
 

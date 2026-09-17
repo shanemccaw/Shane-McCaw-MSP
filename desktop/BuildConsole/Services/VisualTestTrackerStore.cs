@@ -37,12 +37,34 @@ namespace BuildConsole.Services
         public string BaseUrl { get; set; } = "";
         public string PagePath { get; set; } = "";
         public List<DomMutationRecord> Mutations { get; set; } = new();
+
+        /// <summary>Git #4442 — stable structural element keys (see <see cref="DomBaselineDiff"/>)
+        /// persisted in the table's dom_snapshot column. Empty with <see cref="HasStructureSnapshot"/>
+        /// false for a row saved before #4442 — structure is then "not comparable", never "all added".</summary>
+        public List<string> StructureKeys { get; set; } = new();
+        public bool HasStructureSnapshot { get; set; }
+
         public DateTime LastVerifiedAt { get; set; } = DateTime.Now;
         public DateTime CreatedAt { get; set; } = DateTime.Now;
         public DateTime UpdatedAt { get; set; } = DateTime.Now;
 
         public int AgeInDays => (int)(DateTime.Now - LastVerifiedAt).TotalDays;
         public bool IsVerificationDue => AgeInDays >= 7;
+    }
+
+    /// <summary>Git #4442 — the last accessibility audit persisted for a watched page
+    /// (visual_test_tracker_a11y_audits), so Test Mode knows whether a page has ever been audited.</summary>
+    public sealed class VisualTestTrackerA11yAudit
+    {
+        public int Id { get; set; }
+        public int PageId { get; set; }
+        public string BaseUrl { get; set; } = "";
+        public string PagePath { get; set; } = "";
+        public List<AccessibilityViolation> Violations { get; set; } = new();
+        public int TotalViolations => Violations.Count;
+        public DateTime LastAuditedAt { get; set; } = DateTime.Now;
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
+        public DateTime UpdatedAt { get; set; } = DateTime.Now;
     }
 
     /// <summary>
@@ -823,43 +845,9 @@ namespace BuildConsole.Services
         /// <summary>Retrieves the saved DOM baseline for a given page path, or null if none exists.</summary>
         public async Task<VisualTestTrackerDomBaseline?> GetDomBaselineAsync(string baseUrl, string pagePath)
         {
-            if (string.IsNullOrWhiteSpace(baseUrl) && string.IsNullOrWhiteSpace(pagePath)) return null;
             try
             {
-                await using var conn = await OpenAsync();
-                await using var cmd = new NpgsqlCommand(
-                    "SELECT id, page_id, base_url, page_path, baseline_mutations, last_verified_at, created_at, updated_at " +
-                    "FROM visual_test_tracker_dom_mutations WHERE base_url = @b AND page_path = @p", conn);
-                cmd.Parameters.AddWithValue("@b", baseUrl ?? "");
-                cmd.Parameters.AddWithValue("@p", pagePath ?? "");
-
-                await using var reader = await cmd.ExecuteReaderAsync();
-                if (await reader.ReadAsync())
-                {
-                    var baseline = new VisualTestTrackerDomBaseline
-                    {
-                        Id = reader.GetInt32(0),
-                        PageId = reader.IsDBNull(1) ? 0 : reader.GetInt32(1),
-                        BaseUrl = reader.GetString(2),
-                        PagePath = reader.GetString(3),
-                        LastVerifiedAt = reader.GetFieldValue<DateTime>(5),
-                        CreatedAt = reader.GetFieldValue<DateTime>(6),
-                        UpdatedAt = reader.GetFieldValue<DateTime>(7),
-                    };
-
-                    if (!reader.IsDBNull(4))
-                    {
-                        string json = reader.GetString(4);
-                        try
-                        {
-                            var muts = System.Text.Json.JsonSerializer.Deserialize<List<DomMutationRecord>>(json);
-                            if (muts != null) baseline.Mutations = muts;
-                        }
-                        catch { }
-                    }
-
-                    return baseline;
-                }
+                return await GetDomBaselineOrThrowAsync(baseUrl, pagePath);
             }
             catch (Exception ex)
             {
@@ -868,38 +856,128 @@ namespace BuildConsole.Services
             return null;
         }
 
+        /// <summary>Git #4442 — same lookup as <see cref="GetDomBaselineAsync"/>, but a DB failure throws
+        /// instead of reading as "no baseline". The navigation auto-check needs that distinction: treating
+        /// a dropped connection as "never visited" would overwrite a real baseline with a fresh observation.</summary>
+        public async Task<VisualTestTrackerDomBaseline?> GetDomBaselineOrThrowAsync(string baseUrl, string pagePath)
+        {
+            if (string.IsNullOrWhiteSpace(baseUrl) && string.IsNullOrWhiteSpace(pagePath)) return null;
+
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(
+                "SELECT id, page_id, base_url, page_path, baseline_mutations, last_verified_at, created_at, updated_at, dom_snapshot " +
+                "FROM visual_test_tracker_dom_mutations WHERE base_url = @b AND page_path = @p", conn);
+            cmd.Parameters.AddWithValue("@b", baseUrl ?? "");
+            cmd.Parameters.AddWithValue("@p", pagePath ?? "");
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (!await reader.ReadAsync()) return null;
+
+            var baseline = new VisualTestTrackerDomBaseline
+            {
+                Id = reader.GetInt32(0),
+                PageId = reader.IsDBNull(1) ? 0 : reader.GetInt32(1),
+                BaseUrl = reader.GetString(2),
+                PagePath = reader.GetString(3),
+                LastVerifiedAt = reader.GetFieldValue<DateTime>(5),
+                CreatedAt = reader.GetFieldValue<DateTime>(6),
+                UpdatedAt = reader.GetFieldValue<DateTime>(7),
+            };
+
+            if (!reader.IsDBNull(4))
+            {
+                string json = reader.GetString(4);
+                try
+                {
+                    var muts = System.Text.Json.JsonSerializer.Deserialize<List<DomMutationRecord>>(json);
+                    if (muts != null) baseline.Mutations = muts;
+                }
+                catch { }
+            }
+
+            if (!reader.IsDBNull(8))
+            {
+                try
+                {
+                    using var snap = System.Text.Json.JsonDocument.Parse(reader.GetString(8));
+                    if (snap.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                        snap.RootElement.TryGetProperty("structureKeys", out var keysEl) &&
+                        keysEl.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        baseline.StructureKeys = keysEl.EnumerateArray()
+                            .Where(k => k.ValueKind == System.Text.Json.JsonValueKind.String)
+                            .Select(k => k.GetString() ?? "")
+                            .Where(k => k.Length > 0)
+                            .ToList();
+                        baseline.HasStructureSnapshot = true;
+                    }
+                }
+                catch { }
+            }
+
+            return baseline;
+        }
+
         /// <summary>Saves or updates a DOM baseline for a page.</summary>
         public async Task SaveDomBaselineAsync(VisualTestTrackerDomBaseline baseline)
         {
-            if (baseline == null) return;
-            baseline.UpdatedAt = DateTime.Now;
-
             try
             {
-                await using var conn = await OpenAsync();
-                string jsonMutations = System.Text.Json.JsonSerializer.Serialize(baseline.Mutations ?? new List<DomMutationRecord>());
-
-                await using var cmd = new NpgsqlCommand(
-                    "INSERT INTO visual_test_tracker_dom_mutations (page_id, base_url, page_path, baseline_mutations, last_verified_at, created_at, updated_at) " +
-                    "VALUES (@pid, @b, @p, @mut::jsonb, @v, @c, @up) " +
-                    "ON CONFLICT (base_url, page_path) DO UPDATE SET " +
-                    "baseline_mutations = EXCLUDED.baseline_mutations, last_verified_at = EXCLUDED.last_verified_at, updated_at = EXCLUDED.updated_at " +
-                    "RETURNING id", conn);
-                cmd.Parameters.AddWithValue("@pid", baseline.PageId > 0 ? (object)baseline.PageId : DBNull.Value);
-                cmd.Parameters.AddWithValue("@b", baseline.BaseUrl ?? "");
-                cmd.Parameters.AddWithValue("@p", baseline.PagePath ?? "");
-                cmd.Parameters.AddWithValue("@mut", jsonMutations);
-                cmd.Parameters.AddWithValue("@v", baseline.LastVerifiedAt);
-                cmd.Parameters.AddWithValue("@c", baseline.CreatedAt);
-                cmd.Parameters.AddWithValue("@up", baseline.UpdatedAt);
-
-                var idObj = await cmd.ExecuteScalarAsync();
-                if (idObj is int idVal) baseline.Id = idVal;
+                await SaveDomBaselineOrThrowAsync(baseline);
             }
             catch (Exception ex)
             {
                 ActivityLog.Log(Channel, $"SaveDomBaselineAsync error: {ex.Message}");
             }
+        }
+
+        /// <summary>Git #4442 — throwing variant of <see cref="SaveDomBaselineAsync"/>, so the auto-check
+        /// can tell Shane a baseline was NOT recorded instead of claiming it was.</summary>
+        public async Task SaveDomBaselineOrThrowAsync(VisualTestTrackerDomBaseline baseline)
+        {
+            if (baseline == null) return;
+            baseline.UpdatedAt = DateTime.Now;
+
+            await using var conn = await OpenAsync();
+            string jsonMutations = System.Text.Json.JsonSerializer.Serialize(baseline.Mutations ?? new List<DomMutationRecord>());
+            string jsonSnapshot = baseline.HasStructureSnapshot
+                ? System.Text.Json.JsonSerializer.Serialize(new { structureKeys = baseline.StructureKeys ?? new List<string>() })
+                : "{}";
+
+            await using var cmd = new NpgsqlCommand(
+                "INSERT INTO visual_test_tracker_dom_mutations (page_id, base_url, page_path, baseline_mutations, dom_snapshot, last_verified_at, created_at, updated_at) " +
+                "VALUES (@pid, @b, @p, @mut::jsonb, @snap::jsonb, @v, @c, @up) " +
+                "ON CONFLICT (base_url, page_path) DO UPDATE SET " +
+                "baseline_mutations = EXCLUDED.baseline_mutations, " +
+                // A caller that captured no structure must not wipe a snapshot that already exists.
+                "dom_snapshot = CASE WHEN EXCLUDED.dom_snapshot = '{}'::jsonb THEN visual_test_tracker_dom_mutations.dom_snapshot ELSE EXCLUDED.dom_snapshot END, " +
+                "page_id = COALESCE(EXCLUDED.page_id, visual_test_tracker_dom_mutations.page_id), " +
+                "last_verified_at = EXCLUDED.last_verified_at, updated_at = EXCLUDED.updated_at " +
+                "RETURNING id", conn);
+            cmd.Parameters.AddWithValue("@pid", baseline.PageId > 0 ? (object)baseline.PageId : DBNull.Value);
+            cmd.Parameters.AddWithValue("@b", baseline.BaseUrl ?? "");
+            cmd.Parameters.AddWithValue("@p", baseline.PagePath ?? "");
+            cmd.Parameters.AddWithValue("@mut", jsonMutations);
+            cmd.Parameters.AddWithValue("@snap", jsonSnapshot);
+            cmd.Parameters.AddWithValue("@v", baseline.LastVerifiedAt);
+            cmd.Parameters.AddWithValue("@c", baseline.CreatedAt);
+            cmd.Parameters.AddWithValue("@up", baseline.UpdatedAt);
+
+            var idObj = await cmd.ExecuteScalarAsync();
+            if (idObj is int idVal) baseline.Id = idVal;
+        }
+
+        /// <summary>Git #4442 — records a structural snapshot on an existing baseline row saved without one
+        /// (dom_snapshot = '{}'), without touching its mutations or verification date.</summary>
+        public async Task UpdateDomBaselineSnapshotOrThrowAsync(string baseUrl, string pagePath, List<string> structureKeys)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(
+                "UPDATE visual_test_tracker_dom_mutations SET dom_snapshot = @snap::jsonb, updated_at = now() WHERE base_url = @b AND page_path = @p", conn);
+            cmd.Parameters.AddWithValue("@snap", System.Text.Json.JsonSerializer.Serialize(new { structureKeys = structureKeys ?? new List<string>() }));
+            cmd.Parameters.AddWithValue("@b", baseUrl ?? "");
+            cmd.Parameters.AddWithValue("@p", pagePath ?? "");
+            await cmd.ExecuteNonQueryAsync();
         }
 
         /// <summary>Updates last_verified_at timestamp to now() for a page baseline.</summary>
@@ -918,6 +996,132 @@ namespace BuildConsole.Services
             {
                 ActivityLog.Log(Channel, $"UpdateDomBaselineVerificationDateAsync error: {ex.Message}");
             }
+        }
+
+        /// <summary>Git #4442 — retrieves the last accessibility audit persisted for a page, or null if the
+        /// page has never been audited. Mirrors <see cref="GetDomBaselineAsync"/>.</summary>
+        public async Task<VisualTestTrackerA11yAudit?> GetA11yAuditAsync(string baseUrl, string pagePath)
+        {
+            try
+            {
+                return await GetA11yAuditOrThrowAsync(baseUrl, pagePath);
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(Channel, $"GetA11yAuditAsync error: {ex.Message}");
+            }
+            return null;
+        }
+
+        /// <summary>Git #4442 — throwing variant of <see cref="GetA11yAuditAsync"/> (see
+        /// <see cref="GetDomBaselineOrThrowAsync"/> for why the auto-check needs it).</summary>
+        public async Task<VisualTestTrackerA11yAudit?> GetA11yAuditOrThrowAsync(string baseUrl, string pagePath)
+        {
+            if (string.IsNullOrWhiteSpace(baseUrl) && string.IsNullOrWhiteSpace(pagePath)) return null;
+
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(
+                "SELECT id, page_id, base_url, page_path, violation_summary, last_audited_at, created_at, updated_at " +
+                "FROM visual_test_tracker_a11y_audits WHERE base_url = @b AND page_path = @p", conn);
+            cmd.Parameters.AddWithValue("@b", baseUrl ?? "");
+            cmd.Parameters.AddWithValue("@p", pagePath ?? "");
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (!await reader.ReadAsync()) return null;
+
+            var audit = new VisualTestTrackerA11yAudit
+            {
+                Id = reader.GetInt32(0),
+                PageId = reader.IsDBNull(1) ? 0 : reader.GetInt32(1),
+                BaseUrl = reader.GetString(2),
+                PagePath = reader.GetString(3),
+                LastAuditedAt = reader.GetFieldValue<DateTime>(5),
+                CreatedAt = reader.GetFieldValue<DateTime>(6),
+                UpdatedAt = reader.GetFieldValue<DateTime>(7),
+            };
+
+            if (!reader.IsDBNull(4))
+            {
+                try
+                {
+                    using var summary = System.Text.Json.JsonDocument.Parse(reader.GetString(4));
+                    if (summary.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                        summary.RootElement.TryGetProperty("violations", out var violationsEl))
+                    {
+                        var list = System.Text.Json.JsonSerializer.Deserialize<List<AccessibilityViolation>>(violationsEl.GetRawText());
+                        if (list != null) audit.Violations = list;
+                    }
+                }
+                catch { }
+            }
+
+            return audit;
+        }
+
+        /// <summary>Git #4442 — saves or replaces the accessibility audit for a page. Mirrors
+        /// <see cref="SaveDomBaselineAsync"/>.</summary>
+        public async Task SaveA11yAuditAsync(VisualTestTrackerA11yAudit audit)
+        {
+            try
+            {
+                await SaveA11yAuditOrThrowAsync(audit);
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(Channel, $"SaveA11yAuditAsync error: {ex.Message}");
+            }
+        }
+
+        /// <summary>Git #4442 — throwing variant of <see cref="SaveA11yAuditAsync"/>.</summary>
+        public async Task SaveA11yAuditOrThrowAsync(VisualTestTrackerA11yAudit audit)
+        {
+            if (audit == null) return;
+            audit.UpdatedAt = DateTime.Now;
+            var violations = audit.Violations ?? new List<AccessibilityViolation>();
+
+            string jsonSummary = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                total = violations.Count,
+                missingAlt = violations.Count(v => v.Category == "MissingAlt"),
+                contrast = violations.Count(v => v.Category == "Contrast"),
+                aria = violations.Count(v => v.Category == "Aria"),
+                violations,
+            });
+
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(
+                "INSERT INTO visual_test_tracker_a11y_audits (page_id, base_url, page_path, total_violations, violation_summary, last_audited_at, created_at, updated_at) " +
+                "VALUES (@pid, @b, @p, @total, @sum::jsonb, @a, @c, @up) " +
+                "ON CONFLICT (base_url, page_path) DO UPDATE SET " +
+                "total_violations = EXCLUDED.total_violations, violation_summary = EXCLUDED.violation_summary, " +
+                "page_id = COALESCE(EXCLUDED.page_id, visual_test_tracker_a11y_audits.page_id), " +
+                "last_audited_at = EXCLUDED.last_audited_at, updated_at = EXCLUDED.updated_at " +
+                "RETURNING id", conn);
+            cmd.Parameters.AddWithValue("@pid", audit.PageId > 0 ? (object)audit.PageId : DBNull.Value);
+            cmd.Parameters.AddWithValue("@b", audit.BaseUrl ?? "");
+            cmd.Parameters.AddWithValue("@p", audit.PagePath ?? "");
+            cmd.Parameters.AddWithValue("@total", violations.Count);
+            cmd.Parameters.AddWithValue("@sum", jsonSummary);
+            cmd.Parameters.AddWithValue("@a", audit.LastAuditedAt);
+            cmd.Parameters.AddWithValue("@c", audit.CreatedAt);
+            cmd.Parameters.AddWithValue("@up", audit.UpdatedAt);
+
+            var idObj = await cmd.ExecuteScalarAsync();
+            if (idObj is int idVal) audit.Id = idVal;
+        }
+
+        /// <summary>Git #4442 — whether both tables the navigation auto-check persists into exist yet.
+        /// visual_test_tracker_a11y_audits arrives via a manual migration Shane runs himself, so until then
+        /// the auto-check reports it is off rather than treating every page as "never audited". Throws if
+        /// the database is unreachable.</summary>
+        public async Task<(bool DomBaselines, bool A11yAudits)> GetAutoCheckTablesReadyOrThrowAsync()
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(
+                "SELECT to_regclass('visual_test_tracker_dom_mutations') IS NOT NULL, to_regclass('visual_test_tracker_a11y_audits') IS NOT NULL", conn);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (!await reader.ReadAsync()) return (false, false);
+            return (reader.GetBoolean(0), reader.GetBoolean(1));
         }
 
         private static VisualTestTrackerEntry ReadEntryFromReader(NpgsqlDataReader reader)

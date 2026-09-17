@@ -852,36 +852,51 @@ namespace BuildConsole.Controls
                 baseline = await store.GetDomBaselineAsync(baseUrl, _activeRoute);
             }
 
-            var liveMutations = new List<DomMutationRecord>();
-            if (Window.GetWindow(this) is MainWindow mw)
+            // Git #4442 — was DiffDomSnapshotAsync, which only compares against an in-memory snapshot nothing
+            // in Test Mode ever takes (so it returned nothing). Use the observation the page auto-check took on
+            // this visit, so this window shows the same drift its banner reported; otherwise observe now.
+            DomPageObservation? live = null;
+            if (PageAutoCheckService.TryGetLastObservation(baseUrl, _activeRoute, out _, out var lastObservation))
+            {
+                live = lastObservation;
+            }
+            else if (Window.GetWindow(this) is MainWindow mw)
             {
                 var (wv, _) = mw.GetActiveEditorTabWebView();
                 if (wv != null)
                 {
-                    liveMutations = await VisualTestTrackerTelemetry.DiffDomSnapshotAsync(wv);
+                    ShowToast("Observing the live DOM for a few seconds...");
+                    live = await PageAutoCheckService.ObserveNowAsync(wv);
                 }
             }
 
-            var win = new DomDriftDiffWindow(baseUrl, _activeRoute, baseline, liveMutations, store, mutations =>
+            if (live == null)
             {
-                if (mutations != null && mutations.Count > 0)
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine($"DOM Drift detected ({mutations.Count} changes):");
-                    foreach (var m in mutations)
-                    {
-                        sb.AppendLine($"- [{m.Action}] <{m.Tag}> `{m.Selector}`: {m.OldValue} -> {m.NewValue}");
-                    }
-                    AppendNote(sb.ToString().TrimEnd());
-                    ShowToast("DOM drift attached to bug notes!");
-                }
-            })
+                ShowToast("No live page to compare against the baseline.");
+                return;
+            }
+
+            var win = new DomDriftDiffWindow(baseUrl, _activeRoute, baseline, live, store, AttachDomDriftToNotes)
             {
                 Owner = Window.GetWindow(this)
             };
 
             win.ShowDialog();
             BdrDomVerificationBanner.Visibility = Visibility.Collapsed;
+        }
+
+        /// <summary>"File Bug Report from Drift" — appends the drift to the bug notes being composed.</summary>
+        public void AttachDomDriftToNotes(List<DomMutationRecord> mutations)
+        {
+            if (mutations == null || mutations.Count == 0) return;
+            var sb = new StringBuilder();
+            sb.AppendLine($"DOM Drift detected ({mutations.Count} changes):");
+            foreach (var m in mutations)
+            {
+                sb.AppendLine($"- [{m.Action}] <{m.Tag}> `{m.Selector}`: {m.OldValue} -> {m.NewValue}");
+            }
+            AppendNote(sb.ToString().TrimEnd());
+            ShowToast("DOM drift attached to bug notes!");
         }
 
         private async void BtnUpdateDomBaseline_Click(object sender, RoutedEventArgs e)

@@ -417,6 +417,12 @@ namespace BuildConsole
                     TestModeComposerPanel.SetActiveRoute(pagePath, url);
                     TestModeDiagnosticsPanel.AttachWebView(activeWv, baseUrl, pagePath);
                     RefreshActiveTestSession();
+
+                    // Git #4442 — watched pages only (not every tab that happens to be open in Test Mode).
+                    if (matchedBase != null)
+                    {
+                        _ = RunPageAutoCheckAsync(activeWv, url, matchedBase, pagePath);
+                    }
                     return;
                 }
             }
@@ -424,6 +430,53 @@ namespace BuildConsole
             UnsubscribeTestModeWvEvents();
             TestModeComposerPanel.SetActiveRoute("No tracked tab active — navigate a watched tab");
             TestModeDiagnosticsPanel.ClearActiveTab();
+        }
+
+        /// <summary>
+        /// Git #4442 — runs the page auto-check (a11y audit + DOM baseline, see PageAutoCheckService) for the
+        /// watched page now in <paramref name="webView"/> and reports into that tab's toolbar banner. Called
+        /// on every UpdateTestModeActiveTab(); the service lets one check through per page per document.
+        /// </summary>
+        private async Task RunPageAutoCheckAsync(Microsoft.Web.WebView2.Wpf.WebView2 webView, string pageUrl, string watchedBase, string pagePath)
+        {
+            string baseUrl = PageAutoCheckService.BaseUrlKeyFor(pageUrl);
+            var banner = PageAutoCheckBanner.For(webView);
+
+            // A banner about another page is stale the moment the tab moves off it.
+            if (banner?.ShowingPageKey is string shownKey && shownKey != baseUrl + pagePath)
+                banner.Hide();
+
+            var outcome = await PageAutoCheckService.RunAsync(webView, pageUrl, baseUrl, pagePath, watchedBase, onClaimed: () => banner?.Hide());
+            if (outcome == null || outcome.Kind == PageAutoCheckKind.Silent) return;
+
+            if (banner != null)
+            {
+                banner.Show(outcome);
+            }
+            else
+            {
+                ToastEngine.Show("Test Mode page check", $"{outcome.Headline} {outcome.Detail}".Trim(),
+                    outcome.Kind == PageAutoCheckKind.FirstVisit ? ToastKind.Info : ToastKind.Warning);
+            }
+        }
+
+        /// <summary>Git #4442 — the banner's "View drift": the same DomDriftDiffWindow the composer opens, over
+        /// the observation the banner reported. True when the drift was accepted into the baseline.</summary>
+        private bool OpenPageAutoCheckDrift(PageAutoCheckOutcome outcome)
+        {
+            if (outcome.Observation == null) return false;
+
+            // Compare against the newest baseline known for the page — it may have been accepted since.
+            var baseline = PageAutoCheckService.TryGetLastObservation(outcome.BaseUrl, outcome.PagePath, out var latest, out _)
+                ? latest
+                : outcome.Baseline;
+
+            var win = new DomDriftDiffWindow(outcome.BaseUrl, outcome.PagePath, baseline, outcome.Observation, outcome.Store,
+                TestModeComposerPanel.AttachDomDriftToNotes)
+            {
+                Owner = this
+            };
+            return win.ShowDialog() == true;
         }
 
         /// <summary>

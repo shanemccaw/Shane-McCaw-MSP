@@ -1,0 +1,42 @@
+<UserControl x:Class="BuildConsole.Controls.PageAutoCheckBanner"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Visibility="Collapsed">
+    <!--
+        Git #4442 — the Test Mode page auto-check banner. Lives in its own row directly under a browser
+        tab's toolbar (the same per-tab toolbar #3984's bug status icon sits in), so it pushes the page
+        down rather than overlaying it: a WPF element can't draw over a WebView2 (airspace), and a Popup
+        would float free of the tab when the window moves. Non-blocking and dismissible. ToastEngine was
+        not reused — it is one app-wide host window with no notion of which tab a message belongs to.
+    -->
+    <Border x:Name="BdrBanner" BorderThickness="0,0,0,1" Padding="10,5"
+            Background="{StaticResource BlueBrushTint}" BorderBrush="{StaticResource BlueBrush}">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock x:Name="TxtIcon" Grid.Column="0" Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                       Margin="0,1,8,0" VerticalAlignment="Top" Foreground="{StaticResource BlueBrush}"/>
+
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <TextBlock x:Name="TxtHeadline" FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold"
+                           Foreground="{StaticResource TextBrush}" TextWrapping="Wrap"/>
+                <TextBlock x:Name="TxtDetail" FontSize="{StaticResource CaptionFontSize}" Margin="0,2,0,0"
+                           Foreground="{StaticResource Subtext1Brush}" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <Button x:Name="BtnViewDrift" Grid.Column="2" Content="View drift" Style="{StaticResource SecondaryButton}"
+                    FontSize="{StaticResource CaptionFontSize}" Padding="8,3" Margin="10,0,4,0" VerticalAlignment="Center"
+                    Visibility="Collapsed" Click="BtnViewDrift_Click" ToolTip="Open the DOM drift viewer for this page"/>
+
+            <Button Grid.Column="3" Style="{StaticResource IconButton}" Width="24" Height="24" VerticalAlignment="Center"
+                    Click="BtnDismiss_Click" ToolTip="Dismiss">
+                <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+            </Button>
+        </Grid>
+    </Border>
+</UserControl>

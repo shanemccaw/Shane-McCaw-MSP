@@ -2573,6 +2573,237 @@ namespace BuildConsole.Services
             return list;
         }
 
+        // ── Git #4442: silent DOM observation for baseline checks ───────────────
+
+        /// <summary>Polls document.readyState until "complete" (or the timeout passes). False if the page
+        /// never finished loading or the WebView went away.</summary>
+        public static async Task<bool> WaitForDocumentReadyAsync(WebView2? webView, TimeSpan timeout)
+        {
+            var deadline = DateTime.UtcNow + timeout;
+            while (DateTime.UtcNow < deadline)
+            {
+                if (webView?.CoreWebView2 == null) return false;
+                try
+                {
+                    var raw = await webView.ExecuteScriptAsync("document.readyState");
+                    if (raw == "\"complete\"") return true;
+                }
+                catch { return false; }
+                await Task.Delay(250);
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Starts a silent in-page observation (no outlines, no postMessage — unlike
+        /// <see cref="EnableDomMutationObserverAsync"/>, whose events drive the diagnostics UI). Returns the
+        /// observation token to pass to <see cref="CollectDomObservationAsync"/>, or null if nothing started.
+        /// With a <paramref name="claimKey"/>, the claim is once per document: a second call for the same key
+        /// on the same document returns null, so the several navigation events one page load raises
+        /// (SourceChanged, HistoryChanged, NavigationCompleted, route-change) run one check, while a reload
+        /// (new document) or an SPA route change (new key) runs a fresh one. Starting a new observation
+        /// supersedes any still-running one on that document. With <paramref name="expectedUrl"/>, nothing starts
+        /// unless the document is actually showing that URL (fragment ignored).
+        /// </summary>
+        public static async Task<string?> StartDomObservationAsync(WebView2? webView, string? claimKey, string? expectedUrl)
+        {
+            if (webView?.CoreWebView2 == null) return null;
+            string token = Guid.NewGuid().ToString("N");
+            try
+            {
+                string script = DomObservationStartScript
+                    .Replace("__VTT_CLAIM_KEY__", claimKey == null ? "null" : JsonSerializer.Serialize(claimKey))
+                    .Replace("__VTT_EXPECTED_URL__", expectedUrl == null ? "null" : JsonSerializer.Serialize(expectedUrl))
+                    .Replace("__VTT_TOKEN__", JsonSerializer.Serialize(token));
+                var raw = await webView.ExecuteScriptAsync(script);
+                return raw == "\"started\"" ? token : null;
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(VisualTestTrackerStore.Channel, $"StartDomObservation error: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>True while <paramref name="token"/> is still the live observation on the current document
+        /// (false once the page navigated, reloaded, or a newer observation superseded it).</summary>
+        public static async Task<bool> IsDomObservationCurrentAsync(WebView2? webView, string token)
+        {
+            if (webView?.CoreWebView2 == null) return false;
+            try
+            {
+                var raw = await webView.ExecuteScriptAsync($"window.__vttAutoCheckToken === {JsonSerializer.Serialize(token)}");
+                return raw == "true";
+            }
+            catch { return false; }
+        }
+
+        /// <summary>Stops the observation started with <paramref name="token"/> and returns what it saw plus
+        /// the page's stable structural keys, or null if that observation is no longer current.</summary>
+        public static async Task<DomPageObservation?> CollectDomObservationAsync(WebView2? webView, string token)
+        {
+            if (webView?.CoreWebView2 == null) return null;
+            try
+            {
+                var raw = await webView.ExecuteScriptAsync(DomObservationCollectScript.Replace("__VTT_TOKEN__", JsonSerializer.Serialize(token)));
+                if (string.IsNullOrWhiteSpace(raw) || raw == "null") return null;
+
+                string json = raw;
+                if (raw.StartsWith("\"") && raw.EndsWith("\""))
+                {
+                    try { json = JsonSerializer.Deserialize<string>(raw) ?? raw; } catch { }
+                }
+
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                using var doc = JsonDocument.Parse(json);
+                var observation = new DomPageObservation { ObservedAt = DateTime.Now };
+                if (doc.RootElement.TryGetProperty("href", out var hrefEl) && hrefEl.ValueKind == JsonValueKind.String)
+                    observation.Href = hrefEl.GetString() ?? "";
+                if (doc.RootElement.TryGetProperty("mutations", out var mutsEl))
+                    observation.Mutations = JsonSerializer.Deserialize<List<DomMutationRecord>>(mutsEl.GetRawText(), options) ?? new();
+                if (doc.RootElement.TryGetProperty("structureKeys", out var keysEl))
+                    observation.StructureKeys = JsonSerializer.Deserialize<List<string>>(keysEl.GetRawText(), options) ?? new();
+                return observation;
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(VisualTestTrackerStore.Channel, $"CollectDomObservation error: {ex.Message}");
+                return null;
+            }
+        }
+
+        private const string DomObservationStartScript = @"
+(function(claimKey, token, expectedUrl) {
+    if (expectedUrl !== null && window.location.href.split('#')[0] !== expectedUrl.split('#')[0]) return 'moved';
+    if (claimKey !== null && window.__vttAutoCheckKey === claimKey) return 'seen';
+    if (claimKey !== null) window.__vttAutoCheckKey = claimKey;
+    if (window.__vttAutoCheckObserver) { try { window.__vttAutoCheckObserver.disconnect(); } catch (e) {} }
+    window.__vttAutoCheckToken = token;
+    window.__vttAutoCheckMutations = [];
+
+    function isVttOwned(node) {
+        for (var n = node; n && n.nodeType === 1; n = n.parentElement) {
+            if (n.id && n.id.indexOf('__vtt_') === 0) return true;
+            if (n.classList && n.classList.contains('__vtt_a11y_badge')) return true;
+        }
+        return false;
+    }
+    function withoutVttClasses(value) {
+        return (value || '').split(/\s+/).filter(function(c) { return c && c.indexOf('__vtt_') !== 0; }).sort().join(' ');
+    }
+    function getSelector(el) {
+        if (!el || el.nodeType !== 1) return '';
+        if (el.id) return '#' + CSS.escape(el.id);
+        var path = [];
+        var curr = el;
+        while (curr && curr.nodeType === 1 && curr !== document.body && curr !== document.documentElement) {
+            var sel = curr.tagName.toLowerCase();
+            if (curr.id) { path.unshift('#' + CSS.escape(curr.id)); break; }
+            if (curr.getAttribute && curr.getAttribute('data-testid')) {
+                path.unshift('[data-testid=""' + curr.getAttribute('data-testid') + '""]');
+                break;
+            }
+            var parent = curr.parentNode;
+            if (parent && parent.children) {
+                var siblings = Array.from(parent.children).filter(function(c) { return c.tagName === curr.tagName; });
+                if (siblings.length > 1) sel += ':nth-of-type(' + (siblings.indexOf(curr) + 1) + ')';
+            }
+            path.unshift(sel);
+            curr = parent;
+            if (path.length >= 4) break;
+        }
+        return path.join(' > ');
+    }
+    function clip(v) { v = v || ''; return v.length > 200 ? v.substring(0, 200) : v; }
+    function record(r) {
+        if (window.__vttAutoCheckMutations.length >= 500) return;
+        r.timestamp = new Date().toISOString();
+        window.__vttAutoCheckMutations.push(r);
+    }
+
+    function handle(mutations) {
+        mutations.forEach(function(m) {
+            if (m.type === 'childList') {
+                if (isVttOwned(m.target)) return;
+                m.addedNodes.forEach(function(node) {
+                    if (node.nodeType !== 1 || isVttOwned(node)) return;
+                    record({ type: 'childList', action: 'added', tag: node.tagName.toUpperCase(), selector: getSelector(node),
+                             targetDescription: 'Node added to ' + (m.target.tagName || '') });
+                });
+                m.removedNodes.forEach(function(node) {
+                    if (node.nodeType !== 1 || (node.id && node.id.indexOf('__vtt_') === 0) ||
+                        (node.classList && node.classList.contains('__vtt_a11y_badge'))) return;
+                    record({ type: 'childList', action: 'removed', tag: node.tagName.toUpperCase(), selector: getSelector(m.target),
+                             targetDescription: 'Child removed from ' + (m.target.tagName || '') });
+                });
+            } else if (m.type === 'attributes') {
+                var t = m.target;
+                if (!t || t.nodeType !== 1 || isVttOwned(t)) return;
+                var newValue = t.getAttribute(m.attributeName) || '';
+                if (m.attributeName === 'class' && withoutVttClasses(m.oldValue) === withoutVttClasses(newValue)) return;
+                record({ type: 'attributes', action: 'modified', tag: t.tagName.toUpperCase(), selector: getSelector(t),
+                         attributeName: m.attributeName || '', oldValue: clip(m.oldValue), newValue: clip(newValue),
+                         targetDescription: 'Attribute ' + m.attributeName + ' modified' });
+            } else if (m.type === 'characterData') {
+                var p = m.target.parentElement;
+                if (!p || isVttOwned(p)) return;
+                record({ type: 'characterData', action: 'modified', tag: p.tagName.toUpperCase(), selector: getSelector(p),
+                         oldValue: clip(m.oldValue), newValue: clip(m.target.nodeValue), targetDescription: 'Text content modified' });
+            }
+        });
+    }
+    var observer = new MutationObserver(handle);
+    observer.observe(document.documentElement, {
+        childList: true, subtree: true, attributes: true, attributeOldValue: true, characterData: true, characterDataOldValue: true
+    });
+    window.__vttAutoCheckObserver = observer;
+    window.__vttAutoCheckHandle = handle;
+    return 'started';
+})(__VTT_CLAIM_KEY__, __VTT_TOKEN__, __VTT_EXPECTED_URL__);
+";
+
+        private const string DomObservationCollectScript = @"
+(function(token) {
+    if (window.__vttAutoCheckToken !== token) return null;
+    if (window.__vttAutoCheckObserver) {
+        try {
+            var pending = window.__vttAutoCheckObserver.takeRecords();
+            if (pending.length && window.__vttAutoCheckHandle) window.__vttAutoCheckHandle(pending);
+            window.__vttAutoCheckObserver.disconnect();
+        } catch (e) {}
+        window.__vttAutoCheckObserver = null;
+    }
+
+    function isVttOwned(node) {
+        for (var n = node; n && n.nodeType === 1; n = n.parentElement) {
+            if (n.id && n.id.indexOf('__vtt_') === 0) return true;
+            if (n.classList && n.classList.contains('__vtt_a11y_badge')) return true;
+        }
+        return false;
+    }
+    // Framework-generated ids (React useId ':r1:', Radix/Headless UI counters) differ per load, so they
+    // would read as drift on every visit — only intentional ids and data-testids are structural keys.
+    function isGeneratedId(id) {
+        return /[:«»]/.test(id) || /\d{4,}/.test(id) || /^(radix-|headlessui-|react-aria|mui-)/i.test(id);
+    }
+
+    var keys = {};
+    document.querySelectorAll('[data-testid], [id]').forEach(function(el) {
+        if (isVttOwned(el)) return;
+        var tag = el.tagName.toUpperCase();
+        var testId = el.getAttribute('data-testid');
+        if (testId) keys[tag + '|[data-testid=""' + testId + '""]'] = true;
+        else if (el.id && !isGeneratedId(el.id)) keys[tag + '|#' + el.id] = true;
+    });
+
+    return JSON.stringify({
+        href: window.location.href,
+        mutations: window.__vttAutoCheckMutations || [],
+        structureKeys: Object.keys(keys).sort().slice(0, 3000)
+    });
+})(__VTT_TOKEN__);
+";
+
         // ── Accessibility Audit API ─────────────────────────────────────────────
 
         /// <summary>Runs an automated WCAG 2.1 AA accessibility audit across missing alt, contrast, and ARIA rules.</summary>

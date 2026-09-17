@@ -12,15 +12,19 @@ namespace BuildConsole
         private readonly string _baseUrl;
         private readonly string _pagePath;
         private readonly VisualTestTrackerDomBaseline? _baseline;
-        private readonly List<DomMutationRecord> _liveMutations;
+        private readonly DomPageObservation _live;
+        private readonly List<DomMutationRecord> _drift;
         private VisualTestTrackerStore? _store;
         private readonly Action<List<DomMutationRecord>>? _onAttachToBug;
 
+        /// <summary>Git #4442 — takes the live observation rather than a raw mutation list, and shows only
+        /// real drift against <paramref name="baseline"/> (<see cref="DomBaselineDiff.ComputeDrift"/>, the same
+        /// comparison the Test Mode page auto-check banner uses) instead of every mutation that fired.</summary>
         public DomDriftDiffWindow(
             string baseUrl,
             string pagePath,
             VisualTestTrackerDomBaseline? baseline,
-            List<DomMutationRecord> liveMutations,
+            DomPageObservation live,
             VisualTestTrackerStore? store = null,
             Action<List<DomMutationRecord>>? onAttachToBug = null)
         {
@@ -28,7 +32,8 @@ namespace BuildConsole
             _baseUrl = baseUrl;
             _pagePath = pagePath;
             _baseline = baseline;
-            _liveMutations = liveMutations ?? new List<DomMutationRecord>();
+            _live = live ?? new DomPageObservation();
+            _drift = DomBaselineDiff.ComputeDrift(baseline, _live);
             _store = store;
             _onAttachToBug = onAttachToBug;
 
@@ -38,14 +43,15 @@ namespace BuildConsole
         private void PopulateDriftData()
         {
             TxtPageRoute.Text = $"Route: {(!string.IsNullOrWhiteSpace(_baseUrl) ? _baseUrl : "")}{_pagePath}";
+            string observed = $"live DOM observed {_live.ObservedAt:HH:mm:ss} ({_live.Mutations.Count} mutation(s))";
             if (_baseline != null)
             {
                 int age = _baseline.AgeInDays;
-                TxtBaselineAge.Text = $"Baseline recorded: {age} day(s) ago ({_baseline.LastVerifiedAt:yyyy-MM-dd HH:mm})";
+                TxtBaselineAge.Text = $"Baseline recorded: {age} day(s) ago ({_baseline.LastVerifiedAt:yyyy-MM-dd HH:mm}) — {observed}";
             }
             else
             {
-                TxtBaselineAge.Text = "Baseline recorded: Initial verification";
+                TxtBaselineAge.Text = $"Baseline recorded: Initial verification — {observed}";
             }
 
             int addedCount = 0;
@@ -54,12 +60,12 @@ namespace BuildConsole
 
             var vms = new List<DomDriftItemViewModel>();
 
-            foreach (var mut in _liveMutations)
+            foreach (var mut in _drift)
             {
                 string action = (mut.Action ?? "").ToLowerInvariant();
-                string type = (mut.Type ?? "").ToLowerInvariant();
 
-                if (action.Contains("added") || type.Contains("childlist")) addedCount++;
+                // Was `|| type.Contains("childlist")`, which counted every childList removal as Added.
+                if (action.Contains("added")) addedCount++;
                 else if (action.Contains("removed")) removedCount++;
                 else modifiedCount++;
 
@@ -68,7 +74,7 @@ namespace BuildConsole
 
             LstDriftItems.ItemsSource = vms;
 
-            TxtTotalDrift.Text = $"{_liveMutations.Count} Total Drifts";
+            TxtTotalDrift.Text = $"{_drift.Count} Total Drifts";
             TxtAddedCount.Text = $"{addedCount} Added";
             TxtModifiedCount.Text = $"{modifiedCount} Modified";
             TxtRemovedCount.Text = $"{removedCount} Removed";
@@ -87,15 +93,20 @@ namespace BuildConsole
 
             if (_store != null)
             {
-                var newBaseline = new VisualTestTrackerDomBaseline
+                // Accepting adds the live mutations to what the baseline already knows and takes the live
+                // structure as the new snapshot — accepting today's drift must not forget yesterday's.
+                var newBaseline = DomBaselineDiff.MergeIntoBaseline(_baseline, _live, _baseUrl, _pagePath);
+                try
                 {
-                    BaseUrl = _baseUrl,
-                    PagePath = _pagePath,
-                    Mutations = _liveMutations,
-                    LastVerifiedAt = DateTime.Now,
-                    UpdatedAt = DateTime.Now
-                };
-                await _store.SaveDomBaselineAsync(newBaseline);
+                    await _store.SaveDomBaselineOrThrowAsync(newBaseline);
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log(VisualTestTrackerStore.Channel, $"Accept DOM baseline failed: {ex.Message}");
+                    MessageBox.Show($"The DOM baseline was NOT updated: {ex.Message}", "Store Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+                PageAutoCheckService.RecordAcceptedBaseline(_baseUrl, _pagePath, newBaseline);
                 MessageBox.Show($"DOM baseline for {_baseUrl}{_pagePath} has been updated to current live state.", "Baseline Updated", MessageBoxButton.OK, MessageBoxImage.Information);
                 DialogResult = true;
                 Close();
@@ -108,7 +119,7 @@ namespace BuildConsole
 
         private void BtnCreateBugReport_Click(object sender, RoutedEventArgs e)
         {
-            _onAttachToBug?.Invoke(_liveMutations);
+            _onAttachToBug?.Invoke(_drift);
             DialogResult = false;
             Close();
         }
