@@ -79,7 +79,7 @@ import {
 } from "@workspace/db";
 import { and, eq, gt } from "drizzle-orm";
 import { z } from "zod";
-import { generateSecret, generateURI, verifySync } from "otplib";
+import { generateSecret, generateURI } from "otplib";
 import type { AuthenticatorTransport } from "@simplewebauthn/server";
 import { createAuditLog } from "../lib/audit.ts";
 import { getEmailTemplateOrFallback, sendEmailOrThrow } from "../lib/mailer.ts";
@@ -100,7 +100,7 @@ import {
   resolvePreConsentAccountUser,
   type PreConsentPurchaseSession,
 } from "../lib/purchase-account-flow.ts";
-import { getActiveMfaMethods, getRpId, getRpOrigin, encryptTotp } from "./mfa.ts";
+import { getActiveMfaMethods, getRpId, getRpOrigin, enrollTotp } from "./mfa.ts";
 import { ensureMonitoringScanKickoff } from "../lib/monitoring-onboarding-scan.ts";
 import { ensureMonitoringEntitlement } from "../lib/monitoring-entitlement-provisioning.ts";
 import { ensureRetainerEntitlement } from "../lib/purchase-retainer-entitlement.ts";
@@ -774,24 +774,15 @@ const totpVerifySetupHandler = (resolveAccount: MfaAccountGate) => async (req: R
   const eligible = await resolveAccount(parsed.data.sessionId, res);
   if (!eligible) return;
 
-  const result = verifySync({ token: parsed.data.code.replace(/\s/g, ""), secret: parsed.data.secret, epochTolerance: 30 });
-  if (!result.valid) {
+  // mfa.ts's one real enrollment (Git #4408): verifies the code, stores the secret
+  // with the enrolling code's time-step already spent — so it cannot be replayed at
+  // /auth/mfa/totp/challenge — and never throws on a malformed secret (Git #3863).
+  // The eligibility gate guarantees no active methods, so its replace-on-verify
+  // delete is a belt-and-braces no-op here.
+  if (!(await enrollTotp(eligible.userId, parsed.data.secret, parsed.data.code))) {
     res.status(400).json({ error: "Invalid verification code. Please try again." });
     return;
   }
-
-  // The eligibility gate guarantees no active methods, so this delete is a
-  // no-op belt-and-braces mirror of mfa.ts's own replace-on-verify shape.
-  await db.delete(mfaEnrollmentsTable).where(
-    and(eq(mfaEnrollmentsTable.userId, eligible.userId), eq(mfaEnrollmentsTable.method, "totp"))
-  );
-
-  await db.insert(mfaEnrollmentsTable).values({
-    userId: eligible.userId,
-    method: "totp",
-    enabled: true,
-    encryptedSecret: encryptTotp(parsed.data.secret),
-  });
 
   await createAuditLog({
     actorUserId: eligible.userId,

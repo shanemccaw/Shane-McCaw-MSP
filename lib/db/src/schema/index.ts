@@ -2252,6 +2252,10 @@ export const mfaEnrollmentsTable = pgTable("mfa_enrollments", {
   enabled: boolean("enabled").notNull().default(true),
   encryptedSecret: text("encrypted_secret"),
   phone: text("phone"),
+  // Git #4408 — RFC 6238 §5.2 replay protection: the TOTP time-step of the last
+  // code this enrollment accepted. A code at a step <= this is refused. Null
+  // until the first accepted code (pre-#4408 rows) and for non-TOTP methods.
+  totpLastAcceptedStep: bigint("totp_last_accepted_step", { mode: "number" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [

@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { createHash, randomBytes, createCipheriv, createDecipheriv } from "crypto";
 import { db, usersTable, mfaEnrollmentsTable, mfaChallengesTable, mfaBypassCodesTable, webauthnCredentialsTable, webauthnChallengesTable, mspRefreshTokensTable } from "@workspace/db";
-import { eq, and, gt, isNull } from "drizzle-orm";
+import { eq, and, gt, isNull, lt, or } from "drizzle-orm";
 import { requireAuth, requireAdmin, type AuthUser } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
 import { createAuditLog } from "../lib/audit.ts";
@@ -124,6 +124,125 @@ function decryptTotp(ciphertext: string): string {
   const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivHex, "hex"));
   decipher.setAuthTag(Buffer.from(tagHex, "hex"));
   return Buffer.concat([decipher.update(Buffer.from(encHex, "hex")), decipher.final()]).toString("utf8");
+}
+
+// ── TOTP replay protection (Git #4408) ─────────────────────────────────────────
+// RFC 6238 §5.2: once a code has been accepted, the verifier must not accept it
+// again. Every TOTP check goes through these helpers — the sign-in challenge
+// (/auth/mfa/totp/challenge, /auth/mfa/verify) and both enrollment doors
+// (/auth/mfa/totp/verify-setup below, and the purchase-flow verify-setup in
+// public-purchase-account.ts). mfa_enrollments.totp_last_accepted_step holds the
+// time-step of the last accepted code; a step <= it is refused.
+
+const TOTP_EPOCH_TOLERANCE_SECONDS = 30;
+
+export type TotpCheck = { valid: false } | { valid: true; timeStep: number };
+
+/**
+ * Verify a code against a secret, refusing any time-step <= lastAcceptedStep.
+ * Never throws: otplib throws on a malformed secret or token (Git #3863), and on
+ * an afterTimeStep beyond the tolerance window (a stored step ahead of this
+ * server's clock). Each of those is a failed check, not a 500.
+ */
+export function checkTotpCode(secret: string, code: string, lastAcceptedStep: number | null): TotpCheck {
+  try {
+    const result = verifySync({
+      token: code.replace(/\s/g, ""),
+      secret,
+      epochTolerance: TOTP_EPOCH_TOLERANCE_SECONDS,
+      ...(lastAcceptedStep != null ? { afterTimeStep: lastAcceptedStep } : {}),
+    });
+    return result.valid && "timeStep" in result ? { valid: true, timeStep: result.timeStep } : { valid: false };
+  } catch {
+    return { valid: false };
+  }
+}
+
+/**
+ * Spend a verified time-step on an enrollment. Compare-and-set: the row only
+ * advances while its stored step is still below `timeStep`, so of two concurrent
+ * requests carrying the same code exactly one wins. False means already spent.
+ */
+export async function consumeTotpStep(enrollmentId: number, timeStep: number): Promise<boolean> {
+  const updated = await db
+    .update(mfaEnrollmentsTable)
+    .set({ totpLastAcceptedStep: timeStep })
+    .where(and(
+      eq(mfaEnrollmentsTable.id, enrollmentId),
+      or(isNull(mfaEnrollmentsTable.totpLastAcceptedStep), lt(mfaEnrollmentsTable.totpLastAcceptedStep, timeStep)),
+    ))
+    .returning({ id: mfaEnrollmentsTable.id });
+  return updated.length > 0;
+}
+
+/**
+ * Complete TOTP enrollment: verify `code` against the caller-held `secret`, then
+ * replace the user's TOTP enrollment with one whose enrolling step is already
+ * spent — so the code typed to finish setup cannot be replayed at the sign-in
+ * challenge. A replaced enrollment's last accepted step is the floor for the new
+ * code, so a replayed verify-setup cannot rewind it and re-arm a spent code. The
+ * read-verify-replace runs under a lock on the user row, so two concurrent
+ * verify-setups for one user cannot interleave. False means the code was refused.
+ */
+export async function enrollTotp(userId: number, secret: string, code: string): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    await tx.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, userId)).for("update");
+
+    const existing = await tx
+      .select({ step: mfaEnrollmentsTable.totpLastAcceptedStep })
+      .from(mfaEnrollmentsTable)
+      .where(and(eq(mfaEnrollmentsTable.userId, userId), eq(mfaEnrollmentsTable.method, "totp")));
+    const floor = existing.reduce<number | null>(
+      (max, row) => (row.step != null && (max == null || row.step > max) ? row.step : max),
+      null,
+    );
+
+    const check = checkTotpCode(secret, code, floor);
+    if (!check.valid) return false;
+
+    await tx.delete(mfaEnrollmentsTable).where(
+      and(eq(mfaEnrollmentsTable.userId, userId), eq(mfaEnrollmentsTable.method, "totp"))
+    );
+    await tx.insert(mfaEnrollmentsTable).values({
+      userId,
+      method: "totp",
+      enabled: true,
+      encryptedSecret: encryptTotp(secret),
+      totpLastAcceptedStep: check.timeStep,
+    });
+    return true;
+  });
+}
+
+/**
+ * The sign-in half: check a code against the user's enabled TOTP enrollment and
+ * spend its step. Shared by /auth/mfa/totp/challenge and /auth/mfa/verify.
+ */
+async function verifyTotpChallenge(userId: number, code: string): Promise<"ok" | "not_enrolled" | "invalid"> {
+  const [enrollment] = await db
+    .select()
+    .from(mfaEnrollmentsTable)
+    .where(and(eq(mfaEnrollmentsTable.userId, userId), eq(mfaEnrollmentsTable.method, "totp"), eq(mfaEnrollmentsTable.enabled, true)))
+    .limit(1);
+
+  if (!enrollment?.encryptedSecret) return "not_enrolled";
+
+  const secret = decryptTotp(enrollment.encryptedSecret);
+  const check = checkTotpCode(secret, code, enrollment.totpLastAcceptedStep);
+  if (!check.valid) {
+    // Same 401 either way; the log is what tells a replayed code from a wrong one.
+    if (enrollment.totpLastAcceptedStep != null && checkTotpCode(secret, code, null).valid) {
+      log.warn({ userId, enrollmentId: enrollment.id }, "TOTP challenge refused: code already used (replay)");
+    }
+    return "invalid";
+  }
+
+  if (!(await consumeTotpStep(enrollment.id, check.timeStep))) {
+    // Correct code, but a concurrent request spent this step first.
+    log.warn({ userId, enrollmentId: enrollment.id }, "TOTP challenge refused: time-step spent by a concurrent request (replay)");
+    return "invalid";
+  }
+  return "ok";
 }
 
 // ── MFA Token utilities ────────────────────────────────────────────────────────
@@ -402,32 +521,14 @@ router.post("/auth/mfa/totp/verify-setup", requireAuth, mfaLimiter, async (req: 
     return;
   }
 
-  // Git #3863 — otplib's verifySync throws (rather than returning { valid: false })
-  // on a malformed/undersized secret or a token that isn't 6 digits. `secret` here
-  // is caller-supplied (round-tripped from /totp/setup's response), so a wrong code
-  // paired with a malformed secret must still resolve to the same 400, not an
-  // unhandled 500.
-  let result: { valid: boolean };
-  try {
-    result = verifySync({ token: code.replace(/\s/g, ""), secret, epochTolerance: 30 });
-  } catch {
-    result = { valid: false };
-  }
-  if (!result.valid) {
+  // Git #3863 — `secret` is caller-supplied (round-tripped from /totp/setup's
+  // response), so a wrong code paired with a malformed secret must still resolve
+  // to the same 400, not an unhandled 500 — enrollTotp's check never throws.
+  // Git #4408 — the enrolling code's step is stored as spent.
+  if (!(await enrollTotp(user.id, secret, code))) {
     res.status(400).json({ error: "Invalid verification code. Please try again." });
     return;
   }
-
-  await db.delete(mfaEnrollmentsTable).where(
-    and(eq(mfaEnrollmentsTable.userId, user.id), eq(mfaEnrollmentsTable.method, "totp"))
-  );
-
-  await db.insert(mfaEnrollmentsTable).values({
-    userId: user.id,
-    method: "totp",
-    enabled: true,
-    encryptedSecret: encryptTotp(secret),
-  });
 
   res.json({ ok: true });
 });
@@ -448,20 +549,12 @@ router.post("/auth/mfa/totp/challenge", mfaLimiter, async (req: Request, res: Re
     return;
   }
 
-  const [enrollment] = await db
-    .select()
-    .from(mfaEnrollmentsTable)
-    .where(and(eq(mfaEnrollmentsTable.userId, userId), eq(mfaEnrollmentsTable.method, "totp"), eq(mfaEnrollmentsTable.enabled, true)))
-    .limit(1);
-
-  if (!enrollment?.encryptedSecret) {
+  const outcome = await verifyTotpChallenge(userId, code);
+  if (outcome === "not_enrolled") {
     res.status(400).json({ error: "TOTP not enrolled" });
     return;
   }
-
-  const totpSecret = decryptTotp(enrollment.encryptedSecret);
-  const result = verifySync({ token: code.replace(/\s/g, ""), secret: totpSecret, epochTolerance: 30 });
-  if (!result.valid) {
+  if (outcome === "invalid") {
     res.status(401).json({ error: "Invalid code. Please try again." });
     return;
   }
@@ -1015,21 +1108,12 @@ router.post("/auth/mfa/verify", mfaLimiter, async (req: Request, res: Response) 
   }
 
   if (method === "totp") {
-    const [enrollment] = await db
-      .select()
-      .from(mfaEnrollmentsTable)
-      .where(and(eq(mfaEnrollmentsTable.userId, userId), eq(mfaEnrollmentsTable.method, "totp"), eq(mfaEnrollmentsTable.enabled, true)))
-      .limit(1);
-
-    if (!enrollment?.encryptedSecret) {
+    const outcome = await verifyTotpChallenge(userId, code);
+    if (outcome === "not_enrolled") {
       res.status(400).json({ error: "TOTP not enrolled" });
       return;
     }
-
-    const totpSecret = decryptTotp(enrollment.encryptedSecret);
-    const totpResult = verifySync({ token: code.replace(/\s/g, ""), secret: totpSecret, epochTolerance: 30 });
-    const valid = totpResult.valid;
-    if (!valid) {
+    if (outcome === "invalid") {
       res.status(401).json({ error: "Invalid code. Please try again." });
       return;
     }

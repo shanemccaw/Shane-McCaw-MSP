@@ -32,7 +32,7 @@ import request from "supertest";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { randomUUID } from "node:crypto";
-import { generateSync } from "otplib";
+import { nextTotpCode } from "../test-setup/totp-codes.ts";
 import { and, eq, inArray, like, sql } from "drizzle-orm";
 import { LEGACY_ROLE } from "@workspace/db/rbac/legacy-ladder";
 
@@ -110,7 +110,7 @@ describeLive("#4377 — account-first Monitoring order + returning-buyer resume,
     expect(setup.status, JSON.stringify(setup.body)).toBe(200);
     const enrolled = await request(app)
       .post("/public/purchase/pre-consent/mfa/totp/verify-setup")
-      .send({ sessionId, secret: setup.body.secret, code: generateSync({ secret: setup.body.secret }) });
+      .send({ sessionId, secret: setup.body.secret, code: await nextTotpCode(setup.body.secret) });
     expect(enrolled.status, JSON.stringify(enrolled.body)).toBe(200);
     return setup.body.secret as string;
   }
@@ -122,7 +122,7 @@ describeLive("#4377 — account-first Monitoring order + returning-buyer resume,
     expect(login.body.mfaRequired).toBe(true);
     const challenge = await request(app)
       .post("/auth/mfa/totp/challenge")
-      .send({ mfaToken: login.body.mfaToken, code: generateSync({ secret: totpSecret }) });
+      .send({ mfaToken: login.body.mfaToken, code: await nextTotpCode(totpSecret) });
     expect(challenge.status, JSON.stringify(challenge.body)).toBe(200);
     expect(challenge.body.accessToken).toBeTruthy();
     return challenge.body.accessToken as string;
@@ -200,9 +200,10 @@ describeLive("#4377 — account-first Monitoring order + returning-buyer resume,
     expect(noMfa.status).toBe(409);
     expect(noMfa.body.reason).toBe("mfa_not_enrolled");
     const setup = await request(app).post("/public/purchase/pre-consent/mfa/totp/setup").send({ sessionId });
+    const enrollCode = await nextTotpCode(setup.body.secret);
     await request(app)
       .post("/public/purchase/pre-consent/mfa/totp/verify-setup")
-      .send({ sessionId, secret: setup.body.secret, code: generateSync({ secret: setup.body.secret }) })
+      .send({ sessionId, secret: setup.body.secret, code: enrollCode })
       .expect(200);
     const totpSecret = setup.body.secret as string;
 
@@ -212,6 +213,14 @@ describeLive("#4377 — account-first Monitoring order + returning-buyer resume,
 
     const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
     expect(user.mspRole).toBe(LEGACY_ROLE.monitoringPending);
+
+    // #4408 — the code that finished enrollment is spent: replayed at the sign-in
+    // challenge it is refused, and no session is issued.
+    const replayLogin = await request(app).post("/auth/login").send({ email, password: PASSWORD });
+    expect(replayLogin.body.mfaRequired).toBe(true);
+    const replay = await request(app).post("/auth/mfa/totp/challenge").send({ mfaToken: replayLogin.body.mfaToken, code: enrollCode });
+    expect(replay.status, JSON.stringify(replay.body)).toBe(401);
+    expect(replay.body.accessToken).toBeUndefined();
 
     // 3 — crash. A fresh client knows only the email and password.
     const token = await signIn(email, totpSecret);
