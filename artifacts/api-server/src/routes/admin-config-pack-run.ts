@@ -64,6 +64,9 @@ const ERROR_STATUS: Record<ConfigPackError["code"], number> = {
   // #1911 — Key Vault store for generated credentials isn't configured; fail
   // closed rather than write the credential to the database.
   generated_secret_store_unavailable: 503,
+  // #4510 — the materialized graph could never execute as a whole (duplicate
+  // node ids / self-loop). A builder defect, not a caller error.
+  graph_structurally_invalid: 500,
 };
 
 /**

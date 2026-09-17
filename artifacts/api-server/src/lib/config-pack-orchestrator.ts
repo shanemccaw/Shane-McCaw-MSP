@@ -37,6 +37,7 @@ import {
   releaseChangeRequestClaim,
 } from "./change-control-write-gate.ts";
 import { recordExecution } from "./msp-change-execution-store.ts";
+import { assertGraphStructurallySound } from "./workflow-graph-integrity.ts";
 import { logger } from "./logger.ts";
 const log = logger.child({ channel: "engine.config-pack" });
 import {
@@ -168,6 +169,9 @@ export async function persistMaterializedWorkflow(
   graph: WfGraph,
 ): Promise<{ definitionId: number; versionId: number; reusedVersion: boolean }> {
   const name = definitionName;
+
+  // #4510 — never publish a version the executor would silently half-run.
+  assertGraphStructurallySound(graph, `persistMaterializedWorkflow('${name}')`);
 
   let [definition] = await db
     .select()

@@ -78,8 +78,28 @@ describe("planStepsFromDryRun", () => {
       ],
     };
     const steps = planStepsFromDryRun(plan);
-    expect(steps.map((s) => s.key)).toEqual(["tpl-ca-block-legacy", "tpl-mfa-coverage"]);
+    expect(steps.map((s) => s.key)).toEqual(["tpl-ca-block-legacy", "chk-mfa-coverage"]);
     expect(steps[0].plannedWrite).toEqual({ state: "enabled" });
+  });
+  it("plans the monitor-check node AND the template node for a step with both (#4510)", () => {
+    const plan = {
+      packKey: "identity-ca-hardening-v1",
+      actions: [
+        { templateId: "action-create-ca-legacy-auth-block-policy", checkKey: "identity:ca-legacy-auth-block", label: "Block legacy auth", method: "POST", endpoint: "/identity/conditionalAccess/policies", plannedWrite: { state: "enabled" }, changeKind: "create" },
+      ],
+    };
+    const steps = planStepsFromDryRun(plan);
+    expect(steps.map((s) => [s.key, s.changeKind])).toEqual([
+      ["chk-action-create-ca-legacy-auth-block-policy", "check"],
+      ["tpl-action-create-ca-legacy-auth-block-policy", "create"],
+    ]);
+    expect(steps[0].plannedWrite).toBeNull();
+    // Both run nodes line up with a planned step, so a clean run diffs as matched.
+    const diff = diffPlannedVsActual(steps, [
+      { key: "chk-action-create-ca-legacy-auth-block-policy", label: "c", status: "ok", output: {}, errorMessage: null },
+      { key: "tpl-action-create-ca-legacy-auth-block-policy", label: "t", status: "ok", output: {}, errorMessage: null },
+    ]);
+    expect(diff.matched).toBe(true);
   });
   it("yields nothing for a plan that was never captured", () => {
     expect(planStepsFromDryRun(null)).toEqual([]);

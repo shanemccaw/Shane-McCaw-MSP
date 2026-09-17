@@ -35,6 +35,11 @@
  */
 
 import type { WfEdge, WfGraph, WfNode, WfNodeData } from "@workspace/db";
+import {
+  describeGraphStructuralDefects,
+  findGraphStructuralDefects,
+  hasGraphStructuralDefects,
+} from "./workflow-graph-integrity.ts";
 
 /** Entra "Global Administrator" role definition id — matches the value
  *  hard-coded in the breakglass-assign-global-admin seed template. Used as
@@ -88,7 +93,11 @@ export type ConfigPackErrorCode =
   // #1911 — this pack mints a credential and the Key Vault store that must
   // hold it is not configured. Fail closed: refusing the run is correct,
   // writing the credential into the database instead is the bug #1900 filed.
-  | "generated_secret_store_unavailable";
+  | "generated_secret_store_unavailable"
+  // #4510 — the materialized graph has duplicate node ids or a self-loop edge.
+  // The executor would never queue the affected nodes and record the run as
+  // "completed" having written nothing, so the run is refused instead.
+  | "graph_structurally_invalid";
 
 export class ConfigPackError extends Error {
   readonly code: ConfigPackErrorCode;
@@ -113,6 +122,16 @@ export const configPackDefinitionName = (packKey: string): string => `Config Pac
 export const nodeIdSafe = (raw: string): string => raw.replace(/\./g, "-");
 
 export const templateNodeId = (templateId: string): string => `tpl-${nodeIdSafe(templateId)}`;
+
+/**
+ * The execute_monitor_check node for a step. Distinct prefix from
+ * templateNodeId on purpose (Git #4510): a step carrying BOTH check_key and
+ * template_id materializes two nodes, and when both were `tpl-<templateId>` the
+ * chain linked that id to itself — the executor never queued it and the run
+ * "completed" with zero writes. `stepId` is the step's unique id
+ * (templateId ?? checkKey), so two steps sharing a checkKey still get two nodes.
+ */
+export const monitorCheckNodeId = (stepId: string): string => `chk-${nodeIdSafe(stepId)}`;
 
 /**
  * Payload keys the orchestrator derives ITSELF for every pack run — from the
@@ -271,9 +290,9 @@ export function buildConfigPackGraph(templates: PackTemplateResolved[]): {
     // We need a unique identifier for the node. 
     // Fallback to checkKey or a sequential index if templateId is null.
     const stepUniqueId = t.templateId ?? t.checkKey ?? `step-${i}`;
-    const nodeId = templateNodeId(stepUniqueId);
 
     if (t.checkKey) {
+      const nodeId = monitorCheckNodeId(stepUniqueId);
       // 1. Add Execute Monitor Check node
       nodes.push({
         id: nodeId,
@@ -297,14 +316,16 @@ export function buildConfigPackGraph(templates: PackTemplateResolved[]): {
     // AFTER its template node — its source (the template's own Graph response)
     // does not exist until the template has run (Git #1316).
     if (t.checkKey && t.parameterMapping && Object.keys(t.parameterMapping).length > 0) {
-      const mapNodeId = `map-${nodeIdSafe(stepUniqueId)}-outputs`;
+      // "chk" in the id keeps it clear of the break-glass gate's
+      // map-<templateId>-outputs node when the same step is also gate-flagged.
+      const mapNodeId = `map-chk-${nodeIdSafe(stepUniqueId)}-outputs`;
       const mapKeys = Object.keys(t.parameterMapping);
       // E.g. SELECT $1::text AS "mappedKey"
       // using the first item's property from extractedProperties
       const queryParts = mapKeys.map((k, idx) => `$${idx + 1}::text AS "${k}"`);
       const query = `SELECT ${queryParts.join(", ")}`;
 
-      const sourceNodeId = lastMonitorNodeId || nodeId;
+      const sourceNodeId = lastMonitorNodeId ?? monitorCheckNodeId(stepUniqueId);
       // The values come from the monitor check's extracted properties or static values
       // For simplicity in the wizard, parameterMapping maps "payloadVariable" -> "extractedPropertyPath"
       // If the mapping starts with "static:", we treat the rest as a literal value.
@@ -428,5 +449,14 @@ export function buildConfigPackGraph(templates: PackTemplateResolved[]): {
   nodes.push({ id: "end", type: "end", position: nextPos(), data: { nodeType: "end", label: "Pack Complete" } });
   link("end");
 
-  return { graph: { nodes, edges }, ordered, gatedTemplateId, coalescedGateTemplateIds };
+  const graph: WfGraph = { nodes, edges };
+  const defects = findGraphStructuralDefects(graph);
+  if (hasGraphStructuralDefects(defects)) {
+    throw new ConfigPackError("graph_structurally_invalid", describeGraphStructuralDefects(defects), {
+      duplicateNodeIds: defects.duplicateNodeIds,
+      selfLoops: defects.selfLoops,
+    });
+  }
+
+  return { graph, ordered, gatedTemplateId, coalescedGateTemplateIds };
 }

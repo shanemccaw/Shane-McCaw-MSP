@@ -133,16 +133,21 @@ export interface PlanDiff {
 }
 
 /**
- * The wf_run node id a config-pack template step runs under. Kept byte-identical
- * to `config-pack-graph.ts`'s `templateNodeId` / `nodeIdSafe` (a template step's
- * node is `tpl-<templateId-with-dots-as-dashes>`, and a monitor-check step's
- * node uses its checkKey the same way) so a captured plan and the run's node
- * outputs key on the SAME id and the diff aligns them. Duplicated as a one-liner
- * rather than imported to keep this module pure and free of the graph builder's
- * dependencies; config-pack-graph.ts is the source of truth for the format.
+ * The wf_run node ids a config-pack step runs under. Kept byte-identical to
+ * `config-pack-graph.ts`'s `templateNodeId` / `monitorCheckNodeId` /
+ * `nodeIdSafe` (a template step's node is `tpl-<templateId-with-dots-as-dashes>`;
+ * a step's monitor check is `chk-<templateId ?? checkKey>` the same way — #4510)
+ * so a captured plan and the run's node outputs key on the SAME ids and the diff
+ * aligns them. Duplicated as one-liners rather than imported to keep this module
+ * pure and free of the graph builder's dependencies; config-pack-graph.ts is the
+ * source of truth for the format.
  */
 function templateNodeId(rawStepId: string): string {
   return `tpl-${rawStepId.replace(/\./g, "-")}`;
+}
+
+function monitorCheckNodeId(rawStepId: string): string {
+  return `chk-${rawStepId.replace(/\./g, "-")}`;
 }
 
 /**
@@ -164,6 +169,20 @@ export function planStepsFromDryRun(plan: unknown): PlanStep[] {
     const checkKey = typeof a.checkKey === "string" ? a.checkKey : null;
     const rawStepId = templateId ?? checkKey;
     if (!rawStepId) continue;
+    // A step with a checkKey materializes its own read-only monitor-check node
+    // (ahead of the template node when both are set), so the plan carries it too
+    // — otherwise every such run would diff as "executed but not planned".
+    if (checkKey) {
+      steps.push({
+        key: monitorCheckNodeId(rawStepId),
+        label: templateId ? `Monitor check: ${checkKey}` : typeof a.label === "string" ? a.label : checkKey,
+        method: null,
+        endpoint: null,
+        plannedWrite: null,
+        changeKind: "check",
+      });
+    }
+    if (!templateId) continue;
     steps.push({
       key: templateNodeId(rawStepId),
       label: typeof a.label === "string" ? a.label : rawStepId,

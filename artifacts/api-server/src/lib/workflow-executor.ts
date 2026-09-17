@@ -129,6 +129,11 @@ import { evaluateDocGateCoverage, type CoverageDecision } from "./doc-gate-cover
 import { persistSowPricing } from "./sow-pricing-persist.ts";
 import { seedKanbanCardsForPhase } from "./kanban-phase-advance.ts";
 import { interp, interpOrNull } from "./interp.ts";
+import {
+  describeGraphStructuralDefects,
+  findGraphStructuralDefects,
+  hasGraphStructuralDefects,
+} from "./workflow-graph-integrity.ts";
 // #3800 — resolve-then-write pure core (no db/Graph imports); re-exported below so
 // existing importers of these symbols from workflow-executor keep working.
 import {
@@ -10394,10 +10399,24 @@ async function executeWorkflowRunInner(
     return;
   }
 
-  await db.update(wfRunsTable).set({ status: "running", startedAt: new Date() }).where(eq(wfRunsTable.id, runId));
-
   // opts.inlineGraph overrides the stored version graph (used by draft test runs)
   const graph: WfGraph = opts.inlineGraph ?? ((version.graph as WfGraph) ?? { nodes: [], edges: [] });
+
+  // #4510 — a duplicate node id or a self-loop edge makes the affected node's
+  // in-degree unsatisfiable: it is never queued, the ready queue drains, and the
+  // run would be recorded "completed" having skipped it. Refuse before anything
+  // executes so the run fails loudly instead of reporting a false success.
+  const graphDefects = findGraphStructuralDefects(graph);
+  if (hasGraphStructuralDefects(graphDefects)) {
+    const errorMessage = describeGraphStructuralDefects(graphDefects);
+    await db.update(wfRunsTable).set({ status: "failed", errorMessage, startedAt: new Date(), finishedAt: new Date() }).where(eq(wfRunsTable.id, runId));
+    log.error({ runId, versionId: run.versionId, ...graphDefects }, "wf-executor: refusing structurally invalid graph");
+    await purgeGeneratedSecretsForTerminalRun({ ...(run.payload as Record<string, unknown> ?? {}) }, runId, "run failed");
+    return;
+  }
+
+  await db.update(wfRunsTable).set({ status: "running", startedAt: new Date() }).where(eq(wfRunsTable.id, runId));
+
   const nodeMap = new Map(graph.nodes.map(n => [n.id, n]));
 
   // Compute in-degrees
@@ -11294,9 +11313,21 @@ export async function resumeWorkflowRun(
     return;
   }
 
+  const graph: WfGraph = (version.graph as WfGraph) ?? { nodes: [], edges: [] };
+
+  // #4510 — same structural refusal as a fresh run: never resume into a graph
+  // whose remaining nodes could silently never be queued.
+  const graphDefects = findGraphStructuralDefects(graph);
+  if (hasGraphStructuralDefects(graphDefects)) {
+    const errorMessage = describeGraphStructuralDefects(graphDefects);
+    await db.update(wfRunsTable).set({ status: "failed", errorMessage, finishedAt: new Date() }).where(eq(wfRunsTable.id, runId));
+    log.error({ runId, versionId: run.versionId, ...graphDefects }, "resumeWorkflowRun: refusing structurally invalid graph");
+    await purgeGeneratedSecretsForTerminalRun({ ...(run.payload as Record<string, unknown> ?? {}) }, runId, "run failed");
+    return;
+  }
+
   await db.update(wfRunsTable).set({ status: "running" }).where(eq(wfRunsTable.id, runId));
 
-  const graph: WfGraph = (version.graph as WfGraph) ?? { nodes: [], edges: [] };
   const nodeMap = new Map(graph.nodes.map(n => [n.id, n]));
 
   const inDegree = new Map<string, number>();

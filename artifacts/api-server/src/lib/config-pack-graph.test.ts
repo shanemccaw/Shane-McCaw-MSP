@@ -6,10 +6,12 @@ import {
   MID_RUN_PROVIDED_VARIABLES,
   operatorRequiredVariables,
   packProvidedVariables,
+  monitorCheckNodeId,
   templateNodeId,
   topologicalOrder,
   type PackTemplateResolved,
 } from "./config-pack-graph.ts";
+import { findGraphStructuralDefects, hasGraphStructuralDefects } from "./workflow-graph-integrity.ts";
 
 const t = (
   templateId: string,
@@ -289,5 +291,122 @@ describe("Git #1316 graph-builder additions", () => {
     ];
     expect([...packProvidedVariables(templates)]).toEqual(["breakGlassGroupId"]);
     expect(operatorRequiredVariables(topologicalOrder(templates))).toEqual(["tenantPrefix"]);
+  });
+});
+
+// ── Git #4510: a step with BOTH check_key and template_id ─────────────────────
+
+/**
+ * Replays the executor's scheduling rule (workflow-executor.ts: in-degree per
+ * edge, a node is queued only once resolvedCount === inDegree) on the happy
+ * path, returning the node ids in the order they would be reached.
+ */
+function replayReadyQueue(graph: { nodes: { id: string }[]; edges: { source: string; target: string }[] }): string[] {
+  const inDegree = new Map<string, number>();
+  for (const n of graph.nodes) inDegree.set(n.id, 0);
+  for (const e of graph.edges) inDegree.set(e.target, (inDegree.get(e.target) ?? 0) + 1);
+  const resolved = new Map<string, number>();
+  const queue = graph.nodes.filter((n) => (inDegree.get(n.id) ?? 0) === 0).map((n) => n.id);
+  const reached: string[] = [];
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    reached.push(id);
+    for (const e of graph.edges.filter((edge) => edge.source === id)) {
+      const r = (resolved.get(e.target) ?? 0) + 1;
+      resolved.set(e.target, r);
+      if (r === inDegree.get(e.target)) queue.push(e.target);
+    }
+  }
+  return reached;
+}
+
+describe("Git #4510 check_key + template_id on the same step", () => {
+  const bothSet = (): PackTemplateResolved[] => [
+    t("action-create-ca-legacy-auth-block-policy", 1, { checkKey: "identity:ca-legacy-auth-block" }),
+    t("quickstart-v1.create-break-glass-account", 2, {
+      checkKey: "identity:break-glass-health",
+      requiresVerificationGate: true,
+      requiredVariables: ["generatedPassword"],
+    }),
+    t("guest-access-restrict", 3),
+  ];
+
+  it("gives the monitor-check node its own chk- id — no duplicate ids, no self-loops", () => {
+    const { graph } = buildConfigPackGraph(bothSet());
+    const ids = graph.nodes.map((n) => n.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(graph.edges.filter((e) => e.source === e.target)).toEqual([]);
+    expect(ids).toEqual([
+      "start",
+      monitorCheckNodeId("action-create-ca-legacy-auth-block-policy"),
+      templateNodeId("action-create-ca-legacy-auth-block-policy"),
+      "chk-quickstart-v1-create-break-glass-account",
+      "tpl-quickstart-v1-create-break-glass-account",
+      "map-quickstart-v1-create-break-glass-account-outputs",
+      "gate-quickstart-v1-create-break-glass-account",
+      "tpl-guest-access-restrict",
+      "end",
+    ]);
+    const chk = graph.nodes.find((n) => n.id === "chk-action-create-ca-legacy-auth-block-policy")!;
+    expect(chk.type).toBe("execute_monitor_check");
+    expect(chk.data.checkKey).toBe("identity:ca-legacy-auth-block");
+    const tpl = graph.nodes.find((n) => n.id === "tpl-action-create-ca-legacy-auth-block-policy")!;
+    expect(tpl.type).toBe("execute_baseline_template");
+    // The check runs first and feeds straight into its own template.
+    expect(graph.edges.find((e) => e.target === tpl.id)!.source).toBe(chk.id);
+  });
+
+  it("every template node is reached by the executor's in-degree scheduling, not just start", () => {
+    const { graph } = buildConfigPackGraph(bothSet());
+    expect(replayReadyQueue(graph)).toEqual(graph.nodes.map((n) => n.id));
+  });
+
+  it("points the check's parameter mapping at the chk- node, clear of the gate's map node", () => {
+    const { graph } = buildConfigPackGraph([
+      t("quickstart-v1.create-break-glass-account", 1, {
+        checkKey: "identity:break-glass-health",
+        parameterMapping: { existingAccountId: "id" },
+        requiresVerificationGate: true,
+        requiredVariables: ["generatedPassword"],
+      }),
+    ]);
+    const ids = graph.nodes.map((n) => n.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    const checkMap = graph.nodes.find((n) => n.id === "map-chk-quickstart-v1-create-break-glass-account-outputs")!;
+    expect(checkMap.data.params).toEqual([
+      "{{steps.chk-quickstart-v1-create-break-glass-account.extractedProperties.0.id}}",
+    ]);
+    expect(ids).toContain("map-quickstart-v1-create-break-glass-account-outputs");
+    expect(replayReadyQueue(graph)).toEqual(ids);
+  });
+
+  it("keys a checkKey-only step's node chk-<checkKey>", () => {
+    const { graph } = buildConfigPackGraph([
+      { ...t("unused", 1), templateId: null, checkKey: "sharepoint:anonymous-links" },
+    ]);
+    expect(graph.nodes.map((n) => n.id)).toEqual(["start", "chk-sharepoint:anonymous-links", "end"]);
+  });
+});
+
+describe("findGraphStructuralDefects", () => {
+  it("reports duplicate node ids and self-loop edges", () => {
+    const defects = findGraphStructuralDefects({
+      nodes: [
+        { id: "start", type: "start", position: { x: 0, y: 0 }, data: { nodeType: "start" } },
+        { id: "tpl-x", type: "execute_monitor_check", position: { x: 0, y: 0 }, data: { nodeType: "execute_monitor_check" } },
+        { id: "tpl-x", type: "execute_baseline_template", position: { x: 0, y: 0 }, data: { nodeType: "execute_baseline_template" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "tpl-x" },
+        { id: "e2", source: "tpl-x", target: "tpl-x" },
+      ],
+    });
+    expect(defects.duplicateNodeIds).toEqual(["tpl-x"]);
+    expect(defects.selfLoops).toEqual([{ edgeId: "e2", nodeId: "tpl-x" }]);
+    expect(hasGraphStructuralDefects(defects)).toBe(true);
+  });
+
+  it("finds nothing wrong with the quickstart chain", () => {
+    expect(hasGraphStructuralDefects(findGraphStructuralDefects(buildConfigPackGraph(quickstart()).graph))).toBe(false);
   });
 });
