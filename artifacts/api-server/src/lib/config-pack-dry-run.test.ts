@@ -16,10 +16,50 @@ import { randomUUID } from "crypto";
 import { db, baselineActionTemplatesTable, tenantsTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
 
-const mockGraphFetchForTenant = vi.fn();
-vi.mock("./graph.ts", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
+// #4546 — this MUST be a synchronous factory. An async factory that awaits
+// `importOriginal()` loses the race for at least one of this module's THREE
+// separate importers of `graphFetchForTenant` (config-pack-dry-run.ts,
+// config-pack-orchestrator.ts, license-gate.ts): whichever import resolves
+// before the awaited real module settles binds to the REAL export instead of
+// the mock, so its Graph calls fire for real and fail closed. Confirmed live
+// on this exact file — with the async `importOriginal()` factory,
+// license-gate.ts's `getProvisionedServicePlanNamesForTenant` bound to the
+// real `graphFetchForTenant` while config-pack-dry-run.ts's own calls bound
+// to the mock, so a real `AADSTS90002` tenant-not-found fetch failure made
+// every SKU read fail-closed as `license_required` — silently matching the
+// expected refusal for tests whose tenant genuinely lacks the license, and
+// only surfacing once a test (#4513's P1 case) expected a DIFFERENT refusal
+// code once the SKU read actually succeeded. `ConsentRevokedError` and
+// `LicenseGapError` are provided as real-shaped stand-ins rather than the
+// genuine `graph.ts` classes — this suite's mocked `graphFetchForTenant`
+// never throws either, so nothing here relies on their real behavior, only
+// on `license-gate.ts`'s `instanceof` checks resolving to a class (any
+// class) from this same mocked module.
+const { mockGraphFetchForTenant, MockConsentRevokedError, MockLicenseGapError } = vi.hoisted(() => {
+  class MockConsentRevokedError extends Error {
+    readonly tenantId: string;
+    constructor(tenantId: string) {
+      super(`Admin consent revoked or missing for tenant ${tenantId}`);
+      this.name = "ConsentRevokedError";
+      this.tenantId = tenantId;
+    }
+  }
+  class MockLicenseGapError extends Error {
+    readonly tenantId: string;
+    readonly feature: string;
+    constructor(tenantId: string, feature: string) {
+      super(`Graph reported a license gap for tenant ${tenantId}: ${feature}`);
+      this.name = "LicenseGapError";
+      this.tenantId = tenantId;
+      this.feature = feature;
+    }
+  }
+  return { mockGraphFetchForTenant: vi.fn(), MockConsentRevokedError, MockLicenseGapError };
+});
+vi.mock("./graph.ts", () => ({
   graphFetchForTenant: (...args: unknown[]) => mockGraphFetchForTenant(...args),
+  ConsentRevokedError: MockConsentRevokedError,
+  LicenseGapError: MockLicenseGapError,
 }));
 
 import { buildConfigPackDryRun, DRY_RUN_REDACTED } from "./config-pack-dry-run.ts";
