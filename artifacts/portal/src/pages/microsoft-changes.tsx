@@ -563,11 +563,33 @@ export function MicrosoftChangesContent() {
                       No announcements{selectedWl ? ` for ${selectedWl}` : ""} in this wave.
                     </div>
                   )}
-                  {wavePosts
-                    .filter((p) => p.analysis !== null)
-                    .map((p) => {
-                      const a = p.analysis!;
-                      const inTriage = isActionableRouting(p);
+                  {wavePosts.map((p) => {
+                    const a = p.analysis;
+                    if (a === null) {
+                      return (
+                        <div
+                          key={p.id}
+                          className="flex items-center gap-2.5 rounded-lg py-[7px]"
+                          data-testid={`ms-changes-unreviewed-${p.id}`}
+                        >
+                          <span className="size-2 flex-none rounded-full" style={{ background: "#64748b" }} />
+                          <div className="flex min-w-0 flex-col gap-[1px]">
+                            <span className="text-[12.5px] text-[#cbd5e1]">{p.title}</span>
+                            <span className="text-[10.5px] text-[#64748b]">published {new Date(p.publishedAt).toDateString().slice(4)}</span>
+                          </div>
+                          <span className="rounded-full border px-2 py-0.5 text-[10px]" style={{ borderColor: HAIRLINE, color: "#64748b" }}>
+                            {p.workload}
+                          </span>
+                          <span
+                            className="ml-auto flex-none rounded-full border px-2.5 py-[3px] text-[10.5px] font-semibold"
+                            style={{ borderColor: "rgba(148,163,184,.35)", color: "#94a3b8" }}
+                          >
+                            Unreviewed — awaiting interpretation
+                          </span>
+                        </div>
+                      );
+                    }
+                    const inTriage = isActionableRouting(p);
                       if (inTriage) {
                         return (
                           <div
@@ -634,15 +656,6 @@ export function MicrosoftChangesContent() {
                         </div>
                       );
                     })}
-                  {(() => {
-                    const notAnalysed = wavePosts.filter((p) => p.analysis === null).length;
-                    return notAnalysed > 0 ? (
-                      <div className="flex items-center gap-2.5 rounded-lg border border-dashed px-3 py-2" style={{ borderColor: "rgba(148,163,184,.22)" }}>
-                        <span className="text-xs text-[#64748b] tabular-nums">{notAnalysed} announcements · not yet analysed</span>
-                        <span className="ml-auto text-[10.5px] text-[#475569]">tracked, awaiting interpretation</span>
-                      </div>
-                    ) : null;
-                  })()}
                 </>
               )}
             </div>
