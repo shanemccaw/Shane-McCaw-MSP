@@ -89,6 +89,30 @@ namespace BuildConsole.Services
 
             int reconciled = 0;
 
+            // Git #4690 — the open-issue snapshot is fetched ONCE, here, and reused by Shape A's closed-issue
+            // skip below AND by Shapes B/C further down (it used to be fetched only after Shape A/D). A null
+            // `open` means the snapshot is unavailable/untrustworthy; the reason is kept in `openFailure` so
+            // the Shape B/C section can log it and fail closed exactly as before, while Shape D (which does not
+            // need the snapshot) still runs.
+            HashSet<int>? open = null;
+            string? openFailure = null;
+            try
+            {
+                var openResult = await GitHubIssuesService.TryGetOpenIssueNumbersAsync(OpenIssueSnapshotLimit);
+                if (!openResult.Success)
+                    openFailure = $"couldn't fetch the open-issue set ({openResult.Error})";
+                else if (openResult.OpenNumbers.Count == 0)
+                    // A successful fetch that is genuinely empty is implausible for this repo and matches the
+                    // failure shape the source guard already rejects — treat it as untrustworthy.
+                    openFailure = "open-issue set came back empty on a 'successful' fetch — treating as untrustworthy";
+                else
+                    open = openResult.OpenNumbers;
+            }
+            catch (Exception ex)
+            {
+                openFailure = $"open-issue fetch threw ({ex.Message})";
+            }
+
             // ── Shape A (Git #2685/#2775): rows whose origin/main bookend says BLOCKED ──────────────────
             // Git #4681 — the bookend is read from each row's OWN tracking repo's checkout (with the other
             // configured repos consulted when that one holds none), not always this instance's own, so a
@@ -105,7 +129,32 @@ namespace BuildConsole.Services
                 blockedRowIds = new HashSet<int>();
             }
 
-            foreach (var row in candidateRows.Where(r => blockedRowIds.Contains(r.Id)))
+            // Git #4690 (Shane's call, Option 2) — a GitHub issue that is already CLOSED is never touched by
+            // Shape A, whatever its bookend says (MERGE-BLOCKED, BLOCKED, ...): no row reset, no board move.
+            // Closed = absent from the open-issue snapshot. If that snapshot is untrustworthy we cannot tell
+            // open from closed, so Shape A fails closed and touches nothing this pass. The row is left exactly
+            // as-is; it is also excluded from Shape B (which only considers open issues) so nothing else
+            // picks it up either.
+            List<(int Id, int GithubNumber, string Status, string OwnerRepo)> blockedRows;
+            if (blockedRowIds.Count == 0)
+            {
+                blockedRows = new();
+            }
+            else if (open == null)
+            {
+                blockedRows = new();
+                log($"Git #4690 false-done reconcile: Shape A skipped for {blockedRowIds.Count} BLOCKED-bookend row(s) — {openFailure}; cannot tell open from closed, so nothing is reset (fail closed).");
+            }
+            else
+            {
+                blockedRows = candidateRows.Where(r => blockedRowIds.Contains(r.Id) && open.Contains(r.GithubNumber)).ToList();
+                var skippedClosed = candidateRows.Where(r => blockedRowIds.Contains(r.Id) && !open.Contains(r.GithubNumber)).ToList();
+                if (skippedClosed.Count > 0)
+                    log($"Git #4690 false-done reconcile: Shape A left {skippedClosed.Count} BLOCKED-bookend row(s) untouched because their GitHub issue is CLOSED: " +
+                        string.Join(", ", skippedClosed.Select(r => $"row {r.Id} (#{r.GithubNumber}, '{r.Status}')")) + ".");
+            }
+
+            foreach (var row in blockedRows)
             {
                 try
                 {
@@ -175,27 +224,10 @@ namespace BuildConsole.Services
             // ── Shape B (Git #3513): rows at 'done' whose real GitHub issue is still OPEN ───────────────
             // A verifying row whose issue is open is the CORRECT waiting state, so this considers 'done'
             // rows only. Skip a row already handled by Shape A above (its bookend said BLOCKED).
-            LiveOpenIssuesResult openResult;
-            try
+            // The snapshot itself is fetched at the top of the method (Git #4690, shared with Shape A).
+            if (open == null)
             {
-                openResult = await GitHubIssuesService.TryGetOpenIssueNumbersAsync(OpenIssueSnapshotLimit);
-            }
-            catch (Exception ex)
-            {
-                log($"Git #3513 false-done reconcile: open-issue fetch threw ({ex.Message}) — skipping done+open detection this pass (fail closed).");
-                return new ReconciliationResult(reconciled, actions);
-            }
-            if (!openResult.Success)
-            {
-                log($"Git #3513 false-done reconcile: couldn't fetch the open-issue set ({openResult.Error}) — skipping done+open detection this pass (fail closed; no row cancelled or reverted on unverified data).");
-                return new ReconciliationResult(reconciled, actions);
-            }
-            var open = openResult.OpenNumbers;
-            if (open.Count == 0)
-            {
-                // A successful fetch that is genuinely empty is implausible for this repo and matches the
-                // failure shape the source guard already rejects — treat it as untrustworthy and skip.
-                log("Git #3513 false-done reconcile: open-issue set came back empty on a 'successful' fetch — treating as untrustworthy, skipping done+open detection this pass (fail closed).");
+                log($"Git #3513 false-done reconcile: {openFailure} — skipping done+open detection this pass (fail closed; no row cancelled or reverted on unverified data).");
                 return new ReconciliationResult(reconciled, actions);
             }
 
