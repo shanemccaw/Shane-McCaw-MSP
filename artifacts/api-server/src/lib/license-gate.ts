@@ -129,18 +129,36 @@ export async function getProvisionedServicePlanNamesForTenant(tenantId: string):
 }
 
 /**
+ * A `required_service_plans` value: either a flat ANY-OF list, or (#4556) a
+ * nested list of ANY-OF groups that must ALL be satisfied (AND-of-OR) — e.g.
+ * `[["AAD_PREMIUM","AAD_PREMIUM_P2"],["INTUNE_A"]]` for "P1 or P2, AND
+ * Intune". Mirrors the array-of-arrays shape `config-pack-preconditions.ts`
+ * already uses for `requiredLicenseSkuLists`, so this is one shared
+ * implementation rather than each caller re-deriving AND-of-OR itself.
+ */
+export type ServicePlanRequirement = readonly string[] | readonly (readonly string[])[];
+
+function isGroupedRequirement(requiredSkus: ServicePlanRequirement): requiredSkus is readonly (readonly string[])[] {
+  return requiredSkus.length > 0 && Array.isArray(requiredSkus[0]);
+}
+
+/**
  * The single clean membership check, shared by server-side execute
- * enforcement and the GET listing's availability computation — ANY ONE of
- * `requiredSkus` present in `tenantServicePlanNames` (from
- * getProvisionedServicePlanNamesForTenant) satisfies the gate. No requirement
- * at all (null/empty) always passes.
+ * enforcement and the GET listing's availability computation. A flat list is
+ * ANY-OF: any one of `requiredSkus` present in `tenantServicePlanNames` (from
+ * getProvisionedServicePlanNamesForTenant) satisfies the gate. A nested list
+ * (#4556) is AND-of-OR: every inner group must itself be satisfied by at
+ * least one plan. No requirement at all (null/empty) always passes.
  */
 export function tenantHasRequiredLicense(
-  requiredSkus: readonly string[] | null | undefined,
+  requiredSkus: ServicePlanRequirement | null | undefined,
   tenantServicePlanNames: ReadonlySet<string>,
 ): boolean {
   if (!requiredSkus || requiredSkus.length === 0) return true;
-  return requiredSkus.some((sku) => tenantServicePlanNames.has(sku));
+  if (isGroupedRequirement(requiredSkus)) {
+    return requiredSkus.every((group) => group.length === 0 || group.some((sku) => tenantServicePlanNames.has(sku)));
+  }
+  return (requiredSkus as readonly string[]).some((sku) => tenantServicePlanNames.has(sku));
 }
 
 // Known display names for the SKU part numbers this platform actually gates
@@ -150,6 +168,9 @@ export function tenantHasRequiredLicense(
 const LICENSE_SKU_DISPLAY: Record<string, { family: string; label: string }> = {
   AAD_PREMIUM: { family: "Microsoft Entra ID", label: "P1" },
   AAD_PREMIUM_P2: { family: "Microsoft Entra ID", label: "P2" },
+  // #4556 — the Intune half of identity:ca-device-compliance's AND-of-OR
+  // requirement. No "P1/P2"-style label variant to join, just the family name.
+  INTUNE_A: { family: "Microsoft Intune", label: "" },
 };
 
 /**
@@ -159,8 +180,19 @@ const LICENSE_SKU_DISPLAY: Record<string, { family: string; label: string }> = {
  * 409 error message on the execute route, so the two always say the same
  * thing.
  */
-export function describeRequiredLicense(requiredSkus: readonly string[]): string {
+export function describeRequiredLicense(requiredSkus: ServicePlanRequirement): string {
   return `Requires ${licenseFeatureName(requiredSkus)}`;
+}
+
+/** One ANY-OF group's readable name, e.g. `["AAD_PREMIUM","AAD_PREMIUM_P2"]` → "Microsoft Entra ID P1 or P2". */
+function groupFeatureName(skus: readonly string[]): string {
+  const known = skus.map((sku) => LICENSE_SKU_DISPLAY[sku]);
+  const allKnown = known.every((k): k is { family: string; label: string } => Boolean(k));
+  if (allKnown && new Set(known.map((k) => k!.family)).size === 1) {
+    const labels = known.map((k) => k!.label).filter((label) => label.length > 0);
+    return labels.length > 0 ? `${known[0]!.family} ${labels.join(" or ")}` : known[0]!.family;
+  }
+  return skus.join(" or ");
 }
 
 /**
@@ -169,12 +201,13 @@ export function describeRequiredLicense(requiredSkus: readonly string[]): string
  * LicenseGapError's `feature` (executeMonitorCheck prefixes "Requires "). The
  * Entra ID keys above are both real skuPartNumbers and real servicePlanNames,
  * so this reads either vocabulary.
+ *
+ * A nested `string[][]` requirement (#4556, AND-of-OR) joins each group's own
+ * name with " and " — e.g. "Microsoft Entra ID P1 or P2 and Microsoft Intune".
  */
-export function licenseFeatureName(requiredSkus: readonly string[]): string {
-  const known = requiredSkus.map((sku) => LICENSE_SKU_DISPLAY[sku]);
-  const allKnown = known.every((k): k is { family: string; label: string } => Boolean(k));
-  if (allKnown && new Set(known.map((k) => k!.family)).size === 1) {
-    return `${known[0]!.family} ${known.map((k) => k!.label).join(" or ")}`;
+export function licenseFeatureName(requiredSkus: ServicePlanRequirement): string {
+  if (isGroupedRequirement(requiredSkus)) {
+    return requiredSkus.map((group) => groupFeatureName(group)).join(" and ");
   }
-  return requiredSkus.join(" or ");
+  return groupFeatureName(requiredSkus as readonly string[]);
 }

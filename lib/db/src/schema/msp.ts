@@ -2374,19 +2374,30 @@ export const monitorChecksTable = pgTable("monitor_checks", {
   gateExpression: text("gate_expression"),
   // ── License prerequisite (#4512, additive, NULL for every other check) ──────
   /**
-   * Real Graph `servicePlanName` values, ANY ONE of which the tenant must have
-   * provisioned for this check to mean anything — e.g. `["AAD_PREMIUM",
-   * "AAD_PREMIUM_P2"]` on the Conditional Access checks. Some endpoints answer
-   * an unlicensed tenant with a clean empty list rather than a 403 (the CA
-   * policy list does), which the check would otherwise score as a real zero.
+   * Real Graph `servicePlanName` values the tenant must have provisioned for
+   * this check to mean anything — e.g. `["AAD_PREMIUM", "AAD_PREMIUM_P2"]` on
+   * the Conditional Access checks. Some endpoints answer an unlicensed tenant
+   * with a clean empty list rather than a 403 (the CA policy list does),
+   * which the check would otherwise score as a real zero.
+   *
+   * Two shapes (#4556): a flat `string[]` is ANY-OF (any one plan satisfies
+   * it — the #4512 default). A nested `string[][]` is AND-of-OR: every inner
+   * group must have at least one plan satisfied, e.g.
+   * `[["AAD_PREMIUM","AAD_PREMIUM_P2"],["INTUNE_A"]]` on
+   * `identity:ca-device-compliance` — P1 or P2 for the CA grant control AND
+   * Intune for a device to ever report compliant. See
+   * `tenantHasRequiredLicense` (license-gate.ts), which detects the shape
+   * from whether the first element is itself an array.
+   *
    * When set, the executor reads the tenant's live `/subscribedSkus` service
-   * plans after any gate and, if none is provisioned, persists the check as
-   * `status: 'license_gap'` — the same result a license-gated 403 produces —
-   * instead of evaluating severity. Service plans rather than skuPartNumbers,
-   * because P1 ships inside bundles (SPE_E3, SPB, EMS) under other SKU names.
-   * A failed license read never manufactures a gap: the check runs normally.
+   * plans after any gate and, if the requirement isn't met, persists the
+   * check as `status: 'license_gap'` — the same result a license-gated 403
+   * produces — instead of evaluating severity. Service plans rather than
+   * skuPartNumbers, because P1 ships inside bundles (SPE_E3, SPB, EMS) under
+   * other SKU names. A failed license read never manufactures a gap: the
+   * check runs normally.
    */
-  requiredServicePlans: jsonb("required_service_plans").$type<string[] | null>(),
+  requiredServicePlans: jsonb("required_service_plans").$type<string[] | string[][] | null>(),
   schemaVersion: integer("schema_version").notNull().default(1),
   status: text("status", { enum: MONITOR_CHECK_STATUS }).notNull().default("active"),
   /**

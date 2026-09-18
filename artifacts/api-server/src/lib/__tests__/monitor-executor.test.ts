@@ -4386,8 +4386,11 @@ describe("Conditional Access device compliance check — real policy state (#453
       armOperation: null,
       gateEndpoint: null,
       gateExpression: null,
-      requiredServicePlans: ["AAD_PREMIUM", "AAD_PREMIUM_P2"],
-      schemaVersion: 2,
+      // #4556 — AND-of-OR: (P1 or P2) AND Intune. compliantDevice can never be
+      // satisfied without Intune to mark a device compliant, so P1 alone is
+      // not enough to run this check meaningfully.
+      requiredServicePlans: [["AAD_PREMIUM", "AAD_PREMIUM_P2"], ["INTUNE_A"]],
+      schemaVersion: 3,
       status: "active" as const,
       createdByAdminId: null,
       updatedByAdminId: null,
@@ -4407,11 +4410,18 @@ describe("Conditional Access device compliance check — real policy state (#453
     const skusWithoutP1 = () => graphJson({ value: [
       { capabilityStatus: "Enabled", servicePlans: [{ servicePlanName: "EXCHANGE_S_ENTERPRISE", provisioningStatus: "Success" }] },
     ] });
-    const skusWithP1 = () => graphJson({ value: [
+    // #4556 — P1 present but no Intune: still fails the AND-of-OR requirement.
+    const skusWithP1NoIntune = () => graphJson({ value: [
       { capabilityStatus: "Enabled", servicePlans: [{ servicePlanName: "AAD_PREMIUM", provisioningStatus: "Success" }] },
     ] });
+    const skusWithP1AndIntune = () => graphJson({ value: [
+      { capabilityStatus: "Enabled", servicePlans: [
+        { servicePlanName: "AAD_PREMIUM", provisioningStatus: "Success" },
+        { servicePlanName: "INTUNE_A", provisioningStatus: "Success" },
+      ] },
+    ] });
 
-    it("no Entra ID P1: license gap, not warning — the CA policy list is never read", async () => {
+    it("no Entra ID P1, no Intune: license gap, not warning — the CA policy list is never read", async () => {
       mockFetch.mockResolvedValueOnce(skusWithoutP1());
 
       const result = await executeMonitorCheck({ check: deviceComplianceCheck, tenantId: "tenant-4534-nop1", triggerId: "run-nop1", skipIdempotency: true });
@@ -4420,13 +4430,28 @@ describe("Conditional Access device compliance check — real policy state (#453
       expect(mockFetch.mock.calls[0][1]).toBe("/subscribedSkus?$select=capabilityStatus,servicePlans");
       expect(result.status).toBe("license_gap");
       expect(result.severityMatched).toBeNull();
-      expect(result.errorMessage).toBe("Requires Microsoft Entra ID P1 or P2");
+      expect(result.errorMessage).toBe("Requires Microsoft Entra ID P1 or P2 and Microsoft Intune");
       expect(result.extractedProperties.hasAADP1orP2).toBe(false);
     });
 
-    it("Entra ID P1 present, only a report-only policy: warning fires", async () => {
+    // #4556 — the real defect this build fixes: P1 alone used to pass the
+    // (then ANY-OF-only) gate even with no Intune, even though compliantDevice
+    // can never be satisfied without it.
+    it("Entra ID P1 present but no Intune: still a license gap — the CA policy list is never read", async () => {
+      mockFetch.mockResolvedValueOnce(skusWithP1NoIntune());
+
+      const result = await executeMonitorCheck({ check: deviceComplianceCheck, tenantId: "tenant-4556-nointune", triggerId: "run-nointune", skipIdempotency: true });
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(result.status).toBe("license_gap");
+      expect(result.severityMatched).toBeNull();
+      expect(result.errorMessage).toBe("Requires Microsoft Entra ID P1 or P2 and Microsoft Intune");
+      expect(result.extractedProperties.hasAADP1orP2).toBe(false);
+    });
+
+    it("Entra ID P1 and Intune present, only a report-only policy: warning fires", async () => {
       mockFetch
-        .mockResolvedValueOnce(skusWithP1())
+        .mockResolvedValueOnce(skusWithP1AndIntune())
         .mockResolvedValueOnce(graphJson({ value: [policy({ state: "enabledForReportingButNotEnforced" })] }));
 
       const result = await executeMonitorCheck({ check: deviceComplianceCheck, tenantId: "tenant-4534-reportonly", triggerId: "run-reportonly", skipIdempotency: true });
@@ -4437,9 +4462,9 @@ describe("Conditional Access device compliance check — real policy state (#453
       expect(result.severityMatched).toBe("warning");
     });
 
-    it("Entra ID P1 present, an enabled compliantDevice policy: ok, no finding", async () => {
+    it("Entra ID P1 and Intune present, an enabled compliantDevice policy: ok, no finding", async () => {
       mockFetch
-        .mockResolvedValueOnce(skusWithP1())
+        .mockResolvedValueOnce(skusWithP1AndIntune())
         .mockResolvedValueOnce(graphJson({ value: [policy({ state: "enabled", builtInControls: ["compliantDevice"] })] }));
 
       const result = await executeMonitorCheck({ check: deviceComplianceCheck, tenantId: "tenant-4534-enforced", triggerId: "run-enforced", skipIdempotency: true });

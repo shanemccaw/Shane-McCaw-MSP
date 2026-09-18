@@ -196,6 +196,28 @@ describe("tenantHasRequiredLicense", () => {
   it("fails when none of the required plans are present", () => {
     expect(tenantHasRequiredLicense(["AAD_PREMIUM", "AAD_PREMIUM_P2"], new Set(["EXCHANGE_S_ENTERPRISE", "INTUNE_O365"]))).toBe(false);
   });
+
+  // #4556 — AND-of-OR via a nested string[][]: every group must itself be
+  // satisfied. identity:ca-device-compliance's real shape: (P1 or P2) AND Intune.
+  describe("grouped (AND-of-OR) requirement", () => {
+    const REQUIRES_P1_OR_P2_AND_INTUNE = [["AAD_PREMIUM", "AAD_PREMIUM_P2"], ["INTUNE_A"]];
+
+    it("passes when every group has at least one plan present", () => {
+      expect(tenantHasRequiredLicense(REQUIRES_P1_OR_P2_AND_INTUNE, new Set(["AAD_PREMIUM_P2", "INTUNE_A"]))).toBe(true);
+    });
+
+    it("fails when one group's plans are all missing — P1 present but no Intune", () => {
+      expect(tenantHasRequiredLicense(REQUIRES_P1_OR_P2_AND_INTUNE, new Set(["AAD_PREMIUM"]))).toBe(false);
+    });
+
+    it("fails when the other group is missing — Intune present but no P1/P2", () => {
+      expect(tenantHasRequiredLicense(REQUIRES_P1_OR_P2_AND_INTUNE, new Set(["INTUNE_A"]))).toBe(false);
+    });
+
+    it("fails when nothing is present", () => {
+      expect(tenantHasRequiredLicense(REQUIRES_P1_OR_P2_AND_INTUNE, new Set(["EXCHANGE_S_ENTERPRISE"]))).toBe(false);
+    });
+  });
 });
 
 describe("describeRequiredLicense", () => {
@@ -210,5 +232,19 @@ describe("describeRequiredLicense", () => {
   it("licenseFeatureName is the same text without the verb", () => {
     expect(licenseFeatureName(["AAD_PREMIUM", "AAD_PREMIUM_P2"])).toBe("Microsoft Entra ID P1 or P2");
     expect(licenseFeatureName(["SOME_FUTURE_SKU"])).toBe("SOME_FUTURE_SKU");
+  });
+
+  // #4556
+  it("joins grouped (AND-of-OR) requirements with 'and', each group with 'or'", () => {
+    expect(licenseFeatureName([["AAD_PREMIUM", "AAD_PREMIUM_P2"], ["INTUNE_A"]])).toBe(
+      "Microsoft Entra ID P1 or P2 and Microsoft Intune",
+    );
+    expect(describeRequiredLicense([["AAD_PREMIUM", "AAD_PREMIUM_P2"], ["INTUNE_A"]])).toBe(
+      "Requires Microsoft Entra ID P1 or P2 and Microsoft Intune",
+    );
+  });
+
+  it("falls back to a raw joined string for an unrecognized SKU inside a group", () => {
+    expect(licenseFeatureName([["AAD_PREMIUM"], ["SOME_FUTURE_SKU"]])).toBe("Microsoft Entra ID P1 and SOME_FUTURE_SKU");
   });
 });
