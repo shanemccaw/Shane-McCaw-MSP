@@ -62,6 +62,8 @@ namespace BuildConsole
         /// <summary>The number of concurrent Build Watch slots.</summary>
         public const int SlotCount = 8;
         private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
+        /// <summary>Git #4590 — real ceiling on a single PollAsync queue fetch (see its call site). Generous relative to the 3s poll cadence so a normal slow tick never trips it, but bounded so a genuinely stuck fetch can't wedge every read-only slot's refresh indefinitely.</summary>
+        private static readonly TimeSpan QueueFetchTimeout = TimeSpan.FromSeconds(10);
 
         /// <summary>The maximum number of transcript turns kept per slot — older turns fall off the top so a very long build can't grow the visual tree without bound (the pre-redesign code had the same cap on its own card list).</summary>
         private const int MaxCardsPerSlot = 200;
@@ -1042,9 +1044,34 @@ namespace BuildConsole
                 // napping, or serving a stale/cached snapshot — Shane: "I have 4
                 // builds running currently and none of them are showing up in the
                 // Build Watch window."
+                // Git #4590 — this single fetch gates EVERY read-only slot's refresh this tick
+                // (TailSlotLog / UpdateThinkingText below only run for slots reached after this
+                // line returns). A build genuinely launched by THIS instance keeps rendering
+                // regardless via DrainInteractiveOutput's own render pump (fed by the in-memory
+                // watcher buffer, not this fetch) — so a slow/hung fetch here freezes every
+                // cross-instance "read-only" pane while an owned interactive pane keeps moving,
+                // exactly the asymmetry #4590 reported. Bound it with a real timeout so a stuck
+                // fetch degrades to "skip this tick" instead of wedging `_polling` true for good
+                // (the bare `catch { return; }` this replaces never logged either, so a real
+                // stall here was previously invisible in ActivityLog).
                 List<QueueItem> queue;
-                try { queue = _db != null ? await _db.GetQueueAsync() : await _api.GetQueueAsync(); }
-                catch { return; } // transient failure — keep the last state on screen
+                try
+                {
+                    var fetchTask = _db != null ? _db.GetQueueAsync() : _api.GetQueueAsync();
+                    var completed = await Task.WhenAny(fetchTask, Task.Delay(QueueFetchTimeout));
+                    if (completed != fetchTask)
+                    {
+                        ActivityLog.Log("build-watch",
+                            $"PollAsync queue fetch exceeded {QueueFetchTimeout.TotalSeconds:0}s — skipping this tick so read-only slots aren't wedged; will retry next tick.");
+                        return;
+                    }
+                    queue = await fetchTask;
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("build-watch", $"PollAsync queue fetch failed ({ex.GetType().Name}: {ex.Message}) — keeping last state on screen, will retry next tick.");
+                    return;
+                } // transient failure — keep the last state on screen
                 _lastQueue = queue;
 
                 var byId = queue.GroupBy(q => q.Id).ToDictionary(g => g.Key, g => g.First());
