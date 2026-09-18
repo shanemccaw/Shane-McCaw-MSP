@@ -537,6 +537,59 @@
                                     </StackPanel>
                                 </Border>
 
+                                <!-- Git #4599 — real, persisted memory-pressure auto-pause tuning (#4543/#4561's
+                                     original fixed constants, now Shane-tunable) -->
+                                <Border BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Margin="0,0,0,16" Padding="0,14,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="Memory-Pressure Auto-Pause" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource PeachBrush}" Margin="0,0,0,6"/>
+                                        <TextBlock Text="Automatically pauses new build launches when the machine is genuinely leaning on swap (Git #4543), and auto-resumes once it clears (Git #4561). All values below are real, persisted, and apply LIVE — no restart needed."
+                                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,10" TextWrapping="Wrap"/>
+
+                                        <CheckBox x:Name="MemoryPressureAutoPauseEnabledCheck" Content="Enable memory-pressure auto-pause"
+                                                  FontSize="{StaticResource CaptionFontSize}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,4"
+                                                  Checked="MemoryPressureAutoPauseEnabledCheck_Changed" Unchecked="MemoryPressureAutoPauseEnabledCheck_Changed"/>
+                                        <TextBlock Text="Turn off for an unattended overnight/&quot;bedtime&quot; run where you want max throughput and won't be around to hit the manual override — turning this off also immediately releases any pause already in effect."
+                                                   FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext0Brush}" Margin="20,0,0,14" TextWrapping="Wrap"/>
+
+                                        <TextBlock Text="Pause threshold (physical RAM load %)" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                        <Grid HorizontalAlignment="Left" Margin="0,0,0,10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox x:Name="MemoryPressurePauseThresholdBox" Grid.Column="0" Width="80" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,8,0"/>
+                                            <Button x:Name="BtnSaveMemoryPressurePauseThreshold" Grid.Column="1" Content="Save" Style="{StaticResource PrimaryButton}"
+                                                    Padding="16,5" Click="BtnSaveMemoryPressurePauseThreshold_Click"/>
+                                        </Grid>
+                                        <TextBlock x:Name="MemoryPressurePauseThresholdSavedText" Text="" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,0,0,10" TextWrapping="Wrap"/>
+
+                                        <TextBlock Text="Resume threshold (physical RAM load %, must be lower than pause)" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                        <Grid HorizontalAlignment="Left" Margin="0,0,0,10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox x:Name="MemoryPressureResumeThresholdBox" Grid.Column="0" Width="80" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,8,0"/>
+                                            <Button x:Name="BtnSaveMemoryPressureResumeThreshold" Grid.Column="1" Content="Save" Style="{StaticResource PrimaryButton}"
+                                                    Padding="16,5" Click="BtnSaveMemoryPressureResumeThreshold_Click"/>
+                                        </Grid>
+                                        <TextBlock x:Name="MemoryPressureResumeThresholdSavedText" Text="" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,0,0,10" TextWrapping="Wrap"/>
+
+                                        <TextBlock Text="Clear-sustain duration (seconds RAM must stay clear before auto-resume)" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                        <Grid HorizontalAlignment="Left">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox x:Name="MemoryPressureClearSustainBox" Grid.Column="0" Width="80" Height="30" FontSize="{StaticResource BodyFontSize}" Margin="0,0,8,0"/>
+                                            <Button x:Name="BtnSaveMemoryPressureClearSustain" Grid.Column="1" Content="Save" Style="{StaticResource PrimaryButton}"
+                                                    Padding="16,5" Click="BtnSaveMemoryPressureClearSustain_Click"/>
+                                        </Grid>
+                                        <TextBlock x:Name="MemoryPressureClearSustainSavedText" Text="" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource StatusSuccessBrush}" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </Border>
+
                                 <TextBlock Text="Color Theme" FontSize="{StaticResource CaptionFontSize}" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
                                 <ComboBox Height="30" FontSize="{StaticResource BodyFontSize}">
                                     <ComboBoxItem Content="Catppuccin Mocha (Default Dark)" IsSelected="True"/>

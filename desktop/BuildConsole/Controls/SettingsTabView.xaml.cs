@@ -72,6 +72,20 @@ namespace BuildConsole.Controls
             UseSshForDeployCheck.IsChecked = savedSettings.UseSshForDeploy;
             UseSshForSqlCheck.IsChecked = savedSettings.UseSshForSql;
 
+            // Git #4599 — memory-pressure auto-pause tuning: live MainWindow instance value wins if
+            // one is already running this session (same live-wins-over-file convention as
+            // MaxConcurrent/HardCap above), otherwise fall back to the persisted setting.
+            var liveMainWindow = Application.Current?.MainWindow as BuildConsole.MainWindow;
+            MemoryPressureAutoPauseEnabledCheck.IsChecked = liveMainWindow?.MemoryPressureAutoPauseEnabled ?? savedSettings.MemoryPressureAutoPauseEnabled;
+            MemoryPressurePauseThresholdBox.Text = (liveMainWindow != null
+                ? (int)liveMainWindow.MemoryPressurePauseThresholdPercent
+                : savedSettings.MemoryPressurePauseThresholdPercent).ToString();
+            MemoryPressureResumeThresholdBox.Text = (liveMainWindow != null
+                ? (int)liveMainWindow.MemoryPressureResumeThresholdPercent
+                : savedSettings.MemoryPressureResumeThresholdPercent).ToString();
+            MemoryPressureClearSustainBox.Text = (liveMainWindow?.MemoryPressureClearSustainSecondsLive
+                ?? savedSettings.MemoryPressureClearSustainSeconds).ToString();
+
             EncouragementCrittersEnabledCheck.IsChecked = savedSettings.EncouragementCrittersEnabled;
             TestPadPillVisibleCheck.IsChecked = savedSettings.TestPadPillVisible;
             ShowUsageReadoutCheck.IsChecked = savedSettings.ShowUsageReadout;
@@ -1131,6 +1145,101 @@ namespace BuildConsole.Controls
                 ? $"✓ Saved and applied live — hard cap {effective}{clampNote} (takes effect on the watcher's next check, no restart needed)."
                 : $"✓ Saved — hard cap {effective}{clampNote}. No queue watcher is running yet in this session; it will read this on next launch.";
             ActivityLog.Log("settings.tab", $"Hard cap set to {effective} (config persisted{(liveApplied ? " + live-applied" : "")}).");
+        }
+
+        /// <summary>Git #4599 — master on/off switch for the whole memory-pressure auto-pause feature
+        /// (#4543/#4561). Persists to BuildConsoleSettings and live-applies immediately (no Save
+        /// button needed for a checkbox, same immediate-apply convention as other feature toggles on
+        /// this page) via MainWindow.UpdateMemoryPressureAutoPauseEnabled, which itself releases any
+        /// pause already in effect the moment it's switched off.</summary>
+        private void MemoryPressureAutoPauseEnabledCheck_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_loadingSettings) return;
+            bool enabled = MemoryPressureAutoPauseEnabledCheck.IsChecked == true;
+            var settings = BuildConsoleSettings.Load();
+            settings.MemoryPressureAutoPauseEnabled = enabled;
+            settings.Save();
+            try { (Application.Current?.MainWindow as BuildConsole.MainWindow)?.UpdateMemoryPressureAutoPauseEnabled(enabled); } catch { /* best-effort live-apply */ }
+            ActivityLog.Log("settings.tab", $"Memory-pressure auto-pause {(enabled ? "enabled" : "disabled")} (config persisted + live-applied).");
+        }
+
+        /// <summary>Git #4599 — persists the memory-pressure PAUSE threshold (physical RAM load %)
+        /// to BuildConsoleSettings and live-applies it via MainWindow.UpdateMemoryPressurePauseThreshold,
+        /// same Save-button/live-apply recipe as <see cref="BtnSaveMaxConcurrent_Click"/>.</summary>
+        private void BtnSaveMemoryPressurePauseThreshold_Click(object sender, RoutedEventArgs e)
+        {
+            if (!int.TryParse(MemoryPressurePauseThresholdBox.Text.Trim(), out var value) || value < 1 || value > 100)
+            {
+                MemoryPressurePauseThresholdSavedText.Foreground = (Brush)FindResource("StatusErrorBrush");
+                MemoryPressurePauseThresholdSavedText.Text = "Enter a whole number from 1 to 100.";
+                return;
+            }
+
+            var settings = BuildConsoleSettings.Load();
+            if (value <= settings.MemoryPressureResumeThresholdPercent)
+            {
+                MemoryPressurePauseThresholdSavedText.Foreground = (Brush)FindResource("StatusErrorBrush");
+                MemoryPressurePauseThresholdSavedText.Text = $"Pause threshold must be greater than the resume threshold ({settings.MemoryPressureResumeThresholdPercent}%).";
+                return;
+            }
+
+            settings.MemoryPressurePauseThresholdPercent = value;
+            settings.Save();
+            try { (Application.Current?.MainWindow as BuildConsole.MainWindow)?.UpdateMemoryPressurePauseThreshold((uint)value); } catch { /* best-effort live-apply */ }
+
+            MemoryPressurePauseThresholdSavedText.Foreground = (Brush)FindResource("StatusSuccessBrush");
+            MemoryPressurePauseThresholdSavedText.Text = $"✓ Saved and applied live — pauses at {value}% RAM load (takes effect on the next ~1.5s check, no restart needed).";
+            ActivityLog.Log("settings.tab", $"Memory-pressure pause threshold set to {value}% (config persisted + live-applied).");
+        }
+
+        /// <summary>Git #4599 — persists the memory-pressure RESUME/hysteresis threshold, sibling of
+        /// <see cref="BtnSaveMemoryPressurePauseThreshold_Click"/>. Must stay below the pause
+        /// threshold — validated here, same real-validation ask as the issue body.</summary>
+        private void BtnSaveMemoryPressureResumeThreshold_Click(object sender, RoutedEventArgs e)
+        {
+            if (!int.TryParse(MemoryPressureResumeThresholdBox.Text.Trim(), out var value) || value < 0 || value > 100)
+            {
+                MemoryPressureResumeThresholdSavedText.Foreground = (Brush)FindResource("StatusErrorBrush");
+                MemoryPressureResumeThresholdSavedText.Text = "Enter a whole number from 0 to 100.";
+                return;
+            }
+
+            var settings = BuildConsoleSettings.Load();
+            if (value >= settings.MemoryPressurePauseThresholdPercent)
+            {
+                MemoryPressureResumeThresholdSavedText.Foreground = (Brush)FindResource("StatusErrorBrush");
+                MemoryPressureResumeThresholdSavedText.Text = $"Resume threshold must be less than the pause threshold ({settings.MemoryPressurePauseThresholdPercent}%).";
+                return;
+            }
+
+            settings.MemoryPressureResumeThresholdPercent = value;
+            settings.Save();
+            try { (Application.Current?.MainWindow as BuildConsole.MainWindow)?.UpdateMemoryPressureResumeThreshold((uint)value); } catch { /* best-effort live-apply */ }
+
+            MemoryPressureResumeThresholdSavedText.Foreground = (Brush)FindResource("StatusSuccessBrush");
+            MemoryPressureResumeThresholdSavedText.Text = $"✓ Saved and applied live — resumes once RAM load falls under {value}% (takes effect on the next ~1.5s check, no restart needed).";
+            ActivityLog.Log("settings.tab", $"Memory-pressure resume threshold set to {value}% (config persisted + live-applied).");
+        }
+
+        /// <summary>Git #4599 — persists the sustained-clear cooldown duration (seconds), sibling of
+        /// the two threshold Save handlers above. Must be non-negative — validated here.</summary>
+        private void BtnSaveMemoryPressureClearSustain_Click(object sender, RoutedEventArgs e)
+        {
+            if (!int.TryParse(MemoryPressureClearSustainBox.Text.Trim(), out var value) || value < 0)
+            {
+                MemoryPressureClearSustainSavedText.Foreground = (Brush)FindResource("StatusErrorBrush");
+                MemoryPressureClearSustainSavedText.Text = "Enter a whole number of seconds, 0 or greater.";
+                return;
+            }
+
+            var settings = BuildConsoleSettings.Load();
+            settings.MemoryPressureClearSustainSeconds = value;
+            settings.Save();
+            try { (Application.Current?.MainWindow as BuildConsole.MainWindow)?.UpdateMemoryPressureClearSustainSeconds(value); } catch { /* best-effort live-apply */ }
+
+            MemoryPressureClearSustainSavedText.Foreground = (Brush)FindResource("StatusSuccessBrush");
+            MemoryPressureClearSustainSavedText.Text = $"✓ Saved and applied live — auto-resumes after {value}s of sustained clear (no restart needed).";
+            ActivityLog.Log("settings.tab", $"Memory-pressure clear-sustain duration set to {value}s (config persisted + live-applied).");
         }
 
         private void BtnSaveEpicChatProjectUrl_Click(object sender, RoutedEventArgs e)
