@@ -510,6 +510,101 @@ Some transitions need a human confirmation, not just an automatic bookend check:
 
 \- \*\*Leave the gated Feature's issues in Backlog, not Batter Up.\*\* Batter Up auto-launches on refresh; Backlog waits for a human to move it.
 
+&#x20;
+
+\### 5.4 End-of-batch web test — sentinel-only (Git #4610)
+
+&#x20;
+
+A batch dispatched together for one Epic/Feature's worth of work is meant to run its real
+end-to-end web test (`shaneapp://runTest` / a test-manifest run) exactly \*\*once\*\*, after the
+whole batch is genuinely done — not once per individual issue. That convention only ever
+existed in Shane's head; it was never written down anywhere a dispatching chat would see it,
+which is why every dispatching chat reinvented it differently (Shane's own words: "all the
+chats create almost a different build set for every build lol defeated the purpose"). Running
+the real WebView2/Chromium-backed test pipeline once per build instead of once per batch
+multiplies real system resource strain (directly relevant to the #4609 crash investigation)
+and defeats the actual point of batching — one consolidated bug-filing pass over the finished
+batch, not N redundant ones.
+
+&#x20;
+
+The rule, combining §4.2 and §5.2:
+
+&#x20;
+
+1\. \*\*Same `buildSet` tag for the whole batch\*\* — every issue dispatched together for one
+&#x20;   Epic/Feature's worth of work carries the identical `--buildSet <name>` value (§4.2
+&#x20;   naming already covers which name; this is the consequence of using it consistently: one
+&#x20;   shared batch identity, not a distinct `buildSet` per build).
+
+2\. \*\*Wire the real sentinel-fan-in `blocked\_by` chain (§5.2)\*\* so the batch's sentinel issue
+&#x20;   (the highest-numbered/last-filed issue in the batch) is provably the last issue to clear
+&#x20;   — `blocked\_by` every other issue in the batch.
+
+3\. \*\*The end-of-batch web-test instruction belongs ONLY on the sentinel issue's own `BUILD:`
+&#x20;   dispatch prompt.\*\* Every other issue in the batch dispatches normally, with \*\*no\*\* test-run
+&#x20;   instruction in its own prompt. Only the sentinel's prompt tells that build: once its own
+&#x20;   `blocked\_by` chain confirms every other issue in the batch has a verified DONE bookend, run
+&#x20;   the real test manifest covering the whole batch's changes, once, and file any bugs found as
+&#x20;   real new issues per the standing finding-filing rule.
+
+&#x20;
+
+\*\*Worked example\*\* — a Feature `Feature: Alerts and Critters` with 4 leaf issues (#5001–#5004),
+`buildSet=AlertsCritters`, #5004 picked as sentinel:
+
+&#x20;
+
+```
+
+\# #5001, #5002, #5003 — normal dispatch, same buildSet, NO test instruction:
+
+BUILD: model=claude-sonnet-5 effort=medium buildSet=AlertsCritters
+Posted: 2026-09-17T00:00:00Z
+
+--model claude-sonnet-5 --effort medium --title 5001 --buildSet AlertsCritters
+
+<the real, self-contained build prompt for #5001 — no test-run instruction>
+
+&#x20;
+
+\# #5004 — the sentinel: same buildSet, blocked\_by #5001/#5002/#5003, carries the ONE
+\# end-of-batch test instruction:
+
+BUILD: model=claude-sonnet-5 effort=medium buildSet=AlertsCritters
+Posted: 2026-09-17T00:00:00Z
+
+--model claude-sonnet-5 --effort medium --title 5004 --buildSet AlertsCritters --blocked-by 5001,5002,5003
+
+<the real, self-contained build prompt for #5004>
+
+Once your own work above is committed and your `blocked\_by` chain confirms #5001, #5002 and
+\#5003 all have verified DONE bookends, run the real end-of-batch web test covering this whole
+batch's changes via `shaneapp://runTest` against the relevant manifest(s) — ONCE, for the whole
+batch, not per-issue. File any real bugs found as new issues per the standing finding-filing
+rule, parented under this Feature.
+
+```
+
+&#x20;
+
+Wiring the `blocked\_by` fan-in (step 2 above) via the dependency API:
+
+&#x20;
+
+```
+
+gh api repos/shanemccaw/Shane-McCaw-MSP/issues/5001 --jq .id
+gh api repos/shanemccaw/Shane-McCaw-MSP/issues/5002 --jq .id
+gh api repos/shanemccaw/Shane-McCaw-MSP/issues/5003 --jq .id
+\# then, for each of those three ids:
+gh api -X POST repos/shanemccaw/Shane-McCaw-MSP/issues/5004/dependencies/blocked\_by -f issue\_id=<that id>
+
+```
+
+&#x20;
+
 \---
 
 &#x20;
