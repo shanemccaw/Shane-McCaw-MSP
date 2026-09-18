@@ -155,6 +155,69 @@ namespace BuildConsole
                 MemoryMeterText.Text = $"{usedPercent:0}% ({usedGb:0.0}/{totalGb:0.0} GB)";
 
                 EvaluateMemoryPressure(status);
+                UpdateMemoryBreakdown(totalGb);
+            }
+        }
+
+        /// <summary>
+        /// Git #4608 — real per-process memory breakdown next to the system-wide meter above:
+        /// BuildConsole's own process working set, plus the real SUM and COUNT of every currently
+        /// running claude.exe child process (the real build-runner process name confirmed from
+        /// <see cref="Services.RedirectedProcessLauncher"/>'s doc comment and the literal
+        /// <c>ClaudeExe</c> path in <see cref="Services.ClaudeAgentsService"/> — BuildConsole never
+        /// launches builds under any other process name). Shane's addendum: show the process COUNT
+        /// alongside the summed memory, not just a total MB figure — a climbing count is what
+        /// actually surfaces an orphan leak before the memory total looks alarming on its own.
+        /// Same 1.5s poll tick as the rest of this file; no separate timer.
+        /// </summary>
+        private void UpdateMemoryBreakdown(double totalRamGb)
+        {
+            double ownMb;
+            try
+            {
+                using var self = Process.GetCurrentProcess();
+                ownMb = self.WorkingSet64 / 1024.0 / 1024.0;
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("resource-monitor", $"Own-process memory read failed: {ex.Message}");
+                return;
+            }
+
+            int claudeCount = 0;
+            double claudeGb = 0;
+            try
+            {
+                var claudeProcs = Process.GetProcessesByName("claude");
+                try
+                {
+                    claudeCount = claudeProcs.Length;
+                    long totalBytes = 0;
+                    foreach (var p in claudeProcs)
+                    {
+                        try { totalBytes += p.WorkingSet64; }
+                        catch { /* process may have exited between enumeration and read */ }
+                    }
+                    claudeGb = totalBytes / 1024.0 / 1024.0 / 1024.0;
+                }
+                finally
+                {
+                    foreach (var p in claudeProcs) p.Dispose();
+                }
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("resource-monitor", $"claude.exe process enumeration failed: {ex.Message}");
+            }
+
+            MemoryBreakdownText.Text = $"BC {ownMb:0} MB • claude.exe {claudeCount} procs, {claudeGb:0.0} GB";
+            if (MemoryBreakdownTooltip != null)
+            {
+                double ownPercentOfTotal = totalRamGb > 0 ? (ownMb / 1024.0) / totalRamGb * 100 : 0;
+                double claudePercentOfTotal = totalRamGb > 0 ? claudeGb / totalRamGb * 100 : 0;
+                MemoryBreakdownTooltip.Content =
+                    $"BuildConsole (this process): {ownMb:0} MB ({ownPercentOfTotal:0.0}% of {totalRamGb:0.0} GB total)\n" +
+                    $"claude.exe children: {claudeCount} process(es), {claudeGb:0.00} GB summed ({claudePercentOfTotal:0.0}% of total)";
             }
         }
 

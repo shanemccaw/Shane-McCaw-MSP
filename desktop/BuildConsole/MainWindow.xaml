@@ -826,6 +826,20 @@
                             <TextBlock x:Name="MemoryMeterText" Text="—"
                                        Foreground="{StaticResource TextBrush}"
                                        FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center" Width="110"/>
+                            <!-- Git #4608 — real per-process memory breakdown alongside the
+                                 system-wide meter above: BuildConsole's own process plus the SUM
+                                 (and real COUNT, per Shane's addendum) of every running claude.exe
+                                 child. Same 1.5s tick as the meter above (TickResourceMonitor),
+                                 no separate timer. Compact single line; the tooltip carries the
+                                 exact byte-level figures for both. -->
+                            <TextBlock x:Name="MemoryBreakdownText" Text="—"
+                                       Foreground="{StaticResource Subtext1Brush}"
+                                       FontSize="{StaticResource CaptionFontSize}" VerticalAlignment="Center"
+                                       Margin="8,0,0,0">
+                                <TextBlock.ToolTip>
+                                    <ToolTip x:Name="MemoryBreakdownTooltip" Content="—"/>
+                                </TextBlock.ToolTip>
+                            </TextBlock>
                             <!-- Git #4543 — informational-only auto-pause indicator. Collapsed
                                  normally; shown (with the meter bar recolored red) whenever the
                                  build queue is auto-paused by real memory pressure. Display only:
