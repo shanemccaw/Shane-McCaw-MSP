@@ -176,7 +176,6 @@ namespace BuildConsole.Controls
                     {
                         Dispatcher.Invoke(() =>
                         {
-                            TxtDomComment.Clear();
                             _lastInspectedElement = null;
                             _lastElementBugs = new List<VisualTestTrackerEntry>();
                             DomPickedContainer.Visibility = Visibility.Collapsed;
@@ -199,7 +198,6 @@ namespace BuildConsole.Controls
                     {
                         Dispatcher.Invoke(() =>
                         {
-                            TxtDomComment.Clear();
                             _lastInspectedElement = null;
                             _lastElementBugs = new List<VisualTestTrackerEntry>();
                             DomPickedContainer.Visibility = Visibility.Collapsed;
@@ -463,14 +461,10 @@ namespace BuildConsole.Controls
                 TxtDomInnerText.Visibility = Visibility.Collapsed;
             }
 
-            // Reset comment box and give it instant focus for typing
-            TxtDomComment.Clear();
-            TxtDomBugSuccess.Visibility = Visibility.Collapsed;
-            Dispatcher.BeginInvoke(new Action(() =>
-            {
-                TxtDomComment.Focus();
-                Keyboard.Focus(TxtDomComment);
-            }), DispatcherPriority.Input);
+            // Git #4450 — deliberately no focus call here. The rail used to own a hidden "Add Comment"
+            // box and pull real keyboard focus into it on every inspect click, out of the WebView2 the
+            // user had just clicked in. Note entry now lives only in the in-page card (focused by its
+            // own script) and the composer, so nothing on the host side should move focus on inspect.
         }
 
         /// <summary>
@@ -519,46 +513,6 @@ namespace BuildConsole.Controls
             }
         }
 
-        private void TxtDomComment_PreviewKeyDown(object sender, KeyEventArgs e)
-        {
-            if (e.Key == Key.Escape)
-            {
-                e.Handled = true;
-                CancelDomNote();
-                return;
-            }
-
-            if (e.Key == Key.Enter)
-            {
-                if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
-                {
-                    // Shift+Enter: Insert a newline
-                    e.Handled = true;
-                    int caret = TxtDomComment.CaretIndex;
-                    TxtDomComment.Text = TxtDomComment.Text.Insert(caret, Environment.NewLine);
-                    TxtDomComment.CaretIndex = caret + Environment.NewLine.Length;
-                }
-                else
-                {
-                    // Enter: Submit to bug list
-                    e.Handled = true;
-                    SubmitDomBug();
-                }
-            }
-        }
-
-        private void TxtDomComment_TextChanged(object sender, TextChangedEventArgs e)
-        {
-            TxtDomCommentWatermark.Visibility = string.IsNullOrEmpty(TxtDomComment.Text)
-                ? Visibility.Visible
-                : Visibility.Collapsed;
-        }
-
-        private void BtnDomSendBug_Click(object sender, RoutedEventArgs e)
-        {
-            SubmitDomBug();
-        }
-
         private void BtnDomCancelNote_Click(object sender, RoutedEventArgs e)
         {
             CancelDomNote();
@@ -566,7 +520,6 @@ namespace BuildConsole.Controls
 
         public async void CancelDomNote()
         {
-            TxtDomComment.Clear();
             _lastInspectedElement = null;
             DomPickedContainer.Visibility = Visibility.Collapsed;
             TxtDomEmpty.Visibility = Visibility.Visible;
@@ -575,36 +528,6 @@ namespace BuildConsole.Controls
             {
                 await VisualTestTrackerTelemetry.DismissDomNoteAsync(_activeWebView);
             }
-        }
-
-        private async void SubmitDomBug()
-        {
-            if (_lastInspectedElement == null) return;
-
-            string comment = TxtDomComment.Text.Trim();
-            var elem = _lastInspectedElement;
-            _lastInspectedElement = null;
-
-            TxtDomComment.Clear();
-            DomPickedContainer.Visibility = Visibility.Collapsed;
-            TxtDomEmpty.Visibility = Visibility.Visible;
-
-            if (_activeWebView?.CoreWebView2 != null)
-            {
-                await VisualTestTrackerTelemetry.DismissDomNoteAsync(_activeWebView);
-            }
-
-            // Show confirmation badge briefly
-            TxtDomBugSuccess.Visibility = Visibility.Visible;
-            var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.5) };
-            timer.Tick += (s, e) =>
-            {
-                timer.Stop();
-                TxtDomBugSuccess.Visibility = Visibility.Collapsed;
-            };
-            timer.Start();
-
-            BugSubmittedFromDomInspector?.Invoke(comment, elem);
         }
 
         private void BtnDomAddToSteps_Click(object sender, RoutedEventArgs e)
