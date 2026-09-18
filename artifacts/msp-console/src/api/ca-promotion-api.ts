@@ -55,6 +55,8 @@ export interface CaPoliciesResponse {
   promotions: CaPromotionRow[];
 }
 
+export type SignInCategory = "interactiveUser" | "nonInteractiveUser" | "servicePrincipal" | "managedIdentity";
+
 export interface AffectedUser {
   userId: string | null;
   userPrincipalName: string | null;
@@ -73,6 +75,16 @@ export interface ImpactEvent {
   clientAppUsed: string | null;
   outcome: "would_block" | "would_interrupt";
   enforcedGrantControls: string[];
+  category: SignInCategory;
+}
+
+export interface CategoryImpactCounts {
+  scanned: number;
+  evaluated: number;
+  wouldBlock: number;
+  wouldInterrupt: number;
+  wouldSatisfy: number;
+  notApplied: number;
 }
 
 export interface CaPolicyImpact {
@@ -94,10 +106,12 @@ export interface CaPolicyImpact {
     affectedUserCount: number;
     affectedUsers: AffectedUser[];
     impactEvents: ImpactEvent[];
+    byCategory: Record<SignInCategory, CategoryImpactCounts>;
   } | null;
   readiness: { eligible: boolean; ineligibleReason: string | null; requiresAcknowledgement: boolean; acknowledgementReasons: string[] } | null;
   fingerprint: string | null;
   coverageNote: string;
+  readByCategory: Record<SignInCategory, { pagesRead: number; complete: boolean }> | null;
   promotionWritesAvailable: boolean;
 }
 

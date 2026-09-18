@@ -46,6 +46,7 @@ import {
   type ImpactWindow,
   type PromotionReadiness,
   type ReportOnlyImpactSummary,
+  type SignInCategory,
 } from "./ca-policy-impact.ts";
 import { CA_STATE_ENABLED, CA_STATE_REPORT_ONLY, stripCaReportOnlySuffix } from "./ca-enforcement-mode.ts";
 import {
@@ -90,13 +91,62 @@ export interface CaPolicyImpact {
   readiness: PromotionReadiness | null;
   /** Hash of what an operator reviews — sent back on promote. Null unless status is ok. */
   fingerprint: string | null;
-  /** v1.0 /auditLogs/signIns lists interactive user sign-ins; stated so nobody reads it as all traffic. */
+  /** All four sign-in event types are read and folded into the counts above (#4552). */
   coverageNote: string;
+  /** Per-category page counts/completeness, for operator-visible transparency (#4552). */
+  readByCategory: Record<SignInCategory, { pagesRead: number; complete: boolean }> | null;
 }
 
 const COVERAGE_NOTE =
-  "Counts interactive user sign-ins recorded by Microsoft Entra (GET /auditLogs/signIns). Non-interactive, " +
-  "service principal and managed identity sign-ins are not included.";
+  "Counts interactive user sign-ins, non-interactive user sign-ins (token refreshes, background clients), " +
+  "and workload identity sign-ins (service principal, managed identity) recorded by Microsoft Entra " +
+  "(GET /auditLogs/signIns, plus the beta signInEventTypes filter for the latter three).";
+
+/** One sign-in event type read against Graph, for a given `evaluateCaPolicyImpact` call. */
+interface SignInCategoryReadSpec {
+  category: SignInCategory;
+  startPath: string;
+}
+
+/** Builds the starting path for one sign-in event type. `undefined` type == the v1.0 interactive default. */
+function signInStartPath(from: string, eventType?: Exclude<SignInCategory, "interactiveUser">): string {
+  const filter = eventType
+    ? `createdDateTime ge ${from} and signInEventTypes/any(t:t eq '${eventType}')`
+    : `createdDateTime ge ${from}`;
+  const encodedFilter = filter.replace(/ /g, "%20");
+  const base = eventType ? "https://graph.microsoft.com/beta/auditLogs/signIns" : "/auditLogs/signIns";
+  return `${base}?$filter=${encodedFilter}&$top=${SIGN_IN_PAGE_SIZE}`;
+}
+
+type SignInCategoryReadResult =
+  | { ok: true; category: SignInCategory; signIns: GraphSignInForImpact[]; pagesRead: number; complete: boolean }
+  | { ok: false; status: TenantReadStatus; detail: string };
+
+/** Fully paginates one sign-in event type's read, bounded by its own MAX_SIGN_IN_PAGES budget (#4552). */
+async function readSignInsForCategory(
+  tenantId: string,
+  category: SignInCategory,
+  startPath: string,
+): Promise<SignInCategoryReadResult> {
+  const signIns: GraphSignInForImpact[] = [];
+  let pagesRead = 0;
+  let next: string | null = startPath;
+  try {
+    while (next && pagesRead < MAX_SIGN_IN_PAGES) {
+      const r = await graphJson(tenantId, next);
+      if (!r.ok) {
+        return { ok: false, status: "graph_error", detail: `Graph returned ${r.status} reading ${category} sign-in logs: ${r.text}` };
+      }
+      pagesRead++;
+      signIns.push(...((r.body.value ?? []) as GraphSignInForImpact[]).map((s) => ({ ...s, category })));
+      next = typeof r.body["@odata.nextLink"] === "string" ? r.body["@odata.nextLink"] : null;
+    }
+  } catch (err) {
+    const f = readFailure(err);
+    return { ok: false, status: f.status, detail: f.detail };
+  }
+  return { ok: true, category, signIns, pagesRead, complete: next === null };
+}
 
 function readFailure(err: unknown): { status: TenantReadStatus; detail: string } {
   if (err instanceof ConsentRevokedError) {
@@ -158,7 +208,7 @@ export async function evaluateCaPolicyImpact(tenantId: string, policyId: string,
   const evaluatedAt = now.toISOString();
   const empty = (status: TenantReadStatus, detail: string, policy: GraphConditionalAccessPolicy | null = null): CaPolicyImpact => ({
     status, detail, evaluatedAt, policy, window: null, complete: false, pagesRead: 0, oldestSignInRead: null,
-    summary: null, readiness: null, fingerprint: null, coverageNote: COVERAGE_NOTE,
+    summary: null, readiness: null, fingerprint: null, coverageNote: COVERAGE_NOTE, readByCategory: null,
   });
   if (!isPolicyIdShape(policyId)) return empty("policy_not_found", "Policy id is not a Conditional Access policy GUID.");
 
@@ -177,26 +227,37 @@ export async function evaluateCaPolicyImpact(tenantId: string, policyId: string,
   }
 
   const window = computeImpactWindow(policy, now);
+
+  // Interactive user sign-ins stay on v1.0 (unchanged); non-interactive user and
+  // workload identity (service principal, managed identity) sign-ins are only
+  // reachable via the beta signInEventTypes filter (Git #4552). Each category is
+  // read to its own MAX_SIGN_IN_PAGES budget so one busy category can't starve
+  // another's page allowance.
+  const categoryReads: SignInCategoryReadSpec[] = [
+    { category: "interactiveUser", startPath: signInStartPath(window.from) },
+    { category: "nonInteractiveUser", startPath: signInStartPath(window.from, "nonInteractiveUser") },
+    { category: "servicePrincipal", startPath: signInStartPath(window.from, "servicePrincipal") },
+    { category: "managedIdentity", startPath: signInStartPath(window.from, "managedIdentity") },
+  ];
+
   const signIns: GraphSignInForImpact[] = [];
   let pagesRead = 0;
-  let next: string | null =
-    `/auditLogs/signIns?$filter=createdDateTime%20ge%20${window.from}&$top=${SIGN_IN_PAGE_SIZE}`;
-  try {
-    while (next && pagesRead < MAX_SIGN_IN_PAGES) {
-      const r = await graphJson(tenantId, next);
-      if (!r.ok) {
-        return { ...empty("graph_error", `Graph returned ${r.status} reading sign-in logs: ${r.text}`, policy), window };
-      }
-      pagesRead++;
-      signIns.push(...((r.body.value ?? []) as GraphSignInForImpact[]));
-      next = typeof r.body["@odata.nextLink"] === "string" ? r.body["@odata.nextLink"] : null;
-    }
-  } catch (err) {
-    const f = readFailure(err);
-    return { ...empty(f.status, f.detail, policy), window };
+  let complete = true;
+  const readByCategory: Record<SignInCategory, { pagesRead: number; complete: boolean }> = {
+    interactiveUser: { pagesRead: 0, complete: false },
+    nonInteractiveUser: { pagesRead: 0, complete: false },
+    servicePrincipal: { pagesRead: 0, complete: false },
+    managedIdentity: { pagesRead: 0, complete: false },
+  };
+  for (const spec of categoryReads) {
+    const r = await readSignInsForCategory(tenantId, spec.category, spec.startPath);
+    if (!r.ok) return { ...empty(r.status, r.detail, policy), window };
+    signIns.push(...r.signIns);
+    pagesRead += r.pagesRead;
+    complete = complete && r.complete;
+    readByCategory[spec.category] = { pagesRead: r.pagesRead, complete: r.complete };
   }
 
-  const complete = next === null;
   const summary = summarizeReportOnlyImpact(signIns, policyId);
   const oldestSignInRead = signIns.reduce<string | null>(
     (oldest, s) => (s.createdDateTime && (!oldest || s.createdDateTime < oldest) ? s.createdDateTime : oldest),
@@ -215,6 +276,7 @@ export async function evaluateCaPolicyImpact(tenantId: string, policyId: string,
     readiness: promotionReadiness({ policy, summary, complete, window }),
     fingerprint: impactFingerprint({ policy, summary, complete }),
     coverageNote: COVERAGE_NOTE,
+    readByCategory,
   };
 }
 

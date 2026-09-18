@@ -43,6 +43,15 @@ export interface GraphAppliedConditionalAccessPolicy {
   enforcedGrantControls?: string[] | null;
 }
 
+/**
+ * Which Graph sign-in event type a row came from (Git #4552). `interactiveUser` is
+ * the v1.0 `/auditLogs/signIns` default and is what every row was until now; the
+ * other three are only reachable via the beta `signInEventTypes` filter. Absent on a
+ * row means `interactiveUser` — existing callers/fixtures that never tagged a
+ * category keep working unchanged.
+ */
+export type SignInCategory = "interactiveUser" | "nonInteractiveUser" | "servicePrincipal" | "managedIdentity";
+
 export interface GraphSignInForImpact {
   id?: string | null;
   createdDateTime?: string | null;
@@ -53,6 +62,11 @@ export interface GraphSignInForImpact {
   ipAddress?: string | null;
   clientAppUsed?: string | null;
   appliedConditionalAccessPolicies?: GraphAppliedConditionalAccessPolicy[] | null;
+  /** Tagged by the caller merging multiple sign-in event type reads (#4552). */
+  category?: SignInCategory;
+  /** servicePrincipal / managedIdentity sign-ins carry these instead of userId/userPrincipalName. */
+  servicePrincipalId?: string | null;
+  servicePrincipalName?: string | null;
 }
 
 export type ReportOnlyOutcome = "would_block" | "would_interrupt" | "would_satisfy" | "not_applied";
@@ -94,6 +108,16 @@ export interface ImpactEvent {
   clientAppUsed: string | null;
   outcome: "would_block" | "would_interrupt";
   enforcedGrantControls: string[];
+  category: SignInCategory;
+}
+
+export interface CategoryImpactCounts {
+  scanned: number;
+  evaluated: number;
+  wouldBlock: number;
+  wouldInterrupt: number;
+  wouldSatisfy: number;
+  notApplied: number;
 }
 
 export interface ReportOnlyImpactSummary {
@@ -109,7 +133,20 @@ export interface ReportOnlyImpactSummary {
   affectedUsers: AffectedUser[];
   /** Newest first, capped at MAX_IMPACT_EVENTS. */
   impactEvents: ImpactEvent[];
+  /** Same counts broken out per sign-in event type (#4552) — the totals above are their sum. */
+  byCategory: Record<SignInCategory, CategoryImpactCounts>;
 }
+
+function emptyCategoryCounts(): CategoryImpactCounts {
+  return { scanned: 0, evaluated: 0, wouldBlock: 0, wouldInterrupt: 0, wouldSatisfy: 0, notApplied: 0 };
+}
+
+const OUTCOME_FIELD: Record<ReportOnlyOutcome, keyof CategoryImpactCounts> = {
+  would_block: "wouldBlock",
+  would_interrupt: "wouldInterrupt",
+  would_satisfy: "wouldSatisfy",
+  not_applied: "notApplied",
+};
 
 /** Where the report-only period's sign-ins are read from. */
 export function computeImpactWindow(policy: GraphConditionalAccessPolicy, now: Date): ImpactWindow {
@@ -138,8 +175,16 @@ export function summarizeReportOnlyImpact(
   let evaluated = 0;
   const users = new Map<string, AffectedUser>();
   const events: ImpactEvent[] = [];
+  const byCategory: Record<SignInCategory, CategoryImpactCounts> = {
+    interactiveUser: emptyCategoryCounts(),
+    nonInteractiveUser: emptyCategoryCounts(),
+    servicePrincipal: emptyCategoryCounts(),
+    managedIdentity: emptyCategoryCounts(),
+  };
 
   for (const signIn of signIns) {
+    const category = signIn.category ?? "interactiveUser";
+    byCategory[category].scanned++;
     const applied = (signIn.appliedConditionalAccessPolicies ?? []).find(
       (p) => (p.id ?? "").trim().toLowerCase() === wanted,
     );
@@ -147,13 +192,20 @@ export function summarizeReportOnlyImpact(
     if (!applied || !outcome) continue;
     evaluated++;
     counts[outcome]++;
+    byCategory[category].evaluated++;
+    byCategory[category][OUTCOME_FIELD[outcome]]++;
     if (outcome !== "would_block" && outcome !== "would_interrupt") continue;
 
-    const key = (signIn.userId ?? signIn.userPrincipalName ?? "").toLowerCase() || `signin:${signIn.id ?? events.length}`;
+    // servicePrincipal / managedIdentity sign-ins carry no userId/userPrincipalName —
+    // fall back to the service principal identity so their impact is still tallied (#4552).
+    const identityId = signIn.userId ?? signIn.servicePrincipalId ?? null;
+    const identityUpn = signIn.userPrincipalName ?? null;
+    const identityDisplayName = signIn.userDisplayName ?? signIn.servicePrincipalName ?? null;
+    const key = (identityId ?? identityUpn ?? identityDisplayName ?? "").toLowerCase() || `signin:${signIn.id ?? events.length}`;
     const user = users.get(key) ?? {
-      userId: signIn.userId ?? null,
-      userPrincipalName: signIn.userPrincipalName ?? null,
-      userDisplayName: signIn.userDisplayName ?? null,
+      userId: identityId,
+      userPrincipalName: identityUpn,
+      userDisplayName: identityDisplayName,
       wouldBlock: 0,
       wouldInterrupt: 0,
       lastImpactAt: null,
@@ -167,13 +219,14 @@ export function summarizeReportOnlyImpact(
 
     events.push({
       createdDateTime: signIn.createdDateTime ?? null,
-      userPrincipalName: signIn.userPrincipalName ?? null,
-      userDisplayName: signIn.userDisplayName ?? null,
+      userPrincipalName: identityUpn,
+      userDisplayName: identityDisplayName,
       appDisplayName: signIn.appDisplayName ?? null,
       ipAddress: signIn.ipAddress ?? null,
       clientAppUsed: signIn.clientAppUsed ?? null,
       outcome,
       enforcedGrantControls: (applied.enforcedGrantControls ?? []).filter((c): c is string => typeof c === "string"),
+      category,
     });
   }
 
@@ -197,6 +250,7 @@ export function summarizeReportOnlyImpact(
     affectedUserCount: users.size,
     affectedUsers,
     impactEvents,
+    byCategory,
   };
 }
 
