@@ -1801,6 +1801,7 @@ namespace BuildConsole.Controls
             int blocked = 0, upNext = 0, manuallyPaused = 0, limitPaused = 0, verifying = 0, queued = 0;
             foreach (var item in _lastItems)
             {
+                if (item.Archived) continue; // Git #4695 — a removed row no longer counts anywhere.
                 if (item.Status == BuildQueuePostgresClient.VerifyingStatus) { verifying++; continue; }
                 if (item.Status == Services.SessionLimitAutoRestartService.LimitPausedStatus) { limitPaused++; continue; }
                 if (item.Status != "queued") continue;
@@ -2287,6 +2288,11 @@ namespace BuildConsole.Controls
 
         private List<QueueItem> ApplyFilter(List<QueueItem> items)
         {
+            // Git #4695 — "archived" now also means a row Shane removed via "Remove from Queue": it
+            // must leave EVERY working view, not just Canceled. Only the dedicated "Archive" filter
+            // (below) lists archived rows.
+            if (_filter != "Archive") items = items.Where(i => !i.Archived).ToList();
+
             List<QueueItem> statusFiltered = _filter switch
             {
                 // Git #3340 — Shane's real, explicit override of #1829's original combined-status
@@ -2425,6 +2431,8 @@ namespace BuildConsole.Controls
 
             string targetFilter = item.Status switch
             {
+                // Git #4695 — a row removed via "Remove from Queue" lives only under "Archive" now.
+                _ when item.Archived   => "Archive",
                 "running"              => "Running",
                 // Git #3599 — Git #3340 hardened "Running" to mean exactly status == "running",
                 // full stop; a Verifying item is no longer visible under it, so landing here still
@@ -2686,7 +2694,7 @@ namespace BuildConsole.Controls
         /// <see cref="BuildQueueCard"/>'s CRASHED pill can never disagree about which rows are
         /// crashed (Git #3611 removed the dedicated "Crashed" tab that used to be the one place
         /// this criteria lived).</summary>
-        private static bool IsCrashed(QueueItem item) => item.Status == "failed" && item.ExitCode == -2;
+        private static bool IsCrashed(QueueItem item) => item.Status == "failed" && item.ExitCode == -2 && !item.Archived;
 
         /// <summary>Git #3599 — resolves a declared blocker's live queue node against the FULL,
         /// unfiltered queue, not just whatever the currently-active status filter rendered into
@@ -3908,7 +3916,7 @@ namespace BuildConsole.Controls
         private async Task<Dictionary<string, List<EpicResolver.ResolvedEpic>>> ResolveBuildSetEpicsAsync(List<QueueItem> items)
         {
             var byKey = items
-                .Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && i.GithubNumber.HasValue)
+                .Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && !i.Archived && i.GithubNumber.HasValue)
                 .GroupBy(i => NormalizeBuildSetKey(i.BuildSet))
                 .ToList();
 
@@ -4405,7 +4413,7 @@ namespace BuildConsole.Controls
             var bucketOrder = new List<string>();
             foreach (var item in items)
             {
-                if (_manuallyHiddenQueueIds.Contains(item.Id)) continue;
+                if (_manuallyHiddenQueueIds.Contains(item.Id) || item.Archived) continue;
                 string key = NormalizeBuildSetKey(item.BuildSet);
                 if (!buckets.TryGetValue(key, out var counts))
                 {
@@ -7248,6 +7256,45 @@ namespace BuildConsole.Controls
                 await RefreshAsync();
             };
             cm.Items.Add(miMarkComplete);
+
+            // Git #4695 — the real "get this row out of my view" action. LOCAL ONLY: one UPDATE on
+            // bt_build_queue (DismissFromQueueAsync → archived flag), no GitHub call of any kind — no
+            // label, comment, close or board move. Closing the real issue stays a separate, explicit
+            // verify-and-close. A running row must be stopped first with the existing ⏹ Stop (which is
+            // its own, distinct action); this item never stops or reaps a process itself.
+            var miRemoveFromQueue = new MenuItem
+            {
+                Header = item.Status == "running"
+                    ? "🗑 Remove from Queue (local only) — Stop it first"
+                    : "🗑 Remove from Queue (local only)",
+                IsEnabled = item.Status != "running" && !item.Archived,
+                ToolTip = "Hides this row from the Build Queue only. Nothing is sent to GitHub — the issue, its labels and its board status are untouched.",
+            };
+            miRemoveFromQueue.Click += async (_, _) =>
+            {
+                if (_db == null)
+                {
+                    ToastEngine.Warning("Remove from Queue", "No direct DB connection — can't remove.");
+                    return;
+                }
+                try
+                {
+                    int changed = await _db.DismissFromQueueAsync(item.Id);
+                    if (changed > 0)
+                    {
+                        _watcher?.ReleaseInteractive(item.Id);
+                        ActivityLog.Log("build-queue", $"Removed queue item #{item.Id} ({item.Title}) from the local queue view (local only — no GitHub call).");
+                    }
+                    else
+                        ToastEngine.Warning("Remove from Queue", $"Not removed — “{item.Title}” is running or already removed.");
+                }
+                catch (Exception ex)
+                {
+                    ToastEngine.Error("Remove from Queue", $"Couldn't remove: {ex.Message}");
+                }
+                await RefreshAsync();
+            };
+            cm.Items.Add(miRemoveFromQueue);
 
             // Git #3742 — "Add Note…"/"Edit Note…", available for EVERY card regardless of
             // item.Status (no status guard, matching the issue's explicit "any status" ask —

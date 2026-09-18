@@ -907,7 +907,7 @@ namespace BuildConsole.Services
                         OR (status = 'canceled' AND archived IS NOT TRUE AND exit_code = 0))", conn))
             {
                 cmd.Parameters.AddWithValue("@verifying", VerifyingStatus);
-                cmd.Parameters.AddWithValue("@limitPaused", Services.SessionLimitAutoRestartService.LimitPausedStatus);
+                cmd.Parameters.AddWithValue("@limitPaused", SessionLimitAutoRestartService.LimitPausedStatus);
                 cmd.Parameters.AddWithValue("@capped", AccountCapPolicy.CappedStatus);
                 await using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
@@ -1922,6 +1922,40 @@ namespace BuildConsole.Services
                 UPDATE bt_build_queue
                    SET archived = TRUE, archived_at = NOW(), updated_at = NOW()
                  WHERE id = @id AND status = 'canceled' AND archived = FALSE", conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            return await cmd.ExecuteNonQueryAsync();
+        }
+
+        /// <summary>
+        /// Git #4695 — the explicit, LOCAL-ONLY "Remove from Queue" write. Pure SQL against this table;
+        /// it makes no GitHub call of any kind and the caller must not add one (no label, comment, close
+        /// or board move). Reuses the existing soft-archive columns (<c>archived</c>/<c>archived_at</c>,
+        /// Git #3607) — never a DELETE, so history, <c>build_dispatch_log</c> and <c>superseded_by_id</c>
+        /// links stay intact and the row stays browsable under the "Archive" filter.
+        /// A <c>running</c> row is refused (0 rows): Shane stops it first with the existing ⏹ Stop, then
+        /// dismisses the stopped row. Rows that are still claimable/active-but-idle (queued, parked,
+        /// limit-paused, capped, external) are also moved to <c>canceled</c> (exit_code -1, the same
+        /// user-cancel sentinel Stop uses — deliberately NOT 0, which would read as a ⏳ WAITING
+        /// self-block) so a dismissed row can never still launch; terminal/verifying rows keep their
+        /// real status and only get flagged. Returns rows changed (0 = not eligible / already archived).
+        /// </summary>
+        public async Task<int> DismissFromQueueAsync(int id)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status       = CASE WHEN status IN ('queued', 'parked', @limitPaused, @capped, 'external')
+                                           THEN 'canceled' ELSE status END,
+                       exit_code    = CASE WHEN status IN ('queued', 'parked', @limitPaused, @capped, 'external')
+                                           THEN COALESCE(exit_code, -1) ELSE exit_code END,
+                       completed_at = CASE WHEN status IN ('queued', 'parked', @limitPaused, @capped, 'external')
+                                           THEN COALESCE(completed_at, NOW()) ELSE completed_at END,
+                       archived     = TRUE,
+                       archived_at  = NOW(),
+                       updated_at   = NOW()
+                 WHERE id = @id AND status <> 'running' AND archived = FALSE", conn);
+            cmd.Parameters.AddWithValue("@limitPaused", SessionLimitAutoRestartService.LimitPausedStatus);
+            cmd.Parameters.AddWithValue("@capped", AccountCapPolicy.CappedStatus);
             cmd.Parameters.AddWithValue("@id", id);
             return await cmd.ExecuteNonQueryAsync();
         }
