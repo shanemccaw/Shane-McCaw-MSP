@@ -2789,6 +2789,12 @@ namespace BuildConsole.Services
                 }
             }
 
+            // Git #4636 / #4611 — early duplicate-resume backstop (cheap, before worktree provisioning). If this row carries a
+            // resume_session_id whose session is already live under another row, don't provision a worktree we'd only abandon:
+            // release the row to 'queued' now so a later tick resumes it once the live process is gone. The authoritative
+            // re-check sits right before the actual spawn below, to also catch a session that goes live DURING provisioning.
+            if (await TryDeferDuplicateResumeAsync(item)) return;
+
             // Git #1203 — the launched session must be TOLD its own buildId. The
             // `--title N` header a build was queued with (and any GitHub number it
             // resolved to) is parsed off and stripped before the prompt body is stored
@@ -3134,6 +3140,16 @@ namespace BuildConsole.Services
             if (isFreshDispatch)
             {
                 await TrackDispatchAsync(item);
+            }
+
+            // Git #4636 / #4611 — authoritative last-moment re-check, the instant before the process genuinely spawns. The
+            // early check above ran before worktree provisioning (94s live), during which the session can go live again under
+            // another row; this is the only check that is never stale. If it fires, drop the entry we just built (its tailers
+            // were never started) and release the row to 'queued' rather than spawn the duplicate --resume.
+            if (await TryDeferDuplicateResumeAsync(item))
+            {
+                entry.TailCts.Dispose();
+                return;
             }
 
             RedirectedProcessLauncher.LaunchedProcess launched;
@@ -3930,6 +3946,88 @@ namespace BuildConsole.Services
                     ids.Add(id);
             }
             return ids;
+        }
+
+        /// <summary>Git #4636 — queue ids the throttle has already logged a "deferred, session live elsewhere" line for, so a
+        /// row deferred every 30s tick logs once per deferral episode instead of once a tick. Cleared when the row finally
+        /// launches past the backstop, or when it is no longer being deferred. Guarded by <see cref="_launchGate"/>.</summary>
+        private readonly HashSet<int> _deferredDuplicateResumeLogged = new();
+
+        /// <summary>
+        /// Git #4636 / #4611 — thread-safe (holds <see cref="_gate"/>) list of the LIVE queue ids already running
+        /// <paramref name="sessionId"/>, excluding <paramref name="exceptQueueId"/> (the row about to launch). This exists as a
+        /// separate method from <see cref="LiveQueueIdsForSession"/> precisely because <see cref="LaunchItemCore"/> runs on a
+        /// thread-pool thread (SafeLaunch's Task.Run), where the UI-thread-only contract of that method does not hold — reading
+        /// <see cref="_running"/> unlocked there could tear against the reap/output threads. A non-empty result means launching a
+        /// <c>--resume</c> for this session now would make it two processes on one session.
+        /// </summary>
+        private List<int> LiveQueueIdsForSessionThreadSafe(int exceptQueueId, string? sessionId)
+        {
+            var ids = new List<int>();
+            if (string.IsNullOrWhiteSpace(sessionId)) return ids;
+            lock (_gate)
+            {
+                foreach (var (id, e) in _running)
+                {
+                    if (id == exceptQueueId || e.Process == null || e.Process.HasExited) continue;
+                    if (string.Equals(e.SessionId, sessionId, StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(e.ResumeSessionId, sessionId, StringComparison.OrdinalIgnoreCase))
+                        ids.Add(id);
+                }
+            }
+            return ids;
+        }
+
+        /// <summary>
+        /// Git #4636 / #4611 — THE load-bearing backstop. Every UI resume guard (#4547/#4553/#4554) checks session liveness at
+        /// CLICK time, but the real process spawn can be 90s+ later (worktree provisioning in <see cref="LaunchItemCore"/>), and
+        /// this dispatcher is the ONE place all launch paths funnel through — the queue tick, <see cref="LaunchContinuationAsync"/>'s
+        /// own forced relaunch, Retry, Resume Session, Recover All, and the session-limit auto-restart. If the row about to launch
+        /// carries a <c>resume_session_id</c> whose session is ALREADY live under another row (a continuation that queued at the
+        /// hard cap, a limit-paused row resumed in place, or a session that went live again across the provisioning window), spawning
+        /// now would put two real Claude processes on one session — the exact #4553/#4554/#4609 failure that produced #4636's
+        /// byte-identical duplicate tabs. Instead of launching, this releases the row back to <c>queued</c> (keeping its
+        /// resume_session_id) so the next 30s tick resumes it cleanly once the live process is gone. It never stops the live
+        /// process (that would kill possibly-active work with no prompt — #4553's own rule) and never supersedes the row (that
+        /// would silently drop a queued Reply message). Returns true if it deferred the launch (the caller must return without
+        /// spawning). UI thread NOT required — reads <see cref="_running"/> under <see cref="_gate"/>.
+        /// </summary>
+        private async Task<bool> TryDeferDuplicateResumeAsync(QueueItem item)
+        {
+            if (string.IsNullOrWhiteSpace(item.ResumeSessionId)) return false; // fresh dispatch — nothing to duplicate
+            var live = LiveQueueIdsForSessionThreadSafe(item.Id, item.ResumeSessionId);
+            if (live.Count == 0)
+            {
+                lock (_launchGate) _deferredDuplicateResumeLogged.Remove(item.Id);
+                return false;
+            }
+
+            bool shouldLog;
+            lock (_launchGate) shouldLog = _deferredDuplicateResumeLogged.Add(item.Id);
+            string liveList = string.Join(", ", live.Select(i => "#" + i));
+            if (shouldLog)
+                ActivityLog.Log("watcher",
+                    $"Git #4636 refusing to launch queue #{item.Id} ({item.Title}) as a --resume of session {item.ResumeSessionId}: that session is already live under queue {liveList}. Launching now would run two processes on one session. Released back to 'queued' — it resumes on a later tick once the live process is gone.");
+
+            if (_db != null)
+            {
+                try
+                {
+                    if (!await _db.RequeueForLiveSessionAsync(item.Id))
+                        ActivityLog.Log("watcher", $"Git #4636 queue #{item.Id} was not in 'running' when the duplicate-resume backstop tried to release it — another flow already moved it; leaving it be.");
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("watcher", $"Git #4636 couldn't release queue #{item.Id} back to 'queued' after refusing a duplicate --resume: {ex.Message}");
+                }
+            }
+            else
+            {
+                // HTTP-fallback mode has no way to write 'queued'. Failing the launch is still strictly better than spawning a
+                // duplicate: the row surfaces as failed (recoverable) rather than silently running the session twice.
+                await MarkLaunchFailedAsync(item.Id, $"session {item.ResumeSessionId} is already live under queue {liveList} — refused a duplicate --resume (no direct DB connection to requeue it)");
+            }
+            return true;
         }
 
         /// <summary>Git #4553 — true when resuming this build's session through <see cref="LaunchContinuationAsync"/> would stop

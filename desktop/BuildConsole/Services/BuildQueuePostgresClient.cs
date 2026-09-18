@@ -3018,6 +3018,33 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
+        /// Git #4636 / #4611 — put a row this instance just CLAIMED (status='running') back to
+        /// 'queued' because the dispatcher's launch-time session-liveness backstop
+        /// (<see cref="QueueWatcherService.LaunchItemCore"/>) found the session already live under
+        /// another row, so spawning now would be the duplicate `--resume` process the UI guards exist
+        /// to prevent. The row keeps its resume_session_id, so the next 30s dispatcher tick resumes
+        /// the conversation cleanly once the live process is gone — never launches a second copy, never
+        /// drops the queued message. Only touches a row still 'running' (this claim); clears the pid
+        /// fingerprint so no adoption/phantom-running logic mistakes the released claim for a live one.
+        /// Returns true if the row was actually released.
+        /// </summary>
+        public async Task<bool> RequeueForLiveSessionAsync(int id)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status               = 'queued',
+                       claimed_at           = NULL,
+                       build_pid            = NULL,
+                       build_pid_started_at = NULL,
+                       updated_at           = NOW()
+                 WHERE id     = @id
+                   AND status = 'running'", conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            return await cmd.ExecuteNonQueryAsync() > 0;
+        }
+
+        /// <summary>
         /// Log-sweep session-limit recovery — used by
         /// <see cref="SessionLimitAutoRestartService"/>'s automatic periodic sweep
         /// (Git #3573; previously a manual BuildQueuePanel button) that scans
