@@ -233,6 +233,22 @@ namespace BuildConsole
                     // (RAM back under the resume threshold AND pagefile stable/shrinking) for the
                     // full sustained cooldown — a broken streak restarts the clock.
                     bool clearNow = ramLow && pagefileNotRising;
+
+                    // Git #4575 — real, per-tick diagnostic logging while paused. #4561's fix was
+                    // verified only against a synthetic harness and Shane's real machine got stuck
+                    // again anyway; this gives the next stuck episode real tick-by-tick data instead
+                    // of a third blind guess. Cheap (one log line per already-running 1.5s poll) and
+                    // only fires while actually paused, so it costs nothing the rest of the time.
+                    double? clearElapsedSeconds = _memoryPressureClearSince.HasValue
+                        ? (DateTime.UtcNow - _memoryPressureClearSince.Value).TotalSeconds
+                        : (double?)null;
+                    ActivityLog.Log("resource-monitor",
+                        $"memory-pressure-paused tick: dwMemoryLoad={status.dwMemoryLoad} " +
+                        $"pagefileInUse={pagefileInUse} oldest={oldest} newest={newest} prev={prev} " +
+                        $"pagefileRising={pagefileRising} pagefileNotRising={pagefileNotRising} " +
+                        $"ramLow={ramLow} clearNow={clearNow} " +
+                        $"memoryPressureClearSince={(clearElapsedSeconds.HasValue ? clearElapsedSeconds.Value.ToString("F1") + "s" : "null")}");
+
                     if (clearNow)
                     {
                         _memoryPressureClearSince ??= DateTime.UtcNow;
