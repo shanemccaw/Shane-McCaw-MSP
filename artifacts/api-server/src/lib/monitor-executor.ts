@@ -1455,6 +1455,12 @@ export function applyMapping(
     const rawTransform = rule.transform ?? "none";
     const countEqualsMatch = /^countEquals\(\s*['"](.*)['"]\s*\)$/.exec(rawTransform);
     const staleSignInMatch = /^countIfLastSignInOlderThan\(\s*(\d+)\s*\)$/.exec(rawTransform);
+    // Distinct from countIfLastSignInOlderThan (#4602): compares sourceField's
+    // OWN resolved value against the cutoff, rather than a hardcoded
+    // signInActivity.lastSignInDateTime. countIfLastSignInOlderThan stays
+    // untouched so identity:stale-accounts and governance:guest-staleness
+    // (its only correct callers) are unaffected.
+    const fieldOlderThanMatch = /^countIfFieldOlderThan\(\s*(\d+)\s*\)$/.exec(rawTransform);
     // valueWhere('matchField', 'matchValue') or valueWhere('matchField', 'matchValue', 'extractField').
     // Args are non-greedy and quote-free so a missing quote reads as malformed
     // (falls through to the default branch, which warns) rather than as a
@@ -1496,6 +1502,7 @@ export function applyMapping(
         || rawTransform.startsWith("raw("));
     const transform = countEqualsMatch ? "countEquals"
       : staleSignInMatch ? "countIfLastSignInOlderThan"
+      : fieldOlderThanMatch ? "countIfFieldOlderThan"
       : valueWhereMatch ? "valueWhere"
       : flattenValuesMatch ? "flattenValues"
       : countDuplicatesByMatch ? "countDuplicatesBy"
@@ -1504,6 +1511,7 @@ export function applyMapping(
       : rawTransform;
     const compareValue = countEqualsMatch ? countEqualsMatch[1] : undefined;
     const staleDays = staleSignInMatch ? Number(staleSignInMatch[1]) : undefined;
+    const fieldStaleDays = fieldOlderThanMatch ? Number(fieldOlderThanMatch[1]) : undefined;
     const nestedField = flattenValuesMatch ? flattenValuesMatch[1]
       : countDuplicatesByMatch ? countDuplicatesByMatch[1]
       : undefined;
@@ -1646,6 +1654,35 @@ export function applyMapping(
         publishEvidence(targetField, ev);
         if (!sawSignInActivity) {
           log.warn({ targetField, sourceField }, "monitor-executor: countIfLastSignInOlderThan found no signInActivity data on any item — check may be missing $select=signInActivity on its Graph endpoint");
+        }
+        break;
+      }
+      case "countIfFieldOlderThan": {
+        // #4602 — generic sibling of countIfLastSignInOlderThan: compares
+        // sourceField's OWN resolved value (already in `vals`) against the
+        // cutoff, rather than a hardcoded signInActivity field. A missing
+        // value is NOT counted as stale (unlike the sign-in transform's
+        // "never signed in" convention) — this is exactly the #4602 bug: an
+        // endpoint missing its $select made every item look stale. Under-
+        // reporting and warning is the honest failure here, same as
+        // countEmptyArray above.
+        const cutoff = Date.now() - (fieldStaleDays! * 24 * 60 * 60 * 1000);
+        let sawFieldValue = false;
+        const ev = new EvidenceCollector(rawTransform, sourceField);
+        for (let i = 0; i < vals.length; i++) {
+          const val = vals[i];
+          if (val == null) continue;
+          sawFieldValue = true;
+          const fieldTime = new Date(val as string).getTime();
+          if (!Number.isNaN(fieldTime) && fieldTime < cutoff) ev.add(items[i], sourceField, val);
+        }
+        result[targetField] = ev.count;
+        publishEvidence(targetField, ev);
+        if (!sawFieldValue && items.length > 0) {
+          log.warn(
+            { targetField, sourceField },
+            `monitor-executor: countIfFieldOlderThan found no "${sourceField}" data on any item — check may be missing $select=${sourceField} on its Graph endpoint`,
+          );
         }
         break;
       }

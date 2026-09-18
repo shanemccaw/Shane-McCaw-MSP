@@ -17,7 +17,7 @@
  *   • `applyMapping` (monitor-executor.ts) performs the mapping. Every
  *     transform — count / exists / first / join / raw / countTruthy /
  *     countFalse / countEmptyArray / countEquals / countIfLastSignInOlderThan /
- *     groupByCount / countDuplicates / countWhere / valueWhere /
+ *     countIfFieldOlderThan / groupByCount / countDuplicates / countWhere / valueWhere /
  *     flattenValues / countDuplicatesBy — is the real one. None of that logic
  *     is restated here.
  *   • `evaluateRule` (tenant-signals.ts) decides each rule's true/false AND

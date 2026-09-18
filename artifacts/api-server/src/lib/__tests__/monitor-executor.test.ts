@@ -678,6 +678,47 @@ describe("applyMapping", () => {
     );
   });
 
+  it("applies countIfFieldOlderThan transform against sourceField directly (#4602)", () => {
+    const now = Date.now();
+    const oneDayMs = 24 * 60 * 60 * 1000;
+
+    // Real #4602 shape: SharePoint sites, no signInActivity at all — the
+    // comparison must be against lastModifiedDateTime (sourceField) itself.
+    const sites = [
+      { id: "s1", lastModifiedDateTime: new Date(now - 1 * oneDayMs).toISOString() },   // fresh — not stale
+      { id: "s2", lastModifiedDateTime: new Date(now - 200 * oneDayMs).toISOString() }, // stale
+      { id: "s3", lastModifiedDateTime: new Date(now - 91 * oneDayMs).toISOString() },  // stale
+    ];
+
+    const mapping: MappingRule[] = [
+      { sourceField: "lastModifiedDateTime", targetField: "inactiveSiteCount", transform: "countIfFieldOlderThan(90)" }
+    ];
+
+    vi.mocked(logger.warn).mockClear();
+    const result = applyMapping(sites, mapping, []);
+    expect(result.inactiveSiteCount).toBe(2);
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  it("countIfFieldOlderThan does NOT count a missing sourceField value as stale, and warns (#4602)", () => {
+    const itemsMissingField = [
+      { id: "s1" },
+      { id: "s2" },
+    ];
+
+    const mapping: MappingRule[] = [
+      { sourceField: "lastModifiedDateTime", targetField: "inactiveSiteCount", transform: "countIfFieldOlderThan(90)" }
+    ];
+
+    vi.mocked(logger.warn).mockClear();
+    const result = applyMapping(itemsMissingField, mapping, []);
+    expect(result.inactiveSiteCount).toBe(0);
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      { targetField: "inactiveSiteCount", sourceField: "lastModifiedDateTime" },
+      expect.stringContaining('countIfFieldOlderThan found no "lastModifiedDateTime" data on any item')
+    );
+  });
+
   it("handles empty items array", () => {
     const result = applyMapping([], [], ["displayName"]);
     expect(result.displayName_count).toBe(0);

@@ -1121,7 +1121,7 @@ function MappingView({ state, check }: { state: EndpointsState; check: MonitorCh
         value={mappingText}
         onChange={setMappingText}
         error={parsedMapping.ok ? null : parsedMapping.error}
-        help={`Each entry reads a field off every returned item and writes one key: { "sourceField", "targetField", "transform" }. Transforms the executor knows: count, exists, first, join, raw, countTruthy, countFalse, countEmptyArray, countEquals('x'), countIfLastSignInOlderThan(30), groupByCount, countDuplicates, countWhere('{{field}} == 1'), valueWhere('f','v'), flattenValues('f'), countDuplicatesBy('f').`}
+        help={`Each entry reads a field off every returned item and writes one key: { "sourceField", "targetField", "transform" }. Transforms the executor knows: count, exists, first, join, raw, countTruthy, countFalse, countEmptyArray, countEquals('x'), countIfLastSignInOlderThan(30), countIfFieldOlderThan(90), groupByCount, countDuplicates, countWhere('{{field}} == 1'), valueWhere('f','v'), flattenValues('f'), countDuplicatesBy('f').`}
       />
 
       <JsonField
