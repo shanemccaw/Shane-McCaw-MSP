@@ -16,6 +16,15 @@
  * precondition under test is the thing that stops it. If the tenant ever gains
  * P1, the write-capable cases are skipped rather than allowed to write to what
  * is also Shane's production M365 tenant (Git #1913).
+ *
+ * Git #4522/#4607 — the two `microrem.enforce-ca-policy` / SOP-SEED-IAM-03 cases
+ * below are refused by rule 0 (CA enforcement) regardless of the tenant's
+ * license, because `caEnforcementMode` is never passed as "immediate" by
+ * execute_action or an SOP run (monitor-first is the only reachable mode here) —
+ * so those two are NOT gated on `lacksP1`; they are safe on any tenant state.
+ * The license rule itself is proven in isolation by the `action.create-named-location`
+ * case, which is gated on `lacksP1` since it is the one case that actually depends
+ * on the tenant's real license state.
  */
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -83,30 +92,56 @@ describe("execute_action (#4528)", () => {
     variables: { policyId: "00000000-0000-0000-0000-000000000000" },
   });
 
-  it("preview reports license_required and not ready on the unlicensed testbed tenant", async () => {
-    if (!lacksP1) return void console.warn("tenant holds Entra ID P1 — license case not applicable");
+  it("preview reports ca_enforcement_requires_promotion and not ready — #4522's rule 0 refuses this write before rule 1 even reads the tenant's license", async () => {
     const res = await request(app).post("/api/admin/remediation/execute-action").send(body());
     expect(res.status).toBe(200);
     expect(res.body.mode).toBe("preview");
     expect(res.body.ready).toBe(false);
-    expect(res.body.precondition?.code).toBe("license_required");
+    expect(res.body.precondition?.code).toBe("ca_enforcement_requires_promotion");
   });
 
-  it("confirmed:true is refused 409 before any write — no audit row is recorded", async () => {
-    if (!lacksP1) return void console.warn("tenant holds Entra ID P1 — skipped so nothing writes");
+  it("confirmed:true is refused 422 before any write — no audit row is recorded", async () => {
     const before = await count(
       sql`select count(*) as n from baseline_action_template_audit_log where template_id = 'microrem.enforce-ca-policy'`,
     );
     const res = await request(app)
       .post("/api/admin/remediation/execute-action")
       .send({ ...body(), confirmed: true });
-    expect(res.status).toBe(409);
-    expect(res.body.code).toBe("license_required");
-    expect(res.body.requiredLicenseSkus).toEqual(expect.arrayContaining(["AAD_PREMIUM"]));
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe("ca_enforcement_requires_promotion");
     const after = await count(
       sql`select count(*) as n from baseline_action_template_audit_log where template_id = 'microrem.enforce-ca-policy'`,
     );
     expect(after).toBe(before);
+  });
+
+  it("a template with no CA-policy-state write in play is still refused license_required on the unlicensed testbed tenant (#4607 — proves the license rule survives #4522's rule 0)", async () => {
+    if (!lacksP1) return void console.warn("tenant holds Entra ID P1 — license case not applicable");
+    const templateId = "action.create-named-location";
+    const [t] = await db
+      .select()
+      .from(baselineActionTemplatesTable)
+      .where(eq(baselineActionTemplatesTable.templateId, templateId))
+      .limit(1);
+    expect(t).toBeTruthy();
+    const lists = await loadRequiredLicenseSkuListsByTemplate([templateId]);
+    const refusal = await resolveTenantWritePreconditionRefusal({
+      packKey: templateId,
+      subject: `Action '${templateId}'`,
+      steps: [
+        {
+          templateId,
+          method: t!.method,
+          endpoint: t!.endpoint,
+          bodyTemplate: (t!.bodyTemplate ?? {}) as Record<string, unknown>,
+          requiredLicenseSkuLists: lists.get(templateId) ?? [],
+        },
+      ],
+      tenantId: customer.tenantId,
+      payload: { customerId: customer.id, cidrRange: "203.0.113.0/24", locationName: "live-verify #4607 named location" },
+    });
+    expect(refusal?.code).toBe("license_required");
+    expect(refusal?.details?.requiredLicenseSkus).toEqual(expect.arrayContaining(["AAD_PREMIUM"]));
   });
 
   it("a lone Security Defaults disable is refused on the live tenant (no enforcing replacement)", async () => {
@@ -138,8 +173,7 @@ describe("execute_action (#4528)", () => {
 });
 
 describe("SOP run (#4528)", () => {
-  it("SOP-SEED-IAM-03 (creates a CA policy) is refused license_required before any claim, persist or fire", async () => {
-    if (!lacksP1) return void console.warn("tenant holds Entra ID P1 — skipped so nothing writes");
+  it("SOP-SEED-IAM-03 (creates a CA policy) is refused ca_enforcement_requires_promotion before any claim, persist or fire", async () => {
     const runsBefore = await count(sql`select count(*) as n from msp_sop_runs where tenant_id = ${customer.tenantId}`);
     const wfBefore = await count(sql`select count(*) as n from wf_runs where trigger_ref = 'live-verify:4528'`);
     await expect(
@@ -151,7 +185,7 @@ describe("SOP run (#4528)", () => {
         operator: "live-verify #4528",
         triggeredBy: "live-verify:4528",
       }),
-    ).rejects.toMatchObject({ code: "license_required" });
+    ).rejects.toMatchObject({ code: "ca_enforcement_requires_promotion" });
     expect(await count(sql`select count(*) as n from msp_sop_runs where tenant_id = ${customer.tenantId}`)).toBe(runsBefore);
     expect(await count(sql`select count(*) as n from wf_runs where trigger_ref = 'live-verify:4528'`)).toBe(wfBefore);
   });
