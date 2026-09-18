@@ -312,6 +312,9 @@ namespace BuildConsole.Controls
         /// came back unsatisfied) is treated as NOT verified — i.e. never eligible to be reported
         /// "landed" — until a real positive lands here.</summary>
         private readonly Dictionary<int, bool> _verifyingBookendSatisfied = new();
+
+        /// <summary>Git #4701 — first line of every ✈/❓ Verifying-send tooltip: verifying a bookend is not the finish line, the issue must also be closed via the real close tool. Rides along in screenshots.</summary>
+        private const string CloseReminderLine = "Reminder: verify the bookend, then close this issue via the real close tool — don't just report it as done.\n";
         private bool _verifyingBookendRefreshInFlight;
         private const string UngroupedBuildSetKey = "Ungrouped";
         /// <summary>Git #3336 — each real build-set key's resolved top Epic(s), computed from its
@@ -4154,7 +4157,7 @@ namespace BuildConsole.Controls
                     Background = Brushes.Transparent,
                     BorderThickness = new Thickness(0),
                     Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
-                    ToolTip = $"Send {totalUnsent} verified, not-yet-sent landed item(s) across all {unsentByBuildSet.Count} build set(s) under \"{key.Label}\" as one combined landed-list to the active chat"
+                    ToolTip = CloseReminderLine + $"Send {totalUnsent} verified, not-yet-sent landed item(s) across all {unsentByBuildSet.Count} build set(s) under \"{key.Label}\" as one combined landed-list to the active chat"
                 };
                 badgeRow.Children.Add(sendButton);
             }
@@ -4178,7 +4181,7 @@ namespace BuildConsole.Controls
                     Background = Brushes.Transparent,
                     BorderThickness = new Thickness(0),
                     Foreground = (Brush)Application.Current.FindResource("StatusWarningBrush"),
-                    ToolTip = $"Send these {totalNeedsAttention} needs-attention issue(s) across all {needsAttentionUnsentByBuildSet.Count} build set(s) under \"{key.Label}\" to the active chat — Verifying, but no verified DONE bookend yet: {string.Join(", ", allNeedsAttentionNumbers.Select(FormatIssueRef))}"
+                    ToolTip = CloseReminderLine + $"Send these {totalNeedsAttention} needs-attention issue(s) across all {needsAttentionUnsentByBuildSet.Count} build set(s) under \"{key.Label}\" to the active chat — Verifying, but no verified DONE bookend yet: {string.Join(", ", allNeedsAttentionNumbers.Select(FormatIssueRef))}"
                 };
                 badgeRow.Children.Add(needsAttentionButton);
             }
@@ -4762,7 +4765,7 @@ namespace BuildConsole.Controls
                     Background = Brushes.Transparent,
                     BorderThickness = new Thickness(0),
                     Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
-                    ToolTip = $"Send {buildSetKey}'s {landedEligible.Count} verified, not-yet-sent landed item(s) as a landed-list to the active chat"
+                    ToolTip = CloseReminderLine + $"Send {buildSetKey}'s {landedEligible.Count} verified, not-yet-sent landed item(s) as a landed-list to the active chat"
                 };
                 badgeRow.Children.Add(sendButton);
             }
@@ -4796,7 +4799,7 @@ namespace BuildConsole.Controls
                     Background = Brushes.Transparent,
                     BorderThickness = new Thickness(0),
                     Foreground = (Brush)Application.Current.FindResource("StatusWarningBrush"),
-                    ToolTip = $"Send {buildSetKey}'s {needsAttentionUnsent.Count} Verifying item(s) with no verified DONE bookend yet to the active chat: {string.Join(", ", needsAttentionUnsent.Select(FormatIssueRef))}"
+                    ToolTip = CloseReminderLine + $"Send {buildSetKey}'s {needsAttentionUnsent.Count} Verifying item(s) with no verified DONE bookend yet to the active chat: {string.Join(", ", needsAttentionUnsent.Select(FormatIssueRef))}"
                 };
                 badgeRow.Children.Add(needsAttentionButton);
             }
