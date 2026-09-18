@@ -1533,7 +1533,7 @@ namespace BuildConsole.Controls
             }
 
             BtnRecoverOrphans.IsEnabled = false;
-            int resumed = 0, retried = 0, failed = 0;
+            int resumed = 0, retried = 0, failed = 0, skipped = 0;
             var failures = new List<string>();
             try
             {
@@ -1543,6 +1543,46 @@ namespace BuildConsole.Controls
                     {
                         var blockers = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : null);
                         string? resumeSessionId = string.IsNullOrEmpty(item.SessionId) ? null : item.SessionId;
+
+                        // Git #4554 — an orphan's OWN process is gone (that is what the -2 sentinel means), but its session
+                        // can still be live under a DIFFERENT row: an adopted continuation, or a reply row that took the
+                        // session over. Re-queuing a --resume for that one blind is #4553's bug — two processes on one
+                        // conversation. Only that case takes the guarded stop → confirm-exit → resume path; every other
+                        // orphan keeps the plain re-queue, so a bulk recovery still paces through the dispatcher instead of
+                        // force-launching a whole crashed batch at once.
+                        if (resumeSessionId != null && _watcher != null
+                            && _watcher.GetLiveQueueIdsForSession(item.Id, resumeSessionId).Count > 0)
+                        {
+                            var outcome = await ResumeSessionGuardedAsync(new GuardedResumeRequest
+                            {
+                                Item = item,
+                                SessionId = resumeSessionId,
+                                Text = item.Prompt,
+                                TitlePrefix = "", // a plain resume re-sends the original prompt under its own title
+                                GithubNumber = item.GithubNumber,
+                                BlockedByNumbers = blockers,
+                                Via = "Build Queue Recover All",
+                                ActionLabel = "Resume",
+                                // Bulk: never pop a modal per item mid-batch. A session that is actively working is left
+                                // alone and reported, because it is genuinely not a crashed build at all.
+                                AskBeforeInterrupting = false,
+                            });
+
+                            if (outcome.Kind is GuardedResumeKind.Skipped or GuardedResumeKind.Failed)
+                            {
+                                bool isSkip = outcome.Kind == GuardedResumeKind.Skipped;
+                                if (isSkip) skipped++; else failed++;
+                                string reason = $"{(isSkip ? "skipped" : "couldn't resume")} orphaned item #{item.Id} ({item.Title}): {outcome.Reason}";
+                                failures.Add(reason);
+                                ActivityLog.Log("build-queue", $"Recover All: {reason}");
+                                continue;
+                            }
+
+                            if (outcome.QueueId != item.Id) await _db.MarkOrphanSupersededByResumeAsync(item.Id, outcome.QueueId);
+                            resumed++;
+                            continue;
+                        }
+
                         var recovered = await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, resumeSessionId, item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
                         await _db.MarkOrphanSupersededByResumeAsync(item.Id, recovered.Id);
                         if (resumeSessionId != null) resumed++; else retried++;
@@ -1561,8 +1601,10 @@ namespace BuildConsole.Controls
                 BtnRecoverOrphans.IsEnabled = true;
             }
 
-            string summary = $"{resumed} resumed, {retried} restarted" + (failed > 0 ? $", {failed} failed" : "");
-            if (failed > 0) ToastEngine.Warning("Recovered Builds", summary);
+            string summary = $"{resumed} resumed, {retried} restarted"
+                + (skipped > 0 ? $", {skipped} left running" : "")
+                + (failed > 0 ? $", {failed} failed" : "");
+            if (failed > 0 || skipped > 0) ToastEngine.Warning("Recovered Builds", summary);
             else ToastEngine.Success("Recovered Builds", summary);
             ActivityLog.Log("build-queue", $"Recover All: {summary} (of {orphaned.Count} orphaned).");
             await RefreshAsync();
@@ -6767,13 +6809,25 @@ namespace BuildConsole.Controls
         private static bool IsResumeOnlyRow(QueueItem item) =>
             ResumeOnlyQueueRows.IsResumeOnlyTitle(item.Title);
 
-        /// <summary>Same body as "🔄 Retry (start over)" below. A normal row re-queues with
-        /// resumeSessionId: null — a genuine start-over — while a reply row (Git #3728) carries its
-        /// session forward, because "start the original prompt over" is incoherent when the prompt
-        /// is a chat message. The crash-recovery "▶ Resume Session" variant stays
+        /// <summary>Same body as "🔄 Retry (start over)" below — both go through
+        /// <see cref="RetryQueueItemAsync"/>. The crash-recovery "▶ Resume Session" variant stays
         /// right-click-menu-only since it's a narrower case than this card's general
         /// Failed -> Retry action.</summary>
         public async System.Threading.Tasks.Task QuickRetryAsync(QueueItem item)
+            => await RetryQueueItemAsync(item, "Git Board hover popover");
+
+        /// <summary>
+        /// Git #3728 / #4554 — the one Retry body, shared by <see cref="QuickRetryAsync"/> (the Git Board hover popover's
+        /// Retry) and the "🔄 Retry" context-menu item, which were two copies of the same code.
+        ///
+        /// A normal row re-queues with resumeSessionId: null — a genuine start-over into a brand-new session, so there is
+        /// nothing to duplicate and nothing to guard. A reply/continuation row instead carries its session forward, because
+        /// "start the original prompt over" is incoherent when the prompt is a chat message (Git #3728) — and THAT half is
+        /// the #4554 bug: the retried row's own process is gone (which is why it's retryable), but the SESSION can still be
+        /// live under another row, so re-sending to it made two processes run one conversation. It now goes through
+        /// <see cref="ResumeSessionGuardedAsync"/>, the same guarded path Reply and Build Watch use.
+        /// </summary>
+        private async System.Threading.Tasks.Task RetryQueueItemAsync(QueueItem item, string via)
         {
             if (_db == null)
             {
@@ -6781,17 +6835,126 @@ namespace BuildConsole.Controls
                 return;
             }
             if (!TryResolveRetryResumeSessionId(item, out string? retryResumeSessionId)) return;
-            try
+
+            var blockers = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : null);
+
+            if (retryResumeSessionId == null)
             {
-                var blockers = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : null);
-                await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, retryResumeSessionId, item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
-                ToastEngine.Success("Re-queued", retryResumeSessionId == null
-                    ? $"Re-queued: {item.Title}"
-                    : $"Re-sending your reply to the same session: {item.Title}");
+                // A genuine start-over: a fresh session, so no other process can be running it. Unchanged behaviour —
+                // queued for the dispatcher, not force-launched.
+                try
+                {
+                    await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, null, item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
+                    ToastEngine.Success("Re-queued", $"Re-queued: {item.Title}");
+                }
+                catch (Exception ex)
+                {
+                    ToastEngine.Error("Retry Failed", $"Couldn't re-queue build: {ex.Message}");
+                }
+                await RefreshAsync();
+                return;
             }
-            catch (Exception ex)
+
+            var outcome = await ResumeSessionGuardedAsync(new GuardedResumeRequest
             {
-                ToastEngine.Error("Retry Failed", $"Couldn't re-queue build: {ex.Message}");
+                Item = item,
+                SessionId = retryResumeSessionId,
+                Text = item.Prompt,
+                // The row's own title already carries its "Reply → " / "Continue: " prefix (IsResumeOnlyRow is what routed
+                // us here), so a re-send keeps it verbatim instead of stacking a second one.
+                TitlePrefix = "",
+                GithubNumber = item.GithubNumber,
+                BlockedByNumbers = blockers,
+                Via = via,
+                ActionLabel = "Retry",
+                DialogTitle = "Retry a running build",
+                InterruptLine = "Retrying will stop that process and re-send your message to the same session, so only one copy ever runs.",
+                ConfirmQuestion = "Stop it and re-send?",
+            });
+
+            switch (outcome.Kind)
+            {
+                case GuardedResumeKind.SentToLiveStdin:
+                    ToastEngine.Success("Re-sent", $"Sent straight to the running session: {item.Title}");
+                    break;
+                case GuardedResumeKind.Launched:
+                    ToastEngine.Success("Re-sending", outcome.StoppedLiveProcess
+                        ? $"Stopped the old process and re-sent your reply to the same session: {item.Title}"
+                        : $"Re-sending your reply to the same session: {item.Title}");
+                    break;
+                case GuardedResumeKind.QueuedAtHardCap:
+                    ToastEngine.Warning("Retry queued", $"Every build slot is taken — “{item.Title}” re-sends when one frees (queue #{outcome.QueueId}).");
+                    break;
+                case GuardedResumeKind.Skipped:
+                    break; // Shane answered No to the interrupt prompt, which already said exactly what would happen.
+                default:
+                    ToastEngine.Error("Retry Failed", $"Couldn't re-send “{item.Title}”: {outcome.Reason}.");
+                    break;
+            }
+            await RefreshAsync();
+        }
+
+        /// <summary>
+        /// Git #2120 / #4554 — "▶ Resume Session (crash recovery)". The orphan row's OWN process is gone (that is exactly
+        /// what the -2 sentinel means), but its session can still be live under a DIFFERENT row — an adopted continuation,
+        /// or a reply row that took the session over — so the old blind <c>QueueBuildAsync(... resumeSessionId ...)</c> could
+        /// start a second process on a live conversation, the same class of bug #4553 fixed for Reply. It now goes through
+        /// <see cref="ResumeSessionGuardedAsync"/>, which stops whichever row owns that live process and confirms its exit
+        /// (or launches nothing at all).
+        ///
+        /// <see cref="BuildQueuePostgresClient.MarkOrphanSupersededByResumeAsync"/> still resolves the orphan afterwards:
+        /// LaunchContinuationAsync's own MarkSupersededByReplyAsync deliberately skips a <c>failed</c> row (#2120), which
+        /// every orphan is, so without this the recovered original keeps satisfying IsCrashed and the banner never clears.
+        /// </summary>
+        private async System.Threading.Tasks.Task ResumeCrashedSessionAsync(QueueItem item)
+        {
+            if (_db == null) return;
+            var blockers = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : null);
+
+            var outcome = await ResumeSessionGuardedAsync(new GuardedResumeRequest
+            {
+                Item = item,
+                SessionId = item.SessionId,
+                Text = item.Prompt,
+                TitlePrefix = "", // a plain resume re-sends the original prompt under its own title
+                GithubNumber = item.GithubNumber,
+                BlockedByNumbers = blockers,
+                Via = "Build Queue Resume Session (crash recovery)",
+                ActionLabel = "Resume",
+                DialogTitle = "Resume a running build",
+                InterruptLine = "Resuming will stop that process and resume the same session, so only one copy ever runs.",
+                ConfirmQuestion = "Stop it and resume?",
+            });
+
+            bool wentSomewhere = outcome.Kind is GuardedResumeKind.Launched or GuardedResumeKind.QueuedAtHardCap or GuardedResumeKind.SentToLiveStdin;
+            if (wentSomewhere && outcome.QueueId != item.Id)
+            {
+                int superseded = 0;
+                try { superseded = await _db.MarkOrphanSupersededByResumeAsync(item.Id, outcome.QueueId); }
+                catch (Exception ex) { ActivityLog.Log("build-queue", $"Couldn't mark orphan #{item.Id} superseded by resume #{outcome.QueueId}: {ex.Message}"); }
+                ActivityLog.Log("build-queue",
+                    $"Resumed orphaned queue #{item.Id} ({item.Title}) → #{outcome.QueueId}" +
+                    (superseded > 0 ? "; original marked superseded." : "; original left as-is (not a live orphan sentinel)."));
+            }
+
+            switch (outcome.Kind)
+            {
+                case GuardedResumeKind.SentToLiveStdin:
+                    ToastEngine.Success("Resuming", $"Its session was still live — sent straight to it: {item.Title}");
+                    break;
+                case GuardedResumeKind.Launched:
+                    ToastEngine.Success("Resuming", outcome.StoppedLiveProcess
+                        ? $"Stopped the process still running this session and resumed it: {item.Title}"
+                        : $"Resuming from where it left off: {item.Title}");
+                    break;
+                case GuardedResumeKind.QueuedAtHardCap:
+                    ToastEngine.Warning("Resume queued", $"Every build slot is taken — “{item.Title}” resumes when one frees (queue #{outcome.QueueId}).");
+                    break;
+                case GuardedResumeKind.Skipped:
+                    break; // Shane answered No to the interrupt prompt, which already said exactly what would happen.
+                default:
+                    ToastEngine.Error("Resume Failed", $"Couldn't resume: {outcome.Reason}");
+                    break;
             }
             await RefreshAsync();
         }
@@ -6836,23 +6999,172 @@ namespace BuildConsole.Controls
             await RefreshAsync();
         }
 
+        /// <summary>Git #4554 — what <see cref="ResumeSessionGuardedAsync"/> actually did, so each caller reports it in its
+        /// own words instead of every one re-deriving it from a raw ContinuationResult.</summary>
+        private enum GuardedResumeKind
+        {
+            /// <summary>Written straight to the session's live, writable stdin — no new process at all.</summary>
+            SentToLiveStdin,
+            /// <summary>A real process launched (a live one was stopped first when StoppedLiveProcess).</summary>
+            Launched,
+            /// <summary>Git #4542 — the row is queued carrying the text and starts when a slot frees.</summary>
+            QueuedAtHardCap,
+            /// <summary>Nothing happened, deliberately: Shane declined, or a bulk caller refused to interrupt live work.</summary>
+            Skipped,
+            /// <summary>Nothing launched and that was not the intent — see <see cref="GuardedResumeOutcome.Reason"/>.</summary>
+            Failed,
+        }
+
+        /// <summary>Git #4554 — the real outcome of one <see cref="ResumeSessionGuardedAsync"/> call.</summary>
+        private sealed class GuardedResumeOutcome
+        {
+            public GuardedResumeKind Kind { get; init; }
+            /// <summary>The row the session now runs (or will run) under — the original id when its row was reused.</summary>
+            public int QueueId { get; init; }
+            public bool StoppedLiveProcess { get; init; }
+            /// <summary>Plain-language reason for Skipped/Failed; null otherwise.</summary>
+            public string? Reason { get; init; }
+        }
+
+        /// <summary>Git #4554 — one caller's inputs to <see cref="ResumeSessionGuardedAsync"/>: what to resume, what to send
+        /// it, and the wording of the "this build is still working" prompt in that caller's own voice.</summary>
+        private sealed class GuardedResumeRequest
+        {
+            public QueueItem Item { get; init; } = null!;
+            /// <summary>The session to resume. A Retry of a reply row carries it on ResumeSessionId, not SessionId (Git #3728),
+            /// which is exactly why this is an explicit input rather than read off the item in here.</summary>
+            public string? SessionId { get; init; }
+            /// <summary>What the resumed session gets as its next user turn: a typed reply, or an original build prompt.</summary>
+            public string Text { get; init; } = "";
+            /// <summary>Prepended to the row title unless it already starts with it; "" keeps the title exactly as it is.</summary>
+            public string TitlePrefix { get; init; } = "";
+            public int? GithubNumber { get; init; }
+            public List<int>? BlockedByNumbers { get; init; }
+            /// <summary>Where this came from — activity log only.</summary>
+            public string Via { get; init; } = "";
+            /// <summary>Log/toast noun: "Reply", "Retry", "Resume".</summary>
+            public string ActionLabel { get; init; } = "Resume";
+            public string DialogTitle { get; init; } = "Resume a running build";
+            public string InterruptLine { get; init; } = "Resuming will stop that process and resume the same session, so only one copy ever runs.";
+            public string ConfirmQuestion { get; init; } = "Stop it and resume?";
+            /// <summary>False for a bulk caller (♻ Recover All): a live process that is actively working is skipped and
+            /// reported honestly instead of popping a modal per item in the middle of a batch.</summary>
+            public bool AskBeforeInterrupting { get; init; } = true;
+        }
+
         /// <summary>
-        /// Git #4553 — the one Reply path, shared by the "💬 Reply…" context menu and <see cref="QuickReplyAsync"/> (Git Board
-        /// hover popover, sidebar inline reply box, floating chat). Before this, both queued a fresh
-        /// <c>claude --resume &lt;session&gt;</c> row with no check that the session's process had ended — live on 2026-09-15 a
-        /// Reply on #2953 queued #2957 on session c4180db4 while #2947 was still running it. Same order as Build Watch's
-        /// composer (#4547): a live, writable stdin for the session gets the message directly; otherwise
-        /// <see cref="QueueWatcherService.LaunchContinuationAsync"/> stops any live process for the session and confirms it
-        /// exited (or launches nothing) before resuming, asking first when that process is actively working.
+        /// Git #4553 / #4554 — THE guarded way this panel resumes a session, shared by "💬 Reply…" /
+        /// <see cref="QuickReplyAsync"/>, "🔄 Retry" on a resume-only row, "▶ Resume Session (crash recovery)" and
+        /// "♻ Recover All". Every one of those used to queue a fresh <c>claude --resume &lt;session&gt;</c> row with no check
+        /// that the session's process had ended — live on 2026-09-15 a Reply on #2953 queued #2957 on session c4180db4 while
+        /// #2947 was still running it. The session can be live under a DIFFERENT row than the one clicked, which is why the
+        /// check is <see cref="QueueWatcherService.GetLiveQueueIdsForSession"/> and not "is my own row's process alive": for
+        /// Retry / crash recovery / Recover All the clicked row's own process is gone by definition, so checking only it
+        /// would report all-clear every single time.
+        ///
+        /// Same order as Build Watch's composer (#4547):
+        /// 1. the session's one live process can still read stdin → the text goes straight to it, no relaunch;
+        /// 2. otherwise <see cref="QueueWatcherService.LaunchContinuationAsync"/> stops whichever row owns the live process,
+        ///    confirms it exited (or launches nothing at all), reuses that row and resumes — asking first when that process
+        ///    is actively working, and refusing outright when the session already runs in more than one process.
         /// </summary>
-        private async System.Threading.Tasks.Task SendReplyAsync(QueueItem item, string message, string via)
+        private async System.Threading.Tasks.Task<GuardedResumeOutcome> ResumeSessionGuardedAsync(GuardedResumeRequest req)
         {
             if (!Dispatcher.CheckAccess())
             {
                 // LaunchContinuationAsync mutates the watcher's running set, which is UI-thread only.
-                await Dispatcher.InvokeAsync(() => SendReplyAsync(item, message, via)).Task.Unwrap();
-                return;
+                return await Dispatcher.InvokeAsync(() => ResumeSessionGuardedAsync(req)).Task.Unwrap();
             }
+
+            var item = req.Item;
+            if (_db == null)
+                return new GuardedResumeOutcome { Kind = GuardedResumeKind.Failed, QueueId = item.Id, Reason = "there's no direct queue database connection" };
+            if (_watcher == null)
+                return new GuardedResumeOutcome { Kind = GuardedResumeKind.Failed, QueueId = item.Id, Reason = "the queue watcher isn't running, so nothing can resume this build from here" };
+            if (string.IsNullOrWhiteSpace(req.SessionId))
+                return new GuardedResumeOutcome { Kind = GuardedResumeKind.Failed, QueueId = item.Id, Reason = "no session id was captured for this build, so there's nothing to resume" };
+
+            // 1. The session's one live process can still read stdin → the text goes straight to it, no relaunch.
+            var live = _watcher.GetLiveQueueIdsForSession(item.Id, req.SessionId);
+            if (live.Count == 1 && _watcher.OwnsInteractive(live[0]) && _watcher.SendInput(live[0], req.Text))
+            {
+                ActivityLog.Log("interactive-build",
+                    $"{req.ActionLabel} for queue #{item.Id} ({item.Title}) written to the live stdin of queue #{live[0]} (session {req.SessionId}, {req.Text.Length} chars, via {req.Via}) — no new process.");
+                return new GuardedResumeOutcome { Kind = GuardedResumeKind.SentToLiveStdin, QueueId = live[0] };
+            }
+
+            // 2. Resuming stops the live process first — if it's actively working, that interrupts real work.
+            if (_watcher.WouldInterruptActiveWork(item.Id, req.SessionId, out bool adopted))
+            {
+                if (!req.AskBeforeInterrupting)
+                    return new GuardedResumeOutcome
+                    {
+                        Kind = GuardedResumeKind.Skipped,
+                        QueueId = item.Id,
+                        Reason = $"its session is still working under queue #{live[0]} — resuming would have stopped that process",
+                    };
+                string why = adopted
+                    ? "its input channel was lost when BuildConsole restarted"
+                    : "its input was closed when it went idle, but it is still running";
+                var answer = MessageBox.Show(
+                    $"\"{item.Title}\" is still working, but it can't take typed input — {why}.\n\n" +
+                    req.InterruptLine + "\n\n" +
+                    req.ConfirmQuestion,
+                    req.DialogTitle, MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (answer != MessageBoxResult.Yes)
+                    return new GuardedResumeOutcome { Kind = GuardedResumeKind.Skipped, QueueId = item.Id, Reason = "you chose not to stop the running process" };
+            }
+
+            ActivityLog.Log("interactive-build",
+                $"{req.ActionLabel} for queue #{item.Id} ({item.Title}) — resuming session {req.SessionId} with a {req.Text.Length}-char prompt (via {req.Via}; live process: {(live.Count == 0 ? "none" : string.Join(", ", live.Select(i => "#" + i)))}).");
+            QueueWatcherService.ContinuationResult result;
+            try
+            {
+                result = await _watcher.LaunchContinuationAsync(new QueueWatcherService.ContinuationRequest
+                {
+                    OriginalQueueId = item.Id,
+                    Title = item.Title,
+                    TitlePrefix = req.TitlePrefix,
+                    Text = req.Text,
+                    Model = item.Model,
+                    Effort = item.Effort,
+                    Cwd = item.Cwd,
+                    GithubNumber = req.GithubNumber,
+                    BlockedByNumbers = req.BlockedByNumbers,
+                    FallbackSessionId = req.SessionId,
+                    ChatUrl = item.ChatUrl,
+                    BuildSet = item.BuildSet,
+                    Cli = item.Cli,
+                    Account = item.Account,
+                });
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("interactive-build", $"{req.ActionLabel} for queue #{item.Id} threw: {ex.Message}");
+                result = new QueueWatcherService.ContinuationResult { QueueId = item.Id, FailureReason = ex.Message };
+            }
+
+            if (result.Launched)
+                return new GuardedResumeOutcome { Kind = GuardedResumeKind.Launched, QueueId = result.QueueId, StoppedLiveProcess = result.StoppedLiveProcess };
+            if (result.QueuedAtHardCap)
+                return new GuardedResumeOutcome { Kind = GuardedResumeKind.QueuedAtHardCap, QueueId = result.QueueId, StoppedLiveProcess = result.StoppedLiveProcess, Reason = result.FailureReason };
+            return new GuardedResumeOutcome
+            {
+                Kind = GuardedResumeKind.Failed,
+                QueueId = result.QueueId,
+                StoppedLiveProcess = result.StoppedLiveProcess,
+                Reason = result.FailureReason ?? "the resumed session didn't start",
+            };
+        }
+
+        /// <summary>
+        /// Git #4553 — the one Reply path, shared by the "💬 Reply…" context menu and <see cref="QuickReplyAsync"/> (Git Board
+        /// hover popover, sidebar inline reply box, floating chat). Before this, both queued a fresh
+        /// <c>claude --resume &lt;session&gt;</c> row with no check that the session's process had ended. The guard itself now
+        /// lives in <see cref="ResumeSessionGuardedAsync"/> (Git #4554), which Retry, Resume Session and Recover All share.
+        /// </summary>
+        private async System.Threading.Tasks.Task SendReplyAsync(QueueItem item, string message, string via)
+        {
             if (_db == null)
             {
                 ToastEngine.Warning("Reply", "Not connected (no direct DB) — can't send a reply.");
@@ -6870,69 +7182,42 @@ namespace BuildConsole.Controls
                 return;
             }
 
-            // 1. The session's one live process can still read stdin → the message goes straight to it, no relaunch.
-            var live = _watcher.GetLiveQueueIdsForSession(item.Id, sid);
-            if (live.Count == 1 && _watcher.OwnsInteractive(live[0]) && _watcher.SendInput(live[0], message))
+            var outcome = await ResumeSessionGuardedAsync(new GuardedResumeRequest
             {
-                ActivityLog.Log("interactive-build",
-                    $"Reply for queue #{item.Id} ({item.Title}) written to the live stdin of queue #{live[0]} (session {sid}, {message.Length} chars, via {via}) — no new process.");
-                ToastEngine.Success("Reply sent", $"Sent straight to the running session for “{item.Title}”.");
-                return;
-            }
-
-            // 2. Resuming stops the live process first — if it's actively working, that interrupts real work, so ask.
-            if (_watcher.WouldInterruptActiveWork(item.Id, sid, out bool adopted))
-            {
-                string why = adopted
-                    ? "its input channel was lost when BuildConsole restarted"
-                    : "its input was closed when it went idle, but it is still running";
-                var answer = MessageBox.Show(
-                    $"\"{item.Title}\" is still working, but it can't take typed input — {why}.\n\n" +
-                    "Replying will stop that process and resume the same session with your message, so only one copy ever runs.\n\n" +
-                    "Stop it and send?",
-                    "Reply to a running build", MessageBoxButton.YesNo, MessageBoxImage.Question);
-                if (answer != MessageBoxResult.Yes) return;
-            }
-
-            ActivityLog.Log("interactive-build",
-                $"Reply for queue #{item.Id} ({item.Title}) — resuming session {sid} with a {message.Length}-char message (via {via}; live process: {string.Join(", ", live.Select(i => "#" + i))}).");
-            QueueWatcherService.ContinuationResult result;
-            try
-            {
+                Item = item,
+                SessionId = sid,
+                Text = message,
+                TitlePrefix = ReplyTitlePrefix,
                 // githubNumber: null — a reply row never takes over the issue's own row by the github_number dedupe. When a
                 // live process is stopped its row is reused in place, which keeps that row's own github_number.
-                result = await _watcher.LaunchContinuationAsync(new QueueWatcherService.ContinuationRequest
-                {
-                    OriginalQueueId = item.Id,
-                    Title = item.Title,
-                    TitlePrefix = ReplyTitlePrefix,
-                    Text = message,
-                    Model = item.Model,
-                    Effort = item.Effort,
-                    Cwd = item.Cwd,
-                    GithubNumber = null,
-                    BlockedByNumbers = null,
-                    FallbackSessionId = sid,
-                    ChatUrl = item.ChatUrl,
-                    BuildSet = item.BuildSet,
-                    Cli = item.Cli,
-                    Account = item.Account,
-                });
-            }
-            catch (Exception ex)
-            {
-                ActivityLog.Log("interactive-build", $"Reply for queue #{item.Id} threw: {ex.Message}");
-                result = new QueueWatcherService.ContinuationResult { QueueId = item.Id, FailureReason = ex.Message };
-            }
+                GithubNumber = null,
+                BlockedByNumbers = null,
+                Via = via,
+                ActionLabel = "Reply",
+                DialogTitle = "Reply to a running build",
+                InterruptLine = "Replying will stop that process and resume the same session with your message, so only one copy ever runs.",
+                ConfirmQuestion = "Stop it and send?",
+            });
 
-            if (result.Launched)
-                ToastEngine.Success("Reply sent", result.StoppedLiveProcess
-                    ? $"Stopped the old process and resumed “{item.Title}” with your message (queue #{result.QueueId})."
-                    : $"Resumed the session for “{item.Title}” with your message (queue #{result.QueueId}).");
-            else if (result.QueuedAtHardCap)
-                ToastEngine.Warning("Reply queued", $"Every build slot is taken — “{item.Title}” resumes with your message when one frees (queue #{result.QueueId}).");
-            else
-                ToastEngine.Error("Reply Not Sent", $"Couldn't resume “{item.Title}”: {result.FailureReason ?? "the resumed session didn't start"}.");
+            switch (outcome.Kind)
+            {
+                case GuardedResumeKind.SentToLiveStdin:
+                    ToastEngine.Success("Reply sent", $"Sent straight to the running session for “{item.Title}”.");
+                    break;
+                case GuardedResumeKind.Launched:
+                    ToastEngine.Success("Reply sent", outcome.StoppedLiveProcess
+                        ? $"Stopped the old process and resumed “{item.Title}” with your message (queue #{outcome.QueueId})."
+                        : $"Resumed the session for “{item.Title}” with your message (queue #{outcome.QueueId}).");
+                    break;
+                case GuardedResumeKind.QueuedAtHardCap:
+                    ToastEngine.Warning("Reply queued", $"Every build slot is taken — “{item.Title}” resumes with your message when one frees (queue #{outcome.QueueId}).");
+                    break;
+                case GuardedResumeKind.Skipped:
+                    break; // Shane answered No to the interrupt prompt, which already said exactly what would happen.
+                default:
+                    ToastEngine.Error("Reply Not Sent", $"Couldn't resume “{item.Title}”: {outcome.Reason}.");
+                    break;
+            }
         }
 
         /// <summary>Same effect as the "💬 Open Originating Chat" menu item / chat badge below.</summary>
@@ -7564,30 +7849,7 @@ namespace BuildConsole.Controls
                 if (!string.IsNullOrEmpty(item.SessionId))
                 {
                     var miResumeSession = new MenuItem { Header = "▶ Resume Session (crash recovery)" };
-                    miResumeSession.Click += async (_, _) =>
-                    {
-                        if (_db == null) return;
-                        try
-                        {
-                            var blockers = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : null);
-                            var resumed = await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, item.SessionId, item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
-                            // Git #2120 — resolve the orphaned ORIGINAL (failed, exit_code -2) so it
-                            // stops satisfying UpdateOrphanRecoveryBanner/IsCrashed's ExitCode==-2
-                            // test forever after being recovered. Same shape as #2119's Reply fix, but
-                            // via the orphan-specific transition since MarkSupersededByReplyAsync's
-                            // guard deliberately leaves a real `failed` row untouched.
-                            int superseded = await _db.MarkOrphanSupersededByResumeAsync(item.Id, resumed.Id);
-                            ActivityLog.Log("build-queue",
-                                $"Resumed orphaned queue #{item.Id} ({item.Title}) → new row #{resumed.Id}" +
-                                (superseded > 0 ? $"; original #{item.Id} marked superseded → #{resumed.Id}." : $"; original #{item.Id} left as-is (not a live orphan sentinel)."));
-                            ToastEngine.Success("Resuming", $"Resuming from where it left off: {item.Title}");
-                            await RefreshAsync();
-                        }
-                        catch (Exception ex)
-                        {
-                            ToastEngine.Error("Resume Failed", $"Couldn't resume: {ex.Message}");
-                        }
-                    };
+                    miResumeSession.Click += async (_, _) => await ResumeCrashedSessionAsync(item);
                     cm.Items.Add(miResumeSession);
                 }
 
@@ -7598,24 +7860,7 @@ namespace BuildConsole.Controls
                 {
                     Header = IsResumeOnlyRow(item) ? "🔄 Retry (re-send to the same session)" : "🔄 Retry (start over)"
                 };
-                miRetry.Click += async (_, _) =>
-                {
-                    if (_db == null) return;
-                    if (!TryResolveRetryResumeSessionId(item, out string? retryResumeSessionId)) return;
-                    try
-                    {
-                        var blockers = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : null);
-                        await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, retryResumeSessionId, item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
-                        ToastEngine.Success("Re-queued", retryResumeSessionId == null
-                            ? $"Re-queued: {item.Title}"
-                            : $"Re-sending your reply to the same session: {item.Title}");
-                        await RefreshAsync();
-                    }
-                    catch (Exception ex)
-                    {
-                        ToastEngine.Error("Retry Failed", $"Couldn't re-queue build: {ex.Message}");
-                    }
-                };
+                miRetry.Click += async (_, _) => await RetryQueueItemAsync(item, "Build Queue context menu");
                 cm.Items.Add(miRetry);
 
                 cm.Items.Add(BuildParkAnyMenuItem(item));
