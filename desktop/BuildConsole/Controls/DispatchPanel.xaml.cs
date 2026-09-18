@@ -219,6 +219,27 @@ namespace BuildConsole.Controls
                 // dispatching. A chain of 1 (just the typed issue — the common case) falls straight
                 // through to the exact single-issue path below, unchanged (the issue's own
                 // no-regression requirement). A real chain of 2+ dispatches every real member.
+                // Git #4766 — a typed Feature (real sub-issues, title not EPIC:-prefixed) dispatches
+                // every open child instead of asking a chat for a BUILD: comment on the Feature itself.
+                // Anything else (leaf, Epic, GitHub error) resolves to null and continues unchanged.
+                var feature = await Services.IssueDispatchService.ResolveFeatureAsync(issueNumber);
+                if (feature != null)
+                {
+                    ShowStatus($"Feature #{feature.Number} found — dispatching its open sub-issues…",
+                        (Brush)Application.Current.FindResource("Subtext0Brush"));
+                    var (featureLines, featureError, featureQueued) = await Services.IssueDispatchService.DispatchFeatureAsync(
+                        _db, feature,
+                        (member, r) =>
+                        {
+                            if (r.Outcome is Services.DispatchOutcome.Queued or Services.DispatchOutcome.QueuedButBlocked)
+                                Dispatched?.Invoke(member); // best-effort visual refresh of the sibling queue panel
+                        });
+                    ShowStatus(string.Join("\n", featureLines),
+                        (Brush)Application.Current.FindResource(featureError ? "StatusErrorBrush" : "StatusSuccessBrush"));
+                    if (featureQueued) TxtIssueNumber.Text = "";
+                    return;
+                }
+
                 var chain = await Services.IssueDispatchService.ResolveChainAsync(issueNumber);
                 if (chain.Count > 1)
                 {

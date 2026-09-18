@@ -1449,19 +1449,43 @@ namespace BuildConsole
 
             try
             {
-                var chain = await BuildConsole.Services.IssueDispatchService.ResolveChainAsync(issueNumber);
-                foreach (var member in chain)
+                // Git #4766 — Ctrl+D's real path. A typed Feature (real sub-issues, title not
+                // EPIC:-prefixed) fans out to every open child via the same DispatchAsync; anything
+                // else (leaf, Epic, GitHub error) resolves to null and takes the chain path unchanged.
+                var feature = await BuildConsole.Services.IssueDispatchService.ResolveFeatureAsync(issueNumber);
+                if (feature != null)
                 {
-                    var result = await BuildConsole.Services.IssueDispatchService.DispatchAsync(_queueDb, member);
-                    lines.Add($"#{member}: {result.Message}");
-                    if (result.IsError) anyError = true;
-
-                    var item = result.QueuedItem ?? result.Existing;
-                    if (item != null && result.Outcome is BuildConsole.Services.DispatchOutcome.Queued
-                        or BuildConsole.Services.DispatchOutcome.QueuedButBlocked
-                        or BuildConsole.Services.DispatchOutcome.AlreadyTracked)
+                    var (featureLines, featureError, _) = await BuildConsole.Services.IssueDispatchService.DispatchFeatureAsync(
+                        _queueDb, feature,
+                        (_, r) =>
+                        {
+                            var featureItem = r.QueuedItem ?? r.Existing;
+                            if (featureItem != null && r.Outcome is BuildConsole.Services.DispatchOutcome.Queued
+                                or BuildConsole.Services.DispatchOutcome.QueuedButBlocked
+                                or BuildConsole.Services.DispatchOutcome.AlreadyTracked)
+                            {
+                                startCandidates.Add(featureItem);
+                            }
+                        });
+                    lines.AddRange(featureLines);
+                    anyError |= featureError;
+                }
+                else
+                {
+                    var chain = await BuildConsole.Services.IssueDispatchService.ResolveChainAsync(issueNumber);
+                    foreach (var member in chain)
                     {
-                        startCandidates.Add(item);
+                        var result = await BuildConsole.Services.IssueDispatchService.DispatchAsync(_queueDb, member);
+                        lines.Add($"#{member}: {result.Message}");
+                        if (result.IsError) anyError = true;
+
+                        var item = result.QueuedItem ?? result.Existing;
+                        if (item != null && result.Outcome is BuildConsole.Services.DispatchOutcome.Queued
+                            or BuildConsole.Services.DispatchOutcome.QueuedButBlocked
+                            or BuildConsole.Services.DispatchOutcome.AlreadyTracked)
+                        {
+                            startCandidates.Add(item);
+                        }
                     }
                 }
             }

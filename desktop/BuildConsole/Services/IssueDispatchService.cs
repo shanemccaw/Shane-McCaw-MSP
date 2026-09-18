@@ -108,6 +108,118 @@ namespace BuildConsole.Services
             }
         }
 
+        /// <summary>
+        /// Git #4766 — the typed issue is a real Feature: it has real GitHub sub-issues and its title
+        /// does NOT start with <c>EPIC:</c>. <see cref="OpenSubIssues"/> are the still-open children in
+        /// GitHub's own priority order; <see cref="ClosedCount"/> is how many closed ones were skipped.
+        /// </summary>
+        public sealed class FeatureFanOut
+        {
+            public int Number { get; init; }
+            public string Title { get; init; } = "";
+            public List<GitHubSubIssue> OpenSubIssues { get; init; } = new();
+            public int ClosedCount { get; init; }
+        }
+
+        /// <summary>
+        /// Git #4766 — Feature detection for Dispatch. A Feature is never dispatched itself (it has no
+        /// <c>BUILD:</c> comment); typing one should dispatch every open child. Reuses the existing
+        /// <see cref="GitHubApiClient.GetSubIssuesAsync"/> (the same fetch Build Chain Map and the epic
+        /// panels use) and this repo's real title convention — an <c>EPIC:</c>-prefixed title is an Epic,
+        /// whose sub-issues can number in the hundreds (rate-limit/dispatch-storm history: #2890, #3113),
+        /// so an Epic is deliberately NOT expanded. Returns <c>null</c> for anything that is not a Feature
+        /// (a leaf with no sub-issues, an Epic, no PAT, or any GitHub error), so every caller falls
+        /// straight through to today's unchanged single-issue / chain path — which reports its own
+        /// GitHub/PAT errors — rather than this method inventing a second failure surface.
+        /// </summary>
+        public static async Task<FeatureFanOut?> ResolveFeatureAsync(int issueNumber)
+        {
+            if (issueNumber <= 0) return null;
+            try
+            {
+                var settings = BuildConsoleSettings.Load();
+                if (!settings.HasGitHubPat) return null;
+                var gh = GitHubApiClient.ForManualAction(settings.GitHubPat);
+
+                // Sub-issues first: a leaf issue (the common case) has none, and pays no title fetch.
+                var subs = await gh.GetSubIssuesAsync(issueNumber, bypassCache: true);
+                if (subs.Count == 0) return null;
+
+                var issue = await gh.GetIssueAsync(issueNumber);
+                if (issue == null) return null;
+                if (issue.Title.StartsWith("EPIC:", StringComparison.OrdinalIgnoreCase))
+                {
+                    ActivityLog.Log("dispatch", $"Dispatch #{issueNumber} — EPIC-titled with {subs.Count} sub-issue(s); Feature fan-out not applied (Epics are out of scope, #4766).");
+                    return null;
+                }
+
+                var open = subs.Where(s => string.Equals(s.State, "open", StringComparison.OrdinalIgnoreCase)).ToList();
+                return new FeatureFanOut
+                {
+                    Number = issueNumber,
+                    Title = issue.Title,
+                    OpenSubIssues = open,
+                    ClosedCount = subs.Count - open.Count,
+                };
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("dispatch", $"ResolveFeatureAsync(#{issueNumber}) failed ({ex.Message}) — falling back to the single-issue dispatch path.");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Git #4766 — dispatches every open sub-issue of <paramref name="feature"/> through the
+        /// existing, UNCHANGED <see cref="DispatchAsync"/> (same dedup / blocked_by / queue mechanics as
+        /// a chain member — no new dispatch path) and returns one report line per member, plus a header.
+        /// "Ready" is whatever <see cref="DispatchAsync"/> says: <c>Queued</c>/<c>QueuedButBlocked</c>
+        /// count as dispatched; <c>AlreadyTracked</c> and <c>NoBuildComment</c> are reported honestly and
+        /// never force-dispatched or auto-asked-to-chat in bulk. Closed children are skipped and counted
+        /// in the header; a Feature with zero open children says so rather than doing nothing silently.
+        /// <paramref name="onResult"/> lets the caller react per member (refresh the queue panel, collect
+        /// Start candidates) without this method knowing either surface.
+        /// </summary>
+        public static async Task<(List<string> Lines, bool AnyError, bool AnyQueued)> DispatchFeatureAsync(
+            BuildQueuePostgresClient? db, FeatureFanOut feature, Action<int, DispatchAttemptResult>? onResult = null)
+        {
+            var lines = new List<string>();
+            bool anyError = false, anyQueued = false;
+            var closedNote = feature.ClosedCount > 0 ? $" ({feature.ClosedCount} closed, skipped)" : "";
+
+            if (feature.OpenSubIssues.Count == 0)
+            {
+                lines.Add($"Feature #{feature.Number} \"{feature.Title}\" has no open sub-issues — nothing to dispatch{closedNote}.");
+                ActivityLog.Log("dispatch", $"Dispatch Feature #{feature.Number} — no open sub-issues ({feature.ClosedCount} closed); nothing to dispatch.");
+                return (lines, false, false);
+            }
+
+            lines.Add($"Feature #{feature.Number} \"{feature.Title}\" — dispatching {feature.OpenSubIssues.Count} open sub-issue(s){closedNote}:");
+            ActivityLog.Log("dispatch",
+                $"Dispatch Feature #{feature.Number} — {feature.OpenSubIssues.Count} open sub-issue(s): #{string.Join(", #", feature.OpenSubIssues.Select(s => s.Number))} ({feature.ClosedCount} closed skipped).");
+
+            foreach (var sub in feature.OpenSubIssues)
+            {
+                try
+                {
+                    var result = await DispatchAsync(db, sub.Number);
+                    lines.Add($"#{sub.Number}: {result.Message}");
+                    if (result.IsError) anyError = true;
+                    if (result.Outcome is DispatchOutcome.Queued or DispatchOutcome.QueuedButBlocked) anyQueued = true;
+                    ActivityLog.Log("dispatch", $"Dispatch Feature #{feature.Number} — #{sub.Number}: {result.Outcome} — {result.Message}");
+                    try { onResult?.Invoke(sub.Number, result); }
+                    catch { /* caller's best-effort per-member hook must never abort the fan-out */ }
+                }
+                catch (Exception ex)
+                {
+                    anyError = true;
+                    lines.Add($"#{sub.Number}: dispatch failed — {ex.Message}");
+                    ActivityLog.Log("dispatch", $"Dispatch Feature #{feature.Number} — #{sub.Number} FAILED: {ex.Message}");
+                }
+            }
+            return (lines, anyError, anyQueued);
+        }
+
         public static async Task<DispatchAttemptResult> DispatchAsync(BuildQueuePostgresClient? db, int issueNumber)
         {
             var settings = BuildConsoleSettings.Load();
