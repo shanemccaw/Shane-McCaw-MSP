@@ -970,6 +970,11 @@ namespace BuildConsole.Controls
             _ = LoadEpicProgressMirrorCacheAsync();
             GitHubIssueMirror.SyncCompleted += OnEpicProgressMirrorSyncCompleted;
 
+            // Git #4740 — the queue reconciliation that used to run ONLY inside a manual Git Board
+            // fetch (Verifying→Done, board-status reconcile, BoardRefreshCompleted) also rides the
+            // mirror's own sync completion, so it no longer depends on the Git Board being opened.
+            GitHubIssueMirror.SyncCompleted += OnMirrorSyncCompletedForReconciliation;
+
             // Git #4693 — the FOCUS/ACTIVE/ancestor "in flight" markers now follow the local build
             // queue, not a GitHub label, so a build launching/finishing must repaint the board on
             // its own (and a board built before the first queue load must catch up).
@@ -979,6 +984,7 @@ namespace BuildConsole.Controls
             {
                 try { FocusModeService.Instance.StateChanged -= OnFocusStateChanged; } catch { }
                 try { GitHubIssueMirror.SyncCompleted -= OnEpicProgressMirrorSyncCompleted; } catch { }
+                try { GitHubIssueMirror.SyncCompleted -= OnMirrorSyncCompletedForReconciliation; } catch { }
                 try { LocalQueueActivity.Changed -= OnLocalQueueActivityChanged; } catch { }
             };
         }
@@ -3029,6 +3035,79 @@ namespace BuildConsole.Controls
         private void OnEpicProgressMirrorSyncCompleted()
         {
             Dispatcher.InvokeAsync(async () => await LoadEpicProgressMirrorCacheAsync());
+        }
+
+        private int _mirrorReconcileRunning;
+
+        /// <summary>Git #4740 — fired from the mirror sync's background context, never the UI thread;
+        /// marshal to the Dispatcher (BoardRefreshCompleted/GitBoardOpenIssuesRefreshed subscribers
+        /// touch UI) before reconciling.</summary>
+        private void OnMirrorSyncCompletedForReconciliation()
+        {
+            Dispatcher.InvokeAsync(async () => await ReconcileQueueFromMirrorAsync());
+        }
+
+        /// <summary>
+        /// Git #4740 — the same three reconciliation steps <see cref="PopulateGitTrackerBoardAsync"/> runs
+        /// after a manual Git Board fetch (PromoteVerifyingToDoneAsync, BoardStatusSync.ReconcileQueueAgainstBoardAsync,
+        /// then BoardRefreshCompleted / GitBoardOpenIssuesRefreshed), driven off a completed mirror sync and
+        /// fed the open-issue set from <c>bt_issue_mirror</c> — no live GitHub walk. Additive: the Git Board's
+        /// own manual-fetch path is untouched. Idempotent alongside it: both DB steps are CAS-guarded on the
+        /// row's current status (a row already done/reconciled is no longer a candidate), and an empty set
+        /// fails closed (#3513). The Interlocked guard just stops two syncs landing back-to-back from
+        /// stacking overlapping runs (BoardRefreshCompleted fans out to Batter Up / false-done reconcile).
+        /// </summary>
+        private async System.Threading.Tasks.Task ReconcileQueueFromMirrorAsync()
+        {
+            // Not initialized yet (Initialize sets _api/_db and runs the first board fetch itself).
+            if (_api == null) return;
+            if (System.Threading.Interlocked.Exchange(ref _mirrorReconcileRunning, 1) == 1) return;
+            try
+            {
+                // Fail closed on a never-synced / unreadable mirror or an empty open set: this repo always has
+                // open issues, so none means "couldn't determine", and we must not claim a fresh look at GitHub.
+                var mirrored = await GitHubIssueMirror.TryGetBoardIssuesAsync(openOnly: true);
+                if (mirrored == null || mirrored.Count == 0)
+                {
+                    ActivityLog.Log("issue-mirror", "Git #4740: mirror-driven reconcile skipped — open-issue set unavailable/empty (fail closed).");
+                    return;
+                }
+                var openNumbers = mirrored.Where(i => i.State == "OPEN").Select(i => i.Number).ToHashSet();
+
+                if (_db != null)
+                {
+                    try
+                    {
+                        var promoted = await _db.PromoteVerifyingToDoneAsync(openNumbers);
+                        if (promoted.Count > 0)
+                        {
+                            ActivityLog.Log("issue-mirror",
+                                $"Git #4740: Verifying → Done (issue closed, mirror sync): {promoted.Count} queue item(s) — " +
+                                string.Join(", ", promoted.Select(p => $"#{p.Id} (GH #{p.GithubNumber})")));
+                            VerifyingIssuesPromoted?.Invoke(this, EventArgs.Empty);
+                        }
+
+                        int reconciled = await BuildConsole.Services.BoardStatusSync.ReconcileQueueAgainstBoardAsync(_db, "mirror sync");
+                        if (reconciled > 0)
+                            VerifyingIssuesPromoted?.Invoke(this, EventArgs.Empty);
+                    }
+                    catch (Exception ex)
+                    {
+                        ActivityLog.Log("issue-mirror", $"Git #4740: mirror-driven Verifying→Done reconcile FAILED (will retry next sync): {ex.Message}");
+                    }
+                }
+
+                BoardRefreshCompleted?.Invoke(this, EventArgs.Empty);
+                GitBoardOpenIssuesRefreshed?.Invoke(this, openNumbers);
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("issue-mirror", $"Git #4740: mirror-driven reconcile FAILED (non-fatal): {ex.Message}");
+            }
+            finally
+            {
+                System.Threading.Interlocked.Exchange(ref _mirrorReconcileRunning, 0);
+            }
         }
 
         /// <summary>Git #921 (Epic #803) — the board's own last real open-issue fetch, so a detail tab can resolve a clicked/linked issue number (its title, epic-ness, To-Do status, linked epic) without a second GitHub round-trip. Read-only view; mutation stays inside BuildBoardFromGitHub.</summary>
