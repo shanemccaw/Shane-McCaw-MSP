@@ -5614,9 +5614,7 @@ namespace BuildConsole
         /// immersive chip (and the new Replace action) share: resolve live identity via
         /// <see cref="ResolveChatIdentity"/>, then flip FocusModeService's In Progress mark.
         /// Returns the resolved conversation id, or null when nothing resolved (caller may
-        /// warn). <see cref="MarkChatTabInProgressAsync"/> deliberately does NOT go through
-        /// this wrapper — it resolves via the same <see cref="ResolveChatIdentity"/> helper but
-        /// keeps its own gh-label / toast / tab-decoration work around the toggle.</summary>
+        /// warn).</summary>
         public string? ToggleChatInProgressResolved(TabItem? tab, string? cachedConversationId, string title, string? cachedClaudeUrl)
         {
             var (cid, url) = ResolveChatIdentity(tab, cachedConversationId, cachedClaudeUrl);
@@ -5966,102 +5964,6 @@ namespace BuildConsole
                 }
 
                 BuildConsole.Services.ActivityLog.Log("tabs", $"Renamed tab to '{newName}'");
-            }
-        }
-
-        private async System.Threading.Tasks.Task MarkChatTabInProgressAsync(TabItem tabItem, BuildConsole.Services.BoardChat? chat)
-        {
-            try
-            {
-                // Git #1629 (root cause 4) — a tab NOT opened through OpenChatTab (bare
-                // string Tag) used to fall into a null-chat branch that toasted "marked
-                // in-progress" while telling FocusModeService NOTHING. Resolve the real
-                // conversation id from the tab itself (live WebView2 source — the same
-                // logic backing GetActiveChatUrl, but for THIS tab, selected or not) so
-                // any genuine claude.ai tab actually gets marked — or say plainly why not.
-                string title = chat?.Title ?? TabTitleOf(tabItem);
-                // Git #2663 — resolve what THIS tab REALLY shows now through the one shared
-                // resolver. Previously the live-URL read was only a fallback taken when the
-                // cached BoardChat fields were empty, so a stale-but-nonempty snapshot URL
-                // (tab navigated to a new chat after opening) still won and the wrong
-                // conversation got marked. Now the live tab URL is authoritative, with the
-                // cached snapshot only as the last resort.
-                var (conversationId, chatUrl) = ResolveChatIdentity(tabItem, chat?.ConversationId, chat?.ClaudeUrl);
-                if (string.IsNullOrEmpty(conversationId) || string.IsNullOrEmpty(chatUrl))
-                {
-                    ToastEngine.Warning("In-Progress",
-                        "This tab isn't showing a claude.ai conversation yet — a brand-new chat has no conversation id until its first message is sent. Open the chat (or send its first message) and try again.");
-                    return;
-                }
-
-                int? githubNumber = chat?.IssueGithubNumber;
-                if (githubNumber.HasValue)
-                {
-                    bool ok = await BuildConsole.Services.GitHubIssuesService.AddLabelAsync(githubNumber.Value, "in-flight");
-                    if (ok)
-                    {
-                        ToastEngine.Success("In-Progress", $"Issue #{githubNumber.Value} marked 'in-flight' on GitHub");
-                    }
-                    else
-                    {
-                        ToastEngine.Info("In-Progress", $"Marked chat tab as in-progress (gh label sync attempted)");
-                    }
-                }
-                else
-                {
-                    ToastEngine.Success("In-Progress", $"Chat '{title}' marked in-progress");
-                }
-
-                if (tabItem.Header is Panel panel)
-                {
-                    var titleBlock = panel.Children.OfType<TextBlock>().Skip(1).FirstOrDefault()
-                                     ?? panel.Children.OfType<TextBlock>().FirstOrDefault();
-                    if (titleBlock != null && !titleBlock.Text.StartsWith("✈"))
-                    {
-                        titleBlock.Text = "✈️ " + titleBlock.Text;
-                    }
-
-                    var bolt = panel.Children.OfType<Button>().FirstOrDefault(b => b.Content?.ToString() == "⚡");
-                    if (bolt != null)
-                    {
-                        bolt.Foreground = (Brush)FindResource("StatusRunningBrush");
-                        bolt.ToolTip = "In Progress (Active in Focus Mode) — click to unmark";
-                    }
-                }
-
-                if (chat != null && !chat.Title.StartsWith("✈"))
-                {
-                    chat.Title = "✈️ " + chat.Title;
-                }
-                // Git #1629 — the actual FocusModeService mark now happens for EVERY
-                // resolvable chat tab, not only ones carrying a BoardChat snapshot.
-                if (!BuildConsole.Services.FocusModeService.Instance.IsChatInProgress(conversationId))
-                {
-                    BuildConsole.Services.FocusModeService.Instance.ToggleChatInProgress(conversationId, chat?.Title ?? title, chatUrl);
-                }
-                if (_chatTabs.TryGetValue(tabItem, out var state))
-                {
-                    if (state.BuildStatusText != null)
-                    {
-                        state.BuildStatusText.Text = "In-Progress";
-                    }
-                }
-
-                PersistOpenChatTabs();
-
-                LeftSidebar.PopulateGitTrackerBoard();
-                // Git #1629 — forceFresh: an in-progress mark changes nothing in the raw
-                // board payload, so a plain PopulateChatsTree() would be silently skipped
-                // by the unchanged-signature short-circuit and the tab wouldn't appear
-                // under "In Progress" until the next unrelated data change.
-                LeftSidebar.PopulateChatsTree(forceFresh: true);
-                _ = BuildQueuePanel.RefreshAsync();
-
-                BuildConsole.Services.ActivityLog.Log("git-board.chat", $"Marked chat '{chat?.Title ?? title}' ({conversationId}) as in-progress (in-flight)");
-            }
-            catch (Exception ex)
-            {
-                ToastEngine.Error("In-Progress", $"Failed to mark in-progress: {ex.Message}");
             }
         }
 
