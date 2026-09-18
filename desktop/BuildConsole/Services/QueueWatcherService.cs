@@ -3001,6 +3001,30 @@ namespace BuildConsole.Services
             // and let the resumed session's own settings apply.
             if (!string.IsNullOrWhiteSpace(item.ResumeSessionId))
             {
+                // Git #4611 — BACKSTOP session-liveness check, at the actual launch point.
+                // Every guard #4547/#4553/#4554 added (WouldInterruptActiveWork, the
+                // Reply/Retry click-time refusals) runs in the UI, one click before this.
+                // Two real dispatcher paths reach here with resume_session_id still set and
+                // NO upstream click to have guarded: a continuation deliberately left
+                // 'queued' at the hard cap (see LaunchContinuationAsync's own comment,
+                // Git #4542) whose session can go live again by the time a slot frees, and
+                // SessionLimitAutoRestartService.ResumeLimitPausedAsync flipping a
+                // 'limit-paused' row back to 'queued' with resume_session_id preserved. This
+                // is the one place that actually knows a process is about to spawn, so it's
+                // the real backstop — reusing the same LiveQueueIdsForSession
+                // LaunchContinuationAsync already trusts, rather than a fourth copy of the
+                // same UI-side check. LaunchContinuationAsync's own legitimate resume never
+                // trips this: it stops and confirms the old process's exit before its own
+                // SafeLaunch call reaches LaunchItemCore.
+                var liveIds = LiveQueueIdsForSession(item.Id, item.ResumeSessionId);
+                if (liveIds.Count > 0)
+                {
+                    string reason = $"session {item.ResumeSessionId} is already live under queue {string.Join(", ", liveIds.Select(i => "#" + i))} — refusing to launch a duplicate --resume";
+                    ActivityLog.Log("watcher", $"Queue #{item.Id} ({item.Title}) launch REFUSED: {reason}. Retry once the other process finishes, or stop it first.");
+                    await MarkLaunchFailedAsync(item.Id, reason);
+                    return;
+                }
+
                 args.Add("--resume");
                 args.Add(item.ResumeSessionId);
             }
