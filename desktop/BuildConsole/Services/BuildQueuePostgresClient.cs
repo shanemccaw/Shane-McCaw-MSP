@@ -3116,6 +3116,51 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
+        /// Git #4679 — the OTHER shape a self-halted-blocked build can be stranded in: a session that
+        /// hit CLAUDE.md's "blocked" self-check flow (wrote a real 🛑 BLOCKED bookend + `blocked` label,
+        /// wired a `blocked_by` edge) and exited 0 lands at <see cref="VerifyingStatus"/> (Git #1469's
+        /// real-Verifying gate fires whenever the row has a real <c>github_number</c>), NOT at
+        /// <c>canceled+exit0</c>. For a <c>--cwd</c>/cross-repo build (e.g. M365Architect) the two paths
+        /// that would normally reset it to <c>canceled</c> both miss it: the #3628 immediate reap
+        /// correction is gated on a provisioned <c>worktreePath</c> (null for a <c>--cwd</c> build), and
+        /// FalseDoneReconciler Shape A reads the BLOCKED bookend only from the MAIN repo's origin/main
+        /// (an M365Architect bookend lives in that repo, not here). So the row sits at <c>verifying</c>
+        /// forever, invisible to <see cref="GetWaitingSelfBlockedAsync"/> (canceled+exit0 only) and to
+        /// the claim loop (queued only).
+        ///
+        /// This returns the candidate rows the auto-requeue sweep must additionally consider: still at
+        /// <c>verifying</c>, exited 0, a real github_number, not archived, declaring at least one blocker.
+        /// The sweep gates them on the cross-repo-visible <c>blocked</c> LABEL before doing anything (a
+        /// genuinely-completed verifying row awaiting close does not carry that label) — see
+        /// <see cref="SweepAutoRequeueWaitingAsync"/>.
+        /// </summary>
+        public async Task<List<QueueItem>> GetSelfHaltedBlockedVerifyingRowsAsync()
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                SELECT id, title, prompt, model, effort, cwd,
+                       github_number, blocked_by_number, blocked_by_numbers,
+                       status, exit_code, session_id, resume_session_id,
+                       originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at
+                FROM bt_build_queue
+                WHERE status = @verifying AND exit_code = 0
+                  AND github_number IS NOT NULL AND github_number > 0
+                  AND archived IS NOT TRUE
+                  AND (blocked_by_number IS NOT NULL
+                       OR (blocked_by_numbers IS NOT NULL AND array_length(blocked_by_numbers, 1) > 0))
+                ORDER BY created_at ASC", conn);
+            cmd.Parameters.AddWithValue("@verifying", VerifyingStatus);
+            var items = new List<QueueItem>();
+            await using (var reader = await cmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                    items.Add(MapRow(reader));
+            }
+            await PopulateAssociatedIssueNumbersAsync(items, conn);
+            return items.Where(i => EffectiveBlockers(i).Count > 0).ToList();
+        }
+
+        /// <summary>
         /// Flips ONE self-blocked "⏳ WAITING" row back to 'queued' so the very next
         /// <see cref="GetNextAsync"/> tick picks it up as a normal claim candidate —
         /// resume_session_id is preserved (this is a resume, not a fresh restart, same
@@ -3159,9 +3204,25 @@ namespace BuildConsole.Services
         /// </summary>
         /// <param name="liveOpenIssuesFetcher">Test seam — defaults to a real live `gh issue list
         /// --state open` snapshot (GitHubIssuesService), identical to GetNextAsync's own default.</param>
+        /// <param name="blockedLabelIssuesFetcher">Git #4679 test seam — defaults to a real live
+        /// `gh issue list --state open --label blocked` snapshot. Drives the pre-step that funnels a
+        /// self-halted <c>verifying</c> row into the <c>canceled+exit0</c> WAITING state this sweep
+        /// already knows how to requeue.</param>
         public async Task<(List<WaitingRequeueResult> Requeued, int Scanned, bool GitHubReachable)> SweepAutoRequeueWaitingAsync(
-            Func<Task<LiveOpenIssuesResult>>? liveOpenIssuesFetcher = null)
+            Func<Task<LiveOpenIssuesResult>>? liveOpenIssuesFetcher = null,
+            Func<Task<HashSet<int>>>? blockedLabelIssuesFetcher = null)
         {
+            // Git #4679 — PRE-STEP: a build that self-halted blocked (🛑 BLOCKED bookend + `blocked`
+            // label + a wired `blocked_by` edge, then exit 0) lands at 'verifying', not 'canceled+exit0',
+            // and for a --cwd/cross-repo build (e.g. M365Architect) neither the #3628 reap correction
+            // (worktree-gated) nor FalseDoneReconciler Shape A (main-repo-bookend-gated) ever resets it.
+            // Detect those rows here and funnel them into the exact canceled+exit0 WAITING state the rest
+            // of this sweep already requeues — gated on the cross-repo-visible `blocked` LABEL, which is
+            // the positive self-halt evidence that distinguishes them from a genuinely-completed verifying
+            // row awaiting close (that never carries `blocked`). Fail-closed: we only ever act on a
+            // POSITIVE label match, so a failed/empty label fetch resets nothing this tick.
+            await ResetSelfHaltedVerifyingRowsToWaitingAsync(blockedLabelIssuesFetcher);
+
             var waiting = await GetWaitingSelfBlockedAsync();
             if (waiting.Count == 0) return (new List<WaitingRequeueResult>(), 0, true);
 
@@ -3201,6 +3262,64 @@ namespace BuildConsole.Services
                 if (ok) requeued.Add(new WaitingRequeueResult(item, blockers));
             }
             return (requeued, waiting.Count, true);
+        }
+
+        /// <summary>
+        /// Git #4679 — the pre-step for <see cref="SweepAutoRequeueWaitingAsync"/>. Finds every
+        /// self-halted <see cref="VerifyingStatus"/> row (<see cref="GetSelfHaltedBlockedVerifyingRowsAsync"/>),
+        /// live-checks the cross-repo-visible <c>blocked</c> label set, and resets each row whose issue
+        /// carries that label to <c>canceled</c> (leaving exit_code=0) via the same
+        /// <see cref="MarkFalseDoneReconciledAsync"/> Shape A already uses — landing it in the exact
+        /// <c>canceled+exit0</c> WAITING state the rest of the sweep requeues once its blockers clear
+        /// (and that the queue panel already renders as ⏳ WAITING, Git #3521). No board write here, to
+        /// match this sweep's own status-only discipline (unlike Shape A/#3628 which also move the board).
+        ///
+        /// Fail-closed by construction: it only ever resets a row whose issue is a POSITIVE match in the
+        /// live <c>blocked</c>-label set, so a failed or empty label fetch (the fetcher returns an empty
+        /// set on any gh failure) touches nothing this tick and is retried on the next trigger.
+        /// </summary>
+        private async Task ResetSelfHaltedVerifyingRowsToWaitingAsync(Func<Task<HashSet<int>>>? blockedLabelIssuesFetcher)
+        {
+            List<QueueItem> candidates;
+            try { candidates = await GetSelfHaltedBlockedVerifyingRowsAsync(); }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("auto-requeue", $"Git #4679: couldn't read self-halted verifying rows ({ex.Message}) — skipping the verifying-detection pre-step this tick (fail soft).");
+                return;
+            }
+            if (candidates.Count == 0) return;
+
+            HashSet<int> blockedLabelled;
+            try
+            {
+                blockedLabelled = blockedLabelIssuesFetcher != null
+                    ? await blockedLabelIssuesFetcher()
+                    : (await GitHubIssuesService.ListOpenByLabelAsync("blocked", 500))
+                        .Select(i => i.Number).ToHashSet();
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("auto-requeue", $"Git #4679: couldn't fetch the open `blocked`-label set ({ex.Message}) — leaving {candidates.Count} verifying candidate(s) alone this tick (fail closed).");
+                return;
+            }
+            if (blockedLabelled.Count == 0) return; // no positive self-halt evidence — reset nothing
+
+            foreach (var item in candidates)
+            {
+                int num = item.GithubNumber ?? 0;
+                if (num <= 0 || !blockedLabelled.Contains(num)) continue; // not a labelled self-halt
+                try
+                {
+                    int changed = await MarkFalseDoneReconciledAsync(item.Id);
+                    if (changed > 0)
+                        ActivityLog.Log("auto-requeue",
+                            $"Git #4679: queue #{item.Id} (GH #{num}, {item.Title}) exited 0 but is a self-halted BLOCKED build (carries the `blocked` label) stranded at 'verifying' — reset to 'canceled' (⏳ WAITING) so it re-enters the auto-requeue cycle once its blocker(s) {string.Join(", ", EffectiveBlockers(item).Select(b => $"#{b}"))} confirm closed.");
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("auto-requeue", $"Git #4679: couldn't reset self-halted verifying row #{item.Id} (GH #{num}) to WAITING ({ex.Message}) — the next trigger re-checks.");
+                }
+            }
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────────

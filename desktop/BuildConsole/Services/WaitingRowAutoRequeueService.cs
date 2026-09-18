@@ -22,6 +22,14 @@ namespace BuildConsole.Services
     /// <see cref="BuildQueuePostgresClient.SweepAutoRequeueWaitingAsync"/>; this class is
     /// triggering only.
     ///
+    /// Git #4679 — that sweep now also runs a pre-step (still triggered by exactly the same two
+    /// events, no new timer) that catches the OTHER shape a self-halted-blocked build can be stranded
+    /// in: a session that wrote a 🛑 BLOCKED bookend + `blocked` label and exited 0 lands at
+    /// 'verifying' (not 'canceled+exit0'), and for a --cwd/cross-repo build (e.g. M365Architect)
+    /// neither the #3628 reap correction nor FalseDoneReconciler Shape A ever resets it. The pre-step
+    /// funnels those rows into the same canceled+exit0 WAITING state this sweep already requeues,
+    /// gated on the cross-repo-visible `blocked` label.
+    ///
     /// Git #3777 — this used to arm an unconditional 5-minute <see cref="Timer"/> from
     /// <see cref="StartAsync"/>, making a real `gh issue list` call on a clock for the app's
     /// entire runtime whenever at least one row was self-blocked. Found by #3774's own requested
