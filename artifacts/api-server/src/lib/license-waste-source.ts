@@ -738,3 +738,141 @@ export async function resolveActiveLicensedUserCount(
     excluded,
   };
 }
+
+// ── Licence uplift cost (#4580, parent Feature #4571) ───────────────────────────
+//
+// "How many users need an uplift to a named SKU, and what does it cost annually" —
+// e.g. #489's licence-gap purchase links name a target SKU (Entra ID P2, Defender
+// for Office 365, Purview Suite) but carry no cost; this answers that.
+//
+// v1 decision (Shane, 2026-09-17): flat SKU-match, no superset/bundling logic. A
+// user already holding a superset SKU (e.g. E5, which includes Entra ID P2) is
+// still counted as needing the uplift — `sku_price_reference` has no superset
+// column today, and building one is separate, real scope. This can overcount in
+// that case; accepted for v1.
+//
+// Reuses `resolveActiveLicensedUserCount`'s exact per-user query pattern over
+// `license_assignment_snapshots` (latest run, then its rows) and
+// `lookupSkuMonthlyPriceCents` from cost-engine.ts — no re-derivation of either.
+
+export interface LicenseUpliftCost {
+  targetSkuPartNumber: string;
+  /** Users on the tenant's latest snapshot run who do NOT already hold the target SKU. */
+  upliftUserCount: number;
+  unitMonthlyPriceCents: number;
+  monthlyUpliftCents: number;
+  annualUpliftCents: number;
+  /** monitor_checks.key the per-user snapshot run was collected under. */
+  checkKey: string;
+  collectedAt: Date | null;
+}
+
+/**
+ * Pure: distinct userIds among assignment rows that are NOT already holding
+ * `targetSkuId`. `targetSkuId === null` (the tenant is not subscribed to the
+ * target SKU at all, so no row could carry it) means every user in the run
+ * needs the uplift. Exported separately so the counting arithmetic is
+ * unit-tested without a database, the same split every other resolver in this
+ * file uses.
+ */
+export function licenseUpliftPopulationFromAssignments(
+  assignments: readonly { userId: string; skuId: string }[],
+  targetSkuId: string | null,
+): number {
+  const holders = new Set<string>();
+  if (targetSkuId) {
+    for (const a of assignments) {
+      if (a.skuId === targetSkuId) holders.add(a.userId);
+    }
+  }
+  const allUsers = new Set<string>();
+  for (const a of assignments) allUsers.add(a.userId);
+
+  let upliftCount = 0;
+  for (const userId of allUsers) {
+    if (!holders.has(userId)) upliftCount++;
+  }
+  return upliftCount;
+}
+
+/**
+ * The tenant's real per-user uplift cost to `targetSkuPartNumber`, or null when
+ * it cannot be honestly computed:
+ *   - the target SKU has no price on file (or prices at $0), or
+ *   - no `license_assignment_snapshots` run exists yet for this tenant, or
+ *   - that run carries no assignment rows at all.
+ * Never guesses a price or a population.
+ */
+export async function resolveLicenseUpliftCost(
+  tenantId: string,
+  targetSkuPartNumber: string,
+): Promise<LicenseUpliftCost | null> {
+  const { priceCents } = await lookupSkuMonthlyPriceCents({ skuPartNumber: targetSkuPartNumber });
+  if (priceCents == null || priceCents <= 0) {
+    log.warn(
+      { tenantId, targetSkuPartNumber },
+      "license-waste-source: uplift target SKU has no price on file — uplift cost cannot be sourced",
+    );
+    return null;
+  }
+
+  const [latestRun] = await db
+    .select({
+      runId: licenseAssignmentSnapshotsTable.runId,
+      checkKey: licenseAssignmentSnapshotsTable.checkKey,
+      collectedAt: licenseAssignmentSnapshotsTable.collectedAt,
+    })
+    .from(licenseAssignmentSnapshotsTable)
+    .where(eq(licenseAssignmentSnapshotsTable.tenantId, tenantId))
+    .orderBy(desc(licenseAssignmentSnapshotsTable.collectedAt))
+    .limit(1);
+
+  if (!latestRun) {
+    log.warn(
+      { tenantId },
+      "license-waste-source: no license_assignment_snapshots run for this tenant — uplift cost cannot be sourced",
+    );
+    return null;
+  }
+
+  const rows = await db
+    .select({
+      userId: licenseAssignmentSnapshotsTable.userId,
+      skuId: licenseAssignmentSnapshotsTable.skuId,
+    })
+    .from(licenseAssignmentSnapshotsTable)
+    .where(
+      and(
+        eq(licenseAssignmentSnapshotsTable.tenantId, tenantId),
+        eq(licenseAssignmentSnapshotsTable.runId, latestRun.runId),
+      ),
+    );
+
+  if (rows.length === 0) {
+    log.warn(
+      { tenantId, runId: latestRun.runId },
+      "license-waste-source: latest license_assignment_snapshots run has no rows — uplift cost cannot be sourced",
+    );
+    return null;
+  }
+
+  // The target SKU's real skuId, if this tenant subscribes to it at all — used
+  // to identify existing holders. Not subscribed at all just means nobody could
+  // hold it yet, which `licenseUpliftPopulationFromAssignments` already handles
+  // via its `null` case, so this is not re-derivation of that check.
+  const catalog = await resolveSubscribedSkuCatalog(tenantId);
+  const targetSkuId = catalog?.skus.find((s) => s.skuPartNumber === targetSkuPartNumber)?.skuId ?? null;
+
+  const upliftUserCount = licenseUpliftPopulationFromAssignments(rows, targetSkuId);
+  const monthlyUpliftCents = priceCents * upliftUserCount;
+
+  return {
+    targetSkuPartNumber,
+    upliftUserCount,
+    unitMonthlyPriceCents: priceCents,
+    monthlyUpliftCents,
+    annualUpliftCents: monthlyUpliftCents * 12,
+    checkKey: latestRun.checkKey,
+    collectedAt: latestRun.collectedAt,
+  };
+}

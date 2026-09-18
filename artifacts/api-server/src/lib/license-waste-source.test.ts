@@ -50,6 +50,7 @@ vi.mock("@workspace/db", () => {
 
 import {
   activeLicensedUserCountFromAssignments,
+  licenseUpliftPopulationFromAssignments,
   resolveLicenseWasteCounts,
   unusedSeatsFromSubscribedSkus,
 } from "./license-waste-source.ts";
@@ -250,5 +251,43 @@ describe("activeLicensedUserCountFromAssignments", () => {
 
   it("returns 0 for no assignments", () => {
     expect(activeLicensedUserCountFromAssignments([], new Set(["id-SPE_E3"]))).toBe(0);
+  });
+});
+
+describe("licenseUpliftPopulationFromAssignments", () => {
+  it("counts only users who do NOT already hold the target SKU (#4580)", () => {
+    const assignments = [
+      { userId: "user-1", skuId: "id-ENTRA_ID_P2" }, // already has it
+      { userId: "user-2", skuId: "id-SPE_E3" }, // needs the uplift
+      { userId: "user-3", skuId: "id-FLOW_FREE" }, // needs the uplift
+    ];
+    expect(licenseUpliftPopulationFromAssignments(assignments, "id-ENTRA_ID_P2")).toBe(2);
+  });
+
+  it("counts a user holding a superset SKU as still needing the uplift (v1 flat SKU-match, no superset logic)", () => {
+    // E5 (id-SPE_E5) genuinely includes Entra ID P2, but v1 is a flat name
+    // match only — this is the accepted overcounting case from the issue body.
+    const assignments = [{ userId: "user-1", skuId: "id-SPE_E5" }];
+    expect(licenseUpliftPopulationFromAssignments(assignments, "id-ENTRA_ID_P2")).toBe(1);
+  });
+
+  it("does not double-count a user assigned to the same non-target SKU twice", () => {
+    const assignments = [
+      { userId: "user-1", skuId: "id-SPE_E3" },
+      { userId: "user-1", skuId: "id-FLOW_FREE" },
+    ];
+    expect(licenseUpliftPopulationFromAssignments(assignments, "id-ENTRA_ID_P2")).toBe(1);
+  });
+
+  it("treats a null targetSkuId (tenant not subscribed to it at all) as everyone needing the uplift", () => {
+    const assignments = [
+      { userId: "user-1", skuId: "id-SPE_E3" },
+      { userId: "user-2", skuId: "id-SPE_E3" },
+    ];
+    expect(licenseUpliftPopulationFromAssignments(assignments, null)).toBe(2);
+  });
+
+  it("returns 0 for no assignments", () => {
+    expect(licenseUpliftPopulationFromAssignments([], "id-ENTRA_ID_P2")).toBe(0);
   });
 });
