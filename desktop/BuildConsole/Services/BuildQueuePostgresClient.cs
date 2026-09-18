@@ -1553,6 +1553,9 @@ namespace BuildConsole.Services
                        -- Git #1839 — clear the adoption pid so a stale pid never outlives its build.
                      , build_pid            = NULL
                      , build_pid_started_at = NULL
+                       -- Git #4793 — a row (re-)landing in Verifying starts un-reviewed; an earlier
+                       -- run's airplane signal must never let this run's row auto-promote.
+                     , review_requested_at  = NULL
                  WHERE id = @id
                 RETURNING status, github_number", conn))
             {
@@ -2118,12 +2121,21 @@ namespace BuildConsole.Services
 
         /// <summary>Shared candidate query for both <see cref="PromoteVerifyingToDoneAsync"/> (fed a full
         /// open-issue snapshot) and <see cref="GetVerifyingGithubNumbersAsync"/> (Git #3900 — the narrow,
-        /// event-driven caller that checks only these specific numbers' live state).</summary>
+        /// event-driven caller that checks only these specific numbers' live state).
+        ///
+        /// Git #4793 — only rows Shane has already sent for review (the ✈ landed-send stamped
+        /// <c>review_requested_at</c>, see <see cref="MarkReviewRequestedAsync"/>) are candidates. This is the
+        /// single choke point that keeps EVERY automatic Verifying→Done path (Git Board manual fetch, Home
+        /// reconcile, Build Watch, #4740's mirror-sync tick, #3900's event-driven check) from clearing a
+        /// row merely because its issue is closed: an issue only closes via the chat-driven close that
+        /// follows the airplane press, so "closed AND review requested" is the real promotion signal and
+        /// "closed" alone is not. A closed-but-not-yet-reviewed row stays visible in Verifying.</summary>
         private static async Task<List<(int Id, int GithubNumber)>> GetVerifyingCandidatesAsync(NpgsqlConnection conn)
         {
             await using var fetchCmd = new NpgsqlCommand(@"
                 SELECT id, github_number FROM bt_build_queue
-                WHERE status = @verifyingStatus AND github_number IS NOT NULL", conn);
+                WHERE status = @verifyingStatus AND github_number IS NOT NULL
+                  AND review_requested_at IS NOT NULL", conn);
             fetchCmd.Parameters.AddWithValue("@verifyingStatus", VerifyingStatus);
             var candidates = new List<(int Id, int GithubNumber)>();
             await using (var reader = await fetchCmd.ExecuteReaderAsync())
@@ -2164,10 +2176,13 @@ namespace BuildConsole.Services
             await using var conn = await OpenAsync();
             foreach (var (id, num) in rows)
             {
+                // Git #4793 — same review gate as GetVerifyingCandidatesAsync, re-asserted in the WHERE
+                // so a caller-supplied id list can never promote a row that was never sent for review.
                 await using var updateCmd = new NpgsqlCommand(@"
                     UPDATE bt_build_queue
                        SET status = 'done', updated_at = NOW()
-                     WHERE id = @id AND status = @verifyingStatus", conn);
+                     WHERE id = @id AND status = @verifyingStatus
+                       AND review_requested_at IS NOT NULL", conn);
                 updateCmd.Parameters.AddWithValue("@id", id);
                 updateCmd.Parameters.AddWithValue("@verifyingStatus", VerifyingStatus);
                 if (await updateCmd.ExecuteNonQueryAsync() > 0)
@@ -2177,6 +2192,57 @@ namespace BuildConsole.Services
                 }
             }
             return promoted;
+        }
+
+        // ── MarkReviewRequestedAsync / GetReviewRequestedGithubNumbersAsync (Git #4793) ─────
+        /// <summary>
+        /// Git #4793 — records that Shane's ✈ "landed" send reached the chat for these issues: stamps
+        /// <c>review_requested_at</c> on every Verifying row carrying one of <paramref name="githubNumbers"/>.
+        /// This is the ONLY writer of the flag <see cref="GetVerifyingCandidatesAsync"/> and
+        /// <see cref="PromoteSpecificToDoneAsync"/> require, i.e. the real "reviewed via airplane" signal
+        /// that lets a Verifying row promote to Done once the chat has actually closed its issue. Guarded
+        /// to <c>status = 'verifying'</c> and idempotent (an already-stamped row keeps its original
+        /// timestamp). Returns the number of rows newly stamped.
+        /// </summary>
+        public async Task<int> MarkReviewRequestedAsync(IReadOnlyCollection<int> githubNumbers)
+        {
+            var numbers = githubNumbers?.Where(n => n > 0).Distinct().ToArray() ?? Array.Empty<int>();
+            if (numbers.Length == 0) return 0;
+
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET review_requested_at = NOW(), updated_at = NOW()
+                 WHERE status = @verifyingStatus
+                   AND github_number = ANY(@numbers)
+                   AND review_requested_at IS NULL", conn);
+            cmd.Parameters.AddWithValue("@verifyingStatus", VerifyingStatus);
+            cmd.Parameters.AddWithValue("@numbers", numbers);
+            int changed = await cmd.ExecuteNonQueryAsync();
+            if (changed > 0)
+                ActivityLog.Log("build-queue", $"Git #4793: {changed} Verifying row(s) marked review-requested via ✈ send (GH {string.Join(", ", numbers.Select(n => "#" + n))}) — will promote to Done once the chat closes the issue.");
+            return changed;
+        }
+
+        /// <summary>
+        /// Git #4793 — the GitHub issue numbers of every Verifying row already sent for review
+        /// (<c>review_requested_at</c> stamped). The Build Queue panel uses it to tell a
+        /// closed-and-reviewed row (about to promote) from a closed-but-not-yet-reviewed one, which it
+        /// keeps visible with an "issue closed, awaiting review" indicator. Cheap local read.
+        /// </summary>
+        public async Task<HashSet<int>> GetReviewRequestedGithubNumbersAsync()
+        {
+            var result = new HashSet<int>();
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                SELECT github_number FROM bt_build_queue
+                 WHERE status = @verifyingStatus AND github_number IS NOT NULL
+                   AND review_requested_at IS NOT NULL", conn);
+            cmd.Parameters.AddWithValue("@verifyingStatus", VerifyingStatus);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                result.Add(reader.GetInt32(0));
+            return result;
         }
 
         // ── ReconcileQueueAgainstBoardAsync (Git #2136, generalized by Git #2486) ─────
@@ -2240,9 +2306,9 @@ namespace BuildConsole.Services
             var scopedQueued = onlyQueuedGithubNumbers != null && onlyQueuedGithubNumbers.Count > 0
                 ? onlyQueuedGithubNumbers.Where(n => n > 0).Distinct().ToArray()
                 : Array.Empty<int>();
-            var candidates = new List<(int Id, int GithubNumber, string Status)>();
+            var candidates = new List<(int Id, int GithubNumber, string Status, bool ReviewRequested)>();
             await using (var fetchCmd = new NpgsqlCommand(@"
-                SELECT id, github_number, status FROM bt_build_queue
+                SELECT id, github_number, status, review_requested_at IS NOT NULL FROM bt_build_queue
                 WHERE github_number IS NOT NULL AND github_number > 0
                   AND ( status = @verifyingStatus
                         OR (status = 'queued' AND github_number = ANY(@scopedQueued)) )", conn))
@@ -2251,10 +2317,10 @@ namespace BuildConsole.Services
                 fetchCmd.Parameters.AddWithValue("@scopedQueued", scopedQueued);
                 await using var reader = await fetchCmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
-                    candidates.Add((reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2)));
+                    candidates.Add((reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2), !reader.IsDBNull(3) && reader.GetBoolean(3)));
             }
 
-            foreach (var (id, num, oldStatus) in candidates)
+            foreach (var (id, num, oldStatus, reviewRequested) in candidates)
             {
                 bool isVerifying = string.Equals(oldStatus, VerifyingStatus, StringComparison.OrdinalIgnoreCase);
                 GitHubApiClient.IssueBoardStatus? board;
@@ -2298,6 +2364,13 @@ namespace BuildConsole.Services
 
                 string? newStatus = MapBoardToPreDispatchStatus(oldStatus, board?.OptionId);
                 if (newStatus == null) continue;
+
+                // Git #4793 — the board's Done column is set by GitHub's own close automation, so a
+                // Verifying row reaching Done here is the same "issue closed" signal the mirror-sync
+                // tick used to act on. It must not clear the row before Shane has reviewed it via the
+                // ✈ send; only a row already sent for review may take the Done arm. Park/Crashed are
+                // explicit board decisions and stay unconditional.
+                if (isVerifying && newStatus == "done" && !reviewRequested) continue;
 
                 await using var updateCmd = new NpgsqlCommand(@"
                     UPDATE bt_build_queue

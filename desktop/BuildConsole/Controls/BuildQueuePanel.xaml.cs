@@ -316,6 +316,14 @@ namespace BuildConsole.Controls
         /// <summary>Git #4701 — first line of every ✈/❓ Verifying-send tooltip: verifying a bookend is not the finish line, the issue must also be closed via the real close tool. Rides along in screenshots.</summary>
         private const string CloseReminderLine = "Reminder: verify the bookend, then close this issue via the real close tool — don't just report it as done.\n";
         private bool _verifyingBookendRefreshInFlight;
+        /// <summary>Git #4793 — Verifying issue numbers whose real GitHub issue is CLOSED (per the local
+        /// mirror, kept current by #4740's sync) but which Shane hasn't yet sent for review via ✈. Such a
+        /// row deliberately stays visible in Verifying — closing alone no longer promotes it (see
+        /// <see cref="Services.BuildQueuePostgresClient.MarkReviewRequestedAsync"/>) — and is flagged
+        /// "closed, awaiting review" in the rollup. Refreshed in the background off every render; absence
+        /// means "not known closed / already reviewed", never a reason to hide anything.</summary>
+        private HashSet<int> _verifyingClosedAwaitingReview = new();
+        private bool _verifyingClosedRefreshInFlight;
         private const string UngroupedBuildSetKey = "Ungrouped";
         /// <summary>Git #3336 — each real build-set key's resolved top Epic(s), computed from its
         /// members' real GithubNumbers via <see cref="EpicResolver"/> right before every
@@ -4128,6 +4136,68 @@ namespace BuildConsole.Controls
             }
         }
 
+        /// <summary>Git #4793 — persists the "sent for review" signal for the issues a ✈ send just
+        /// delivered to the chat, so a later chat-driven close (not the mirror-sync tick) is what lets
+        /// the queue promote these rows Verifying → Done. Only ever called from a SUCCESSFUL landed-list
+        /// send — the ❓ needs-attention send deliberately does not (nothing was reported landed). Fire
+        /// and forget: a failed write just leaves the row visible in Verifying, and the next ✈ offers
+        /// it again (the in-memory sent set is per-session), so nothing is lost or wrongly promoted.</summary>
+        private void PersistReviewRequested(IReadOnlyCollection<int> issueNumbers)
+        {
+            var db = _db;
+            if (db == null || issueNumbers.Count == 0) return;
+            var numbers = issueNumbers.ToList();
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await db.MarkReviewRequestedAsync(numbers);
+                    Dispatcher.Invoke(() => { _ = RefreshVerifyingClosedStateAsync(numbers); });
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("build-queue.rollup-send-to-chat",
+                        $"Git #4793: couldn't persist review-requested for {string.Join(", ", numbers.Select(n => "#" + n))} — row stays Verifying and can be re-sent: {ex.Message}");
+                }
+            });
+        }
+
+        /// <summary>Git #4793 — background refresh of <see cref="_verifyingClosedAwaitingReview"/>: for
+        /// every Verifying issue on screen, "is its GitHub issue closed in the local mirror AND has it not
+        /// been sent for review yet". Reads only local Postgres (mirror + queue), no GitHub call. Re-renders
+        /// once, only when the set actually changed.</summary>
+        private async Task RefreshVerifyingClosedStateAsync(List<int> verifyingNumbers)
+        {
+            var db = _db;
+            if (db == null || _verifyingClosedRefreshInFlight || verifyingNumbers.Count == 0) return;
+            _verifyingClosedRefreshInFlight = true;
+            try
+            {
+                var reviewed = await db.GetReviewRequestedGithubNumbersAsync();
+                var closedAwaiting = new HashSet<int>();
+                foreach (var n in verifyingNumbers.Distinct())
+                {
+                    if (reviewed.Contains(n)) continue;
+                    var mirrored = await Services.GitHubIssueMirror.TryGetAsync(n);
+                    if (mirrored != null && mirrored.IsClosed) closedAwaiting.Add(n);
+                }
+                if (!closedAwaiting.SetEquals(_verifyingClosedAwaitingReview))
+                {
+                    _verifyingClosedAwaitingReview = closedAwaiting;
+                    RenderBuildSetRollup(_lastItems);
+                }
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("build-queue.rollup-send-to-chat",
+                    $"Git #4793: closed-awaiting-review refresh failed (indicator only — no row is hidden or promoted by this): {ex.Message}");
+            }
+            finally
+            {
+                _verifyingClosedRefreshInFlight = false;
+            }
+        }
+
         /// <summary>Git #3336 — a real, bold Epic-group header above a block of build-set rollup
         /// rows. Git #3605 extends this with an aggregate "✈" send button, next to the header
         /// text, that sums the real not-yet-sent Verifying items across every member build set
@@ -4339,6 +4409,8 @@ namespace BuildConsole.Controls
                                 }
                                 foreach (var n in actuallySent) sent.Add(n);
                             }
+                            // Git #4793 — persist the real "sent for review" signal (in-memory dict above is per-session only).
+                            PersistReviewRequested(snapshot.Values.SelectMany(v => v).Where(n => reverified.Contains(n)).Distinct().ToList());
                             justSent = true;
                         }
                         statusText.Text = heldBack.Count > 0 ? $"{msg} ({heldBack.Count} still need attention: {string.Join(", ", heldBack.Select(FormatIssueRef))})" : msg;
@@ -4494,7 +4566,11 @@ namespace BuildConsole.Controls
             // a not-yet-checked or not-yet-verified item simply reads as "needs attention" until
             // this completes and triggers one re-render.
             var allVerifyingNumbers = buckets.Values.SelectMany(b => b.verifying).Distinct().ToList();
-            if (allVerifyingNumbers.Count > 0) _ = RefreshVerifyingBookendSatisfactionAsync(allVerifyingNumbers);
+            if (allVerifyingNumbers.Count > 0)
+            {
+                _ = RefreshVerifyingBookendSatisfactionAsync(allVerifyingNumbers);
+                _ = RefreshVerifyingClosedStateAsync(allVerifyingNumbers);
+            }
 
             // Git #2695 — keep the real UNFILTERED any-activity set (pre-#2693 behavior) separate
             // from the activity-filtered set below. The section's own visibility (header + chips)
@@ -4630,8 +4706,11 @@ namespace BuildConsole.Controls
                         // button's landed-signature above, so a needs-attention send changes this
                         // row's pool key (and thus actually rebuilds) without affecting the ✈
                         // button's own eligibility/signature.
-                        _sentNeedsAttentionByBuildSet.TryGetValue(key, out var sentNeedsAttentionForKey) ? string.Join(",", sentNeedsAttentionForKey.OrderBy(n => n)) : "");
-                    var row = _rollupCards.Acquire(("row", key), rowKey, () =>
+                        _sentNeedsAttentionByBuildSet.TryGetValue(key, out var sentNeedsAttentionForKey) ? string.Join(",", sentNeedsAttentionForKey.OrderBy(n => n)) : "",
+                        // Git #4793 — the "closed, awaiting review" indicator changes without Verifying
+                        // itself changing, so it must be part of the pool key or the row never rebuilds.
+                        string.Join(",", counts.verifying.Where(_verifyingClosedAwaitingReview.Contains).OrderBy(n => n)));
+                    var row =_rollupCards.Acquire(("row", key), rowKey, () =>
                     {
                         var r = BuildRollupRow(key, counts.upNext, counts.running, counts.verifying, counts.members);
                         if (r is FrameworkElement fe) fe.Margin = new Thickness(fe.Margin.Left + 10, fe.Margin.Top, fe.Margin.Right, fe.Margin.Bottom);
@@ -4659,7 +4738,7 @@ namespace BuildConsole.Controls
         /// reads those off the row's closure-captured <c>members</c> list, and the row's own
         /// landed/needs-attention split (Git #3616/#1932) so a send or a bookend-satisfaction flip
         /// — neither of which changes Verifying itself — still forces this row to rebuild.</summary>
-        private sealed record RollupRowKey(string UpNext, string Running, string Verifying, bool IsSelected, bool IsExpanded, string MembersSignature, string LandedSignature, string NeedsAttentionSignature, string NeedsAttentionSentSignature);
+        private sealed record RollupRowKey(string UpNext, string Running, string Verifying, bool IsSelected, bool IsExpanded, string MembersSignature, string LandedSignature, string NeedsAttentionSignature, string NeedsAttentionSentSignature, string ClosedAwaitingReviewSignature);
 
         /// <summary>Git #3834 — a stable, order-independent join of a buildSet→issue-numbers
         /// dictionary, for use inside a pool key record above.</summary>
@@ -4778,6 +4857,17 @@ namespace BuildConsole.Controls
                     Foreground = (Brush)Application.Current.FindResource("Subtext0Brush"),
                     FontSize = 10.5
                 });
+                // Git #4793 — a Verifying row stays visible after its issue closes until Shane sends it
+                // for review via ✈; say so on the still-visible row instead of leaving it looking stalled.
+                var closedAwaiting = verifying.Where(_verifyingClosedAwaitingReview.Contains).OrderBy(n => n).ToList();
+                if (closedAwaiting.Count > 0)
+                {
+                    summaryText.Inlines.Add(new System.Windows.Documents.Run($" — issue closed, awaiting review: {string.Join(", ", closedAwaiting.Select(FormatIssueRef))}")
+                    {
+                        Foreground = (Brush)Application.Current.FindResource("StatusWarningBrush"),
+                        FontSize = 10.5
+                    });
+                }
             }
             Grid.SetColumn(summaryText, 1);
             summaryRow.Children.Add(summaryText);
@@ -4937,9 +5027,11 @@ namespace BuildConsole.Controls
                                 _sentVerifyingByBuildSet[buildSetKey] = sent;
                             }
                             foreach (var n in toSend) sent.Add(n);
+                            // Git #4793 — persist the real "sent for review" signal (in-memory dict above is per-session only).
+                            PersistReviewRequested(toSend);
                             justSent = true;
                         }
-                        statusText.Text = heldBack.Count > 0 ? $"{msg} ({heldBack.Count} still need attention: {string.Join(", ", heldBack.Select(FormatIssueRef))})" : msg;
+                        statusText.Text = heldBack.Count > 0 ?$"{msg} ({heldBack.Count} still need attention: {string.Join(", ", heldBack.Select(FormatIssueRef))})" : msg;
                         statusText.Foreground = isError
                             ? (Brush)Application.Current.FindResource("StatusErrorBrush")
                             : (Brush)Application.Current.FindResource("StatusSuccessBrush");

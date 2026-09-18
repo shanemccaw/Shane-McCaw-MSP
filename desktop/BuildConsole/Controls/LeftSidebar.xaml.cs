@@ -3078,11 +3078,15 @@ namespace BuildConsole.Controls
                 {
                     try
                     {
+                        // Git #4793 — this stays the DETECTION path (#4740: no Git Board fetch needed), but
+                        // PromoteVerifyingToDoneAsync now only considers rows already sent for review via the
+                        // ✈ airplane, so the sync tick alone never clears an un-reviewed row; it promotes a
+                        // row only once the chat-driven close has landed on a row Shane already sent.
                         var promoted = await _db.PromoteVerifyingToDoneAsync(openNumbers);
                         if (promoted.Count > 0)
                         {
                             ActivityLog.Log("issue-mirror",
-                                $"Git #4740: Verifying → Done (issue closed, mirror sync): {promoted.Count} queue item(s) — " +
+                                $"Git #4740/#4793: Verifying → Done (issue closed after ✈ review request, mirror sync): {promoted.Count} queue item(s) — " +
                                 string.Join(", ", promoted.Select(p => $"#{p.Id} (GH #{p.GithubNumber})")));
                             VerifyingIssuesPromoted?.Invoke(this, EventArgs.Empty);
                         }
