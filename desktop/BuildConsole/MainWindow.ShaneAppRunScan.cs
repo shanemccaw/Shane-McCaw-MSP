@@ -158,8 +158,20 @@ namespace BuildConsole
 
                 // ── Testbed Assessment creds (Settings > Test Environment Variables) ──
                 var settings = BuildConsole.Services.BuildConsoleSettings.Load();
-                string? GetVar(string name) => settings.TestEnvironmentVariables
-                    .FirstOrDefault(v => string.Equals(v.Name?.Trim(), name, StringComparison.OrdinalIgnoreCase))?.Value;
+                // Git #4620 — a Test Environment Variable still carrying the scanner's
+                // <unset> placeholder (TestManifestVariableScanner.AutoDefaultValue) is
+                // auto-added, never-reviewed config, not a real credential. Treat it the
+                // same as null/blank so this falls into the "not set" branch below with a
+                // clear message, instead of reaching LoginAsync with the literal "<unset>"
+                // string and failing 30s deep as a confusing remote auth error.
+                string? GetVar(string name)
+                {
+                    var raw = settings.TestEnvironmentVariables
+                        .FirstOrDefault(v => string.Equals(v.Name?.Trim(), name, StringComparison.OrdinalIgnoreCase))?.Value;
+                    return string.Equals(raw, BuildConsole.Services.TestManifestVariableScanner.AutoDefaultValue, StringComparison.Ordinal)
+                        ? null
+                        : raw;
+                }
                 string? email = GetVar("TEST_PORTAL_EMAIL");
                 string? password = GetVar("TEST_PORTAL_PASSWORD");
                 if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
