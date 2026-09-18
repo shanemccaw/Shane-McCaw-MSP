@@ -6867,39 +6867,13 @@ namespace BuildConsole.Controls
             tvi.Collapsed += (s, e) => { if (ReferenceEquals(e.OriginalSource, tvi)) _expandedNodeKeys.Remove(nodeKey); };
             tvi.Expanded += (s, e) => { if (ReferenceEquals(e.OriginalSource, tvi)) _expandedNodeKeys.Add(nodeKey); };
 
-            // Real toggle - Shane: "Feel free to change anything to patch how I
-            // actually work." This tree is live GitHub data now, so a purely
-            // local status flip (the old demo behavior) would silently revert
-            // on the next real refresh, looking like it worked when nothing
-            // actually changed. Toggles the real `complete` label via the same
-            // endpoint the extension's own Mark-In-Progress button uses. No
-            // real "priority" concept exists anywhere in Build Tracker, so
-            // that fake menu item is gone rather than left as a no-op.
+            // Git #4694 — the "Mark Complete (Ready for Review)" / "Remove 'complete' label" item is
+            // gone: it POSTed to a route that has returned HTTP 410 since #3652 (and showed a success
+            // toast regardless), and the `complete` label itself is retired — closing the issue is the
+            // sole "done" signal. No real "priority" concept exists in Build Tracker either.
             var cm = new ContextMenu();
 
-            // 1. Label workflow: Mark Complete (Ready for Review)
-            var miToggle = new MenuItem { Header = issue.IsComplete ? "Remove 'complete' label" : "✓ Mark Complete (Ready for Review)" };
-            miToggle.Click += async (s, e) =>
-            {
-                if (_api == null) return;
-                try
-                {
-                    await _api.ToggleLabelAsync(issue.IssueNumber, "complete", !issue.IsComplete);
-                    ActivityLog.Log("git-board.label", $"#{issue.IssueNumber} complete label -> {!issue.IsComplete}");
-                    ToastEngine.Success("Git Board", $"Issue #{issue.IssueNumber} marked {(issue.IsComplete ? "incomplete" : "complete (Ready for Review)")}.");
-                }
-                catch (Exception ex)
-                {
-                    ActivityLog.Log("git-board.label", $"#{issue.IssueNumber} label toggle FAILED: {ex.Message}");
-                    ToastEngine.Error("Git Board", $"Couldn't toggle complete label on #{issue.IssueNumber}: {ex.Message}");
-                    return;
-                }
-                _lastInProgressSignature = null;
-                PopulateGitTrackerBoard(forceFresh: true);
-            };
-            cm.Items.Add(miToggle);
-
-            // 2. Real GitHub Issue State: Close Issue / Reopen Issue
+            // 1. Real GitHub Issue State: Close Issue / Reopen Issue
             var miState = new MenuItem { Header = issue.Status == "CLOSED" ? "↩ Reopen Issue" : "✕ Close Issue" };
             miState.Click += async (s, e) =>
             {

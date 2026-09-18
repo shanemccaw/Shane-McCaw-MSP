@@ -45,7 +45,6 @@ namespace BuildConsole.Services
     /// direct-Postgres now, same reasoning as everything else above: BuildConsole is
     /// Shane's own app and shouldn't need a live, correctly-tokened server round-trip
     /// just to click Queue or Cancel. The API server still handles:
-    ///   • ToggleLabelAsync — a GitHub label mutation, not a queue-row mutation.
     ///   • BuildQueuePanel's display (GetQueueAsync / GetQueueCachedAsync) — those
     ///     reads are still HTTP because they also join GitHub blocker state that the
     ///     server resolves; the direct Postgres reads here only support the watcher's
@@ -1466,23 +1465,9 @@ namespace BuildConsole.Services
                 row = MapRow(reader);
             }
 
-            // Fire-and-forget, non-fatal — mirrors the server's own "queue action must
-            // never be delayed or failed by a label sync" stance. Git #1638 — skipped for a
-            // Park: a parked item isn't being worked yet, so it shouldn't flip the issue to
-            // "in-flight" until it's actually un-parked into the real queue.
-            if (githubNumber.HasValue && !park)
-            {
-                var num = githubNumber.Value;
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        await GitHubIssuesService.AddLabelAsync(num, "in-flight");
-                        await GitHubIssuesService.RemoveLabelAsync(num, "complete");
-                    }
-                    catch { /* non-fatal, matches server behavior */ }
-                });
-            }
+            // Git #4694 — no GitHub label write on queue: the "in-flight"/"complete" labels are
+            // retired. In-flight is read from this local queue (LocalQueueActivity), done from the
+            // issue's real closed state.
 
             if (row == null)
                 throw new InvalidOperationException("QueueBuildAsync: INSERT ... RETURNING produced no row.");
@@ -2564,37 +2549,15 @@ namespace BuildConsole.Services
         public async Task<bool> UnparkAsync(int id)
         {
             await using var conn = await OpenAsync();
-            int? num = null;
-            await using (var cmd = new NpgsqlCommand(@"
+            await using var cmd = new NpgsqlCommand(@"
                 UPDATE bt_build_queue
                    SET status     = 'queued',
                        updated_at = NOW()
                  WHERE id     = @id
-                   AND status = 'parked'
-                RETURNING github_number", conn))
-            {
-                cmd.Parameters.AddWithValue("@id", id);
-                await using var reader = await cmd.ExecuteReaderAsync();
-                if (!await reader.ReadAsync()) return false;
-                if (!reader.IsDBNull(0)) num = reader.GetInt32(0);
-            }
-
-            // Same fire-and-forget label sync QueueBuildAsync does on a real queue —
-            // un-parking is the moment this issue actually becomes in-flight work.
-            if (num.HasValue)
-            {
-                var n = num.Value;
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        await GitHubIssuesService.AddLabelAsync(n, "in-flight");
-                        await GitHubIssuesService.RemoveLabelAsync(n, "complete");
-                    }
-                    catch { /* non-fatal, matches QueueBuildAsync's own stance */ }
-                });
-            }
-            return true;
+                   AND status = 'parked'", conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            var rowsAffected = await cmd.ExecuteNonQueryAsync();
+            return rowsAffected > 0;
         }
 
         // ── ParkAsync (Git #1832) ────────────────────────────────────────────────
@@ -2616,12 +2579,9 @@ namespace BuildConsole.Services
         /// which also stops the process and preserves the session for resume — see
         /// that method's own doc for why it's a separate path, not folded in here.
         ///
-        /// No label sync here, unlike UnparkAsync — this deliberately mirrors
-        /// QueueBuildAsync's own stance (see its `!park` guard above): a parked item
-        /// isn't in-flight work, but it also isn't "complete", so there's no label
-        /// transition that correctly describes "actively queued -> staged, not
-        /// forgotten." The in-flight label it already carries from being queued
-        /// stays as-is; Un-park is what re-affirms in-flight when real work resumes.
+        /// No GitHub label write here or in UnparkAsync / QueueBuildAsync (Git #4694 — the
+        /// "in-flight"/"complete" labels are retired; a parked row simply isn't a
+        /// queued/running row, which is all LocalQueueActivity looks at).
         /// </summary>
         public async Task<bool> ParkAsync(int id)
         {

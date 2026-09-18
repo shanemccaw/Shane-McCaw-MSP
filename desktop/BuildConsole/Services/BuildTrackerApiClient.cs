@@ -764,9 +764,6 @@ namespace BuildConsole.Services
             return await res.Content.ReadFromJsonAsync<QueueItem>(JsonOpts) ?? throw new HttpRequestException("Empty response");
         });
 
-        public Task<HttpResponseMessage> ToggleLabelAsync(int number, string label, bool add) =>
-            TrackAsync($"POST toggle-label #{number} {label}={add}", () => _http.PostAsJsonAsync("api/admin/build-tracker/extension/toggle-label", new { number, label, add }));
-
         private class QueueResponse { public List<QueueItem> Items { get; set; } = new(); }
         private class InProgressResponse { [JsonPropertyName("issues")] public List<InProgressItem> Issues { get; set; } = new(); }
     }
