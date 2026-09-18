@@ -4255,7 +4255,7 @@ namespace BuildConsole.Controls
                         return;
                     }
 
-                    string text = string.Join("\n", toSend.Select(n => $"Git {FormatIssueRef(n)} — landed"));
+                    string text = CloseReminderLine + string.Join("\n", toSend.Select(n => $"Git {FormatIssueRef(n)} — landed"));
                     ActivityLog.Log("build-queue.rollup-send-to-chat", $"epic-aggregate-send-clicked: {key.Label}, {toSend.Count} verified landed item(s) across {snapshot.Count} build set(s)" + (heldBack.Count > 0 ? $", {heldBack.Count} held back as needs-attention" : ""));
                     SendBuildSetVerifyingRequested?.Invoke(this, new SendBuildSetVerifyingEventArgs(key.Label, text, (msg, isError) =>
                     {
@@ -4855,7 +4855,7 @@ namespace BuildConsole.Controls
                         return;
                     }
 
-                    string text = string.Join("\n", toSend.Select(n => $"Git {FormatIssueRef(n)} — landed"));
+                    string text = CloseReminderLine + string.Join("\n", toSend.Select(n => $"Git {FormatIssueRef(n)} — landed"));
                     ActivityLog.Log("build-queue.rollup-send-to-chat", $"send-clicked: {buildSetKey}, {toSend.Count} verified landed item(s)" + (heldBack.Count > 0 ? $", {heldBack.Count} held back as needs-attention" : ""));
                     SendBuildSetVerifyingRequested?.Invoke(this, new SendBuildSetVerifyingEventArgs(buildSetKey, text, (msg, isError) =>
                     {
