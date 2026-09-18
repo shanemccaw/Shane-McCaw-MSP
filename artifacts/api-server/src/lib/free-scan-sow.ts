@@ -48,14 +48,16 @@
  * the Copilot pillar treated the same way, against the real
  * `COPILOT_GATE_THRESHOLD`.
  *
- * ── What this file deliberately does NOT produce ──────────────────────────────
- * A licence-uplift ("the E5 uplift for N users") dollar figure. Nothing in this
- * platform computes one: `licenseGapPurchase` (#489) resolves WHICH categories
- * are gapped and which add-on answers them, not the cost of moving a named
- * population onto E5. The Commercial Terms section omits that row rather than
- * approximating it — the same "named rather than faked" stance
- * `PILLAR_UNPRODUCIBLE_STATS` takes in pillar-summary-stats.ts. Filed as a real
- * finding; see the issue trail on #1374.
+ * ── The licence-uplift row (Git #4316/#4580) ──────────────────────────────────
+ * "New licence budget" and "Net year one impact" are sourced from
+ * `resolveLicenseUpliftCost` (license-waste-source.ts, #4580), one call per
+ * category `licenseGapPurchase.gappedCategories` (#489) names as gapped, at the
+ * SKU `LICENSE_GAP_CATEGORIES` already maps that category to
+ * (license-gap-purchase-links.ts). When a category's SKU carries no
+ * `sku_price_reference` row, or the tenant has no `license_assignment_snapshots`
+ * run at all, that category's contribution is honestly omitted (the resolver
+ * itself logs why) rather than guessed — the same "named rather than faked"
+ * stance `PILLAR_UNPRODUCIBLE_STATS` takes in pillar-summary-stats.ts.
  */
 
 import { db, servicesTable, tenantsTable, monitorChecksTable } from "@workspace/db";
@@ -73,6 +75,8 @@ import { getSignalHealthImpacts } from "./health-engine.ts";
 import { COPILOT_GATE_THRESHOLD } from "./copilot-gate.ts";
 import { resolveTenantMonitoringAddon, resolveArchitectRetainerAddon } from "./sow-monitoring-addon.ts";
 import { resolveServicePriceCents } from "./catalog-pricing.ts";
+import { resolveLicenseUpliftCost } from "./license-waste-source.ts";
+import { LICENSE_GAP_CATEGORIES } from "./license-gap-purchase-links.ts";
 import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -247,6 +251,16 @@ export interface FreeScanSow {
     findingsInScope: number;
     /** Real annual licence waste off the Licensing pillar's own stat, in dollars. */
     annualWasteDollars: number | null;
+    /**
+     * Real annual cost of the licence uplift the gapped categories require, in
+     * dollars — `resolveLicenseUpliftCost` per gapped category with a priced SKU
+     * on file, summed. Null when no gapped category has a priceable SKU (or
+     * there is no licence gap, or no snapshot run to resolve the uplift
+     * population from) — never a guessed figure.
+     */
+    annualLicenceUpliftDollars: number | null;
+    /** Human-readable "the X uplift for N users[, and the Y uplift for M users]" — null with the figure above. */
+    licenceUpliftDetail: string | null;
     phasesSelected: number;
     phaseCount: number;
     weeksToCertification: number;
@@ -589,6 +603,25 @@ export async function buildFreeScanSow(
   const annualWasteStat = licensingCard?.stats.find((s) => s.id === "licensing.annualWaste");
   const annualWasteDollars = typeof annualWasteStat?.value === "number" ? annualWasteStat.value : null;
 
+  // ── Licence uplift (Git #4316/#4580) — real, per gapped category ────────────
+  const upliftParts: Array<{ skuName: string; users: number; annualCents: number }> = [];
+  if (tenantRow?.tenantId && summary.licenseGapPurchase) {
+    for (const categoryKey of summary.licenseGapPurchase.gappedCategories) {
+      const category = LICENSE_GAP_CATEGORIES[categoryKey];
+      const skuPartNumber = category.sku.skuPartNumber;
+      if (!skuPartNumber) continue;
+      const uplift = await resolveLicenseUpliftCost(tenantRow.tenantId, skuPartNumber);
+      if (!uplift || uplift.upliftUserCount === 0) continue;
+      upliftParts.push({ skuName: category.sku.name, users: uplift.upliftUserCount, annualCents: uplift.annualUpliftCents });
+    }
+  }
+  const annualLicenceUpliftDollars =
+    upliftParts.length > 0 ? Math.round(upliftParts.reduce((sum, p) => sum + p.annualCents, 0) / 100) : null;
+  const licenceUpliftDetail =
+    upliftParts.length > 0
+      ? upliftParts.map((p) => `the ${p.skuName} uplift for ${p.users} user${p.users === 1 ? "" : "s"}`).join(" and ")
+      : null;
+
   const scanGeneratedAt = summary.generatedAt ? new Date(summary.generatedAt) : new Date();
   const daysSinceScan = Math.max(0, Math.floor((Date.now() - scanGeneratedAt.getTime()) / 86_400_000));
   const quoteValidUntil = new Date(scanGeneratedAt.getTime() + QUOTE_VALIDITY_DAYS * 86_400_000);
@@ -639,6 +672,8 @@ export async function buildFreeScanSow(
         criticalFindings,
         findingsInScope,
         annualWasteDollars,
+        annualLicenceUpliftDollars,
+        licenceUpliftDetail,
         phasesSelected: selectedPhases.length,
         phaseCount: FREE_SCAN_SOW_PHASES.length,
         weeksToCertification: schedule.totalWeeks,

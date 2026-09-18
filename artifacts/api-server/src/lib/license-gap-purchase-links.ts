@@ -77,24 +77,37 @@ export interface LicenseGapSku {
   /** The SKU's own name, as Microsoft's page spells it. */
   readonly name: string;
   readonly url: string;
+  /**
+   * The real `sku_price_reference.sku_part_number` this SKU prices against, for
+   * `resolveLicenseUpliftCost` (Git #4316/#4580) — null when this platform has no
+   * priced part number on file for it yet, in which case the uplift resolver
+   * honestly returns null rather than guessing a price.
+   */
+  readonly skuPartNumber: string | null;
 }
 
 export const ENTRA_ID_P2: LicenseGapSku = {
   key: "entra-id-p2",
   name: "Microsoft Entra ID P2",
   url: "https://www.microsoft.com/en-us/security/business/microsoft-entra-pricing",
+  skuPartNumber: "AAD_PREMIUM_P2",
 };
 
 export const DEFENDER_FOR_OFFICE_365: LicenseGapSku = {
   key: "defender-for-office-365",
   name: "Microsoft Defender for Office 365",
   url: "https://www.microsoft.com/en-us/security/business/siem-and-xdr/microsoft-defender-office-365",
+  skuPartNumber: "ATP_ENTERPRISE",
 };
 
 export const PURVIEW_SUITE: LicenseGapSku = {
   key: "purview-suite",
   name: "Microsoft Purview Suite",
   url: "https://www.microsoft.com/en-us/security/business/purview-suite-pricing",
+  // No `sku_price_reference` row exists for the Purview Suite yet (confirmed
+  // 2026-09-17) — the uplift resolver returns null for this category rather
+  // than guessing a price.
+  skuPartNumber: null,
 };
 
 /**
@@ -112,6 +125,10 @@ export const MICROSOFT_365_E7: LicenseGapSku = {
   key: "microsoft-365-e7",
   name: "Microsoft 365 E7",
   url: "https://www.microsoft.com/en-us/microsoft-365/enterprise/microsoft365-plans-and-pricing",
+  // Not priced against `sku_price_reference` — the uplift resolver is only ever
+  // called per-category (identity/mailSecurity/compliance), never against this
+  // tier-3 consolidation.
+  skuPartNumber: null,
 };
 
 /**

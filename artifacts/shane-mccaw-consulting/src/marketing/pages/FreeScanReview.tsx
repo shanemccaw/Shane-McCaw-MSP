@@ -120,6 +120,8 @@ interface Sow {
     criticalFindings: number;
     findingsInScope: number;
     annualWasteDollars: number | null;
+    annualLicenceUpliftDollars: number | null;
+    licenceUpliftDetail: string | null;
     phasesSelected: number;
     phaseCount: number;
     weeksToCertification: number;
@@ -855,6 +857,13 @@ export default function FreeScanReview() {
               <h2 style={H2}>4 · Commercial Terms</h2>
               <div style={TABLE}>
                 <Row label="Professional services" tone="#f8fafc" value={`${money(planTotalCents)} fixed fee, phase by phase`} />
+                {t.annualLicenceUpliftDollars !== null && (
+                  <Row
+                    label="New licence budget"
+                    tone="#fbbf24"
+                    value={`${moneyDollars(t.annualLicenceUpliftDollars)} — ${t.licenceUpliftDetail}, offset by reclaimed licence waste`}
+                  />
+                )}
                 {t.annualWasteDollars !== null && (
                   <Row
                     label="Licence waste recovered"
@@ -865,9 +874,13 @@ export default function FreeScanReview() {
                 {t.annualWasteDollars !== null && (
                   <Row
                     label="Net year one impact"
-                    value={`${moneyDollars(t.annualWasteDollars - Math.round(planTotalCents / 100))} net, after ${moneyDollars(
-                      t.annualWasteDollars,
-                    )} of recovered licence waste`}
+                    value={`${moneyDollars(
+                      t.annualWasteDollars - Math.round(planTotalCents / 100) - (t.annualLicenceUpliftDollars ?? 0),
+                    )} net, after ${moneyDollars(t.annualWasteDollars)} of recovered licence waste${
+                      t.annualLicenceUpliftDollars !== null
+                        ? ` and ${moneyDollars(t.annualLicenceUpliftDollars)} of new licence budget`
+                        : ""
+                    }`}
                   />
                 )}
                 <Row
