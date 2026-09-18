@@ -566,6 +566,20 @@ router.post("/public/purchase/payment-intent", async (req: Request, res: Respons
       { idempotencyKey: `buy-purchase-flow:pi:${order.sessionId}:${intentShape}` },
     );
 
+    // On an idempotent-key replay, Stripe returns the SAVED response of the
+    // original create call, not the intent's live state (#4476) — a buyer who
+    // paid and reloaded before /payment-confirmed landed would see the intent
+    // frozen at "requires_payment_method" forever, and alreadyPaid could never
+    // become true. Stripe marks a replayed response with the
+    // Idempotent-Replayed response header; only then is a live re-read needed,
+    // so the normal (non-replay) path stays a single Stripe call.
+    const isReplay = intent.lastResponse.headers["idempotent-replayed"] === "true";
+    let liveStatus = intent.status;
+    if (isReplay) {
+      const live = await stripe.paymentIntents.retrieve(intent.id);
+      liveStatus = live.status;
+    }
+
     log.info(
       {
         checkoutSessionId: order.sessionId,
@@ -575,6 +589,8 @@ router.post("/public/purchase/payment-intent", async (req: Request, res: Respons
         seats: order.seats,
         itemCount: order.items.length,
         status: intent.status,
+        isReplay,
+        liveStatus,
         stripeCustomerId: customerId,
       },
       "purchase payment: PaymentIntent ready",
@@ -592,7 +608,7 @@ router.post("/public/purchase/payment-intent", async (req: Request, res: Respons
       lineItems: order.items.map(({ slug, name, amountCents }) => ({ slug, name, amountCents })),
       // A recovered, already-succeeded intent (buyer paid, then reloaded before
       // the confirm callback landed) — the client skips straight to confirming.
-      alreadyPaid: intent.status === "succeeded",
+      alreadyPaid: liveStatus === "succeeded",
     });
   } catch (err) {
     log.error({ err, checkoutSessionId: order.sessionId }, "purchase payment: PaymentIntent creation failed");
