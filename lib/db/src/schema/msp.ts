@@ -8326,6 +8326,16 @@ export const portalHoldWindowsTable = pgTable("portal_hold_windows", {
   runId: integer("run_id").references(() => portalRunbookRunsTable.id, { onDelete: "cascade" }),
   /** Stable key from the design, e.g. "hold-ca01". */
   holdKey: text("hold_key").notNull(),
+  /**
+   * The Conditional Access policy this window observes, when it gates one
+   * (Entra `identity/conditionalAccess/policies/{id}`). Nullable: not every
+   * hold window is CA-gated — the design's own examples also include a
+   * SharePoint site-admin notice period and a guest-access confirmation
+   * window, neither of which has a CA policy to scan (#4550). A window
+   * carrying one is what the hourly CA Policy Hold Window Scan
+   * (ca-hold-window-scan.ts) rescans via the real #4522 evaluator.
+   */
+  policyId: text("policy_id"),
   title: text("title").notNull(),
   /** The prose the card shows, e.g. "Gates step 4 — enforce CA01 and block legacy authentication". */
   gates: text("gates").notNull(),
@@ -8388,6 +8398,7 @@ export const portalHoldWindowsTable = pgTable("portal_hold_windows", {
   index("portal_hold_windows_runbook_id_idx").on(t.runbookId),
   index("portal_hold_windows_run_id_idx").on(t.runId),
   uniqueIndex("portal_hold_windows_customer_key_idx").on(t.customerId, t.holdKey),
+  index("portal_hold_windows_policy_id_idx").on(t.policyId),
 ]);
 
 export type PortalHoldWindow = typeof portalHoldWindowsTable.$inferSelect;

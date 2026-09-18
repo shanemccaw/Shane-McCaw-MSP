@@ -1152,6 +1152,43 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
       ],
     },
   },
+  // ── CA Policy Hold Window Scan (Git #4550) ────────────────────────────────
+  //
+  // #4522 built the real report-only impact evaluator (evaluateCaPolicyImpact)
+  // but wired it to exactly one caller — the MSP-operator on-demand read
+  // endpoint, which returns the result to the browser and discards it.
+  // Nothing ever wrote it to portal_hold_windows, the table the CUSTOMER-
+  // facing Runbooks page actually reads for its scan_verdict/scan_line card
+  // — so a report-only policy's real impact never reached the customer.
+  // This sweep closes that: hourly (matching the column's own scan_cadence
+  // default and the established #1163 hourly-reconciliation convention), it
+  // rescans every open hold window that names a CA policy (policy_id) and
+  // writes a real, data-derived verdict.
+  {
+    name: "__system__: CA Policy Hold Window Scan",
+    description:
+      "Hourly sweep (Git #4550) of every open, CA-policy-gated hold window (portal_hold_windows.policy_id) " +
+      "across every tenant. Re-runs the real #4522 evaluator (evaluateCaPolicyImpact — GET " +
+      "/auditLogs/signIns report-only outcomes) for each and writes scan_verdict/scan_line/scan_at, so the " +
+      "customer-facing Runbooks hold-window card (portal_hold_windows -> portal-runbook-wire.ts -> " +
+      "GET /portal/runbooks) reflects real report-only impact instead of never being written at all. A " +
+      "read that cannot be verified (consent revoked, license gap, Graph error, policy no longer exists) " +
+      "is written honestly as 'watch' with the real reason in scan_line, not skipped.",
+    triggerType: "schedule",
+    cron: "0 * * * *", // Hourly
+    triggerEnabled: true,
+    graph: {
+      nodes: [
+        { id: "start", type: "start", position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Cron hourly" } },
+        { id: "scan", type: "ca_policy_hold_window_scan", position: { x: 100, y: 230 }, data: { nodeType: "ca_policy_hold_window_scan", label: "Scan CA-Gated Hold Windows (all tenants)" } },
+        { id: "end", type: "end", position: { x: 100, y: 360 }, data: { nodeType: "end", label: "Done" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "scan" },
+        { id: "e2", source: "scan", target: "end" },
+      ],
+    },
+  },
   {
     name: "__system__: Workflow Cleanup",
     description: "Nightly job (03:00 UTC) that deletes workflow runs older than 90 days.",

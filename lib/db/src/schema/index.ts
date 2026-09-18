@@ -3567,6 +3567,7 @@ export interface WfNode {
     | "msp_overage_meter"
     | "alert_evaluate_rules"
     | "policy_evaluate_due"
+    | "ca_policy_hold_window_scan"
     // Notifications & Alerts
     | "send_browser_notification"
     | "send_mobile_push"

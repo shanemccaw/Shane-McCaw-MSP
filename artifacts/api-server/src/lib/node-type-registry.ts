@@ -771,6 +771,11 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     description: "Policy Engine continuous-evaluation reconciliation pass (#1549) — deterministic Graph reads, no AI",
   },
   {
+    nodeType: "ca_policy_hold_window_scan",
+    isAIDependent: false,
+    description: "Rescans open CA-policy-gated hold windows via the #4522 report-only impact evaluator and writes scan_verdict/scan_line (#4550) — deterministic Graph reads, no AI",
+  },
+  {
     nodeType: "azure_credential_expiry_check",
     isAIDependent: false,
     description: "Azure Tenant Credential expiry-alert email sweep (#3861) — deterministic Key Vault metadata reads + Exchange Online send, no AI",

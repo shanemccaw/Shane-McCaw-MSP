@@ -119,6 +119,7 @@ import { handleMspDunningAdvance, handleMspOverageMeter } from "./msp-billing-no
 import { handleMspScoreSnapshot } from "./msp-engine.ts";
 import { handleM365HealthSample } from "./m365-health-sample.ts";
 import { handlePolicyEvaluateDue } from "./policy-engine-nodes.ts";
+import { handleCaPolicyHoldWindowScan } from "./ca-hold-window-scan.ts";
 import { handleAzureCredentialExpiryAlert } from "./azure-credential-expiry-alert.ts";
 import { handleM365RoadmapSync } from "./m365-roadmap-sync.ts";
 import { handleM365RouteChanges } from "./m365-change-router.ts";
@@ -2344,6 +2345,9 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
 
     case "policy_evaluate_due":
       return { dryRun: true, policiesConsidered: 0, note: "dry run — policy engine continuous evaluation pass skipped" };
+
+    case "ca_policy_hold_window_scan":
+      return { dryRun: true, windowsConsidered: 0, note: "dry run — CA policy hold window scan skipped" };
 
     case "monitor_subscription_ensure": {
       const mseContentTypeDry = (node.data.contentType as string | undefined) ?? "Audit.AzureActiveDirectory";
@@ -7373,6 +7377,16 @@ Return ONLY a JSON object with these exact keys (no prose outside the JSON):
         // msp-standing-policies.ts's fireWorkflowsForEvent call, scope = one
         // tenant). Same node, same handler, both real Workflow Engine runs.
         output = await handlePolicyEvaluateDue(node.data as Record<string, unknown>, payload) as unknown as Record<string, unknown>;
+        break;
+      }
+
+      case "ca_policy_hold_window_scan": {
+        // Promoted node type (#4550): rescans every open, CA-policy-gated hold
+        // window (portal_hold_windows.policy_id) via the real #4522 evaluator
+        // and writes scan_verdict/scan_line/scan_at — the write side of the
+        // gap #4550 found (the evaluator existed and was read live by MSP
+        // operators, but nothing persisted it for the customer-facing card).
+        output = await handleCaPolicyHoldWindowScan(node.data as Record<string, unknown>, payload) as unknown as Record<string, unknown>;
         break;
       }
 
