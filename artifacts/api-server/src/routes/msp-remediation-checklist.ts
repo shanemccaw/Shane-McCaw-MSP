@@ -48,6 +48,7 @@ import { buildRaiseChangeRequestInputForChecklistItem } from "../lib/remediation
 import { raiseChangeRequest, RaiseChangeRequestError } from "../lib/portal-change-control-raise.ts";
 import { resolveTenantScope } from "../lib/portal-customer-scope.ts";
 import { declineRemediationChecklistItemToRisk } from "../lib/remediation-tracker-risk-decline.ts";
+import { executeRemediationChecklistFix } from "../lib/remediation-execute-fix.ts";
 import { auditPrivilegedRead, resolveAuditActorRole } from "../lib/audit.ts";
 
 const log = logger.child({ channel: "engine.remediation-tracker" });
@@ -252,6 +253,42 @@ router.post(
       }
       log.error({ err, customerId, checkKey }, "POST /msp/customers/:customerId/remediation/checklist/:checkKey/raise-change failed");
       res.status(500).json({ error: "Failed to raise the change request" });
+    }
+  },
+);
+
+// ── Execute the fix for a `we_can_run` checklist item (#4587) ────────────────
+//
+// The real write-execution the "execute" affordance (fix route `we_can_run`)
+// has, until now, had nowhere to go — it extends the proven M365 Launch Control
+// pattern (raise a pre-approved CR → runBaselineTemplateAgainstTenant → record
+// the write_action + close the CR), keyed by the finding's own checkKey rather
+// than a write_action_catalog row. Testbed-only for this first pass (resolved on
+// #4587). MSP-operator floor, the direct parallel to Launch Control's own gate;
+// every other pre-write gate lives in `lib/remediation-execute-fix.ts`.
+router.post(
+  "/msp/customers/:customerId/remediation/checklist/:checkKey/execute",
+  requireCapability("ladder.msp-operator"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = await resolveAuthorizedCustomerId(req, res);
+    if (customerId === null) return;
+
+    const checkKey = String(req.params.checkKey ?? "");
+    const variables =
+      req.body && typeof req.body === "object" ? (req.body as { variables?: Record<string, string> }).variables : undefined;
+
+    try {
+      const outcome = await executeRemediationChecklistFix({
+        customerId,
+        checkKey,
+        actor: { email: req.user?.email ?? null, id: typeof req.user?.id === "number" ? req.user.id : null },
+        variables,
+      });
+      log.info({ customerId, checkKey, httpStatus: outcome.httpStatus }, "MSP-side remediation checklist item execute");
+      res.status(outcome.httpStatus).json(outcome.body);
+    } catch (err) {
+      log.error({ err, customerId, checkKey }, "POST /msp/customers/:customerId/remediation/checklist/:checkKey/execute failed");
+      res.status(500).json({ error: "Failed to execute the remediation fix" });
     }
   },
 );
