@@ -538,9 +538,12 @@ export const PILLAR_STAT_SPECS: Record<PillarSummaryKey, readonly PillarStatSpec
   ],
 
   // The design's security tiles. `identity:ca-policy-count` is real and IS in
-  // this tenant's scan, but its stored row is a gate-skipped Security Defaults
-  // object carrying no count field — so this tile honestly reads unavailable
-  // rather than asserting a zero the check never measured. Filed as a finding.
+  // this tenant's scan. On a tenant using Security Defaults instead of
+  // Conditional Access, the gate-skipped path (monitor-executor.ts, #4576)
+  // stamps an explicit `caPolicyCount: 0` plus `securityDefaultsEnabled: true`
+  // on that row — a real, honest zero (Security Defaults genuinely means no CA
+  // policies exist), not a fabricated one. `statFromCheckObservation` surfaces
+  // the `securityDefaultsEnabled` reason as the tile's sub-caption.
   security: [
     { id: "security.caPolicies", label: "Conditional Access policies", unit: "count",
       source: { kind: "check", checkKey: "identity:ca-policy-count", valueField: "caPolicyCount" },
@@ -782,6 +785,17 @@ export function statFromCheckObservation(
     }
   } else if (spec.subTemplate && !denominatorField) {
     sub = spec.subTemplate;
+  }
+
+  // #4576 — the gate-skipped path on `identity:ca-policy-count` stamps this
+  // flag when Security Defaults, not Conditional Access, is what the tenant
+  // actually runs. That is WHY the value is a real 0, and a customer reading
+  // "0 CA policies" with no explanation would reasonably read it as a gap
+  // rather than the honest, different-but-equivalent posture it is. Overrides
+  // any template-driven sub — the two are mutually exclusive in practice,
+  // since a gate-skipped row carries no denominator field either.
+  if (observation.props.securityDefaultsEnabled === true) {
+    sub = "This tenant uses Security Defaults instead of Conditional Access";
   }
 
   return sub ? { ...base, value, sub } : { ...base, value };

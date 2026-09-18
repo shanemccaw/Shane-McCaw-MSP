@@ -3922,6 +3922,18 @@ export async function executeMonitorCheck(opts: {
           }
         }
 
+        // #4576 — `identity:ca-policy-count` specifically (not the other three
+        // checks sharing this Security Defaults gate) needs a real scalar: the
+        // gate only skips because Security Defaults is on, which genuinely means
+        // zero Conditional Access policies exist, not "we couldn't count them."
+        // Stamped explicitly rather than left for the tile to infer from
+        // `_gateSkipped` alone, so a consumer can read a real number plus the
+        // real reason without re-deriving either from the raw policy object.
+        const gateSkippedExtras: Record<string, unknown> =
+          check.key === "identity:ca-policy-count"
+            ? { caPolicyCount: 0, securityDefaultsEnabled: true }
+            : {};
+
         const profileId = await persistCheckProfile(persistProfile, {
           tenantId,
           checkKey: check.key,
@@ -3930,7 +3942,7 @@ export async function executeMonitorCheck(opts: {
           idempotencyKey,
           status: "ok",
           rawResponse: gateData,
-          extractedProperties: { _gateSkipped: true, ...gateData },
+          extractedProperties: { _gateSkipped: true, ...gateData, ...gateSkippedExtras },
           severityMatched: null,
           itemCount: 0,
           pageCount: 1,
@@ -3939,7 +3951,7 @@ export async function executeMonitorCheck(opts: {
         return {
           checkKey: check.key,
           status: "ok",
-          extractedProperties: { _gateSkipped: true, ...gateData },
+          extractedProperties: { _gateSkipped: true, ...gateData, ...gateSkippedExtras },
           severityMatched: null,
           itemCount: 0,
           pageCount: 1,
