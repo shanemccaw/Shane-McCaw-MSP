@@ -997,16 +997,17 @@ namespace BuildConsole.Services
         noteCard.style.left = Math.round(leftPos) + 'px';
         noteCard.style.display = 'block';
 
-        // Git #4447 — deliberately NOT auto-focusing cardInput here. This card lives inside the
-        // WebView2's own native HWND; the host app (TestModeDiagnosticsPanel.OnDomElementInspected)
-        // separately, asynchronously focuses its own TxtDomComment box in response to the
-        // VTT_DOM_INSPECT message posted below. Both used to race for real OS keyboard focus with
-        // no coordination between them, since only one HWND can hold it at a time — a delayed
-        // .focus() here could silently steal focus back into the browser mid-keystroke, away from
-        // wherever the user (or the host's own deterministic focus call) had it, which is what made
-        // Ctrl+Enter/Enter land somewhere with no submit handler instead of saving the bug. The host
-        // side is now the single authority for auto-focus; a user who wants to type directly into
-        // this card can still click into it normally.
+        // Git #4450 — focus the card so the user can type straight away, no extra click.
+        // The native mouse-down that triggered this click already gave the WebView2 real OS keyboard
+        // focus (this script only intercepts `click`, never `mousedown`), so only the page-level
+        // activeElement needs to move here. #4447 removed an earlier version of this call because it
+        // raced the host-side TxtDomComment.Focus() that TestModeDiagnosticsPanel fired on the same
+        // click; that rail box no longer exists, so nothing else claims focus on inspect and this is
+        // the single focus authority. Guarded on isLocked so a card dismissed within the delay is not
+        // focused after the fact.
+        setTimeout(function() {
+            if (cardInput && isLocked) cardInput.focus({ preventScroll: true });
+        }, 30);
 
         if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
             window.chrome.webview.postMessage(JSON.stringify({
