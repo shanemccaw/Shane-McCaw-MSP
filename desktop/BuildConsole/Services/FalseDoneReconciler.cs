@@ -75,7 +75,7 @@ namespace BuildConsole.Services
             var actions = new List<ReconciliationNotice>();
             if (db == null) return new ReconciliationResult(0, actions);
 
-            List<(int Id, int GithubNumber, string Status)> candidateRows;
+            List<(int Id, int GithubNumber, string Status, string OwnerRepo)> candidateRows;
             try
             {
                 candidateRows = await db.GetDoneOrVerifyingGithubRowsAsync();
@@ -90,18 +90,22 @@ namespace BuildConsole.Services
             int reconciled = 0;
 
             // ── Shape A (Git #2685/#2775): rows whose origin/main bookend says BLOCKED ──────────────────
-            HashSet<int> blocked;
+            // Git #4681 — the bookend is read from each row's OWN tracking repo's checkout (with the other
+            // configured repos consulted when that one holds none), not always this instance's own, so a
+            // cross-repo (M365Architect) BLOCKED bookend is finally visible here. Results are keyed by ROW id
+            // (not issue number): the same number can be two unrelated issues in two repos.
+            HashSet<int> blockedRowIds;
             try
             {
-                blocked = await DoneBookendVerifier.GetBlockedAsync(candidateRows.Select(r => r.GithubNumber).Distinct());
+                blockedRowIds = await RowIdsMatchingAsync(candidateRows, DoneBookendVerifier.GetBlockedAsync);
             }
             catch (Exception ex)
             {
                 log($"Git #2685/#2775 false-done reconcile: bookend check failed: {ex.Message}");
-                blocked = new HashSet<int>();
+                blockedRowIds = new HashSet<int>();
             }
 
-            foreach (var row in candidateRows.Where(r => blocked.Contains(r.GithubNumber)))
+            foreach (var row in candidateRows.Where(r => blockedRowIds.Contains(r.Id)))
             {
                 try
                 {
@@ -246,7 +250,7 @@ namespace BuildConsole.Services
 
             var doneOpenRows = candidateRows
                 .Where(r => string.Equals(r.Status, "done", StringComparison.OrdinalIgnoreCase)
-                            && !blocked.Contains(r.GithubNumber)
+                            && !blockedRowIds.Contains(r.Id)
                             && open.Contains(r.GithubNumber))
                 .ToList();
             if (doneOpenRows.Count == 0)
@@ -254,10 +258,13 @@ namespace BuildConsole.Services
 
             // The subset whose real work genuinely landed (git-verified DONE bookend). Everything else in
             // doneOpenRows had no proof of landed work and is re-dispatched.
-            HashSet<int> verifiedDone;
+            // Git #4681 — same per-row-repo bookend read as Shape A above. Without it a `done` row whose
+            // work genuinely landed in another repo (M365Architect) read as "no bookend" here and was reset
+            // to `canceled` (re-dispatchable) — a wrongful re-run of completed work.
+            HashSet<int> verifiedDoneRowIds;
             try
             {
-                verifiedDone = await DoneBookendVerifier.GetSatisfiedAsync(doneOpenRows.Select(r => r.GithubNumber).Distinct());
+                verifiedDoneRowIds = await RowIdsMatchingAsync(doneOpenRows, DoneBookendVerifier.GetSatisfiedAsync);
             }
             catch (Exception ex)
             {
@@ -269,7 +276,7 @@ namespace BuildConsole.Services
             {
                 try
                 {
-                    if (verifiedDone.Contains(row.GithubNumber))
+                    if (verifiedDoneRowIds.Contains(row.Id))
                     {
                         // Work really landed; the issue simply was not actually closed. Honest state is
                         // verifying (visible, awaiting Shane's close) — NOT re-dispatch of completed work.
@@ -321,6 +328,27 @@ namespace BuildConsole.Services
             }
 
             return new ReconciliationResult(reconciled, actions);
+        }
+
+        /// <summary>
+        /// Git #4681 — runs one bookend <paramref name="verify"/> call (<see cref="DoneBookendVerifier.GetBlockedAsync"/>
+        /// or <see cref="DoneBookendVerifier.GetSatisfiedAsync"/>) per tracking repo represented in
+        /// <paramref name="rows"/>, passing that repo as the verifier's <c>ownerRepo</c> hint, and returns the
+        /// ids of the ROWS whose issue number the verifier reported. Keyed by row id, never by issue number:
+        /// two repos can each have an issue #N, and only the one in the row's own repo may match.
+        /// </summary>
+        private static async Task<HashSet<int>> RowIdsMatchingAsync(
+            IEnumerable<(int Id, int GithubNumber, string Status, string OwnerRepo)> rows,
+            Func<IEnumerable<int>, string?, Task<HashSet<int>>> verify)
+        {
+            var matched = new HashSet<int>();
+            foreach (var repoGroup in rows.GroupBy(r => r.OwnerRepo, StringComparer.OrdinalIgnoreCase))
+            {
+                var hits = await verify(repoGroup.Select(r => r.GithubNumber).Distinct().ToList(), repoGroup.Key);
+                foreach (var row in repoGroup)
+                    if (hits.Contains(row.GithubNumber)) matched.Add(row.Id);
+            }
+            return matched;
         }
 
         /// <summary>Git #3607, Rule B — how long a bt_issue_mirror record is trusted before Rule A falls

@@ -615,12 +615,14 @@ namespace BuildConsole.Services
                 // "satisfied anyway" vs "genuinely still blocking" so the card badge matches the live
                 // #1600 launch gate rather than over-reporting BLOCKED on something that will auto-launch.
                 // OpenBlockedByNumbers is preserved as the honest raw open/closed signal.
-                // Git #3582 — DoneBookendVerifier only ever checks THIS instance's own local git clone's
-                // origin/main + build-journal/, so it can only ever be meaningful for the PRIMARY repo's
-                // own blockers; a secondary repo's blocker bookend (if any) lives in that repo's own
-                // clone entirely and is never checked here — real, documented limitation, not a bypass
-                // (an open blocker on a secondary repo simply stays "still blocking" until GitHub itself
-                // reports it closed, never silently treated as satisfied).
+                // Git #3582 — this call passes bare issue numbers, which are only meaningful as THIS
+                // instance's own repo's numbers (the same number can be an unrelated issue in a secondary
+                // repo), so it is scoped to the PRIMARY repo's own blockers. Git #4681 — the verifier can
+                // now read the bookend of a primary-tracked issue from whichever configured repo holds it
+                // (an M365Architect build tracked here); a secondary-TRACKED item's blockers are still not
+                // verified here — real, documented limitation, not a bypass (an open blocker on a
+                // secondary repo simply stays "still blocking" until GitHub itself reports it closed,
+                // never silently treated as satisfied).
                 bool itemIsPrimaryRepo = string.Equals(item.OwnerRepo, primaryOwnerRepo, StringComparison.OrdinalIgnoreCase);
                 var satisfiedByBookend = (itemIsPrimaryRepo && openBlockedByNumbers.Count > 0)
                     ? await DoneBookendVerifier.GetSatisfiedAsync(openBlockedByNumbers)

@@ -604,12 +604,13 @@ namespace BuildConsole.Services
             // verifier itself fails closed on every error, so this can only ever RELEASE work that is
             // provably on origin/main, never work that isn't.
             //
-            // Git #3582 — scoped to the PRIMARY repo's own candidates/blockers only:
-            // DoneBookendVerifier checks THIS instance's own local git clone's origin/main +
-            // build-journal/ exclusively, so it can only ever be meaningful there. A second configured
-            // repo's own bookends (if any) live entirely in that repo's own clone and are never checked
-            // here — a real, documented limitation, not a silent bypass: an open blocker on a secondary
-            // repo simply stays "still blocking" until GitHub itself reports it closed.
+            // Git #3582 — scoped to the PRIMARY repo's own candidates/blockers only: this call passes
+            // bare issue numbers, which are only meaningful as THIS instance's own repo's numbers (the
+            // same number can be an unrelated issue in a secondary repo). Git #4681 — the verifier can
+            // now read the bookend of a primary-tracked issue from whichever configured repo holds it
+            // (an M365Architect build tracked here), but a secondary-TRACKED item's blockers are still
+            // not verified here — a real, documented limitation, not a silent bypass: an open blocker
+            // on a secondary repo simply stays "still blocking" until GitHub itself reports it closed.
             HashSet<int> satisfiedByDoneBookend = new();
             if (liveByRepo.TryGetValue(primaryOwnerRepo, out var primaryLive) && primaryLive.Success)
             {
@@ -1751,20 +1752,25 @@ namespace BuildConsole.Services
         /// returned here — <c>verifying</c> is NOT in <see cref="IsTerminalStatus"/>, so a false
         /// <c>verifying</c> row blocks every dedup dead-check even more silently than a false
         /// <c>done</c> row did.
+        ///
+        /// Git #4681 — also returns each row's own tracking repo (<c>repo_owner/repo_name</c>, the #3579
+        /// dimension), so the reconciler asks the verifier to read the bookend from THAT repo's own
+        /// checkout instead of always this instance's own. Both columns are NOT NULL with the primary
+        /// repo as default, so <see cref="OwnerRepo"/> is never blank.
         /// </summary>
-        public async Task<List<(int Id, int GithubNumber, string Status)>> GetDoneOrVerifyingGithubRowsAsync()
+        public async Task<List<(int Id, int GithubNumber, string Status, string OwnerRepo)>> GetDoneOrVerifyingGithubRowsAsync()
         {
-            var rows = new List<(int, int, string)>();
+            var rows = new List<(int, int, string, string)>();
             await using var conn = await OpenAsync();
             await using var cmd = new NpgsqlCommand(@"
-                SELECT id, github_number, status
+                SELECT id, github_number, status, repo_owner, repo_name
                   FROM bt_build_queue
                  WHERE status IN ('done', @verifyingStatus)
                    AND github_number IS NOT NULL", conn);
             cmd.Parameters.AddWithValue("@verifyingStatus", VerifyingStatus);
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
-                rows.Add((reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2)));
+                rows.Add((reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2), $"{reader.GetString(3)}/{reader.GetString(4)}"));
             return rows;
         }
 
