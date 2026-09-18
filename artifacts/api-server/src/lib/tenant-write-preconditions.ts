@@ -40,6 +40,14 @@ import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.config-pack" });
 
+/** Git #4545 — the one HTTP status mapping for a refusal code, shared by every
+ *  route that surfaces one (previously duplicated per-route). */
+export const PRECONDITION_HTTP_STATUS: Record<string, number> = {
+  license_required: 409,
+  security_defaults_replacement_not_enforcing: 422,
+  ca_enforcement_requires_promotion: 422,
+};
+
 function skuList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((s): s is string => typeof s === "string") : [];
 }

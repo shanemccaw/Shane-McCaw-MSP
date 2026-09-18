@@ -62,6 +62,11 @@ import {
   WriteBackNotEnabledError,
   WriteConsentRequiredError,
 } from "../lib/graph.ts";
+import {
+  loadRequiredLicenseSkuListsByTemplate,
+  resolveTenantWritePreconditionRefusal,
+  PRECONDITION_HTTP_STATUS,
+} from "../lib/tenant-write-preconditions.ts";
 
 const log = logger.child({ channel: "admin.clients" });
 
@@ -417,6 +422,40 @@ router.post("/admin/write-actions/:templateId/execute", requireAdminOrIngestToke
     // The one production execution engine — never a parallel implementation.
     // source:"simulator" tags the audit-log row so history can distinguish it.
     const payload: Record<string, unknown> = { ...(body.variables ?? {}), customerId: gate.customer.id };
+
+    // Git #4545 — the same #4513/#4528 tenant preconditions Config Pack runs,
+    // execute_action and SOP runs already enforce, now here too: the isTestbed
+    // gate above is not a safety net against an unlicensed write or an
+    // unreplaced Security-Defaults-off — mccawsoft2 is also the real
+    // production tenant (#1913).
+    const licenseListsByTemplate = await loadRequiredLicenseSkuListsByTemplate([templateId]);
+    const preconditionRefusal = await resolveTenantWritePreconditionRefusal({
+      packKey: templateId,
+      subject: `Simulator execution of '${templateId}'`,
+      steps: [
+        {
+          templateId,
+          method: template.method,
+          endpoint: template.endpoint,
+          bodyTemplate: (template.bodyTemplate ?? {}) as Record<string, unknown>,
+          requiredLicenseSkuLists: licenseListsByTemplate.get(templateId) ?? [],
+        },
+      ],
+      tenantId: gate.customer.tenantId,
+      payload,
+    });
+    if (preconditionRefusal) {
+      log.warn(
+        { templateId, customerId: gate.customer.id, code: preconditionRefusal.code },
+        "admin-write-actions: execute refused by a tenant precondition",
+      );
+      return void res.status(PRECONDITION_HTTP_STATUS[preconditionRefusal.code] ?? 409).json({
+        error: preconditionRefusal.message,
+        code: preconditionRefusal.code,
+        ...(preconditionRefusal.details ?? {}),
+      });
+    }
+
     let result;
     try {
       result = await runBaselineTemplateAgainstTenant(templateId, gate.customer.tenantId, gate.customer.id, payload, "simulator");

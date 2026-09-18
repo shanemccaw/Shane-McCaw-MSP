@@ -107,6 +107,10 @@ import {
 } from "./mfa-reregistration.ts";
 import { runWithRequestContext } from "./request-context.ts";
 import { compensateSecurityDefaultsForRun } from "./security-defaults-compensation-run.ts";
+import {
+  loadRequiredLicenseSkuListsByTemplate,
+  resolveTenantWritePreconditionRefusal,
+} from "./tenant-write-preconditions.ts";
 import { evaluateRules as runAlertRuleEvaluation } from "./alert-engine.ts";
 import { evaluateCustomerTenantRules } from "./customer-tenant-alert-engine.ts";
 import { drainCustomerAlertDigests } from "./customer-alert-digest.ts";
@@ -10211,6 +10215,59 @@ Return ONLY a JSON object with these exact keys (no prose outside the JSON):
         }
 
         try {
+          // Git #4545 — the same #4513/#4528 tenant preconditions Config Pack runs,
+          // execute_action and SOP runs already enforce, now for this generic node
+          // too: refuse an unlicensed write or an unreplaced Security-Defaults-off
+          // BEFORE it fires, not just #4529's after-the-fact compensation for a run
+          // that already failed partway.
+          const [ebtTemplateRow] = await db
+            .select({
+              method: baselineActionTemplatesTable.method,
+              endpoint: baselineActionTemplatesTable.endpoint,
+              bodyTemplate: baselineActionTemplatesTable.bodyTemplate,
+            })
+            .from(baselineActionTemplatesTable)
+            .where(eq(baselineActionTemplatesTable.templateId, ebtTemplateId))
+            .limit(1);
+
+          if (ebtTemplateRow) {
+            const ebtLicenseLists = await loadRequiredLicenseSkuListsByTemplate([ebtTemplateId]);
+            const ebtPreconditionRefusal = await resolveTenantWritePreconditionRefusal({
+              packKey: typeof payload["packKey"] === "string" ? (payload["packKey"] as string) : `workflow run ${runId}`,
+              subject: `execute_baseline_template '${ebtTemplateId}'`,
+              steps: [
+                {
+                  templateId: ebtTemplateId,
+                  method: ebtTemplateRow.method,
+                  endpoint: ebtTemplateRow.endpoint,
+                  bodyTemplate: (ebtTemplateRow.bodyTemplate ?? {}) as Record<string, unknown>,
+                  requiredLicenseSkuLists: ebtLicenseLists.get(ebtTemplateId) ?? [],
+                },
+              ],
+              tenantId: ebtCustomerRow.tenantId,
+              payload,
+              caEnforcementMode: payload["caEnforcementMode"] === "immediate" ? "immediate" : undefined,
+            });
+            if (ebtPreconditionRefusal) {
+              nodeError = true;
+              switchChosenHandle = ebtPreconditionRefusal.code;
+              output = {
+                success: false,
+                errorType: ebtPreconditionRefusal.code,
+                error: ebtPreconditionRefusal.message,
+                ...(ebtPreconditionRefusal.details ?? {}),
+                templateId: ebtTemplateId,
+                tenantId: ebtCustomerRow.tenantId,
+                customerId: ebtCustomerId,
+              };
+              log.warn(
+                { runId, ebtTemplateId, tenantId: ebtCustomerRow.tenantId, code: ebtPreconditionRefusal.code },
+                "wf-executor: execute_baseline_template refused by a tenant precondition",
+              );
+              break;
+            }
+          }
+
           // #4522 — only a Config Pack run whose orchestrator-stamped payload chose
           // "immediate" carries CA enforcement authorization into its template steps.
           const ebtCaEnforcement: CaEnforcementAuthorization | undefined =

@@ -38,6 +38,11 @@ import {
   monitorChecksTable,
 } from "@workspace/db";
 import { eq, and, desc, inArray, count } from "drizzle-orm";
+import {
+  loadRequiredLicenseSkuListsByTemplate,
+  resolveTenantWritePreconditionRefusal,
+  PRECONDITION_HTTP_STATUS,
+} from "../lib/tenant-write-preconditions.ts";
 import { requireAdmin, requireAdminOrIngestToken } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
 
@@ -365,8 +370,42 @@ router.post("/admin/baseline-templates/:templateId/test", requireBaselineTestAcc
       .limit(1);
     if (!template) return void res.status(404).json({ error: "Baseline template not found" });
 
-    const { runBaselineTemplateAgainstTenant } = await import("../lib/workflow-executor.ts");
     const payload: Record<string, unknown> = { ...(body.variables ?? {}), customerId: body.customerId };
+
+    // Git #4545 — the same #4513/#4528 tenant preconditions Config Pack runs,
+    // execute_action and SOP runs already enforce: mccawsoft2 (the only tenant
+    // isTestbed can point at) is also the real production tenant (#1913), so a
+    // test-run here is a real, unreplaced Security-Defaults-off or a real
+    // unlicensed write without this check.
+    const licenseListsByTemplate = await loadRequiredLicenseSkuListsByTemplate([templateId]);
+    const preconditionRefusal = await resolveTenantWritePreconditionRefusal({
+      packKey: templateId,
+      subject: `Test run of '${templateId}'`,
+      steps: [
+        {
+          templateId,
+          method: template.method,
+          endpoint: template.endpoint,
+          bodyTemplate: (template.bodyTemplate ?? {}) as Record<string, unknown>,
+          requiredLicenseSkuLists: licenseListsByTemplate.get(templateId) ?? [],
+        },
+      ],
+      tenantId: customer.tenantId,
+      payload,
+    });
+    if (preconditionRefusal) {
+      log.warn(
+        { templateId, customerId: body.customerId, code: preconditionRefusal.code },
+        "admin-baseline-templates: test execution refused by a tenant precondition",
+      );
+      return void res.status(PRECONDITION_HTTP_STATUS[preconditionRefusal.code] ?? 409).json({
+        error: preconditionRefusal.message,
+        code: preconditionRefusal.code,
+        ...(preconditionRefusal.details ?? {}),
+      });
+    }
+
+    const { runBaselineTemplateAgainstTenant } = await import("../lib/workflow-executor.ts");
     const result = await runBaselineTemplateAgainstTenant(templateId, customer.tenantId, body.customerId, payload);
 
     log.info({ templateId, customerId: body.customerId, tenantId: customer.tenantId, success: result.success, adminId: getAdminId(req) }, "admin-baseline-templates: test execution completed");

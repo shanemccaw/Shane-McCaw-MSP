@@ -80,6 +80,11 @@ import {
   tenantHasRequiredLicense,
   describeRequiredLicense,
 } from "../lib/license-gate.ts";
+import {
+  loadRequiredLicenseSkuListsByTemplate,
+  resolveTenantWritePreconditionRefusal,
+  PRECONDITION_HTTP_STATUS,
+} from "../lib/tenant-write-preconditions.ts";
 
 const log = logger.child({ channel: "engine.launch-control" });
 
@@ -561,6 +566,43 @@ router.post(
           error: caEnforcementRefusalMessage(caEnforcementKind),
           errorType: "ca_enforcement_requires_promotion",
           caEnforcementKind,
+        });
+        return;
+      }
+
+      // Git #4545 — the #4513/#4528 Security Defaults replacement rule, which this
+      // route never enforced: the #3947 check just above only covers license (a
+      // different, older mechanism keyed off the catalog row's own
+      // required_license_skus), and the CA-enforcement check above only covers a
+      // policy left enforcing. Nothing here stopped a lone action turning Security
+      // Defaults off with no CA replacement in the same run. Evaluated through the
+      // same shared function every other write path uses, before a Change Request
+      // is ever raised for a write that's about to be refused.
+      const launchControlLicenseLists = await loadRequiredLicenseSkuListsByTemplate([templateId]);
+      const launchControlPreconditionRefusal = await resolveTenantWritePreconditionRefusal({
+        packKey: templateId,
+        subject: `Launch Control action '${catalogRow.actionName}'`,
+        steps: [
+          {
+            templateId,
+            method: template.method,
+            endpoint: template.endpoint,
+            bodyTemplate: (template.bodyTemplate ?? {}) as Record<string, unknown>,
+            requiredLicenseSkuLists: launchControlLicenseLists.get(templateId) ?? [],
+          },
+        ],
+        tenantId: customer.tenantId,
+        payload,
+      });
+      if (launchControlPreconditionRefusal) {
+        log.info(
+          { mspId, catalogActionId, customerId, templateId, code: launchControlPreconditionRefusal.code },
+          "msp-launch-control: execute refused by a tenant precondition",
+        );
+        res.status(PRECONDITION_HTTP_STATUS[launchControlPreconditionRefusal.code] ?? 409).json({
+          error: launchControlPreconditionRefusal.message,
+          errorType: launchControlPreconditionRefusal.code,
+          ...(launchControlPreconditionRefusal.details ?? {}),
         });
         return;
       }

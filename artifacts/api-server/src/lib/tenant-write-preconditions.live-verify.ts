@@ -18,25 +18,38 @@
  * is also Shane's production M365 tenant (Git #1913).
  */
 
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import express from "express";
 import request from "supertest";
-import { sql } from "drizzle-orm";
 
 vi.mock("../middlewares/requireAuth.ts", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   requireAdmin: (_req: unknown, _res: unknown, next: () => void) => next(),
+  requireAdminOrIngestToken:
+    () => (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
 
-import { db, baselineActionTemplatesTable, tenantsTable } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
+import { db, baselineActionTemplatesTable, tenantsTable, wfDefinitionsTable, wfVersionsTable, wfRunsTable, wfRunNodeOutputsTable } from "@workspace/db";
+import { and, eq, sql } from "drizzle-orm";
 import executeActionRouter from "../routes/admin-execute-action.ts";
+import baselineTemplatesRouter from "../routes/admin-baseline-templates.ts";
+import writeActionsRouter from "../routes/admin-write-actions.ts";
 import { getProvisionedServicePlanNamesForTenant } from "./license-gate.ts";
 import { runSopForCustomer } from "./sop-execution.ts";
+import { fireWorkflowForDefinition } from "./workflow-executor.ts";
 import {
   loadRequiredLicenseSkuListsByTemplate,
   resolveTenantWritePreconditionRefusal,
 } from "./tenant-write-preconditions.ts";
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function auditRowCount(templateId: string): Promise<number> {
+  const res = await db.execute(
+    sql`select count(*) as n from baseline_action_template_audit_log where template_id = ${templateId}`,
+  );
+  return Number((res.rows[0] as { n: string | number }).n);
+}
 
 const P1 = ["AAD_PREMIUM", "AAD_PREMIUM_P2"];
 
@@ -141,5 +154,102 @@ describe("SOP run (#4528)", () => {
     ).rejects.toMatchObject({ code: "license_required" });
     expect(await count(sql`select count(*) as n from msp_sop_runs where tenant_id = ${customer.tenantId}`)).toBe(runsBefore);
     expect(await count(sql`select count(*) as n from wf_runs where trigger_ref = 'live-verify:4528'`)).toBe(wfBefore);
+  });
+});
+
+// ── Git #4545 — the 4 call sites that skipped this evaluation entirely ─────────
+const DISABLE_SD_TEMPLATE_ID = "quickstart-v1.disable-security-defaults";
+
+describe("admin-baseline-templates test-run (#4545)", () => {
+  const app = express().use(express.json()).use("/api", baselineTemplatesRouter);
+
+  it("a lone Security Defaults disable is refused before any write — no audit row recorded", async () => {
+    const before = await auditRowCount(DISABLE_SD_TEMPLATE_ID);
+    const res = await request(app)
+      .post(`/api/admin/baseline-templates/${DISABLE_SD_TEMPLATE_ID}/test`)
+      .send({ customerId: customer.id });
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe("security_defaults_replacement_not_enforcing");
+    expect(await auditRowCount(DISABLE_SD_TEMPLATE_ID)).toBe(before);
+  });
+});
+
+describe("admin-write-actions simulator execute (#4545)", () => {
+  const app = express().use(express.json()).use("/api", writeActionsRouter);
+
+  it("a lone Security Defaults disable is refused before any write — no audit row recorded", async () => {
+    const before = await auditRowCount(DISABLE_SD_TEMPLATE_ID);
+    const res = await request(app)
+      .post(`/api/admin/write-actions/${DISABLE_SD_TEMPLATE_ID}/execute`)
+      .send({ customerId: customer.id, confirmed: true });
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe("security_defaults_replacement_not_enforcing");
+    expect(await auditRowCount(DISABLE_SD_TEMPLATE_ID)).toBe(before);
+  });
+});
+
+describe("execute_baseline_template workflow node (#4545)", () => {
+  let definitionId = 0;
+  let versionId = 0;
+  let runId = 0;
+
+  afterAll(async () => {
+    if (runId) {
+      await db.delete(wfRunNodeOutputsTable).where(eq(wfRunNodeOutputsTable.runId, runId)).catch(() => {});
+      await db.execute(sql`DELETE FROM wf_run_node_logs WHERE run_id = ${runId}`).catch(() => {});
+      await db.delete(wfRunsTable).where(eq(wfRunsTable.id, runId)).catch(() => {});
+    }
+    if (definitionId) {
+      await db.delete(wfVersionsTable).where(eq(wfVersionsTable.definitionId, definitionId)).catch(() => {});
+      await db.delete(wfDefinitionsTable).where(eq(wfDefinitionsTable.id, definitionId)).catch(() => {});
+    }
+  });
+
+  it("a lone Security Defaults disable is refused before any write — no audit row recorded", async () => {
+    const before = await auditRowCount(DISABLE_SD_TEMPLATE_ID);
+
+    const graph = {
+      nodes: [
+        { id: "start", type: "start", position: { x: 0, y: 0 }, data: { label: "Start" } },
+        {
+          id: "ebt",
+          type: "execute_baseline_template",
+          position: { x: 200, y: 0 },
+          data: { label: "Disable Security Defaults", templateId: DISABLE_SD_TEMPLATE_ID, customerId: String(customer.id) },
+        },
+      ],
+      edges: [{ id: "e1", source: "start", target: "ebt" }],
+    };
+
+    const [def] = await db.insert(wfDefinitionsTable).values({
+      name: "#4545 live verify", description: "temporary — removed by the test",
+    }).returning({ id: wfDefinitionsTable.id });
+    definitionId = def.id;
+
+    const [ver] = await db.insert(wfVersionsTable).values({
+      definitionId, versionNumber: 1, status: "published", graph: graph as never,
+    }).returning({ id: wfVersionsTable.id });
+    versionId = ver.id;
+
+    const fired = await fireWorkflowForDefinition(definitionId, "manual", "live-verify:4545", { customerId: customer.id }, { versionId });
+    expect(fired).not.toBeNull();
+    runId = fired!;
+
+    let status = "";
+    for (let i = 0; i < 60 && status !== "failed" && status !== "completed"; i += 1) {
+      await sleep(250);
+      const [row] = await db.select({ status: wfRunsTable.status }).from(wfRunsTable).where(eq(wfRunsTable.id, runId)).limit(1);
+      status = row?.status ?? "";
+      if (status === "cancelled") break;
+    }
+    expect(status).toBe("failed");
+
+    const [nodeOutput] = await db
+      .select({ output: wfRunNodeOutputsTable.output })
+      .from(wfRunNodeOutputsTable)
+      .where(and(eq(wfRunNodeOutputsTable.runId, runId), eq(wfRunNodeOutputsTable.nodeId, "ebt")))
+      .limit(1);
+    expect((nodeOutput?.output as Record<string, unknown> | undefined)?.errorType).toBe("security_defaults_replacement_not_enforcing");
+    expect(await auditRowCount(DISABLE_SD_TEMPLATE_ID)).toBe(before);
   });
 });
