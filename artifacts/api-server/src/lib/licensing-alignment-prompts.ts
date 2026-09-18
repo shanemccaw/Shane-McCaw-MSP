@@ -9,16 +9,22 @@
  *
  * THE TWO RULES THIS REPORT NEEDS THAT NO OTHER DOES
  * --------------------------------------------------
- *   1. NO SKU RECOMMENDATION. #451 established that the required licence tier is
- *      not derivable per check on this platform — only a licence gap's own
- *      `_licenseGapFeature` names a tier, and only for the check that hit it. A
- *      model handed a seat count and a waste figure will reach for "these users
- *      need E5" because that is what every licensing document it has ever read
- *      says. It would be inventing a purchase.
+ *   1. NO SKU RECOMMENDATION, WITH ONE NARROW, GROUNDED EXCEPTION. #451
+ *      established that the required licence tier is not derivable per check on
+ *      this platform generally — a model handed a seat count and a waste figure
+ *      will reach for "these users need E5" because that is what every
+ *      licensing document it has ever read says, and that remains forbidden.
+ *      The one exception (#4581): a `license_gap` finding's own check already
+ *      names its tier (`LICENSE_GAP_CATEGORIES`, #489), and #4580 built a real
+ *      per-user resolver over that named SKU. The Cost Waste Summary section may
+ *      state THAT figure, for THAT tenant's own gapped category, and nothing
+ *      wider — see `resolveLicenseUpliftStats` in the generator.
  *   2. NO SELLING. This is the one report where a recoverable dollar figure sits
  *      in the same document as an Upgrade Opportunity category, and #451's rules
  *      exist precisely because joining them reads as a pitch. The prose states
- *      what the money IS; it never proposes what to spend it on.
+ *      what the money IS; it never proposes what to spend it on. The uplift
+ *      figure is bound by the same rule — it is stated as a cost, never framed
+ *      as a recommendation to buy it.
  *
  * Both are also enforced structurally — `pillarLicensingAlignment.ts` puts the
  * two sections apart and `licenceGapDisclosure` refuses to name an unconfirmable
@@ -37,7 +43,7 @@ import {
 const SHARED_RULES = sharedNarrativeRules("licensing");
 
 /** Carried by all three sections — a model told this once will forget it twice. */
-const NO_SKU_RECOMMENDATION_RULES = `- NEVER recommend, name or imply a licence SKU or tier a user, group or tenant "needs", "should hold" or "requires" — not E3, E5, Business Premium, an Entra ID tier, a Copilot seat or anything else. This assessment cannot derive a required tier from a seat count; the only tiers it can name are the ones Microsoft's own response to a specific check named, and those are reported in their own section. Any tier you write here would be a purchase recommendation the data does not support.
+const NO_SKU_RECOMMENDATION_RULES = `- NEVER recommend, name or imply a licence SKU or tier a user, group or tenant "needs", "should hold" or "requires" — not E3, E5, Business Premium, an Entra ID tier, a Copilot seat or anything else, EXCEPT a named SKU that already appears in REAL MEASURED FIGURES below labelled "... uplift cost": that figure is real, priced against this tenant's own licence gap for a check whose own response named that exact tier, not inferred from a seat count or a waste figure. State it as what it costs; never extend it into a broader recommendation ("this tenant should standardize on Entra ID P2 tenant-wide", "consider bundling these into E5") — the figure prices only the population that check identified.
 - NEVER divide a total into categories. The waste figure is one number over the whole priced estate; there is no per-SKU, per-department or per-product split behind it, so never attribute any part of it to unused Copilot seats, duplicate plans, or anything else.
 - NEVER name a department, team, persona, job title or individual. This platform holds no department attribution for a licence and no persona data at all.
 - The seat and waste figures cover PAID SKUs only — SKUs with a real price. Never present them as the whole subscription estate, and never infer a total user or seat count from them.
@@ -82,9 +88,10 @@ NOT COLLECTED — checks this tenant's scan does not carry. These have NO value;
 
 ${SHARED_RULES}
 ${NO_SKU_RECOMMENDATION_RULES}
-- Quote the annual figure exactly as given and never convert it — no monthly equivalent, no per-seat rate, no multi-year total, no percentage of anything. Each of those is an arithmetic step this platform did not take.
-- If no cost figure was measured, say the spend could not be priced and explain what that means: the seats were counted but no priced SKU exists to value them against. Never describe an unpriced estate as one with no waste.
-- Never state a saving, a recovery, a payback period or a return. A recoverable figure is what is currently being spent, not a benefit anyone has realised.`;
+- Quote each annual figure exactly as given and never convert it — no monthly equivalent, no per-seat rate, no multi-year total, no percentage of anything. Each of those is an arithmetic step this platform did not take.
+- If no waste figure was measured, say the spend could not be priced and explain what that means: the seats were counted but no priced SKU exists to value them against. Never describe an unpriced estate as one with no waste.
+- Never state a saving, a recovery, a payback period or a return. A recoverable figure is what is currently being spent, not a benefit anyone has realised.
+- If a "... uplift cost" figure appears in REAL MEASURED FIGURES, it is a SEPARATE number from the waste figure — money this tenant would newly spend to close a real licence gap, not money it is currently wasting. Never add the two together, never call the uplift figure "waste", and state it only if it is present with a real value.`;
 
 export const LICENSING_ALIGNMENT_COPILOT_IMPACT_PROMPT = `You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience, writing the "Copilot Readiness Impact" section of a completed Microsoft 365 assessment for {{tenantName}} — in your own voice, not a templated report.
 
@@ -131,7 +138,7 @@ export const LICENSING_ALIGNMENT_PROMPT_SEEDS: readonly PillarReportPromptSeed[]
   {
     key: "assessment-licensing-alignment-cost",
     name: "Licensing Alignment — Cost Waste Summary",
-    description: `Short causal-reasoning prose on this tenant's REAL annual recoverable licence spend (#292). Converts the figure to nothing else, splits it into no categories, and proposes no purchase. ${NARRATIVE_TOKENS}`,
+    description: `Short causal-reasoning prose on this tenant's REAL annual recoverable licence spend, plus (#4581) this tenant's own REAL licence-gap uplift cost where one is gapped. Converts neither figure to anything else, splits neither into categories, and proposes no purchase. ${NARRATIVE_TOKENS}`,
     category: "insights",
     featureArea: FEATURE_AREA,
     featureRoute: NARRATIVE_FEATURE_ROUTE,

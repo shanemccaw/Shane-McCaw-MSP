@@ -55,11 +55,17 @@ import {
   renderNarrativePrompt,
   sanitizeNarrativeHtml,
   stripFence,
+  withExtraStats,
   type MissingCheck,
   type NarrativeOmission,
   type SectionFacts,
 } from "./narrative-grounding.ts";
-import { buildPillarSummary, type PillarSummaryKey } from "./pillar-summary-stats.ts";
+import {
+  buildPillarSummary,
+  type PillarStat,
+  type PillarSummaryKey,
+  type PillarSummaryPayload,
+} from "./pillar-summary-stats.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 
@@ -127,6 +133,15 @@ export interface PillarReportSectionSpec {
    * have the token but should not reason from it would be worse.
    */
   readonly withGate?: boolean;
+  /**
+   * When set, this section's facts are folded with the report's own
+   * `resolveExtraStats` output via `withExtraStats`, using this string as the
+   * qualifier label on each added stat line (standing in for the pillar name
+   * the card-derived lines carry). Absent means this section sees only the
+   * shared War Room stats — the #292 default every section still gets unless a
+   * report opts one in (#4581 is the first).
+   */
+  readonly extraStatsQualifier?: string;
 }
 
 /**
@@ -142,6 +157,19 @@ export interface PillarReportSpec {
   /** For log lines. e.g. "governance-posture-narrative". */
   readonly logName: string;
   readonly sections: readonly PillarReportSectionSpec[];
+  /**
+   * A metric this report's own generator resolves that is NOT among
+   * `PILLAR_STAT_SPECS`' War Room stats — the same "one extra resolution, not a
+   * second, laxer source of truth" pattern `security-posture-narrative-generator
+   * .ts` established for Secure Score. Never throws: a resolver failure becomes
+   * an empty list rather than aborting the whole report. Folded only into
+   * sections that opt in via `extraStatsQualifier`.
+   */
+  readonly resolveExtraStats?: (params: {
+    readonly customerId: number;
+    readonly tenantGuid: string | null;
+    readonly payload: PillarSummaryPayload;
+  }) => Promise<readonly PillarStat[]>;
 }
 
 async function generateSection(
@@ -261,7 +289,7 @@ export async function generatePillarReportNarrative(
     buildPillarSummary(params.customerId),
     computeCopilotGate(params.customerId),
     db
-      .select({ mspId: tenantsTable.mspId })
+      .select({ mspId: tenantsTable.mspId, tenantGuid: tenantsTable.tenantId })
       .from(tenantsTable)
       .where(eq(tenantsTable.id, params.customerId))
       .limit(1)
@@ -278,14 +306,31 @@ export async function generatePillarReportNarrative(
     mspId: params.attribution.mspId ?? tenantRow?.mspId ?? null,
   };
 
+  const extraStats = spec.resolveExtraStats
+    ? await spec
+        .resolveExtraStats({
+          customerId: params.customerId,
+          tenantGuid: tenantRow?.tenantGuid ?? null,
+          payload,
+        })
+        .catch((err: unknown) => {
+          log.warn({ err, customerId: params.customerId }, `${spec.logName}: resolveExtraStats threw`);
+          return [] as readonly PillarStat[];
+        })
+    : [];
+
   const sections = await Promise.all(
-    spec.sections.map((section) =>
-      generateSection(spec, section, collectFactsForPillars(section.pillars, payload.pillars), {
+    spec.sections.map((section) => {
+      const facts = collectFactsForPillars(section.pillars, payload.pillars);
+      const grounded = section.extraStatsQualifier
+        ? withExtraStats(facts, section.extraStatsQualifier, extraStats)
+        : facts;
+      return generateSection(spec, section, grounded, {
         tenantName: params.tenantName,
         gate: gateView,
         attribution,
-      }),
-    ),
+      });
+    }),
   );
 
   log.info(

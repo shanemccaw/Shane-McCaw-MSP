@@ -49,8 +49,31 @@
  * says why: it "needs a structured breakdown by category or department, not just
  * the single total waste figure", and the single total is what
  * `computeSkuCostBreakdown` produces.
+ *
+ * THE ONE NARROW EXCEPTION TO "NO SKU RECOMMENDATION" (#4581)
+ * -------------------------------------------------------------
+ * #451's wall stands for every check generally — this platform still cannot
+ * derive a required tier from a seat count or a waste figure. But ONE tier
+ * genuinely IS derivable, and only because a different, already-shipped feature
+ * already derives it: `license-gap-purchase-links.ts`'s `LICENSE_GAP_CATEGORIES`
+ * names the exact Microsoft add-on a `license_gap` finding's own check reported
+ * as missing (#489) — the same mapping that already renders a real "here's what
+ * to buy" link elsewhere in the product. #4580 built `resolveLicenseUpliftCost`,
+ * a real per-user resolver over that same named SKU; this file is its second
+ * consumer, wiring the real annual dollar delta into the Cost Waste Summary
+ * section for each of THIS tenant's own gapped categories (never a category
+ * they are not actually gapped in). This is not new SKU inference — it is the
+ * one place the platform already knows the tier, given a real HTML fact rather
+ * than an inferred one.
  */
 
+import {
+  LICENSE_GAP_CATEGORIES,
+  LICENSE_GAP_CATEGORY_KEYS,
+} from "./license-gap-purchase-links.ts";
+import { lookupSkuMonthlyPriceCents } from "./cost-engine.ts";
+import { resolveLicenseUpliftCost } from "./license-waste-source.ts";
+import { logger } from "./logger.ts";
 import {
   LICENSING_ALIGNMENT_COPILOT_IMPACT_PROMPT,
   LICENSING_ALIGNMENT_COST_PROMPT,
@@ -62,10 +85,93 @@ import {
   type PillarReportNarrativeResult,
   type PillarReportSpec,
 } from "./pillar-report-narrative.ts";
+import type { PillarStat, PillarSummaryPayload } from "./pillar-summary-stats.ts";
+
+const log = logger.child({ channel: "engine.dashboard" });
 
 /** The three prose sections, in the order the report renders them. */
 export const LICENSING_ALIGNMENT_NARRATIVE_SECTIONS = ["summary", "cost", "copilotImpact"] as const;
 export type LicensingAlignmentSectionKey = (typeof LICENSING_ALIGNMENT_NARRATIVE_SECTIONS)[number];
+
+/**
+ * The real per-category licence uplift cost, one stat per category THIS
+ * tenant's own latest run gapped — never a category it is not gapped in, and
+ * never a guessed SKU or price.
+ *
+ * `payload.licenseGapPurchase` (#489) is already the tenant-wide, run-scoped
+ * answer to "which categories are gapped" — computed once in
+ * `pillar-summary-stats.ts` from the SAME findings the rest of this report's
+ * facts come from, so this cannot describe a different scan than the findings
+ * beside it. This function does not re-derive that; it only prices each
+ * gapped category's own named SKU.
+ *
+ * Two, and only two, honest reasons a category's stat carries no value:
+ *   - `no_sku_mapped`: `LICENSE_GAP_CATEGORIES` names this category's SKU, but
+ *     no confirmed real Microsoft SKU part number for it is on file (Purview
+ *     Suite today — see `license-gap-purchase-links.ts`).
+ *   - `no_price_on_file`: the SKU has a real part number but no
+ *     `sku_price_reference` row, or a row with no price.
+ *   - `no_license_snapshot`: the SKU is priced, but `resolveLicenseUpliftCost`
+ *     (#4580) still returned null — no `license_assignment_snapshots` run (or
+ *     an empty one) for this tenant.
+ */
+async function resolveLicenseUpliftStats(params: {
+  readonly customerId: number;
+  readonly tenantGuid: string | null;
+  readonly payload: PillarSummaryPayload;
+}): Promise<readonly PillarStat[]> {
+  const { tenantGuid, payload } = params;
+  const gappedCategories = payload.licenseGapPurchase?.gappedCategories ?? [];
+  if (!tenantGuid || gappedCategories.length === 0) return [];
+
+  const stats: PillarStat[] = [];
+  for (const rawKey of gappedCategories) {
+    const categoryKey = LICENSE_GAP_CATEGORY_KEYS.find((k) => k === rawKey);
+    if (!categoryKey) continue;
+    const category = LICENSE_GAP_CATEGORIES[categoryKey];
+    const base = {
+      id: `licensing.upliftCost.${categoryKey}`,
+      label: `${category.sku.name} uplift cost`,
+      unit: "currency" as const,
+      checkKey: category.checkKeys[0] ?? null,
+      source: `license-uplift-cost:${categoryKey}`,
+      replaces: "(not a War Room card stat — resolved for the Licensing Alignment report only, #4581)",
+    };
+
+    const targetSkuPartNumber = category.sku.skuPartNumber;
+    if (!targetSkuPartNumber) {
+      stats.push({ ...base, value: null, unavailableReason: "no_sku_mapped" });
+      continue;
+    }
+
+    const { priceCents } = await lookupSkuMonthlyPriceCents({ skuPartNumber: targetSkuPartNumber }).catch(
+      (err: unknown) => {
+        log.warn({ err, targetSkuPartNumber }, "licensing-alignment-narrative: price lookup threw");
+        return { priceCents: null, displayName: targetSkuPartNumber };
+      },
+    );
+    if (priceCents == null) {
+      stats.push({ ...base, value: null, unavailableReason: "no_price_on_file" });
+      continue;
+    }
+
+    const uplift = await resolveLicenseUpliftCost(tenantGuid, targetSkuPartNumber).catch((err: unknown) => {
+      log.warn({ err, tenantGuid, targetSkuPartNumber }, "licensing-alignment-narrative: uplift resolution threw");
+      return null;
+    });
+    if (!uplift) {
+      stats.push({ ...base, value: null, unavailableReason: "no_license_snapshot" });
+      continue;
+    }
+
+    stats.push({
+      ...base,
+      value: uplift.annualUpliftCents / 100,
+      sub: `${uplift.upliftUserCount} user${uplift.upliftUserCount === 1 ? "" : "s"} without ${category.sku.name}`,
+    });
+  }
+  return stats;
+}
 
 /**
  * Which pillars ground which section, and the rest of what makes this report
@@ -101,6 +207,10 @@ export const LICENSING_ALIGNMENT_SPEC: PillarReportSpec = {
       pillars: ["licensing"],
       promptKey: "assessment-licensing-alignment-cost",
       promptBody: LICENSING_ALIGNMENT_COST_PROMPT,
+      // #4581 — the ONE real, named-SKU dollar figure this report may state; see
+      // the file header and `resolveLicenseUpliftStats` for why this is not a
+      // reopening of #451's wall.
+      extraStatsQualifier: "licensing",
     },
     {
       key: "copilotImpact",
@@ -111,6 +221,7 @@ export const LICENSING_ALIGNMENT_SPEC: PillarReportSpec = {
       withGate: true,
     },
   ],
+  resolveExtraStats: resolveLicenseUpliftStats,
 };
 
 export type LicensingAlignmentNarrativeResult = PillarReportNarrativeResult;
@@ -131,4 +242,4 @@ export function generateLicensingAlignmentNarrative(params: {
 }
 
 /** Exported for tests — the section specs ARE the grounding contract. */
-export const __testables = { LICENSING_ALIGNMENT_SPEC };
+export const __testables = { LICENSING_ALIGNMENT_SPEC, resolveLicenseUpliftStats };
