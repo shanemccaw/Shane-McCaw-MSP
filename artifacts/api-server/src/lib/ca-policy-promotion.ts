@@ -47,7 +47,7 @@ import {
   type PromotionReadiness,
   type ReportOnlyImpactSummary,
 } from "./ca-policy-impact.ts";
-import { CA_STATE_ENABLED, CA_STATE_REPORT_ONLY } from "./ca-enforcement-mode.ts";
+import { CA_STATE_ENABLED, CA_STATE_REPORT_ONLY, stripCaReportOnlySuffix } from "./ca-enforcement-mode.ts";
 import {
   raiseChangeRequestForLaunchControlExecution,
   recordLaunchControlExecutionOutcome,
@@ -442,7 +442,12 @@ export async function promoteCaPolicy(opts: {
     .returning();
   const promotionId = promotion!.id;
 
-  const proposedPayload = { policyId, state: CA_STATE_ENABLED, customerId };
+  // Git #4549 — a policy created (or previously left) with the stale "(report-only)"
+  // suffix in its name gets renamed as part of promotion, so the tenant-side name
+  // never disagrees with the real state. A name that never had the suffix comes
+  // back unchanged (a harmless no-op rename).
+  const newDisplayName = stripCaReportOnlySuffix(displayName ?? "");
+  const proposedPayload = { policyId, state: CA_STATE_ENABLED, displayName: newDisplayName, customerId };
   const changeRequest = await raiseChangeRequestForLaunchControlExecution({
     mspId,
     tenantId,

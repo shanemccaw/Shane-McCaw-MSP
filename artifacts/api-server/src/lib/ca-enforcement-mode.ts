@@ -59,6 +59,25 @@ export function withCaPolicyStateDefault(payload: Record<string, unknown>): Reco
   return { ...payload, caPolicyState: CA_STATE_REPORT_ONLY };
 }
 
+/**
+ * Git #4549 — the "(report-only)" suffix baked into the six baseline create
+ * templates' displayName was never updated when a policy's real state changed
+ * (immediate-mode create, or promotion), leaving a tenant-side policy whose name
+ * and state disagreed. Fixed by never encoding state in the name going forward
+ * (state is already the source of truth — see reportOnly in ca-policy-promotion.ts),
+ * plus this helper to rename any already-existing policy that still carries the
+ * stale suffix as part of promoting it.
+ */
+const CA_REPORT_ONLY_SUFFIX = " (report-only)";
+
+/** Strips a trailing " (report-only)" suffix, case-insensitively; leaves any other name alone. */
+export function stripCaReportOnlySuffix(displayName: string): string {
+  const trimmed = displayName.trimEnd();
+  return trimmed.toLowerCase().endsWith(CA_REPORT_ONLY_SUFFIX.toLowerCase())
+    ? trimmed.slice(0, trimmed.length - CA_REPORT_ONLY_SUFFIX.length).trimEnd()
+    : displayName;
+}
+
 const CA_POLICIES_PATH = "/identity/conditionalaccess/policies";
 
 function normalizePath(endpoint: string): string {
