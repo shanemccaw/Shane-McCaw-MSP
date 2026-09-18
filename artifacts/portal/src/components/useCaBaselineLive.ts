@@ -41,12 +41,41 @@ interface WireTenantCheckItemsPayload {
   readonly items?: Readonly<Record<string, WireCheckItemDetail>>;
 }
 
-/** Entra ID P2 ships standalone as AAD_PREMIUM_P2, or bundled into higher SKUs that also carry P2 rights. */
-const P2_SKU_PART_NUMBERS = ["AAD_PREMIUM_P2", "EMSPREMIUM", "SPE_E5", "M365_E5", "IDENTITY_THREAT_PROTECTION"];
+/**
+ * Entra ID P2 ships as the `AAD_PREMIUM_P2` SERVICE PLAN, bundled inside many
+ * skuPartNumbers (standalone AAD_PREMIUM_P2, EMS E5, Microsoft 365 E5, and
+ * every E5-family/EDU/GOV variant of those) — a skuPartNumber allowlist can
+ * never enumerate them all and drifts the moment Microsoft ships a new SKU
+ * name for the same bundle (Git #4548, same defect class as #4512/#4534/#4535
+ * fixed server-side in license-gate.ts's getProvisionedServicePlanNamesForTenant).
+ */
+const ENTRA_P2_SERVICE_PLAN_NAME = "AAD_PREMIUM_P2";
+
+/** Mirrors license-gate.ts's USABLE_SKU_CAPABILITY_STATUSES: `Warning` is the post-expiry grace period, during which every feature still works. */
+const USABLE_SKU_CAPABILITY_STATUSES = new Set(["Enabled", "Warning"]);
 
 function usableItems(detail: WireCheckItemDetail | undefined): readonly Record<string, unknown>[] | null {
   if (!detail || detail.status !== "ok" || detail.itemsOmitted || !Array.isArray(detail.items)) return null;
   return detail.items.filter((x): x is Record<string, unknown> => !!x && typeof x === "object");
+}
+
+/**
+ * True iff this raw `subscribedSkus` row's own SKU is usable and it provisions
+ * the Entra ID P2 service plan — the same rule as license-gate.ts's
+ * getProvisionedServicePlanNamesForTenant, applied to one row instead of
+ * accumulating a tenant-wide set.
+ */
+function skuProvisionsEntraP2(row: Record<string, unknown>): boolean {
+  const capabilityStatus = typeof row["capabilityStatus"] === "string" ? row["capabilityStatus"] : "";
+  if (!USABLE_SKU_CAPABILITY_STATUSES.has(capabilityStatus)) return false;
+  const servicePlans = Array.isArray(row["servicePlans"]) ? row["servicePlans"] : [];
+  return servicePlans.some(
+    (plan) =>
+      !!plan &&
+      typeof plan === "object" &&
+      (plan as Record<string, unknown>)["servicePlanName"] === ENTRA_P2_SERVICE_PLAN_NAME &&
+      (plan as Record<string, unknown>)["provisioningStatus"] === "Success",
+  );
 }
 
 function toLivePolicy(row: Record<string, unknown>): LiveCaPolicy | null {
@@ -98,8 +127,7 @@ export function useCaBaselineLive(): CaBaselineLiveState {
 
         const rawSkus = usableItems(body.items?.[LICENSE_SKU_CHECK_KEY]);
         if (rawSkus) {
-          const skuPartNumbers = rawSkus.map((r) => (typeof r["skuPartNumber"] === "string" ? r["skuPartNumber"] : ""));
-          setHasEntraP2(skuPartNumbers.some((s) => P2_SKU_PART_NUMBERS.includes(s)));
+          setHasEntraP2(rawSkus.some(skuProvisionsEntraP2));
         }
       } catch {
         // best-effort — stays null; the page renders an honest empty state (Git #1439)
