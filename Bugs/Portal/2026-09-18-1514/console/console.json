@@ -1,0 +1,615 @@
+{
+  "sessionId": "2026-09-18-1514",
+  "capturedAt": "2026-09-18T15:35:23.9682771-04:00",
+  "totalLogs": 101,
+  "errorCount": 1,
+  "warningCount": 1,
+  "logs": [
+    {
+      "Level": "info",
+      "Message": "[O11Y] [DatadogRUM] Initialized {\u0022service\u0022:\u0022claude-ai\u0022,\u0022env\u0022:\u0022production\u0022,\u0022version\u0022:\u00222188f395e3\u0022}",
+      "StackTrace": "",
+      "Timestamp": "15:35:12.411"
+    },
+    {
+      "Level": "warn",
+      "Message": "[antalytics] track() called before init(); buffering (max %d) until init() runs 100",
+      "StackTrace": "    at console.warn (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/vendor-datadog-6xNogGuE.js:5:22091)\n    at wM.bufferPreInit (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/shared-common-mcp-msg-1-DTaNTJLn.js:2:244822)\n    at wM.track (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/shared-common-mcp-msg-1-DTaNTJLn.js:2:243992)\n    at wM.page (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/shared-common-mcp-msg-1-DTaNTJLn.js:2:246656)\n    at https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/shared-common-mcp-msg-1-DTaNTJLn.js:2:329054",
+      "Timestamp": "15:35:14.236"
+    },
+    {
+      "Level": "exception",
+      "Message": "ResizeObserver loop completed with undelivered notifications. (https://claude.ai/chat/4e28badc-02d7-4378-a8df-08854e1067e8:0)",
+      "StackTrace": "at https://claude.ai/chat/4e28badc-02d7-4378-a8df-08854e1067e8:0",
+      "Timestamp": "15:35:15.090"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:28:29.816"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:28:29.816"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:28:30.811"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:28:30.815"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:28:32.804"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:28:32.804"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:29:32.813"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:29:32.814"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:30:32.806"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:30:32.806"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:31:32.817"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:31:32.817"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:32:33.439"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:32:33.440"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:33:32.820"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:33:32.820"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:32.913"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:32.918"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:33.825"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:33.825"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:34.819"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:34.819"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:35.823"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:35.823"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:36.817"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:36.817"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:37.815"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:37.816"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:38.820"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:38.820"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:39.817"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:39.817"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:40.820"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:40.820"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:41.821"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:41.821"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:42.831"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:42.831"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:43.818"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:43.818"
+    },
+    {
+      "Level": "info",
+      "Message": "[COMPLETION] Completion request succeeded on attempt 1 (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/vendor-datadog-6xNogGuE.js:5)",
+      "StackTrace": "",
+      "Timestamp": "15:34:44.572"
+    },
+    {
+      "Level": "info",
+      "Message": "[COMPLETION] Completion request succeeded on attempt 1",
+      "StackTrace": " (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/vendor-datadog-6xNogGuE.js:4:22090)\r\n (:83:31)\r\ninfo (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/shared-common-mcp-msg-0-q8i_05yw.js:0:5627)\r\nTp (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/shared-0-n-ldyoBI.js:2:6412)",
+      "Timestamp": "15:34:44.572"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:44.927"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:44.927"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:45.822"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:45.823"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:46.828"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:46.828"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:47.835"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:47.836"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:48.826"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:48.826"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:49.824"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:49.824"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:50.824"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:50.824"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:51.818"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:51.819"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:52.837"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:52.837"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:53.818"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:53.818"
+    },
+    {
+      "Level": "info",
+      "Message": "[Intercom] Launcher is disabled in settings or current page does not match display conditions",
+      "StackTrace": "",
+      "Timestamp": "15:34:55.019"
+    },
+    {
+      "Level": "info",
+      "Message": "[Intercom] Launcher is disabled in settings or current page does not match display conditions",
+      "StackTrace": " (:83:31)\r\nr (https://js.intercomcdn.com/frame-modern.edc9cb57.js:0:443749)\r\noo (https://js.intercomcdn.com/frame-modern.edc9cb57.js:0:695067)\r\ngo (https://js.intercomcdn.com/frame-modern.edc9cb57.js:0:697280)\r\nMo (https://js.intercomcdn.com/frame-modern.edc9cb57.js:0:699034)",
+      "Timestamp": "15:34:55.019"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:55.026"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:55.027"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:55.834"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:55.834"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:56.837"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:56.838"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:57.822"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:57.822"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:58.826"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:58.826"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:34:59.851"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:34:59.853"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:35:01.818"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:35:01.819"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:35:03.085"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:35:03.086"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:35:03.817"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:35:03.818"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:35:04.820"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:35:04.820"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:35:05.818"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:35:05.819"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:35:06.819"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:35:06.819"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:35:07.821"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:35:07.821"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:35:08.830"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:35:08.830"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:35:09.829"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:35:09.830"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message (https://a.claude.ai/isolated-segment.html?v=2188f395e3:53)",
+      "StackTrace": "",
+      "Timestamp": "15:35:10.829"
+    },
+    {
+      "Level": "debug",
+      "Message": "[IsolatedSegment] Sending iframe_ready message",
+      "StackTrace": "logDebug (https://a.claude.ai/isolated-segment.html?v=2188f395e3:52:18)\r\nsendReadyMessage (https://a.claude.ai/isolated-segment.html?v=2188f395e3:762:10)",
+      "Timestamp": "15:35:10.829"
+    },
+    {
+      "Level": "info",
+      "Message": "[O11Y] [DatadogRUM] Initialized [object Object]",
+      "StackTrace": "",
+      "Timestamp": "15:35:12.414"
+    },
+    {
+      "Level": "info",
+      "Message": "[O11Y] [DatadogRUM] Initialized Object",
+      "StackTrace": " (:83:31)\r\n (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/vendor-datadog-6xNogGuE.js:4:22090)\r\ninfo (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/shared-common-mcp-msg-0-q8i_05yw.js:0:5627)\r\ny_ (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/shared-common-mcp-msg-0-q8i_05yw.js:8:59570)\r\n (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/shared-common-mcp-msg-0-q8i_05yw.js:0:7146)\r\nVF (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/shared-common-mcp-msg-5-sHDVDaSk.js:12:127731)\r\n (https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/index-B3-rRb0Y.js:1:4702)",
+      "Timestamp": "15:35:12.415"
+    }
+  ]
+}
