@@ -1,5 +1,12 @@
 # GitHub call-site audit — BuildConsole (issue #3449)
 
+> **KNOWN STALE — flagged, not corrected (Git #4698).** The "Scope note" claiming the mirror fetches
+> `blocked_by` only for `blocked`-labeled issues (line ~60, citing `GitHubIssueMirror.cs:113-116`) is no
+> longer true: since #3627 `GitHubIssueMirror.cs` (~lines 1386-1387) keys the fetch off the real dependency
+> edge count, not the label. The `blocked` label remains, but as a cross-repo index, not the fetch gate.
+> Line citations elsewhere in this audit are as of commit `c31290ce4` and may have drifted.
+
+
 **Date:** 2026-09-10 · **Scope:** `desktop/BuildConsole/` (the WPF app) · **Audited-against commit:** `c31290ce4`
 
 This is the comprehensive, systematic inventory #3449 asked for: every real call site in the

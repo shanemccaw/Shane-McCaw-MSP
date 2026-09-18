@@ -1,5 +1,15 @@
 # BuildConsole UI Contract Pack
 
+> **KNOWN STALE — flagged, not corrected (Git #4698, from #4686's audit).** The GitHub label scheme in this
+> pack (`in-progress`, `batter-up`, `epic`, `todo`, `shane-todo`, `verifying`; the field table around
+> lines 185-187 and the board-column table around lines 309-310) describes a mechanism that never existed
+> in code. None of those labels are real. The real agent-facing labels are `Shane To-Do` and `blocked`;
+> `in-flight`/`complete` were real but are retired (#4693/#4694 — "running" is local `bt_build_queue`
+> state, "done" is a closed issue). Board columns for a dispatch are the four human-gate columns only
+> (Backlog, Batter Up, AI Batter Up, Ask Shane) — there is no In Progress, Verifying or Done destination.
+> Treat the label and column rows here as unreliable until this pack is regenerated from the code.
+
+
 > **Notice for UI Designers (e.g., Claude Design)**  
 > This document is the single authoritative specification for the BuildConsole desktop user interface. It defines the exact data models, status vocabularies, surface inventory, interaction rules, and system constraints extracted directly from the codebase of `shanemccaw/Shane-McCaw-MSP` under `desktop/BuildConsole/`.  
 > 

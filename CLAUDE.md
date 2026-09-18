@@ -380,23 +380,22 @@ Cover, honestly:
 
 A session that lands nothing and says nothing on the issue leaves it indistinguishable from an issue nobody has looked at. A session that investigates, hits a real blocker, and stops without commenting wastes the next session's time re-discovering the same blocker. Post the comment even if the answer is just "investigated, found X, this needs your decision before I can proceed."
 
-### GitHub issue label sync (same two moments as the bookend, when a Git issue is involved)
+### Issue labels — `in-flight` / `complete` are retired; do not touch them (Git #4692, #4698)
 
-When the work is tied to a specific GitHub issue (referenced by number — e.g. `Git #684` — in the row you're about to append), keep that issue's labels in sync with the same two bookend moments. This is what drives the live status dot/overlay in Shane's BuildConsole desktop app (`desktop/BuildConsole/`, which replaced the old browser extension) — it reads these labels off the issue so he can tell at a glance whether something is actively being worked on or already confirmed done in code, without checking PLATFORM_BUILD.md or the git log himself.
+BuildConsole no longer writes or reads the `in-flight` and `complete` GitHub labels (#4693 repointed
+the Git Board to local `bt_build_queue` state for "running" and `issue.state` for "done"; #4694 stopped
+the label writes). **A real GitHub issue close is the sole authority for "done"; local queue state is
+the authority for "running."** So a build session does none of the following:
 
-Two labels, `in-flight` and `complete`. Create them once if they don't exist yet:
+- It does **not** add, remove or check `in-flight` or `complete` at the IN FLIGHT or DONE bookend.
+  Neither label is an agent-facing instruction any more. Do not create them, and do not read a stale
+  copy of either on an older issue as state.
+- It does **not** close its own issue (see "You never close an issue" above). Its job at the end is the
+  DONE bookend plus the issue comment. When the issue is closed by someone else through the
+  `shanes-git` MCP's `close_issue`, that tool strips terminal state labels (`blocked`, `in-flight`,
+  `complete`) on close and never touches `Shane To-Do`, `bug` or `security`.
 
-```
-gh label create "in-flight" --color fbca04 --description "Claude Code is actively working on this"
-gh label create "complete"  --color 0e8a16 --description "Confirmed done in code, awaiting Shane's review/close"
-```
-
-- **Step 1**, right alongside the IN FLIGHT bookend: `gh issue edit <number> --add-label "in-flight" --remove-label "complete"`
-- **Last step**, right alongside the DONE bookend: `gh issue edit <number> --remove-label "in-flight" --add-label "complete"`
-
-**Never close the issue as part of this.** `complete` means "the code is done and confirmed" — not "Shane has reviewed and signed off." Closing an issue stays a decision only Shane makes himself.
-
-If the row has no Git # (the work isn't tied to a specific issue), skip this — there's nothing to label.
+Two labels remain agent-facing, both documented below: `Shane To-Do` and `blocked`.
 
 ### "Shane To-Do" label — when the work leaves an action for Shane himself
 
@@ -441,7 +440,7 @@ gh label create "Shane To-Do" --color b60205 --description "An action Shane need
   reserved for things only Shane can do that are genuinely not release-time — granting an Azure
   role, rotating a cert, exporting a design, a product decision.
 - If the action is a manual SQL migration, reference the file's real repo-relative path in the issue body/comment somewhere — Shane's browser extension panel looks for a `lib/db/migrations/manual/*.sql` path in the issue body to offer a one-click "load into the floaty SQL Runner" action.
-- **Never remove this label yourself.** Shane clears it (and closes the issue) himself once he's actually done the action — same reasoning as `complete` never auto-closing an issue.
+- **Never remove this label yourself.** Shane clears it (and closes the issue) himself once he's actually done the action — same reasoning as an agent never closing an issue itself.
 
 ### "blocked" label — when a session has to stop and wait on another build
 
@@ -458,7 +457,7 @@ gh api -X POST repos/shanemccaw/Shane-McCaw-MSP/issues/<this-number>/dependencie
 ```
 
 **The moment a session realizes it's blocked** (not at the start — only once you actually hit the wall):
-1. `gh issue edit <this-number> --add-label "blocked" --remove-label "in-flight"`
+1. `gh issue edit <this-number> --add-label "blocked"`
 2. Set the real blocked-by dependency via the two commands above, pointing at the issue you're actually waiting on.
 3. Leave a one-line comment on your own issue saying what you're waiting for and why, in plain language — the dependency link is structured data for tooling, the comment is for a human skimming later.
 4. Write your `build-journal/<id>.md` bookend's `Status:` as `🛑 BLOCKED <timestamp>` with a real log line, **commit it, and push it to origin/main yourself** — the same discipline as a DONE bookend (§ Mandatory session bookends), rebasing onto the current `origin/main` and retrying if the push is rejected. Do not skip this because you're about to stop: a BLOCKED bookend that never reaches `origin/main` is invisible to the false-done reconciler, which reads it from exactly that ref (Git #3628 — confirmed live for #3584/#3585, where the bookend sat only on the agent's own branch and the queue row read Verifying as if the build had actually completed). BuildConsole's own watcher now also pushes this bookend and corrects the row as a backstop, but that backstop is not a reason to skip the push yourself.
@@ -470,12 +469,12 @@ gh api -X POST repos/shanemccaw/Shane-McCaw-MSP/issues/<this-number>/dependencie
 gh api repos/shanemccaw/Shane-McCaw-MSP/issues/<this-number>/dependencies/blocked_by
 ```
 
-If that list is empty, or every issue in it is closed/`complete`-labeled, you're unblocked:
-1. `gh issue edit <this-number> --remove-label "blocked" --add-label "in-flight"`
+If that list is empty, or every issue in it is closed, you're unblocked:
+1. `gh issue edit <this-number> --remove-label "blocked"`
 2. Remove the now-stale dependency link: `gh api -X DELETE repos/shanemccaw/Shane-McCaw-MSP/issues/<this-number>/dependencies/blocked_by/<that id>`
 3. Say plainly in your first message that you found yourself unblocked and are resuming, then continue the actual work.
 
-If it's still genuinely blocked (the dependency is still open and not `complete`), say so and stop again rather than guessing forward.
+If it's still genuinely blocked (the dependency is still open), say so and stop again rather than guessing forward.
 
 Shane's BuildConsole desktop app (`desktop/BuildConsole/`) reads both the label and the real dependency to show a blocked build nested under whatever it's waiting on, in a red box — and flags it a different color the moment that dependency clears, so he knows to go start it again without having to remember himself.
 
