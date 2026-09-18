@@ -33,7 +33,6 @@ namespace BuildConsole.Services
         public string? Body { get; set; }
 
         public bool IsClosed => string.Equals(State, "closed", StringComparison.OrdinalIgnoreCase);
-        public bool HasInFlightLabel => Labels.Any(l => string.Equals(l.Name, "in-flight", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>Git #840 (Git Board Phase 2) — the real `GET /issues/{n}` response shape for the issue detail panel (title/body/state, not the search-result subset).</summary>
@@ -277,9 +276,9 @@ namespace BuildConsole.Services
         /// GATE-card top-level check.</summary>
         public bool IsEpic => ParentNumber == null && (SubIssueCount > 0 || ChildIssueNumbers.Count > 0);
         public bool IsClosed => string.Equals(State, "CLOSED", StringComparison.OrdinalIgnoreCase);
-        public bool IsComplete => Labels.Any(l => string.Equals(l.Name, "complete", StringComparison.OrdinalIgnoreCase));
+        /// <summary>Git #4693 — "done" is the issue's real GitHub state, not the retired <c>complete</c> label (#4692: issue close is the sole authority for done). "Running" is no longer a label read either — see <see cref="LocalQueueActivity"/>.</summary>
+        public bool IsComplete => IsClosed;
         public bool IsTodo => Labels.Any(l => string.Equals(l.Name, "Shane To-Do", StringComparison.OrdinalIgnoreCase));
-        public bool HasInFlightLabel => Labels.Any(l => string.Equals(l.Name, "in-flight", StringComparison.OrdinalIgnoreCase));
         public bool IsBlocked => Labels.Any(l => string.Equals(l.Name, "blocked", StringComparison.OrdinalIgnoreCase));
     }
 

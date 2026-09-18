@@ -83,7 +83,7 @@ namespace BuildConsole.Controls
         public bool IsBlocked { get; set; }
         public int? BlockedByNumber { get; set; }
         public string? BlockedByTitle { get; set; }
-        /// <summary>Git #1368 — real "in-flight" label straight off the board's own GraphQL labels fetch (see <see cref="GitBoardIssue.HasInFlightLabel"/>), no separate REST call needed unlike <see cref="IsBlocked"/>.</summary>
+        /// <summary>Git #1368 / #4693 — true while a real queued/running local build exists for this issue (see <see cref="LocalQueueActivity"/>); no longer read off the retired GitHub "in-flight" label, and no GitHub call involved.</summary>
         public bool IsInFlight { get; set; }
         /// <summary>Git #1930 — the issue's real, current GitHub labels, carried through from whichever source (<see cref="GitBoardIssue.Labels"/>, <see cref="GitHubIssueResult.Labels"/>, <see cref="GitHubIssueDetail.Labels"/>) constructed this <see cref="GitIssue"/>, so the detail tab can render them without a second fetch.</summary>
         public List<GitHubLabel> Labels { get; set; } = new();
@@ -970,12 +970,32 @@ namespace BuildConsole.Controls
             _ = LoadEpicProgressMirrorCacheAsync();
             GitHubIssueMirror.SyncCompleted += OnEpicProgressMirrorSyncCompleted;
 
+            // Git #4693 — the FOCUS/ACTIVE/ancestor "in flight" markers now follow the local build
+            // queue, not a GitHub label, so a build launching/finishing must repaint the board on
+            // its own (and a board built before the first queue load must catch up).
+            LocalQueueActivity.Changed += OnLocalQueueActivityChanged;
+
             Unloaded += (_, _) =>
             {
                 try { FocusModeService.Instance.StateChanged -= OnFocusStateChanged; } catch { }
                 try { GitHubIssueMirror.SyncCompleted -= OnEpicProgressMirrorSyncCompleted; } catch { }
+                try { LocalQueueActivity.Changed -= OnLocalQueueActivityChanged; } catch { }
             };
         }
+
+        /// <summary>Git #4693 — the set of issues with a queued/running local build changed. Re-stamps
+        /// <see cref="GitIssue.IsInFlight"/> on the already-built board nodes and re-renders the tree from
+        /// that cache (RenderIssuesTree recomputes <see cref="GitIssue.HasInFlightDescendant"/> and pushes
+        /// the result on to <c>GitBoardPanel.SetLiveMilestones</c>), with no GitHub round-trip. A board
+        /// that hasn't been built yet needs nothing: BuildBoardFromGitHub reads
+        /// <see cref="LocalQueueActivity"/> itself when it does.</summary>
+        private void OnLocalQueueActivityChanged() => Dispatcher.InvokeAsync(() =>
+        {
+            if (_milestones.Count == 0) return;
+            foreach (var issue in _milestones.SelectMany(m => m.Epics).SelectMany(e => e.Issues))
+                issue.IsInFlight = LocalQueueActivity.IsInFlight(issue.IssueNumber);
+            try { RenderIssuesTree(_currentFilter == "Done" ? "All" : _currentFilter); } catch { }
+        });
 
         /// <summary>Git #2540 — Focus engaging/disengaging changes RenderChatsTree's own
         /// milestoneMode gate (<c>focusSvc.IsActive &amp;&amp; activeMilestone.HasValue &amp;&amp;
@@ -3146,7 +3166,7 @@ namespace BuildConsole.Controls
                 SubIssueCompleted = rollupCompleted,
                 SubIssuePercent = rollupPercent,
                 IsBlocked = issueInTree?.IsBlocked ?? it.IsBlocked,
-                IsInFlight = it.HasInFlightLabel,
+                IsInFlight = LocalQueueActivity.IsInFlight(it.Number),
                 BlockedByNumber = issueInTree?.BlockedByNumber,
                 BlockedByTitle = issueInTree?.BlockedByTitle,
                 Labels = it.Labels,
@@ -3209,7 +3229,7 @@ namespace BuildConsole.Controls
                         IsBlocked = it.IsBlocked || cachedBlocked,
                         BlockedByNumber = cachedBlocked ? cachedBlk.Number : (int?)null,
                         BlockedByTitle = cachedBlocked ? cachedBlk.Title : null,
-                        IsInFlight = it.HasInFlightLabel,
+                        IsInFlight = LocalQueueActivity.IsInFlight(it.Number),
                         Labels = it.Labels,
                         SqlPath = DeriveSqlPath(it.Body),
                         Body = it.Body,
@@ -5491,8 +5511,8 @@ namespace BuildConsole.Controls
                     Title = searchResult.Title,
                     RawTitle = searchResult.Title,
                     Status = searchResult.IsClosed ? "CLOSED" : "OPEN",
-                    IsComplete = searchResult.Labels.Any(l => string.Equals(l.Name, "complete", StringComparison.OrdinalIgnoreCase)),
-                    IsInFlight = searchResult.HasInFlightLabel,
+                    IsComplete = searchResult.IsClosed,
+                    IsInFlight = LocalQueueActivity.IsInFlight(searchResult.Number),
                     Labels = searchResult.Labels,
                 };
                 IssueSelected?.Invoke(this, searchIssue);
@@ -5511,7 +5531,7 @@ namespace BuildConsole.Controls
                     IsEpic = boardIssue.IsEpic,
                     IsComplete = boardIssue.IsComplete,
                     HasParentEpic = boardIssue.ParentNumber.HasValue,
-                    IsInFlight = boardIssue.HasInFlightLabel,
+                    IsInFlight = LocalQueueActivity.IsInFlight(boardIssue.Number),
                     Labels = boardIssue.Labels,
                 };
                 IssueSelected?.Invoke(this, bi);
@@ -6724,8 +6744,8 @@ namespace BuildConsole.Controls
                 showsNoParent = true;
             }
 
-            // Git #1368 — real "in-flight" GitHub label (whatever build session
-            // is actively working this issue right now). Git #1785: solid dot,
+            // Git #1368 / #4693 — a real queued/running local build on this issue
+            // (LocalQueueActivity, not a GitHub label). Git #1785: solid dot,
             // same amber/orange #FAB387 as before — deliberately NOT the Blocked
             // dot's red #F38BA8, so the two are never confused at a glance even
             // when both show on the same row.
@@ -7997,7 +8017,7 @@ namespace BuildConsole.Controls
             string statusLabel;
             string statusHex;
             if (result.IsClosed) { statusLabel = "Closed"; statusHex = "#A6E3A1"; }
-            else if (result.HasInFlightLabel) { statusLabel = "In Flight"; statusHex = "#FAB387"; }
+            else if (LocalQueueActivity.IsInFlight(result.Number)) { statusLabel = "In Flight"; statusHex = "#FAB387"; }
             else if (blocked) { statusLabel = "Blocked"; statusHex = "#F38BA8"; }
             else { statusLabel = "Open"; statusHex = "#89B4FA"; }
 
@@ -8040,8 +8060,8 @@ namespace BuildConsole.Controls
                 RawTitle = result.Title,
                 Status = result.IsClosed ? "CLOSED" : "OPEN",
                 IsBlocked = blocked,
-                IsComplete = result.Labels.Any(l => string.Equals(l.Name, "complete", StringComparison.OrdinalIgnoreCase)),
-                IsInFlight = result.HasInFlightLabel,
+                IsComplete = result.IsClosed,
+                IsInFlight = LocalQueueActivity.IsInFlight(result.Number),
                 Labels = result.Labels,
             };
 

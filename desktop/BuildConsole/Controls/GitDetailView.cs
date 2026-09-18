@@ -826,17 +826,17 @@ namespace BuildConsole.Controls
         }
 
         /// <summary>Git #1930 — a real GitHub label rendered as a small chip, matching the
-        /// rest of this view's pill visual language. Escalates a few known label names to
-        /// their existing brush (peach for in-flight/Shane To-Do, green for complete, red
-        /// for blocked); anything else falls back to a neutral subtext brush rather than
-        /// inventing a color scheme.</summary>
+        /// rest of this view's pill visual language. Escalates the two labels that still carry
+        /// meaning to their existing brush (peach for Shane To-Do, red for blocked); anything
+        /// else falls back to a neutral subtext brush rather than inventing a color scheme.
+        /// Git #4693 — "in-flight" / "complete" no longer get their own color: running is the
+        /// local build queue's call and done is the issue's real open/closed state (already shown
+        /// by <see cref="StatePill"/> above), so a stale one of those labels just renders neutral.</summary>
         private Border LabelChip(string text)
         {
             string brushKey = text.ToLowerInvariant() switch
             {
-                "in-flight" => "StatusRunningBrush",
                 "shane to-do" => "StatusWarningBrush",
-                "complete" => "StatusSuccessBrush",
                 "blocked" => "StatusErrorBrush",
                 _ => "Subtext1Brush",
             };

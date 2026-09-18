@@ -499,9 +499,10 @@ namespace BuildConsole.Controls
             // zero-GitHub-cost (local process list / local filesystem read), so they were folded
             // into the new, narrow BtnRefreshBoard_Click (the cheap board-diff button) rather than
             // given up entirely or left orphaned; see that method's own doc comment for the real
-            // reasoning. RefreshInFlightIssuesAsync makes a genuine `gh` call, so it deliberately
-            // was NOT bundled onto either of the two new narrow buttons — its only real trigger is
-            // this initial load, same as before #3702 combined everything.
+            // reasoning. Git #4693 — RefreshInFlightIssuesAsync no longer makes a `gh` call (the In-Flight
+            // tile is now derived from the local queue rows + local issue mirror), so it is no longer
+            // bound by this rule: this initial call only paints the empty state, and every real queue
+            // change re-renders it from RefreshAsync.
             _ = RefreshActiveSessionsAsync();
             UpdateQueueStatusCounts();
             DevServerRollbackService.CheckForRollbacks(this);
@@ -753,17 +754,64 @@ namespace BuildConsole.Controls
         private string? _lastInFlightSignature;
         private List<Services.GitHubIssueSummary> _lastInFlightIssues = new();
 
+        private int _inFlightRefreshGeneration;
+
+        /// <summary>
+        /// Git #4693 — the In-Flight tile, driven by real local state instead of a
+        /// `gh issue list --label in-flight` call: an issue is in flight iff <c>bt_build_queue</c> has a
+        /// queued/running row for it (<see cref="Services.LocalQueueActivity.IsInFlightRow"/>, applied to
+        /// the rows this panel already holds in <see cref="_lastItems"/>). Title, real open/closed state and
+        /// immediate parent come from the local <c>bt_issue_mirror</c> — zero GitHub calls. An issue the
+        /// mirror has no row for falls back to the queue row's own title and the "No Epic" group rather
+        /// than being dropped, so a real running build never disappears from the tile.
+        /// </summary>
         private async System.Threading.Tasks.Task RefreshInFlightIssuesAsync(string trigger)
         {
-            List<Services.GitHubIssueSummary> issues;
-            // Git #3022 — the In-Flight tile's initial cold-start load is one of the independent
-            // startup GitHub bursts (a `gh issue list --label in-flight` call). Route it through the
-            // global cold-start coordinator so it staggers against the other startup subsystems
-            // instead of firing alongside them; pure pass-through once the cold-start window elapses,
-            // so a mid-session manual refresh is unaffected.
-            try { issues = await Services.StartupGitHubCoordinator.RunAsync("In-Flight tile", () => Services.GitHubIssuesService.ListOpenByLabelAsync("in-flight")); }
-            catch { ActivityLog.Log("github.manual-refresh", $"In-Flight tile [{trigger}]: gh CLI fetch FAILED"); return; }
-            ActivityLog.Log("github.manual-refresh", $"In-Flight tile [{trigger}]: {issues.Count} open in-flight issue(s) via gh CLI");
+            int generation = ++_inFlightRefreshGeneration;
+            var mainOwnerRepo = BuildConsoleSettings.Load().GitHubOwnerRepo;
+            var rows = _lastItems
+                .Where(i => Services.LocalQueueActivity.IsInFlightRow(i, mainOwnerRepo))
+                .GroupBy(i => i.GithubNumber!.Value)
+                .Select(g => g.OrderByDescending(i => i.UpdatedAt ?? DateTimeOffset.MinValue).First())
+                .ToList();
+
+            var mirror = new Dictionary<int, Services.GitHubIssueMirror.MirrorIssue>();
+            var parents = new Dictionary<int, Services.GitHubIssueMirror.MirrorIssue>();
+            if (rows.Count > 0)
+            {
+                var numbers = rows.Select(r => r.GithubNumber!.Value).ToList();
+                mirror = await System.Threading.Tasks.Task.Run(() => Services.GitHubIssueMirror.GetManyAsync(numbers));
+                var parentNumbers = mirror.Values.Where(m => m.ParentNumber.HasValue).Select(m => m.ParentNumber!.Value).Distinct().ToList();
+                if (parentNumbers.Count > 0)
+                    parents = await System.Threading.Tasks.Task.Run(() => Services.GitHubIssueMirror.GetManyAsync(parentNumbers));
+                if (generation != _inFlightRefreshGeneration) return; // a newer queue change already superseded this pass
+            }
+
+            var issues = new List<Services.GitHubIssueSummary>();
+            foreach (var row in rows)
+            {
+                int number = row.GithubNumber!.Value;
+                mirror.TryGetValue(number, out var mirrored);
+                if (mirrored != null && mirrored.IsClosed) continue; // the tile is open-and-running only; closed is the issue's real state
+
+                Services.GitHubIssueParent? parent = null;
+                if (mirrored?.ParentNumber is int parentNumber)
+                    parent = new Services.GitHubIssueParent
+                    {
+                        Number = parentNumber,
+                        Title = parents.TryGetValue(parentNumber, out var p) && !string.IsNullOrWhiteSpace(p.Title) ? p.Title : $"#{parentNumber}",
+                    };
+
+                issues.Add(new Services.GitHubIssueSummary
+                {
+                    Number = number,
+                    Title = !string.IsNullOrWhiteSpace(mirrored?.Title) ? mirrored!.Title : row.Title,
+                    Url = !string.IsNullOrWhiteSpace(mirrored?.HtmlUrl) ? mirrored!.HtmlUrl : Services.GitHubIssuesService.IssueUrl(number),
+                    UpdatedAt = (row.UpdatedAt ?? DateTimeOffset.UtcNow).UtcDateTime,
+                    Parent = parent,
+                });
+            }
+            ActivityLog.Log("build-queue-panel", $"In-Flight tile [{trigger}]: {issues.Count} issue(s) with a queued/running local build");
 
             var signature = System.Text.Json.JsonSerializer.Serialize(issues);
             if (signature == _lastInFlightSignature) return;
@@ -1334,6 +1382,9 @@ namespace BuildConsole.Controls
                     _queueCachedAtUtc = result.CachedAtUtc;
                 }
                 if (myGeneration != _refreshGeneration) return;
+                // Git #4693 — the Git Board's in-flight markers read this snapshot of queued/running
+                // rows (LocalQueueActivity), not the retired GitHub `in-flight` label. Local, no GitHub call.
+                Services.LocalQueueActivity.Update(_lastItems);
                 BuildConsole.Services.NotGitNumberRegistry.SyncFromQueue(_lastItems);
                 CheckPriorityBuildSetCompletion(_lastItems);
                 CheckExclusiveBuildSetCompletion(_lastItems);
@@ -1370,6 +1421,8 @@ namespace BuildConsole.Controls
                 {
                     _lastQueueSignature = signature;
                     RenderQueue(_lastItems);
+                    // Git #4693 — the In-Flight tile is local-state-driven now, so it re-renders on every real queue change.
+                    _ = RefreshInFlightIssuesAsync("queue changed");
                     // Git #3336 — resolve each build set's real top Epic(s) from the local mirror
                     // BEFORE rendering, so the rollup below can nest under a real Epic header.
                     _buildSetEpics = await ResolveBuildSetEpicsAsync(_lastItems);
