@@ -44,6 +44,7 @@ import {
   runbookStatusFromHold,
 } from "./portal-hold-windows.ts";
 import { cloneStepsForNextCycle, cycleProgress, isCycleComplete } from "./portal-runbook-cycles.ts";
+import { holdTriggerForRunbookKey } from "./portal-runbook-hold-triggers.ts";
 import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
@@ -487,4 +488,61 @@ export async function maybeAdvanceCycle(opts: {
     { runbookId: runbook.id, completedRunId: run.id, nextRunId: nextRun.id, cycleNumber: run.cycleNumber + 1 },
     "runbook cycle completed — recurring schedule spawned its next cycle",
   );
+}
+
+/**
+ * The real `portal_hold_windows` creation path (#4617). Called from both
+ * step-tick routes right after a step check succeeds, alongside
+ * `maybeAdvanceCycle` above. A no-op unless the runbook's own `runbookKey`
+ * has a configured trigger (`portal-runbook-hold-triggers.ts`) AND the
+ * position just checked is that trigger's `triggerStepPosition` — every
+ * other step tick, on every other runbook, does nothing here.
+ *
+ * `.onConflictDoNothing` against the existing `(customer_id, hold_key)`
+ * unique index makes this idempotent: re-ticking (or re-checking) the
+ * trigger step again never duplicates the row or resets its clock.
+ */
+export async function maybeRaiseHoldWindowForStep(opts: {
+  runbook: typeof portalRunbooksTable.$inferSelect;
+  run: typeof portalRunbookRunsTable.$inferSelect;
+  position: number;
+  checked: boolean;
+  now: Date;
+}): Promise<void> {
+  const { runbook, run, position, checked, now } = opts;
+  if (!checked) return;
+
+  const trigger = holdTriggerForRunbookKey(runbook.runbookKey);
+  if (!trigger || position !== trigger.triggerStepPosition) return;
+
+  const inserted = await db
+    .insert(portalHoldWindowsTable)
+    .values({
+      customerId: runbook.customerId,
+      runbookId: runbook.id,
+      runId: run.id,
+      holdKey: trigger.holdKey,
+      title: trigger.title,
+      gates: trigger.gates,
+      gatesStepPosition: trigger.gatesStepPosition,
+      pillar: trigger.pillar,
+      startedAt: now,
+      waitDays: trigger.waitDays,
+      scanVerdict: "watch",
+      scanLine: trigger.scanLine,
+      scanSource: trigger.scanSource,
+      scanCadence: trigger.scanCadence,
+      why: trigger.why,
+    })
+    .onConflictDoNothing({
+      target: [portalHoldWindowsTable.customerId, portalHoldWindowsTable.holdKey],
+    })
+    .returning({ id: portalHoldWindowsTable.id });
+
+  if (inserted.length > 0) {
+    log.info(
+      { customerId: runbook.customerId, runbookId: runbook.id, runId: run.id, holdKey: trigger.holdKey, holdWindowId: inserted[0]!.id },
+      "runbook step tick raised a real hold window",
+    );
+  }
 }

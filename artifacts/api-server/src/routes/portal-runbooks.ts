@@ -95,6 +95,7 @@ import {
   currentRunFor,
   loadRunbooksForCustomer,
   maybeAdvanceCycle,
+  maybeRaiseHoldWindowForStep,
   ownedHold,
   ownedRunbook,
 } from "../lib/portal-runbook-wire.ts";
@@ -220,6 +221,7 @@ router.put(
 
       if (checked) {
         await maybeAdvanceCycle({ runbook, run, userId, now });
+        await maybeRaiseHoldWindowForStep({ runbook, run, position, checked, now });
       }
 
       log.info({ customerId, runbookId, runId: run.id, position, checked, userId }, "runbook step toggled");

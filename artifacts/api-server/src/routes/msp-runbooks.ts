@@ -61,7 +61,14 @@ import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
 import { formatChangeRequestCode } from "../lib/portal-change-control.ts";
-import { currentRunFor, loadRunbooksForCustomer, maybeAdvanceCycle, ownedHold, ownedRunbook } from "../lib/portal-runbook-wire.ts";
+import {
+  currentRunFor,
+  loadRunbooksForCustomer,
+  maybeAdvanceCycle,
+  maybeRaiseHoldWindowForStep,
+  ownedHold,
+  ownedRunbook,
+} from "../lib/portal-runbook-wire.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -193,6 +200,7 @@ router.put(
 
       if (checked) {
         await maybeAdvanceCycle({ runbook, run, userId, now });
+        await maybeRaiseHoldWindowForStep({ runbook, run, position, checked, now });
       }
 
       log.info({ mspId, customerId, runbookId, runId: run.id, position, checked, userId }, "runbook step toggled from MSP console");
