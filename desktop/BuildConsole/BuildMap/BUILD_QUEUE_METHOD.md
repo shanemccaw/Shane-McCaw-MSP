@@ -464,6 +464,60 @@ issues, an entry with `is\_design = true` (Git #3978's new column) is handled on
 
 &#x20;
 
+\### 4.6 A plain comment triggers nothing — the only two real ways to act on new information (Git #4633)
+
+&#x20;
+
+Chats repeatedly reopen or comment on an already-dispatched/closed issue, expecting BuildConsole
+to automatically notice the new comment and redispatch a build for it. \*\*BuildConsole has no
+such mechanism — there is no "new comment on a GitHub issue → automatically queue a build"
+trigger anywhere in the app.\*\* A plain comment — reopening the issue, adding context, correcting
+scope — does NOT cause BuildConsole to do anything on its own. It just sits there until a human
+or a chat takes one of the two real actions below. This is the same class of gap §5.4 already
+closed for the buildSet/end-of-batch-test convention: a rule that only ever existed verbally,
+reinvented or missed differently by whichever chat was dispatching at the time.
+
+&#x20;
+
+There are exactly two real ways to get BuildConsole to act on new information on an issue:
+
+&#x20;
+
+1\. \*\*A fresh `BUILD:` dispatch comment + move to Batter Up\*\* — a genuinely new dispatch, exactly
+&#x20;   per §4.1, whether the issue is still open or was reopened for this purpose. Use this when
+&#x20;   there's no tracked session still around for the issue, or when the correction is large enough
+&#x20;   to warrant a clean restart.
+
+2\. \*\*Resume Session on an existing idle/crashed tracked session\*\* — right-click the row in Build
+&#x20;   Watch → \*\*Resume Session\*\*, with an explicit instruction telling it to re-pull the issue's
+&#x20;   latest comments before continuing. Use this when a session is already tracked for the issue
+&#x20;   and just needs to pick up new context, not start over.
+
+&#x20;
+
+\*\*A chat that just posts a plain comment and assumes it will be picked up is wrong.\*\* It should
+do one of the two things above instead.
+
+&#x20;
+
+\*\*Worked example\*\* — issue #6001 already has a closed build and a verified DONE bookend. A later
+chat notices the fix missed an edge case and wants that fixed:
+
+&#x20;
+
+\- \*\*Wrong:\*\* post a plain comment on #6001 saying "this misses case X" and leave it — nothing
+&#x20; will ever pick that up.
+
+\- \*\*Right, path (a):\*\* post a real `BUILD:` comment on #6001 (per §4.1's format) describing the
+&#x20; missed edge case as the task, then move #6001 to Batter Up.
+
+\- \*\*Right, path (b):\*\* if BuildConsole still shows a tracked session for #6001 sitting idle or
+&#x20; crashed in Build Watch, right-click it → Resume Session, and give it an explicit instruction:
+&#x20; "Re-pull #6001's latest comments — there's a new correction — then fix the missed edge case
+&#x20; described there."
+
+&#x20;
+
 \---
 
 &#x20;
