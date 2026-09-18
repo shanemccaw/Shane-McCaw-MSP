@@ -1,0 +1,630 @@
+{
+  "testName": "Issue #1749 - Pillar pages (#1485/#1621, screen 12) \u2014 the six real pillar landing pages in artifacts/portal, wired to the already-built GET /api/portal/pillars (pillar-summary-stats.ts). Real design landed in Design/portal/design_handoff_full_site/screens/Pillar Pages.dc.html; pages live at artifacts/portal/src/pages/pillar.tsx, route /pillars/:pillar, reached from the shell\u0027s PillarTabStrip. Scope: pillar summary cards \u002B scores only \u2014 the design\u0027s full per-check \u0027block\u0027 breakdown and the click-a-finding-for-full-breakdown \u002B SOP/Runbook remediation offer are a real, separate follow-up (#1621\u0027s own open architecture questions).",
+  "productName": "Portal",
+  "sessionId": "2026-09-17-1807",
+  "startedAt": "2026-09-17T18:07:33.8807107-04:00",
+  "endedAt": "2026-09-17T18:08:22.3861309-04:00",
+  "durationSeconds": 48.51,
+  "success": true,
+  "summary": "\u2714 TEST PASSED (16/16 Steps)",
+  "urlsVisited": [
+    "http://localhost:5175/portal/login"
+  ],
+  "steps": [
+    {
+      "index": 1,
+      "action": "goto",
+      "selector": "/portal/login",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "navigation to http://localhost:5175/portal/login succeeds",
+      "actual": "succeeded",
+      "passed": true,
+      "durationMs": 2589,
+      "detail": "Navigated to http://localhost:5175/portal/login",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\1.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 2,
+      "action": "expect",
+      "selector": "[data-testid=\u0027login-email\u0027]",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "[data-testid=\u0027login-email\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 101,
+      "detail": "[data-testid=\u0027login-email\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\2.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 3,
+      "action": "input",
+      "selector": "[data-testid=\u0027login-email\u0027]",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "input on \u0027[data-testid=\u0027login-email\u0027]\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 32,
+      "detail": "Executed input on [data-testid=\u0027login-email\u0027]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\3.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 4,
+      "action": "input",
+      "selector": "[data-testid=\u0027login-password\u0027]",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "input on \u0027[data-testid=\u0027login-password\u0027]\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 57,
+      "detail": "Executed input on [data-testid=\u0027login-password\u0027]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\4.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 5,
+      "action": "click",
+      "selector": "[data-testid=\u0027login-submit\u0027]",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "click on \u0027[data-testid=\u0027login-submit\u0027]\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 57,
+      "detail": "Executed click on [data-testid=\u0027login-submit\u0027]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\5.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 6,
+      "action": "goto",
+      "selector": "/portal/pillars/governance",
+      "targetUrl": "http://localhost:5175/portal/pillars/governance",
+      "expected": "navigation to http://localhost:5175/portal/pillars/governance succeeds",
+      "actual": "succeeded",
+      "passed": true,
+      "durationMs": 1222,
+      "detail": "Navigated to http://localhost:5175/portal/pillars/governance",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\6.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 7,
+      "action": "expect",
+      "selector": "[data-testid=\u0027pillar-stat-tiles\u0027]",
+      "targetUrl": "http://localhost:5175/portal/pillars/governance",
+      "expected": "[data-testid=\u0027pillar-stat-tiles\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 4539,
+      "detail": "[data-testid=\u0027pillar-stat-tiles\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\7.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 8,
+      "action": "expect",
+      "selector": "[data-testid=\u0027pillar-stat-tiles\u0027]",
+      "targetUrl": "http://localhost:5175/portal/pillars/governance",
+      "expected": "[data-testid=\u0027pillar-stat-tiles\u0027] state == \u0027visible\u0027; textContains any of [\u0022groups with no owner\u0022]",
+      "actual": "found=True, visible=True; text=\u0022GROUPS WITH NO OWNER 26 of 104 groups scanned PUBLIC, DISCOVERABLE TEAMS 1 of 18 teams GUEST ACCOUNTS 2 of 27 accounts in the directory DORMANT SERVICE PRINCIPALS 477 of 505 enterprise apps\u0022",
+      "passed": true,
+      "durationMs": 35,
+      "detail": "[data-testid=\u0027pillar-stat-tiles\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained \u0022groups with no owner\u0022",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\8.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 9,
+      "action": "expect",
+      "selector": "[data-testid=\u0027pillar-stat-tiles\u0027]",
+      "targetUrl": "http://localhost:5175/portal/pillars/governance",
+      "expected": "[data-testid=\u0027pillar-stat-tiles\u0027] state == \u0027visible\u0027; textContains any of [\u0022dormant service principals\u0022]",
+      "actual": "found=True, visible=True; text=\u0022GROUPS WITH NO OWNER 26 of 104 groups scanned PUBLIC, DISCOVERABLE TEAMS 1 of 18 teams GUEST ACCOUNTS 2 of 27 accounts in the directory DORMANT SERVICE PRINCIPALS 477 of 505 enterprise apps\u0022",
+      "passed": true,
+      "durationMs": 41,
+      "detail": "[data-testid=\u0027pillar-stat-tiles\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained \u0022dormant service principals\u0022",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\9.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 10,
+      "action": "expect",
+      "selector": "[data-testid=\u0027pillar-coverage\u0027]",
+      "targetUrl": "http://localhost:5175/portal/pillars/governance",
+      "expected": "[data-testid=\u0027pillar-coverage\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 24,
+      "detail": "[data-testid=\u0027pillar-coverage\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\10.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 11,
+      "action": "expect",
+      "selector": "[data-testid=\u0027pillar-coverage\u0027]",
+      "targetUrl": "http://localhost:5175/portal/pillars/governance",
+      "expected": "[data-testid=\u0027pillar-coverage\u0027] state == \u0027visible\u0027; textContains any of [\u0022observed with data\u0022]",
+      "actual": "found=True, visible=True; text=\u0022What feeds this score 34 checks in the catalog are tagged governance \u00B7 32 produced an evaluable signal 27 observed with data 3 licence-gated \u2014 your SKUs can\u0027t feed them 1 errored or can\u0027t run 3 wired,...\u0022",
+      "passed": true,
+      "durationMs": 19,
+      "detail": "[data-testid=\u0027pillar-coverage\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained \u0022observed with data\u0022",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\11.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 12,
+      "action": "expect",
+      "selector": "[data-testid=\u0027pillar-coverage-segment-ok\u0027]",
+      "targetUrl": "http://localhost:5175/portal/pillars/governance",
+      "expected": "[data-testid=\u0027pillar-coverage-segment-ok\u0027] state == \u0027present\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 19,
+      "detail": "[data-testid=\u0027pillar-coverage-segment-ok\u0027] \u2014 state \u0027present\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\12.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 13,
+      "action": "expect",
+      "selector": "[data-testid=\u0027pillar-trend-dots\u0027]",
+      "targetUrl": "http://localhost:5175/portal/pillars/governance",
+      "expected": "[data-testid=\u0027pillar-trend-dots\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 20,
+      "detail": "[data-testid=\u0027pillar-trend-dots\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\13.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 14,
+      "action": "expect",
+      "selector": "[data-testid=\u0027pillar-finding-chips\u0027]",
+      "targetUrl": "http://localhost:5175/portal/pillars/governance",
+      "expected": "[data-testid=\u0027pillar-finding-chips\u0027] state == \u0027visible\u0027; textContains any of [\u0022Open findings\u0022]",
+      "actual": "found=True, visible=True; text=\u0022OPEN FINDINGS 5 warning\u0022",
+      "passed": true,
+      "durationMs": 23,
+      "detail": "[data-testid=\u0027pillar-finding-chips\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained \u0022Open findings\u0022",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\14.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 15,
+      "action": "goto",
+      "selector": "/portal/pillars/health",
+      "targetUrl": "http://localhost:5175/portal/pillars/health",
+      "expected": "navigation to http://localhost:5175/portal/pillars/health succeeds",
+      "actual": "succeeded",
+      "passed": true,
+      "durationMs": 1095,
+      "detail": "Navigated to http://localhost:5175/portal/pillars/health",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\15.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 16,
+      "action": "expect",
+      "selector": "[data-testid=\u0027pillar-stat-tiles\u0027]",
+      "targetUrl": "http://localhost:5175/portal/pillars/health",
+      "expected": "[data-testid=\u0027pillar-stat-tiles\u0027] state == \u0027visible\u0027; textContains any of [\u0022stale device records\u0022]",
+      "actual": "found=True, visible=True; text=\u0022DEVICES ENROLLED IN INTUNE \u2014 this Microsoft service isn\u0027t licensed on this tenant STALE DEVICE RECORDS 7 of 8 records in Entra ID EXPIRED APP SECRETS 3 of 11 app secrets on file MICROSOFT SERVICES OPE...\u0022",
+      "passed": true,
+      "durationMs": 4374,
+      "detail": "[data-testid=\u0027pillar-stat-tiles\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained \u0022stale device records\u0022",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\16.png",
+      "domSnapshotPath": null
+    }
+  ],
+  "consoleErrors": [],
+  "apiFailures": [
+    {
+      "name": "post-api-auth-refresh",
+      "method": "POST",
+      "requestUrl": "http://localhost:5175/api/auth/refresh",
+      "statusCode": 401,
+      "durationMs": 0,
+      "reason": "HTTP 401",
+      "timestamp": "2026-09-17T18:07:35.1750077-04:00"
+    },
+    {
+      "name": "post-api-auth-refresh",
+      "method": "POST",
+      "requestUrl": "http://localhost:5175/api/auth/refresh",
+      "statusCode": 401,
+      "durationMs": 0,
+      "reason": "HTTP 401",
+      "timestamp": "2026-09-17T18:07:43.3430344-04:00"
+    }
+  ],
+  "executedCommands": [],
+  "screenshotPaths": [
+    "screenshots/screenshot-01.png",
+    "screenshots/screenshot-02.png",
+    "screenshots/screenshot-03.png",
+    "screenshots/screenshot-04.png",
+    "screenshots/screenshot-05.png",
+    "screenshots/screenshot-06.png",
+    "screenshots/screenshot-07.png",
+    "screenshots/screenshot-08.png",
+    "screenshots/screenshot-09.png",
+    "screenshots/screenshot-10.png",
+    "screenshots/screenshot-11.png",
+    "screenshots/screenshot-12.png",
+    "screenshots/screenshot-13.png",
+    "screenshots/screenshot-14.png",
+    "screenshots/screenshot-15.png",
+    "screenshots/screenshot-16.png"
+  ],
+  "screenshotDiffs": [
+    {
+      "StepIndex": 1,
+      "StepLabel": "goto /portal/login",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\1.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\pillar-pages\\1.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 2,
+      "StepLabel": "expect [data-testid=\u0027login-email\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\2.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\pillar-pages\\2.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 3,
+      "StepLabel": "input [data-testid=\u0027login-email\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\3.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\pillar-pages\\3.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 4,
+      "StepLabel": "input [data-testid=\u0027login-password\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\4.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\pillar-pages\\4.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 5,
+      "StepLabel": "click [data-testid=\u0027login-submit\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\5.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\pillar-pages\\5.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 6,
+      "StepLabel": "goto /portal/pillars/governance",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\6.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\pillar-pages\\6.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 7,
+      "StepLabel": "expect [data-testid=\u0027pillar-stat-tiles\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\7.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\pillar-pages\\7.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 8,
+      "StepLabel": "expect [data-testid=\u0027pillar-stat-tiles\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\8.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\pillar-pages\\8.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 9,
+      "StepLabel": "expect [data-testid=\u0027pillar-stat-tiles\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\9.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\pillar-pages\\9.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 10,
+      "StepLabel": "expect [data-testid=\u0027pillar-coverage\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\10.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\pillar-pages\\10.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 11,
+      "StepLabel": "expect [data-testid=\u0027pillar-coverage\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\11.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\pillar-pages\\11.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 12,
+      "StepLabel": "expect [data-testid=\u0027pillar-coverage-segment-ok\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\12.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\pillar-pages\\12.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 13,
+      "StepLabel": "expect [data-testid=\u0027pillar-trend-dots\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\13.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\pillar-pages\\13.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 14,
+      "StepLabel": "expect [data-testid=\u0027pillar-finding-chips\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\14.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\pillar-pages\\14.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 15,
+      "StepLabel": "goto /portal/pillars/health",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\15.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\pillar-pages\\15.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 16,
+      "StepLabel": "expect [data-testid=\u0027pillar-stat-tiles\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180722\\screenshots\\16.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\pillar-pages\\16.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    }
+  ],
+  "domDiffs": [
+    {
+      "StepIndex": 1,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "/portal/login",
+      "Description": "goto /portal/login",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [],
+      "SnapshotPath": "dom/dom-step-01.json",
+      "Timestamp": "2026-09-17T18:07:43.7514666-04:00"
+    },
+    {
+      "StepIndex": 2,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "[data-testid=\u0027login-email\u0027]",
+      "Description": "expect [data-testid=\u0027login-email\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027[data-testid=\u0027login-email\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-02.json",
+      "Timestamp": "2026-09-17T18:07:45.4849478-04:00"
+    },
+    {
+      "StepIndex": 3,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "[data-testid=\u0027login-email\u0027]",
+      "Description": "input [data-testid=\u0027login-email\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027[data-testid=\u0027login-email\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-03.json",
+      "Timestamp": "2026-09-17T18:07:47.1316919-04:00"
+    },
+    {
+      "StepIndex": 4,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "[data-testid=\u0027login-password\u0027]",
+      "Description": "input [data-testid=\u0027login-password\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027[data-testid=\u0027login-password\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-04.json",
+      "Timestamp": "2026-09-17T18:07:48.7971679-04:00"
+    },
+    {
+      "StepIndex": 5,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "[data-testid=\u0027login-submit\u0027]",
+      "Description": "click [data-testid=\u0027login-submit\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 2,
+      "Changes": [
+        "Captured DOM scope: 2 total element nodes under \u0027[data-testid=\u0027login-submit\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-05.json",
+      "Timestamp": "2026-09-17T18:07:50.5122936-04:00"
+    },
+    {
+      "StepIndex": 6,
+      "Route": "http://localhost:5175/portal/pillars/governance",
+      "Selector": "/portal/pillars/governance",
+      "Description": "goto /portal/pillars/governance",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [],
+      "SnapshotPath": "dom/dom-step-06.json",
+      "Timestamp": "2026-09-17T18:07:53.6684485-04:00"
+    },
+    {
+      "StepIndex": 7,
+      "Route": "http://localhost:5175/portal/pillars/governance",
+      "Selector": "[data-testid=\u0027pillar-stat-tiles\u0027]",
+      "Description": "expect [data-testid=\u0027pillar-stat-tiles\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 16,
+      "Changes": [
+        "Captured DOM scope: 16 total element nodes under \u0027[data-testid=\u0027pillar-stat-tiles\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-07.json",
+      "Timestamp": "2026-09-17T18:07:59.9689038-04:00"
+    },
+    {
+      "StepIndex": 8,
+      "Route": "http://localhost:5175/portal/pillars/governance",
+      "Selector": "[data-testid=\u0027pillar-stat-tiles\u0027]",
+      "Description": "expect [data-testid=\u0027pillar-stat-tiles\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 16,
+      "Changes": [
+        "Captured DOM scope: 16 total element nodes under \u0027[data-testid=\u0027pillar-stat-tiles\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-08.json",
+      "Timestamp": "2026-09-17T18:08:01.7604892-04:00"
+    },
+    {
+      "StepIndex": 9,
+      "Route": "http://localhost:5175/portal/pillars/governance",
+      "Selector": "[data-testid=\u0027pillar-stat-tiles\u0027]",
+      "Description": "expect [data-testid=\u0027pillar-stat-tiles\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 16,
+      "Changes": [
+        "Captured DOM scope: 16 total element nodes under \u0027[data-testid=\u0027pillar-stat-tiles\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-09.json",
+      "Timestamp": "2026-09-17T18:08:03.5461573-04:00"
+    },
+    {
+      "StepIndex": 10,
+      "Route": "http://localhost:5175/portal/pillars/governance",
+      "Selector": "[data-testid=\u0027pillar-coverage\u0027]",
+      "Description": "expect [data-testid=\u0027pillar-coverage\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 30,
+      "Changes": [
+        "Captured DOM scope: 30 total element nodes under \u0027[data-testid=\u0027pillar-coverage\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-10.json",
+      "Timestamp": "2026-09-17T18:08:05.2540057-04:00"
+    },
+    {
+      "StepIndex": 11,
+      "Route": "http://localhost:5175/portal/pillars/governance",
+      "Selector": "[data-testid=\u0027pillar-coverage\u0027]",
+      "Description": "expect [data-testid=\u0027pillar-coverage\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 30,
+      "Changes": [
+        "Captured DOM scope: 30 total element nodes under \u0027[data-testid=\u0027pillar-coverage\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-11.json",
+      "Timestamp": "2026-09-17T18:08:06.957022-04:00"
+    },
+    {
+      "StepIndex": 12,
+      "Route": "http://localhost:5175/portal/pillars/governance",
+      "Selector": "[data-testid=\u0027pillar-coverage-segment-ok\u0027]",
+      "Description": "expect [data-testid=\u0027pillar-coverage-segment-ok\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027[data-testid=\u0027pillar-coverage-segment-ok\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-12.json",
+      "Timestamp": "2026-09-17T18:08:08.6809514-04:00"
+    },
+    {
+      "StepIndex": 13,
+      "Route": "http://localhost:5175/portal/pillars/governance",
+      "Selector": "[data-testid=\u0027pillar-trend-dots\u0027]",
+      "Description": "expect [data-testid=\u0027pillar-trend-dots\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 5,
+      "Changes": [
+        "Captured DOM scope: 5 total element nodes under \u0027[data-testid=\u0027pillar-trend-dots\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-13.json",
+      "Timestamp": "2026-09-17T18:08:10.4312414-04:00"
+    },
+    {
+      "StepIndex": 14,
+      "Route": "http://localhost:5175/portal/pillars/governance",
+      "Selector": "[data-testid=\u0027pillar-finding-chips\u0027]",
+      "Description": "expect [data-testid=\u0027pillar-finding-chips\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 2,
+      "Changes": [
+        "Captured DOM scope: 2 total element nodes under \u0027[data-testid=\u0027pillar-finding-chips\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-14.json",
+      "Timestamp": "2026-09-17T18:08:12.1636591-04:00"
+    },
+    {
+      "StepIndex": 15,
+      "Route": "http://localhost:5175/portal/pillars/health",
+      "Selector": "/portal/pillars/health",
+      "Description": "goto /portal/pillars/health",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [],
+      "SnapshotPath": "dom/dom-step-15.json",
+      "Timestamp": "2026-09-17T18:08:15.0442092-04:00"
+    },
+    {
+      "StepIndex": 16,
+      "Route": "http://localhost:5175/portal/pillars/health",
+      "Selector": "[data-testid=\u0027pillar-stat-tiles\u0027]",
+      "Description": "expect [data-testid=\u0027pillar-stat-tiles\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 16,
+      "Changes": [
+        "Captured DOM scope: 16 total element nodes under \u0027[data-testid=\u0027pillar-stat-tiles\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-16.json",
+      "Timestamp": "2026-09-17T18:08:21.1603247-04:00"
+    }
+  ],
+  "recommendations": "All automated UI steps passed. Review baseline screenshots for visual drift."
+}

@@ -1,0 +1,12 @@
+{
+  "StepIndex": 6,
+  "Route": "http://localhost:5175/portal/login",
+  "Selector": "/portal/pillars/governance",
+  "Description": "goto /portal/pillars/governance",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 0,
+  "Changes": [],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-17T18:05:20.8607092-04:00"
+}

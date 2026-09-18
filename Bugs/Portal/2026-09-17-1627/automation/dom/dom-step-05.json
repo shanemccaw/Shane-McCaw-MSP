@@ -1,0 +1,14 @@
+{
+  "StepIndex": 5,
+  "Route": "http://localhost:5175/portal/pillars/governance",
+  "Selector": "[data-testid=\u0027pillar-finding-governance:ownerless-groups\u0027]",
+  "Description": "expect [data-testid=\u0027pillar-finding-governance:ownerless-groups\u0027]",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 4,
+  "Changes": [
+    "Captured DOM scope: 4 total element nodes under \u0027[data-testid=\u0027pillar-finding-governance:ownerless-groups\u0027]\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-17T16:27:41.0550303-04:00"
+}

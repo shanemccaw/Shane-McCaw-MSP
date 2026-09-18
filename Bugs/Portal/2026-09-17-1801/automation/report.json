@@ -1,0 +1,254 @@
+{
+  "testName": "Issue #1749 - Pillar pages (#1485/#1621, screen 12) \u2014 the six real pillar landing pages in artifacts/portal, wired to the already-built GET /api/portal/pillars (pillar-summary-stats.ts). Real design landed in Design/portal/design_handoff_full_site/screens/Pillar Pages.dc.html; pages live at artifacts/portal/src/pages/pillar.tsx, route /pillars/:pillar, reached from the shell\u0027s PillarTabStrip. Scope: pillar summary cards \u002B scores only \u2014 the design\u0027s full per-check \u0027block\u0027 breakdown and the click-a-finding-for-full-breakdown \u002B SOP/Runbook remediation offer are a real, separate follow-up (#1621\u0027s own open architecture questions).",
+  "productName": "Portal",
+  "sessionId": "2026-09-17-1801",
+  "startedAt": "2026-09-17T18:01:07.0433257-04:00",
+  "endedAt": "2026-09-17T18:02:20.9524745-04:00",
+  "durationSeconds": 73.91,
+  "success": false,
+  "summary": "\u274C TEST ABORTED \u2014 critical step 7 (expect [data-testid=\u0027pillar-stat-tiles\u0027]) failed: [data-testid=\u0027pillar-stat-tiles\u0027] \u2014 state \u0027visible\u0027 NOT matched (found=False, visible=False) [polled 30000ms / 108 attempts, 30000ms budget exhausted] (4/16 steps ran, 9 skipped)",
+  "urlsVisited": [
+    "http://localhost:5175/portal/login"
+  ],
+  "steps": [
+    {
+      "index": 1,
+      "action": "goto",
+      "selector": "/portal/login",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "navigation to http://localhost:5175/portal/login succeeds",
+      "actual": "succeeded",
+      "passed": true,
+      "durationMs": 1006,
+      "detail": "Navigated to http://localhost:5175/portal/login",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180050\\screenshots\\1.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 2,
+      "action": "expect",
+      "selector": "[data-testid=\u0027login-email\u0027]",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "[data-testid=\u0027login-email\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 36,
+      "detail": "[data-testid=\u0027login-email\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180050\\screenshots\\2.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 5,
+      "action": "click",
+      "selector": "[data-testid=\u0027login-submit\u0027]",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "click on \u0027[data-testid=\u0027login-submit\u0027]\u0027 executes without a DOM error",
+      "actual": "executed",
+      "passed": true,
+      "durationMs": 46,
+      "detail": "Executed click on [data-testid=\u0027login-submit\u0027]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180050\\screenshots\\5.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 6,
+      "action": "goto",
+      "selector": "/portal/pillars/governance",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "navigation to http://localhost:5175/portal/pillars/governance succeeds",
+      "actual": "succeeded",
+      "passed": true,
+      "durationMs": 1346,
+      "detail": "Navigated to http://localhost:5175/portal/pillars/governance",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180050\\screenshots\\6.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 7,
+      "action": "expect",
+      "selector": "[data-testid=\u0027pillar-stat-tiles\u0027]",
+      "targetUrl": "http://localhost:5175/portal/login",
+      "expected": "[data-testid=\u0027pillar-stat-tiles\u0027] state == \u0027visible\u0027",
+      "actual": "found=False, visible=False",
+      "passed": false,
+      "durationMs": 30014,
+      "detail": "[data-testid=\u0027pillar-stat-tiles\u0027] \u2014 state \u0027visible\u0027 NOT matched (found=False, visible=False) [polled 30000ms / 108 attempts, 30000ms budget exhausted]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180050\\screenshots\\7.png",
+      "domSnapshotPath": null
+    }
+  ],
+  "consoleErrors": [],
+  "apiFailures": [
+    {
+      "name": "get-favicon.ico",
+      "method": "GET",
+      "requestUrl": "http://localhost:5175/favicon.ico",
+      "statusCode": 404,
+      "durationMs": 0,
+      "reason": "HTTP 404",
+      "timestamp": "2026-09-17T18:01:36.6174127-04:00"
+    },
+    {
+      "name": "post-api-auth-refresh",
+      "method": "POST",
+      "requestUrl": "http://localhost:5175/api/auth/refresh",
+      "statusCode": 401,
+      "durationMs": 0,
+      "reason": "HTTP 401",
+      "timestamp": "2026-09-17T18:01:39.4936619-04:00"
+    },
+    {
+      "name": "post-api-auth-refresh",
+      "method": "POST",
+      "requestUrl": "http://localhost:5175/api/auth/refresh",
+      "statusCode": 401,
+      "durationMs": 0,
+      "reason": "HTTP 401",
+      "timestamp": "2026-09-17T18:01:49.1302748-04:00"
+    }
+  ],
+  "executedCommands": [],
+  "screenshotPaths": [
+    "screenshots/screenshot-01.png",
+    "screenshots/screenshot-02.png",
+    "screenshots/screenshot-03.png",
+    "screenshots/screenshot-04.png",
+    "screenshots/screenshot-05.png",
+    "screenshots/screenshot-06.png",
+    "screenshots/screenshot-07.png"
+  ],
+  "screenshotDiffs": [
+    {
+      "StepIndex": 1,
+      "StepLabel": "goto /portal/login",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180050\\screenshots\\1.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\pillar-pages\\1.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 2,
+      "StepLabel": "expect [data-testid=\u0027login-email\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180050\\screenshots\\2.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\pillar-pages\\2.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 3,
+      "StepLabel": "input [data-testid=\u0027login-email\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180050\\screenshots\\3.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\pillar-pages\\3.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 4,
+      "StepLabel": "input [data-testid=\u0027login-password\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180050\\screenshots\\4.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\pillar-pages\\4.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 5,
+      "StepLabel": "click [data-testid=\u0027login-submit\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180050\\screenshots\\5.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\pillar-pages\\5.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 6,
+      "StepLabel": "goto /portal/pillars/governance",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180050\\screenshots\\6.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\pillar-pages\\6.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 7,
+      "StepLabel": "expect [data-testid=\u0027pillar-stat-tiles\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\1749-20260917180050\\screenshots\\7.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\pillar-pages\\7.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    }
+  ],
+  "domDiffs": [
+    {
+      "StepIndex": 1,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "/portal/login",
+      "Description": "goto /portal/login",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [],
+      "SnapshotPath": "dom/dom-step-01.json",
+      "Timestamp": "2026-09-17T18:01:39.7377013-04:00"
+    },
+    {
+      "StepIndex": 2,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "[data-testid=\u0027login-email\u0027]",
+      "Description": "expect [data-testid=\u0027login-email\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027[data-testid=\u0027login-email\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-02.json",
+      "Timestamp": "2026-09-17T18:01:41.3986831-04:00"
+    },
+    {
+      "StepIndex": 5,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "[data-testid=\u0027login-submit\u0027]",
+      "Description": "click [data-testid=\u0027login-submit\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027[data-testid=\u0027login-submit\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-05.json",
+      "Timestamp": "2026-09-17T18:01:46.3557643-04:00"
+    },
+    {
+      "StepIndex": 6,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "/portal/pillars/governance",
+      "Description": "goto /portal/pillars/governance",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [],
+      "SnapshotPath": "dom/dom-step-06.json",
+      "Timestamp": "2026-09-17T18:01:49.3280425-04:00"
+    },
+    {
+      "StepIndex": 7,
+      "Route": "http://localhost:5175/portal/login",
+      "Selector": "[data-testid=\u0027pillar-stat-tiles\u0027]",
+      "Description": "expect [data-testid=\u0027pillar-stat-tiles\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 37,
+      "Changes": [
+        "Captured DOM scope: 37 total element nodes under \u0027[data-testid=\u0027pillar-stat-tiles\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-07.json",
+      "Timestamp": "2026-09-17T18:02:20.9110776-04:00"
+    }
+  ],
+  "recommendations": "Run aborted: critical step 7 (expect [data-testid=\u0027pillar-stat-tiles\u0027]) failed: [data-testid=\u0027pillar-stat-tiles\u0027] \u2014 state \u0027visible\u0027 NOT matched (found=False, visible=False) [polled 30000ms / 108 attempts, 30000ms budget exhausted]. Check prerequisite selectors, authentication, or network connectivity."
+}

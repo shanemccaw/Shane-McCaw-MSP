@@ -1,0 +1,14 @@
+{
+  "StepIndex": 8,
+  "Route": "http://localhost:5175/portal/pillars/governance",
+  "Selector": "[data-testid=\u0027pillar-stat-tiles\u0027]",
+  "Description": "expect [data-testid=\u0027pillar-stat-tiles\u0027]",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 16,
+  "Changes": [
+    "Captured DOM scope: 16 total element nodes under \u0027[data-testid=\u0027pillar-stat-tiles\u0027]\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-17T18:08:01.7604892-04:00"
+}

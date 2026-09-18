@@ -1,0 +1,14 @@
+{
+  "StepIndex": 7,
+  "Route": "http://localhost:5175/portal/login",
+  "Selector": "[data-testid=\u0027pillar-stat-tiles\u0027]",
+  "Description": "expect [data-testid=\u0027pillar-stat-tiles\u0027]",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 37,
+  "Changes": [
+    "Captured DOM scope: 37 total element nodes under \u0027[data-testid=\u0027pillar-stat-tiles\u0027]\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-17T18:02:20.9110776-04:00"
+}

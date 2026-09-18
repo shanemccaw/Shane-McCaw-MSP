@@ -1,0 +1,256 @@
+{
+  "testName": "Issue #4557 - Throwaway live-verification manifest for #4557\u0027s reopened investigation \u2014 deleted at the end of this session, not a permanent deliverable. Uses the real loginAs profile (Git #3923) instead of raw {{TEST_CUSTOMER_EMAIL}}/{{TEST_CUSTOMER_PASSWORD}} vars, which are unset in this environment\u0027s Test Environment Variables (confirmed via a real runTest attempt \u2014 10/14 steps failed on unresolved variables).",
+  "productName": "Portal",
+  "sessionId": "2026-09-17-1627",
+  "startedAt": "2026-09-17T16:27:26.2569380-04:00",
+  "endedAt": "2026-09-17T16:28:13.9323600-04:00",
+  "durationSeconds": 47.68,
+  "success": false,
+  "summary": "\u26A0 TEST INCOMPLETE (5/6 Steps)",
+  "urlsVisited": [
+    "http://localhost:5175/portal/login",
+    "http://localhost:5175/portal/pillars/governance"
+  ],
+  "steps": [
+    {
+      "index": 1,
+      "action": "goto",
+      "selector": "/portal/pillars/governance",
+      "targetUrl": "http://localhost:5175/portal/pillars/governance",
+      "expected": "navigation to http://localhost:5175/portal/pillars/governance succeeds",
+      "actual": "succeeded",
+      "passed": true,
+      "durationMs": 865,
+      "detail": "Navigated to http://localhost:5175/portal/pillars/governance",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4557-20260917162726\\screenshots\\1.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 2,
+      "action": "expect",
+      "selector": "[data-testid=\u0027pillar-page-governance\u0027]",
+      "targetUrl": "http://localhost:5175/portal/pillars/governance",
+      "expected": "[data-testid=\u0027pillar-page-governance\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 16,
+      "detail": "[data-testid=\u0027pillar-page-governance\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4557-20260917162726\\screenshots\\2.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 3,
+      "action": "expect",
+      "selector": "[data-testid=\u0027pillar-score-value\u0027]",
+      "targetUrl": "http://localhost:5175/portal/pillars/governance",
+      "expected": "[data-testid=\u0027pillar-score-value\u0027] state == \u0027visible\u0027; textContains any of [\u00220\u0022, \u00221\u0022, \u00222\u0022, \u00223\u0022, \u00224\u0022, \u00225\u0022, \u00226\u0022, \u00227\u0022, \u00228\u0022, \u00229\u0022]",
+      "actual": "found=True, visible=True; text=\u002247\u0022",
+      "passed": true,
+      "durationMs": 12,
+      "detail": "[data-testid=\u0027pillar-score-value\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained \u00224\u0022",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4557-20260917162726\\screenshots\\3.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 4,
+      "action": "expect",
+      "selector": "[data-testid=\u0027pillar-state-line\u0027]",
+      "targetUrl": "http://localhost:5175/portal/pillars/governance",
+      "expected": "[data-testid=\u0027pillar-state-line\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 17,
+      "detail": "[data-testid=\u0027pillar-state-line\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4557-20260917162726\\screenshots\\4.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 5,
+      "action": "expect",
+      "selector": "[data-testid=\u0027pillar-finding-governance:ownerless-groups\u0027]",
+      "targetUrl": "http://localhost:5175/portal/pillars/governance",
+      "expected": "[data-testid=\u0027pillar-finding-governance:ownerless-groups\u0027] state == \u0027visible\u0027",
+      "actual": "found=True, visible=True",
+      "passed": true,
+      "durationMs": 13,
+      "detail": "[data-testid=\u0027pillar-finding-governance:ownerless-groups\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True)",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4557-20260917162726\\screenshots\\5.png",
+      "domSnapshotPath": null
+    },
+    {
+      "index": 6,
+      "action": "expect",
+      "selector": "[data-testid=\u0027pillar-findings\u0027]",
+      "targetUrl": "http://localhost:5175/portal/pillars/governance",
+      "expected": "[data-testid=\u0027pillar-findings\u0027] state == \u0027visible\u0027; textContains any of [\u0022ownerless\u0022]",
+      "actual": "found=True, visible=True; text=\u0022Findings 5 warning Groups exist with no owner \u2014 nobody is accountable for membership or lifecycle Public Teams exist \u2014 visible and joinable tenant-wide without an owner invite 5 security group(s) have...\u0022",
+      "passed": false,
+      "durationMs": 30013,
+      "detail": "[data-testid=\u0027pillar-findings\u0027] \u2014 state \u0027visible\u0027 matched (found=True, visible=True); text contained none of [\u0022ownerless\u0022] [polled 30002ms / 118 attempts, 30000ms budget exhausted]",
+      "screenshotPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4557-20260917162726\\screenshots\\6.png",
+      "domSnapshotPath": null
+    }
+  ],
+  "consoleErrors": [],
+  "apiFailures": [
+    {
+      "name": "post-api-auth-refresh",
+      "method": "POST",
+      "requestUrl": "http://localhost:5175/api/auth/refresh",
+      "statusCode": 401,
+      "durationMs": 0,
+      "reason": "HTTP 401",
+      "timestamp": "2026-09-17T16:27:27.7739255-04:00"
+    }
+  ],
+  "executedCommands": [],
+  "screenshotPaths": [
+    "screenshots/screenshot-01.png",
+    "screenshots/screenshot-02.png",
+    "screenshots/screenshot-03.png",
+    "screenshots/screenshot-04.png",
+    "screenshots/screenshot-05.png",
+    "screenshots/screenshot-06.png"
+  ],
+  "screenshotDiffs": [
+    {
+      "StepIndex": 1,
+      "StepLabel": "goto /portal/pillars/governance",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4557-20260917162726\\screenshots\\1.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\_tmp-4557-live-verify\\1.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 2,
+      "StepLabel": "expect [data-testid=\u0027pillar-page-governance\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4557-20260917162726\\screenshots\\2.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\_tmp-4557-live-verify\\2.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 3,
+      "StepLabel": "expect [data-testid=\u0027pillar-score-value\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4557-20260917162726\\screenshots\\3.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\_tmp-4557-live-verify\\3.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 4,
+      "StepLabel": "expect [data-testid=\u0027pillar-state-line\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4557-20260917162726\\screenshots\\4.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\_tmp-4557-live-verify\\4.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 5,
+      "StepLabel": "expect [data-testid=\u0027pillar-finding-governance:ownerless-groups\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4557-20260917162726\\screenshots\\5.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\_tmp-4557-live-verify\\5.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    },
+    {
+      "StepIndex": 6,
+      "StepLabel": "expect [data-testid=\u0027pillar-findings\u0027]",
+      "CurrentImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\4557-20260917162726\\screenshots\\6.png",
+      "BaselineImagePath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\test-results\\baselines\\portal\\_tmp-4557-live-verify\\6.png",
+      "DiffImagePath": "",
+      "DifferencePercent": 0,
+      "HasDiff": true
+    }
+  ],
+  "domDiffs": [
+    {
+      "StepIndex": 1,
+      "Route": "http://localhost:5175/portal/pillars/governance",
+      "Selector": "/portal/pillars/governance",
+      "Description": "goto /portal/pillars/governance",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [],
+      "SnapshotPath": "dom/dom-step-01.json",
+      "Timestamp": "2026-09-17T16:27:34.4209699-04:00"
+    },
+    {
+      "StepIndex": 2,
+      "Route": "http://localhost:5175/portal/pillars/governance",
+      "Selector": "[data-testid=\u0027pillar-page-governance\u0027]",
+      "Description": "expect [data-testid=\u0027pillar-page-governance\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 60,
+      "Changes": [
+        "Captured DOM scope: 60 total element nodes under \u0027[data-testid=\u0027pillar-page-governance\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-02.json",
+      "Timestamp": "2026-09-17T16:27:36.1329495-04:00"
+    },
+    {
+      "StepIndex": 3,
+      "Route": "http://localhost:5175/portal/pillars/governance",
+      "Selector": "[data-testid=\u0027pillar-score-value\u0027]",
+      "Description": "expect [data-testid=\u0027pillar-score-value\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 0,
+      "Changes": [
+        "Captured DOM scope: 0 total element nodes under \u0027[data-testid=\u0027pillar-score-value\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-03.json",
+      "Timestamp": "2026-09-17T16:27:37.7954746-04:00"
+    },
+    {
+      "StepIndex": 4,
+      "Route": "http://localhost:5175/portal/pillars/governance",
+      "Selector": "[data-testid=\u0027pillar-state-line\u0027]",
+      "Description": "expect [data-testid=\u0027pillar-state-line\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 1,
+      "Changes": [
+        "Captured DOM scope: 1 total element nodes under \u0027[data-testid=\u0027pillar-state-line\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-04.json",
+      "Timestamp": "2026-09-17T16:27:39.4262016-04:00"
+    },
+    {
+      "StepIndex": 5,
+      "Route": "http://localhost:5175/portal/pillars/governance",
+      "Selector": "[data-testid=\u0027pillar-finding-governance:ownerless-groups\u0027]",
+      "Description": "expect [data-testid=\u0027pillar-finding-governance:ownerless-groups\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 4,
+      "Changes": [
+        "Captured DOM scope: 4 total element nodes under \u0027[data-testid=\u0027pillar-finding-governance:ownerless-groups\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-05.json",
+      "Timestamp": "2026-09-17T16:27:41.0550303-04:00"
+    },
+    {
+      "StepIndex": 6,
+      "Route": "http://localhost:5175/portal/pillars/governance",
+      "Selector": "[data-testid=\u0027pillar-findings\u0027]",
+      "Description": "expect [data-testid=\u0027pillar-findings\u0027]",
+      "AddedElementsCount": 0,
+      "RemovedElementsCount": 0,
+      "ModifiedElementsCount": 28,
+      "Changes": [
+        "Captured DOM scope: 28 total element nodes under \u0027[data-testid=\u0027pillar-findings\u0027]\u0027."
+      ],
+      "SnapshotPath": "dom/dom-step-06.json",
+      "Timestamp": "2026-09-17T16:28:12.7151761-04:00"
+    }
+  ],
+  "recommendations": "Investigate failing step(s) and review captured screenshots and console/API logs under /Bugs/Portal/2026-09-17-1627/automation/."
+}

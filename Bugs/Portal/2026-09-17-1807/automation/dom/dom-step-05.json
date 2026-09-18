@@ -1,0 +1,14 @@
+{
+  "StepIndex": 5,
+  "Route": "http://localhost:5175/portal/login",
+  "Selector": "[data-testid=\u0027login-submit\u0027]",
+  "Description": "click [data-testid=\u0027login-submit\u0027]",
+  "AddedElementsCount": 0,
+  "RemovedElementsCount": 0,
+  "ModifiedElementsCount": 2,
+  "Changes": [
+    "Captured DOM scope: 2 total element nodes under \u0027[data-testid=\u0027login-submit\u0027]\u0027."
+  ],
+  "SnapshotPath": null,
+  "Timestamp": "2026-09-17T18:07:50.5122936-04:00"
+}
