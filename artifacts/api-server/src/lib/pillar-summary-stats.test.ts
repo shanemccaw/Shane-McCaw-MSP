@@ -700,6 +700,27 @@ describe("#341 — end to end over the real specs and the real package", () => {
     // with a blank or a zero standing in for a number nobody measured.
     expect(observed({ publicTeamCount: 1 }).sub).toBeUndefined();
   });
+
+  // #4576 — monitor-executor.ts's gate-skipped path stamps identity:ca-policy-
+  // count's row with an explicit caPolicyCount: 0 + securityDefaultsEnabled:
+  // true when a tenant runs Security Defaults instead of Conditional Access.
+  // The tile must render that real 0 (not "-") with an honest sub-caption
+  // explaining why it's 0, rather than the tenant reading it as a gap.
+  it("renders a real 0 with the Security Defaults reason, not unavailable (#4576)", () => {
+    const spec = PILLAR_STAT_SPECS.security[0] as CheckBackedSpec; // Conditional Access policies
+    const stat = statFromCheckObservation(spec, {
+      checkKey: spec.source.checkKey,
+      status: "ok",
+      props: { _gateSkipped: true, caPolicyCount: 0, securityDefaultsEnabled: true, isEnabled: true },
+      collectedAt: "2026-09-18T04:00:00.000Z",
+      licenseFeature: null,
+      serviceName: null,
+    });
+
+    expect(stat.value).toBe(0);
+    expect(stat.unavailableReason).toBeUndefined();
+    expect(stat.sub).toBe("This tenant uses Security Defaults instead of Conditional Access");
+  });
 });
 
 describe("no fictional Northline Health number survives", () => {

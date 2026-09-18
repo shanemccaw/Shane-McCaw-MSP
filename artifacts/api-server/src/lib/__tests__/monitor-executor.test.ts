@@ -53,6 +53,12 @@ vi.mock("@workspace/db", () => ({
   tenantMonitorProfilesTable: {},
   tenantAzureReachTable: { tenantId: "tenant_id" },
   tenantsTable: {},
+  // #4576 — recordDriftCollectionStatus (drift-collector.ts) upserts this table
+  // for any drift-tracked check that goes through the gate-skipped path (e.g.
+  // identity:ca-policy-count). db.insert() below is a generic mock that ignores
+  // its argument, so an empty object is enough — real column refs on it
+  // (`.tenantId`, `.domainKey`) are only used as onConflictDoUpdate target keys.
+  driftCollectionStatusTable: {},
   // #1847 — service-availability.ts reads the tenant's /subscribedSkus collection
   // and writes the tenant-level service row. The db mock above returns no rows, so
   // the entitlement resolves "unknown" and the verdict falls back to the wire
@@ -4252,6 +4258,32 @@ describe("Conditional Access checks — real policy state (#4512)", () => {
       expect(result.severityMatched).toBeNull();
       expect(result.extractedProperties._gateSkipped).toBe(true);
       expect(result.extractedProperties.isEnabled).toBe(true);
+      // #4576 — the explicit caPolicyCount/securityDefaultsEnabled stamp is
+      // scoped to identity:ca-policy-count only; this check is
+      // identity:ca-mfa-coverage, sharing the same gate, and must not gain a
+      // field that means nothing for it.
+      expect(result.extractedProperties.caPolicyCount).toBeUndefined();
+      expect(result.extractedProperties.securityDefaultsEnabled).toBeUndefined();
+    });
+
+    // #4576 — identity:ca-policy-count specifically needs a real scalar out of
+    // this same gate-skipped path: Security Defaults being on genuinely means
+    // zero Conditional Access policies exist, which the Security pillar's CA
+    // tile can render as a real "0 — Security Defaults" instead of "—".
+    it("Security Defaults on, identity:ca-policy-count: gate-skipped row carries an explicit caPolicyCount: 0 and securityDefaultsEnabled: true", async () => {
+      mockFetch.mockResolvedValueOnce(securityDefaults(true));
+
+      const result = await executeMonitorCheck({
+        check: { ...caCheck, key: "identity:ca-policy-count" },
+        tenantId: "tenant-4576-sd",
+        triggerId: "run-4576-sd",
+        skipIdempotency: true,
+      });
+
+      expect(result.status).toBe("ok");
+      expect(result.extractedProperties._gateSkipped).toBe(true);
+      expect(result.extractedProperties.caPolicyCount).toBe(0);
+      expect(result.extractedProperties.securityDefaultsEnabled).toBe(true);
     });
 
     it("Security Defaults off, no Entra ID P1: license gap, not critical — the CA policy list is never read", async () => {
