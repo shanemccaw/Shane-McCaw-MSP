@@ -44,7 +44,7 @@
  */
 
 import { db, tenantMonitorProfilesTable } from "@workspace/db";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 
 /**
  * What the tenant's latest row for a check actually says. Mirrors the real
@@ -69,6 +69,17 @@ export interface CheckObservation {
   licenseFeature: string | null;
   /** Only on `service_not_configured` — which Microsoft service refused. */
   serviceName: string | null;
+  /**
+   * The row's real `severity_matched` (Git #4578): the severity of the rule the
+   * check fired, or null. Null is ambiguous BY ITSELF — "rules exist and none
+   * fired" and "this check has no severity rules at all" both store null — so a
+   * consumer that wants a verdict must also know whether the check has rules
+   * (see `signalTier` in pillar-signals.ts). Optional so a hand-built observation
+   * (tests, verify scripts) that predates the field stays valid; absent reads as null.
+   */
+  severity?: string | null;
+  /** The real fired-rule label (`severity_label`), verbatim. Null when nothing fired. */
+  severityLabel?: string | null;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -94,6 +105,33 @@ function stringProp(props: Record<string, unknown>, key: string): string | null 
   return typeof raw === "string" && raw.trim() ? raw : null;
 }
 
+interface ObservationRow {
+  checkKey: string;
+  status: string | null;
+  extractedProperties: unknown;
+  collectedAt: Date | null;
+  severityMatched: string | null;
+  severityLabel: string | null;
+}
+
+function observationFromRow(row: ObservationRow): CheckObservation {
+  const props = asRecord(row.extractedProperties);
+  // `_evidence` is the per-item sample list (up to 50 objects per check) — it
+  // is genuinely useful on a drill-down and pure weight on a summary payload.
+  const { _evidence: _dropped, ...rest } = props;
+  const status = normalizeStatus(typeof row.status === "string" ? row.status : null);
+  return {
+    checkKey: row.checkKey,
+    status,
+    props: rest,
+    collectedAt: row.collectedAt ? row.collectedAt.toISOString() : null,
+    licenseFeature: status === "license_gap" ? stringProp(props, "_licenseGapFeature") : null,
+    serviceName: status === "service_not_configured" ? stringProp(props, "_serviceName") : null,
+    severity: row.severityMatched ?? null,
+    severityLabel: row.severityLabel ?? null,
+  };
+}
+
 /**
  * The tenant's newest row per check key, as one read.
  *
@@ -111,6 +149,8 @@ export async function fetchLatestCheckObservations(
       status: tenantMonitorProfilesTable.status,
       extractedProperties: tenantMonitorProfilesTable.extractedProperties,
       collectedAt: tenantMonitorProfilesTable.collectedAt,
+      severityMatched: tenantMonitorProfilesTable.severityMatched,
+      severityLabel: tenantMonitorProfilesTable.severityLabel,
     })
     .from(tenantMonitorProfilesTable)
     .where(eq(tenantMonitorProfilesTable.tenantId, tenantId))
@@ -120,19 +160,59 @@ export async function fetchLatestCheckObservations(
   for (const row of rows) {
     // Ordered newest-first, so the first row seen for a key IS the latest.
     if (byKey.has(row.checkKey)) continue;
-    const props = asRecord(row.extractedProperties);
-    // `_evidence` is the per-item sample list (up to 50 objects per check) — it
-    // is genuinely useful on a drill-down and pure weight on a summary payload.
-    const { _evidence: _dropped, ...rest } = props;
-    const status = normalizeStatus(typeof row.status === "string" ? row.status : null);
-    byKey.set(row.checkKey, {
-      checkKey: row.checkKey,
-      status,
-      props: rest,
-      collectedAt: row.collectedAt ? row.collectedAt.toISOString() : null,
-      licenseFeature: status === "license_gap" ? stringProp(props, "_licenseGapFeature") : null,
-      serviceName: status === "service_not_configured" ? stringProp(props, "_serviceName") : null,
+    byKey.set(row.checkKey, observationFromRow(row));
+  }
+  return byKey;
+}
+
+/** How many stored observations per check the signals grid looks back over (its 5 history bars). */
+export const SIGNAL_HISTORY_DEPTH = 5;
+
+/**
+ * The tenant's newest `depth` stored rows per check key, newest first — so
+ * index 0 is the same row `fetchLatestCheckObservations` returns, and index 1
+ * is the previous observation the signals grid takes its delta from (Git #4578).
+ *
+ * One windowed read for the whole catalog, not one query per check: the grid
+ * shows ~60 checks per pillar and the data is one table. `_evidence` is
+ * stripped in SQL, so the second read stays light however large it is.
+ *
+ * Deliberately NOT `monitorHistoryForTenant` (dashboard-resolvers.ts): that is
+ * private, per-check, and resolves the value field with `pickMappedValueField`'s
+ * token heuristic — the choice #4560 removed for tiles because it can put the
+ * wrong number under a caption. Here the caller reads the SAME explicit field
+ * from the current row and the previous one, so a delta can never disagree with
+ * its own value. See build-journal/4578-plan.md.
+ */
+export async function fetchRecentCheckObservations(
+  tenantId: string,
+  depth: number = SIGNAL_HISTORY_DEPTH,
+): Promise<Map<string, CheckObservation[]>> {
+  const result = await db.execute(sql`
+    SELECT check_key, status, extracted_properties - '_evidence' AS extracted_properties,
+           severity_matched, severity_label, collected_at
+    FROM (
+      SELECT *, row_number() OVER (PARTITION BY check_key ORDER BY collected_at DESC, id DESC) AS rn
+      FROM tenant_monitor_profiles
+      WHERE tenant_id = ${tenantId}
+    ) ranked
+    WHERE rn <= ${depth}
+    ORDER BY check_key, collected_at DESC, id DESC
+  `);
+
+  const byKey = new Map<string, CheckObservation[]>();
+  for (const raw of result.rows as Record<string, unknown>[]) {
+    const observation = observationFromRow({
+      checkKey: String(raw.check_key),
+      status: typeof raw.status === "string" ? raw.status : null,
+      extractedProperties: raw.extracted_properties,
+      collectedAt: raw.collected_at instanceof Date ? raw.collected_at : raw.collected_at ? new Date(String(raw.collected_at)) : null,
+      severityMatched: typeof raw.severity_matched === "string" ? raw.severity_matched : null,
+      severityLabel: typeof raw.severity_label === "string" ? raw.severity_label : null,
     });
+    const list = byKey.get(observation.checkKey) ?? [];
+    list.push(observation);
+    byKey.set(observation.checkKey, list);
   }
   return byKey;
 }

@@ -186,6 +186,9 @@ import { resolveMetric, type MetricResult } from "./dashboard-resolvers.ts";
 import { resolvePaidSeatFigures, resolveLicenseSkuLedger, type LicenseSkuLedger } from "./license-waste-source.ts";
 import { computeSkuCostBreakdown, centsToDollars } from "./cost-engine.ts";
 import { getPillarScoreTrends, PILLAR_TREND_WINDOW_DAYS } from "./pillar-trend.ts";
+import { fetchPillarDrift, type PillarDriftDomain } from "./pillar-drift.ts";
+import { buildPillarSignals, type PillarSignals } from "./pillar-signals.ts";
+import { PILLAR_SIGNAL_SPECS, type SignalPillarKey } from "./pillar-signal-specs.ts";
 import {
   buildLicenseGapPurchase,
   recommendationForCheckKey,
@@ -195,6 +198,7 @@ import {
 import {
   buildPillarCoverage,
   fetchLatestCheckObservations,
+  fetchRecentCheckObservations,
   numericProp,
   type CheckObservation,
   type PillarCoverageBreakdown,
@@ -1206,6 +1210,24 @@ export interface PillarSummaryCard {
    * Null only when the customer has no M365 tenant to key observations by.
    */
   coverage: PillarCoverageBreakdown | null;
+  /**
+   * The design's "CONFIG DRIFT BASELINE" panel (Git #4578) — one entry per
+   * drift domain whose collecting check resolves to this pillar, in the
+   * collector's own words: `tracked` / `not_comparable` / `error`, its recorded
+   * reason, and the real count of drift events since the current baseline.
+   * Empty for a pillar that owns no drift domain (the design's `drift: null`) —
+   * never a placeholder row.
+   */
+  drift: PillarDriftDomain[];
+  /**
+   * The design's "SIGNALS — WHAT WAS MEASURED" grid (Git #4578): the real latest
+   * observation of every check the design shows for this pillar, grouped as the
+   * design groups them, each with its real tier, delta against the previous
+   * stored observation and — for a check that could not be measured — the real
+   * reason, never a zero. Null for a pillar the design has no grid for, and for
+   * a customer with no M365 tenant to observe.
+   */
+  signals: PillarSignals | null;
 }
 
 export interface PillarSummaryPayload {
@@ -1496,6 +1518,32 @@ export async function buildPillarSummary(customerId: number): Promise<PillarSumm
     ? buildPillarCoverage(wireCheckKeyPillars, observations, inactiveCheckKeys)
     : null;
 
+  // Git #4578 — the drift panel. Domains inherit the pillar of the check that
+  // collects them via the SAME fully-resolved map the coverage above used, so a
+  // drift row can never sit on a different pillar than its own check.
+  const driftByPillar = tenantRow?.tenantId
+    ? await fetchPillarDrift(tenantRow.tenantId, wireCheckKeyPillars).catch((err) => {
+        log.warn({ err, customerId }, "pillar-summary-stats: drift panel read failed — panel omitted");
+        return new Map<PillarSummaryKey, PillarDriftDomain[]>();
+      })
+    : new Map<PillarSummaryKey, PillarDriftDomain[]>();
+
+  // Git #4578 — the signals grid. History (for the per-card delta and history
+  // bars) is one windowed read; which checks carry severity rules is what lets
+  // the tier tell "nothing fired" from "nothing judges this" (pillar-signals.ts).
+  const [recentObservations, ruleRows] = tenantRow?.tenantId
+    ? await Promise.all([
+        fetchRecentCheckObservations(tenantRow.tenantId),
+        db.select({ key: monitorChecksTable.key, severityRules: monitorChecksTable.severityRules }).from(monitorChecksTable),
+      ]).catch((err) => {
+        log.warn({ err, customerId }, "pillar-summary-stats: signals grid read failed — grid omitted");
+        return [null, null] as const;
+      })
+    : ([null, null] as const);
+  const checksWithRules = new Set(
+    (ruleRows ?? []).filter((r) => Array.isArray(r.severityRules) && r.severityRules.length > 0).map((r) => r.key),
+  );
+
   const { findingsByPillar, findingsRunId, findingsRunStatus, licenseGapCheckKeys } =
     await fetchPillarFindings(customerId, findingRankWeights, checkKeyPillars);
 
@@ -1663,6 +1711,22 @@ export async function buildPillarSummary(customerId: number): Promise<PillarSumm
         : null,
       licenseGapUpgrades: upgradesByPillar.get(pillar) ?? [],
       coverage: coverageByPillar?.[pillar] ?? null,
+      drift: driftByPillar.get(pillar) ?? [],
+      signals:
+        recentObservations && pillar in PILLAR_SIGNAL_SPECS
+          ? buildPillarSignals(
+              pillar,
+              PILLAR_SIGNAL_SPECS[pillar as SignalPillarKey],
+              wireCheckKeyPillars,
+              {
+                recent: recentObservations,
+                checksWithRules,
+                inactiveCheckKeys,
+                scannedCheckKeys: scanned.checkKeys,
+                seats,
+              },
+            )
+          : null,
     };
   });
 
