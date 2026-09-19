@@ -580,6 +580,98 @@ export async function getSiteStorageQuota(
   return { storageMaximumLevelMb: max, storageUsageMb: used ?? 0 };
 }
 
+/** One site collection, reduced to the signals the census checks (#4839) filter on. */
+export interface SiteInventoryItem {
+  url: string;
+  title: string | null;
+  template: string | null;
+  storageUsageMb: number;
+  storageMaximumLevelMb: number;
+  /** Used / allowed, 0-100+. Null when the quota is not a positive number — never a fabricated 0. */
+  storageUsedPercent: number | null;
+  /** The label's GUID, or null when the site carries none. */
+  sensitivityLabelId: string | null;
+  hasSensitivityLabel: boolean;
+}
+
+const ALL_ZERO_GUID = "00000000-0000-0000-0000-000000000000";
+// CSOM serialises a Guid as "/Guid(<guid>)/"; a bare GUID is accepted too.
+const CSOM_GUID_RE = /^(?:\/Guid\()?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\)\/)?$/i;
+
+/**
+ * Reduces one CSOM `SiteProperties` object to a SiteInventoryItem. A site with no
+ * label comes back with the ALL-ZERO guid rather than null, so both count as
+ * "no label"; anything that is not a recognisable guid is also treated as none
+ * rather than guessed at.
+ */
+export function toSiteInventoryItem(raw: Record<string, unknown>): SiteInventoryItem {
+  const guid = CSOM_GUID_RE.exec(String(raw.SensitivityLabel ?? ""))?.[1]?.toLowerCase();
+  const sensitivityLabelId = guid && guid !== ALL_ZERO_GUID ? guid : null;
+  const used = Number(raw.StorageUsage ?? 0);
+  const max = Number(raw.StorageMaximumLevel ?? 0);
+  return {
+    url: String(raw.Url ?? ""),
+    title: typeof raw.Title === "string" && raw.Title.length > 0 ? raw.Title : null,
+    template: typeof raw.Template === "string" && raw.Template.length > 0 ? raw.Template : null,
+    storageUsageMb: used,
+    storageMaximumLevelMb: max,
+    storageUsedPercent: max > 0 && Number.isFinite(used) ? (used / max) * 100 : null,
+    sensitivityLabelId,
+    hasSensitivityLabel: sensitivityLabelId !== null,
+  };
+}
+
+// A tenant has far fewer than 50 pages of site collections (SharePoint pages them by the hundreds);
+// the cap only stops a server that never returns a null next-index from looping forever.
+const SITE_INVENTORY_MAX_PAGES = 50;
+
+/**
+ * Every site collection in the tenant with its label and storage figures, read from the admin host via
+ * Tenant.GetSitePropertiesFromSharePoint (the call Get-SPOSite -Limit All makes). Graph `/sites` carries
+ * neither field, which is why the census checks could only ever count the total (#4839).
+ * Throws on a CSOM error or when paging does not terminate — a partial list would be a wrong count.
+ */
+export async function getSiteCollectionInventory(ref: SharePointTenantRef): Promise<SiteInventoryItem[]> {
+  const items: SiteInventoryItem[] = [];
+  let startIndex = "0";
+  for (let page = 0; page < SITE_INVENTORY_MAX_PAGES; page++) {
+    const body =
+      "<Actions>" +
+      '<ObjectPath Id="2" ObjectPathId="1" />' +
+      '<ObjectPath Id="4" ObjectPathId="3" />' +
+      '<Query Id="5" ObjectPathId="3"><Query SelectAllProperties="false"><Properties>' +
+      '<Property Name="NextStartIndexFromSharePoint" ScalarProperty="true" />' +
+      "</Properties></Query>" +
+      '<ChildItemQuery SelectAllProperties="false"><Properties>' +
+      ["Url", "Title", "Template", "StorageUsage", "StorageMaximumLevel", "SensitivityLabel"]
+        .map((name) => `<Property Name="${name}" ScalarProperty="true" />`)
+        .join("") +
+      "</Properties></ChildItemQuery></Query>" +
+      "</Actions>" +
+      "<ObjectPaths>" +
+      `<Constructor Id="1" TypeId="${TENANT_CSOM_TYPE_ID}" />` +
+      '<Method Id="3" ParentId="1" Name="GetSitePropertiesFromSharePoint">' +
+      `<Parameters><Parameter Type="String">${escapeXml(startIndex)}</Parameter><Parameter Type="Boolean">false</Parameter></Parameters>` +
+      "</Method></ObjectPaths>";
+    const result = await csomProcessQuery(ref, body);
+    if (result.errorInfo) {
+      throw new Error(`getSiteCollectionInventory: ${result.errorInfo.ErrorMessage ?? "CSOM error"}`);
+    }
+    const collection = result.raw.find(
+      (item): item is Record<string, unknown> =>
+        item !== null && typeof item === "object" && Array.isArray((item as Record<string, unknown>)._Child_Items_),
+    );
+    if (!collection) {
+      throw new Error("getSiteCollectionInventory: no _Child_Items_ collection present in CSOM response");
+    }
+    for (const child of collection._Child_Items_ as Record<string, unknown>[]) items.push(toSiteInventoryItem(child));
+    const next = collection.NextStartIndexFromSharePoint;
+    if (typeof next !== "string" || next.length === 0) return items;
+    startIndex = next;
+  }
+  throw new Error(`getSiteCollectionInventory: paging did not terminate within ${SITE_INVENTORY_MAX_PAGES} pages`);
+}
+
 /**
  * Set a site collection's storage quota (in megabytes) via
  * Tenant.GetSitePropertiesByUrl → SetProperty StorageMaximumLevel → Update().

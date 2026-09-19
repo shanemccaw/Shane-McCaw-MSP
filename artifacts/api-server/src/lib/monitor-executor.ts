@@ -39,6 +39,7 @@ import { buildDriftScopeAttribution } from "./drift-change-attribution.ts";
 import { driftSpecForCheck } from "./drift-check-specs.ts";
 import { callPsExecution, PsExecutionError } from "./ps-execution-client.ts";
 import {
+  getSiteCollectionInventory,
   getTenantSharingCapability,
   getTenantProperties,
   sharePointAdminCredentialsPresent,
@@ -2687,6 +2688,9 @@ export const SHAREPOINT_ADMIN_OPERATIONS: Record<string, SharePointAdminOperatio
       anonymousSharingEnabled: capability === SharingCapability.ExternalUserAndGuestSharing,
     }];
   },
+  // One item per site collection carrying its sensitivity label and storage figures — the signals
+  // Graph `/sites` does not have, which the census checks filter on with countWhere (#4839).
+  "site-inventory": async (ref) => (await getSiteCollectionInventory(ref)) as unknown as Record<string, unknown>[],
 };
 
 function resolveSharePointAdminOperation(key: string | null | undefined): SharePointAdminOperation {
