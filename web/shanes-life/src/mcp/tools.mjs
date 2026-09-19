@@ -16,6 +16,7 @@ import * as contacts from "../core/contacts.mjs";
 import * as dates from "../core/dates.mjs";
 import * as entities from "../core/entities.mjs";
 import * as federalHolidays from "../core/federal-holidays.mjs";
+import * as financialEvents from "../core/financial-events.mjs";
 import * as foodPreferences from "../core/food-preferences.mjs";
 import { downscaleImageToFit } from "../core/image-resize.mjs";
 import * as incomeRules from "../core/income-rules.mjs";
@@ -1567,6 +1568,62 @@ export const TOOLS = [
       const result = await money.deleteDebt(args.id);
       await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "money.debt.delete", entityId: result.id });
       return result;
+    },
+  },
+
+  {
+    name: "log_financial_event",
+    title: "Log one real dated financial event (payment, transfer, notice, ...)",
+    description:
+      "Writes one real row to the Financial Ledger -- the capture-grammar entry point for 'I paid FPL $351.31', 'moved $898.78 from Navy Federal H1 Mortgage to Auto Insurance', or 'Chrysler Capital sent a past-due notice'. Records what HAPPENED on a date; it never moves money and never changes a balance (use set_debt for that). eventType is free text -- payment, transfer, notice, balance_update, legal or other are the usual ones. `debtId` accepts a real debt id OR the creditor name (case-insensitive exact, prefix, then substring, same resolution as log_car_maintenance's vehicle matching); an ambiguous or unmatched name comes back asking rather than guessing or silently logging it unlinked -- omit debtId to log deliberately unlinked. Keep the full original wording in `note` so no detail is lost. Never invent an amount -- omit it if none was stated.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        eventType: { type: "string", description: "payment | transfer | notice | balance_update | legal | other (free text)." },
+        amount: { type: "number", description: "Real dollars, if the event has one. Omit for a notice with no amount." },
+        fromAccount: { type: "string", description: "Account money left, e.g. 'Navy Federal H1 Mortgage'." },
+        toAccount: { type: "string", description: "Account money went to." },
+        source: { type: "string", description: "Who/what this is about, e.g. 'Chrysler Capital', 'FPL', 'Allstate'." },
+        debtId: { type: "string", description: "A real debt id or its creditor name. Omit to log unlinked." },
+        occurredOn: { type: "string", description: "YYYY-MM-DD it happened. Defaults to today." },
+        note: { type: "string", description: "The full free-text detail." },
+      },
+      required: ["eventType"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const row = await financialEvents.logEvent(ctx.user.id, args);
+      await record({
+        userId: ctx.user.id,
+        actor: "mcp",
+        actorLabel: ctx.label,
+        action: "money.financial_event.log",
+        entityId: row.id,
+        detail: { eventType: row.eventType, amount: row.amount, source: row.source, debtId: row.debtId },
+      });
+      return row;
+    },
+  },
+
+  {
+    name: "list_financial_events",
+    title: "Read real Financial Ledger events, newest first",
+    description:
+      "Real rows from the Financial Ledger written by log_financial_event -- what turns 'what's happened on the Tesla loan' into a queryable answer instead of a grep through old captures. Every filter is optional and they combine: debtId (a real debt id or creditor name -- an ambiguous or unmatched name comes back asking), source (case-insensitive substring), eventType (exact, case-insensitive), from/to (YYYY-MM-DD, inclusive). Newest first; limit defaults to 100, max 500.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        debtId: { type: "string", description: "A real debt id or its creditor name." },
+        source: { type: "string" },
+        eventType: { type: "string" },
+        from: { type: "string", description: "YYYY-MM-DD, inclusive." },
+        to: { type: "string", description: "YYYY-MM-DD, inclusive." },
+        limit: { type: "integer" },
+      },
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      return { events: await financialEvents.listEvents(ctx.user.id, args) };
     },
   },
 
