@@ -3987,10 +3987,18 @@ export async function executeMonitorCheck(opts: {
         // Stamped explicitly rather than left for the tile to infer from
         // `_gateSkipped` alone, so a consumer can read a real number plus the
         // real reason without re-deriving either from the raw policy object.
+        //
+        // #4840 — the two sibling checks sharing the same Security Defaults gate
+        // (ca-legacy-auth-block, ca-mfa-coverage) get the same flag so their
+        // SIGNALS cards read `security_defaults_active`, not the generic
+        // `gate_skipped`. Flag only: no per-check scalar is invented for them.
+        // (ca-device-compliance has no gate, so it never reaches this path.)
         const gateSkippedExtras: Record<string, unknown> =
           check.key === "identity:ca-policy-count"
             ? { caPolicyCount: 0, securityDefaultsEnabled: true }
-            : {};
+            : check.key === "identity:ca-legacy-auth-block" || check.key === "identity:ca-mfa-coverage"
+              ? { securityDefaultsEnabled: true }
+              : {};
 
         const profileId = await persistCheckProfile(persistProfile, {
           tenantId,
