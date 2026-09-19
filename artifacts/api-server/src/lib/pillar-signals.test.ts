@@ -20,7 +20,7 @@ import {
   signalTier,
   type SignalContext,
 } from "./pillar-signals.ts";
-import { PILLAR_SIGNAL_SPECS, type PillarSignalSpec } from "./pillar-signal-specs.ts";
+import { PILLAR_SIGNAL_SPECS, type PillarSignalSpec, type SignalValueSpec } from "./pillar-signal-specs.ts";
 
 const obs = (over: Partial<CheckObservation> & { checkKey: string }): CheckObservation => ({
   status: "ok",
@@ -33,7 +33,7 @@ const obs = (over: Partial<CheckObservation> & { checkKey: string }): CheckObser
   ...over,
 });
 
-function ctx(over: Partial<SignalContext> & { recent?: CheckObservation[][] } = {}): SignalContext {
+function ctx(over: Omit<Partial<SignalContext>, "recent"> & { recent?: CheckObservation[][] } = {}): SignalContext {
   const recent = new Map<string, readonly CheckObservation[]>();
   for (const list of over.recent ?? []) recent.set(list[0]!.checkKey, list);
   return {
@@ -166,12 +166,12 @@ describe("value formats", () => {
     expect(resolveSignalValue({ format: "days", field: "d" }, { d: 90 }, null)).toEqual({ value: 90, text: "90 days" });
   });
   it("gaps counts the false booleans and refuses when any field is not a boolean", () => {
-    const spec = { format: "gaps", fields: ["a", "b", "c"] } as const;
+    const spec: SignalValueSpec = { format: "gaps", fields: ["a", "b", "c"] };
     expect(resolveSignalValue(spec, { a: true, b: false, c: false }, null)).toEqual({ value: 2, text: "2 gaps" });
     expect(resolveSignalValue(spec, { a: true, b: false, c: null }, null).value).toBeNull();
   });
   it("sum refuses a partial sum that would under-report", () => {
-    const spec = { format: "sum", fields: ["a", "b"] } as const;
+    const spec: SignalValueSpec = { format: "sum", fields: ["a", "b"] };
     expect(resolveSignalValue(spec, { a: 1, b: 2 }, null).value).toBe(3);
     expect(resolveSignalValue(spec, { a: 1 }, null).value).toBeNull();
   });

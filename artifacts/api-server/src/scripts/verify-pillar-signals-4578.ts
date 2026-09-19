@@ -117,7 +117,7 @@ const pick = (pillar: string, key: string) => cards.get(`${pillar}:${key}`)?.car
 const expectCard = (pillar: string, key: string, want: Record<string, unknown>) => {
   const card = pick(pillar, key);
   assert(!!card, `${pillar}/${key} is on the grid`);
-  if (card) for (const [k, v] of Object.entries(want)) assert((card as Record<string, unknown>)[k] === v, `${key}: ${k} === ${JSON.stringify(v)}`, card);
+  if (card) for (const [k, v] of Object.entries(want)) assert((card as unknown as Record<string, unknown>)[k] === v, `${key}: ${k} === ${JSON.stringify(v)}`, card);
   return card;
 };
 console.log("\nNamed cases");
