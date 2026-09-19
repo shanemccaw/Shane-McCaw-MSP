@@ -1,10 +1,11 @@
 // Git #4839 — live verification that the four census checks now report a FILTERED count.
 //
-//   node artifacts/api-server/run-script.mjs src/scripts/verify-census-checks-4839.ts <tenant GUID>
+//   node artifacts/api-server/run-script.mjs src/scripts/verify-census-checks-4839.ts <tenant GUID> [--persist]
 //
 // Runs sharepoint:site-label-coverage, sharepoint:storage-near-limit, teams:inactive-teams and
-// teams:guest-membership through the same executeMonitorCheck() a scan uses (persistProfile=false,
-// so the score is not disturbed), plus governance:sensitivity-label-adoption, and checks the
+// teams:guest-membership through the same executeMonitorCheck() a scan uses (persistProfile=false by
+// default, so the score is not disturbed; --persist writes the four census rows exactly as the next scan
+// would, replacing the stale wrong ones so the pillar SIGNALS grid can be re-checked), plus governance:sensitivity-label-adoption, and checks the
 // cross-signal the issue was filed on: a tenant with zero sensitivity labels cannot have labelled sites.
 // Exit 0 = every check ok and consistent; 2 = a check errored or the cross-check contradicts.
 
@@ -13,8 +14,9 @@ import { db, monitorChecksTable } from "@workspace/db";
 import { executeMonitorCheck } from "../lib/monitor-executor.ts";
 
 const tenantId = process.argv[2];
+const persist = process.argv.includes("--persist");
 if (!tenantId) {
-  console.error("usage: verify-census-checks-4839.ts <tenant GUID>");
+  console.error("usage: verify-census-checks-4839.ts <tenant GUID> [--persist]");
   process.exit(1);
 }
 
@@ -44,7 +46,8 @@ for (const key of keys) {
     tenantId,
     triggerId: `verify-4839:${key}:${started}`,
     skipIdempotency: true,
-    persistProfile: false,
+    // Only the four census checks are ever persisted; the label-adoption check is a read-only cross-check.
+    persistProfile: persist && key in CENSUS,
   });
   const field = CENSUS[key] ?? "sensitivityLabelCount";
   values[key] = result.extractedProperties[field];
