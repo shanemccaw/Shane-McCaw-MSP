@@ -211,18 +211,6 @@
                                Foreground="{StaticResource GreenBrush}"/>
                 </Button>
 
-                <!-- Git #2483 — Build Chain Map: a single-screen, maximized editor/visualizer
-                     for one Epic's build chain (Epic → Feature → Issue → blocked_by, per
-                     BUILD_QUEUE_METHOD.md §5/§6/§10). Replaces the old #2110 "Build Queue
-                     Map" floaty entry in this slot. -->
-                <Button x:Name="BtnBuildChainMap"
-                        Style="{StaticResource IconButton}"
-                        Width="48" Height="44"
-                        ToolTip="Build Chain Map — Epic → Feature → Issue → blocked_by, live GitHub read/write (maximized)"
-                        Click="BtnBuildChainMap_Click">
-                    <TextBlock Text="&#x1F5FA;" FontSize="{StaticResource SubHeaderFontSize}"/>
-                </Button>
-
                 <!-- Git #1472 — Shane: per-page checkbox + notes + fast WebView2 screenshots
                      with history, for testing pages in the WebView2 tab. A NEW standalone
                      floaty, separate from Sticky Notes above. -->

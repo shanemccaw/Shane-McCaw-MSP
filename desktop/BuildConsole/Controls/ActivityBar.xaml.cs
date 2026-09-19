@@ -31,10 +31,6 @@ namespace BuildConsole.Controls
         /// <summary>Git #1472 — raised when the Visual Test Tracker icon is clicked; MainWindow toggles the always-on-top floaty open/closed.</summary>
         public event EventHandler? VisualTestTrackerToggleRequested;
 
-        /// <summary>Git #2483 — raised when the Build Chain Map icon is clicked; MainWindow opens the
-        /// maximized Build Chain Map window (replaces the old #2110 Build Queue Map toggle in this slot).</summary>
-        public event EventHandler? BuildChainMapRequested;
-
         /// <summary>Raised when the Shelf icon is clicked. MainWindow owns the shelved-tab
         /// state (the live off-screen content), so it responds by calling <see cref="ShowShelf"/>
         /// with the current entries' rows.</summary>
@@ -120,10 +116,6 @@ namespace BuildConsole.Controls
         /// <summary>Git #1472 — toggles the always-on-top Visual Test Tracker floaty.</summary>
         private void BtnVisualTestTracker_Click(object sender, RoutedEventArgs e) =>
             VisualTestTrackerToggleRequested?.Invoke(this, EventArgs.Empty);
-
-        /// <summary>Git #2483 — opens the maximized Build Chain Map window.</summary>
-        private void BtnBuildChainMap_Click(object sender, RoutedEventArgs e) =>
-            BuildChainMapRequested?.Invoke(this, EventArgs.Empty);
 
         /// <summary>Shelf icon clicked — ask MainWindow (which owns the shelved-tab state)
         /// to populate + open the popout via <see cref="ShowShelf"/>.</summary>
