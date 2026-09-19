@@ -136,7 +136,7 @@ payload.
 - **Filter chips** (`.xaml:559-573`) — see §2.5.
 - **Loading strip** (`GitRefreshLoadingStrip`, `.xaml:588-596`) — 56px critter-crossing
   animation band, shown for the real duration of a manual refresh only.
-- **Status-dot legend** (`.xaml:609-628`) — a one-time `WrapPanel` legend, hand-kept in
+- **Status-dot legend** (`.xaml:674-691`) — a one-time `WrapPanel` legend, hand-kept in
   sync with `CreateStatusDot` (there is no shared source of truth; `.cs:4869-4878`). Lists:
   Working (solid `StatusRunningBrush`), In Flight (solid `#FAB387`), In Flight ↓
   descendant (hollow `#FAB387` ring), Blocked (solid `#F38BA8`).
@@ -177,7 +177,7 @@ Three real levels, built in `BuildBoardFromGitHub` (`.cs:2667`) and rendered by
   budget, `.cs:4952`, Git #1679) so a large board (measured 257 issues / 49 epics) doesn't
   block the UI thread; a newer render supersedes an in-progress one via a version stamp.
 
-### 2.3 Issue row anatomy (`CreateIssueHeader`, `.cs:5782-6350`)
+### 2.3 Issue row anatomy (`CreateIssueHeader`, `.cs:6748`)
 
 A horizontal `StackPanel` per row, left to right:
 
@@ -185,14 +185,22 @@ A horizontal `StackPanel` per row, left to right:
    (`.cs:104`): `🔥` HIGH, `🟡` MED, `🟢` else.
 2. **Number pill** (`.cs:5798-5806`): `#NNN` on a `Surface0Brush` rounded border; text is
    **MauveBrush for an epic, PeachBrush for an issue**.
-3. **Status dots** (all via `CreateStatusDot`, `.cs:4879`; 9px, solid or hollow ring):
-   - **Working** — solid GreenBrush, only on the active working epic row (`.cs:5838`).
-   - **In Flight** — solid `#FAB387`, when the issue carries the real `in-flight` GitHub
-     label (`.cs:5869`).
-   - **In Flight ↓ (descendant)** — hollow `#FAB387` ring, when a sub-issue anywhere
-     beneath is in flight but this row isn't (`.cs:5884`).
+3. **Status dots** (all via `CreateStatusDot`, `.cs:5808`; 9px, solid or hollow ring):
+   - **Working** — solid GreenBrush, only on the active working epic row (`.cs:6806`).
+   - **In Flight** — solid `#FAB387`, when the issue is open and has a queued or running
+     build in the local queue: `issue.IsInFlight` (`.cs:6835`), set from
+     `LocalQueueActivity.IsInFlight(number)` (`.cs:5617`) and re-applied live by
+     `OnLocalQueueActivityChanged` (`.cs:998-1002`). `LocalQueueActivity`
+     (`Services/LocalQueueActivity.cs:23`) counts a `bt_build_queue` row as in flight only
+     when `status` is `queued` or `running` (`IsInFlightStatus`) and its `OwnerRepo` matches
+     this BuildConsole's configured repo (`IsInFlightRow`). It is **not** the GitHub
+     `in-flight` label — that label is retired (#4692/#4693/#4694) and is never read or written.
+   - **In Flight ↓ (descendant)** — hollow `#FAB387` ring, when the issue is open, not itself
+     in flight, and a non-closed sub-issue anywhere beneath it is (`.cs:6850-6857`;
+     `HasInFlightBelow` recomputed each render, `.cs:5941-5953`, then rolled up to epic
+     buckets `.cs:5959` and milestones `.cs:5961`).
    - **Blocked** — solid `#F38BA8`, tooltip `"Blocked by #N: <title>"` when known
-     (`.cs:5894`).
+     (`.cs:6860-6866`).
 4. **NO EPIC** badge (`.cs:5849-5862`) — a peach pill with black text, only on a non-epic,
    parent-less, still-open issue. (Kept as text, not a dot — Git #1785.)
 5. **Title** (`.cs:5815-5828`): `CharacterEllipsis`, single line. Colour precedence:
@@ -209,12 +217,12 @@ transparent hit-test background and `MouseEnter/Leave` handlers driving the hove
 width so ellipsis actually engages (`ApplyIssueTitleMaxWidths` + the per-level reserve
 constants at `.cs:4849-4865`).
 
-**Milestone header** (`CreateMilestoneHeader`, `.cs:5614`): `🎯 <title>` + optional Working
+**Milestone header** (`CreateMilestoneHeader`, `.cs:6580`): `🎯 <title>` + optional Working
 dot (contains active epic), optional hollow-amber in-flight-descendant dot, a blue
 **progress pill** `"NN% (n/n)"` only when the milestone has real counts (`.cs:5642`), and a
 mauve **FOCUS** pill when Focus Mode is zoomed into it (`.cs:5670`).
 
-**Epic-bucket header** (`CreateEpicHeader`, `.cs:5704`): the bucket title in the bucket's
+**Epic-bucket header** (`CreateEpicHeader`, `.cs:6670`): the bucket title in the bucket's
 hard-coded accent colour (`e.ColorHex`, `.cs:5707`) + a muted `" (N)"` count + the same
 Working / in-flight-descendant dots.
 
@@ -269,9 +277,9 @@ is likewise fully complete (`.cs:5768`). Its state is **persisted** to
   `…OpenBuildChat` delegates MainWindow sets, `.cs:305-314`), plus the full **relationship
   picture** — what blocks it and what it blocks, both directions with real titles
   (`AddRelationshipList` / `LoadIssueRelationshipsAsync`, `.cs:6620`, Git #2081).
-- **Right-click** an issue/epic → `ContextMenu` (`.cs:5995-6348`):
-  - `✓ Mark Complete (Ready for Review)` / `Remove 'complete' label` — toggles the real
-    `complete` GitHub label (`.cs:5998`).
+- **Right-click** an issue/epic → `ContextMenu` (`.cs:6957`):
+  - *(No "Mark Complete" item.)* The `complete` GitHub label is retired (#4692); the item was
+    removed in #4694 (`.cs:6953-6956`). Closing the issue is the sole "done" signal.
   - `✕ Close Issue` / `↩ Reopen Issue` — real `SetIssueStateAsync`; closing plays a
     chomp/epic critter animation (`.cs:6020-6057`).
   - `✎ Edit…` — `EditIssueDialog` pre-filled from `RawTitle`/`Body`, saves via
@@ -480,7 +488,7 @@ Delegates set by MainWindow: `GetActiveChatUrl`, `GetQueueItems`, and the five
 
 ## 7. Known-thin / honest gaps (for Design, not to fabricate around)
 
-- The status-dot **legend** (`.xaml:609-628`) and `CreateStatusDot` have **no shared source
+- The status-dot **legend** (`.xaml:674-691`) and `CreateStatusDot` have **no shared source
   of truth** — they are hand-synced (`.cs:4876`). A redesign should treat the dot semantics
   in §2.1/§2.3 as canonical, not the legend markup.
 - "Waiting for input" is deliberately **not** a Git Board dot — that indicator exists only
