@@ -157,6 +157,13 @@ import {
   type BaselineTemplateResolveStep,
   type ResolveStepOutcome,
 } from "./resolve-then-write.ts";
+// #4532 — the gate pauses on an operator decision instead of failing when the
+// create step found an existing break-glass account.
+import {
+  describeExistingAccount,
+  recordExistingAccountDecision,
+  notifyExistingAccountDecision,
+} from "./break-glass-existing-account-decision.ts";
 // Type-only: the store itself is imported dynamically so the Azure SDK stays out
 // of the executor's static module graph (#1911).
 import type { GeneratedSecretRef } from "./generated-secret-store.ts";
@@ -8119,6 +8126,13 @@ Return ONLY a JSON object with these exact keys (no prose outside the JSON):
         // they would only discover during the lockout it exists for. Refuse instead.
         // Resetting the existing account's password is a separate, explicit decision
         // this gate does not make on anyone's behalf.
+        //
+        // #4532 — and it does not fail the run over it either. It pauses on that
+        // decision (same pauseForApproval mechanism, below): the pending secret is
+        // parked with `credentialUncertainAt` set — the existing #4041 marker that
+        // makes invite and reveal refuse a row whose credential the tenant may not
+        // accept — and an operator records the customer's answer: reset and redeliver
+        // (performBreakGlassAdminOverride), or resume without delivering.
         const secretKeys = new Set<string>([secretField]);
         if (typeof node.data.secretTemplate === "string") {
           for (const m of (node.data.secretTemplate as string).matchAll(/\{\{([\w.]+)\}\}/g)) {
@@ -8126,19 +8140,7 @@ Return ONLY a JSON object with these exact keys (no prose outside the JSON):
           }
         }
         const unappliedBy = findUnappliedSecretSource(payload.nodes as Record<string, unknown> | undefined, secretKeys);
-        if (unappliedBy) {
-          const existing = unappliedBy.existing as { id?: unknown; userPrincipalName?: unknown } | null;
-          nodeError = true;
-          output = {
-            error:
-              `break_glass_verification_gate: step ${unappliedBy.nodeId} found an existing account` +
-              `${existing?.userPrincipalName ? ` (${String(existing.userPrincipalName)}, id ${String(existing.id ?? "")})` : ""}` +
-              " and did not create one, so the generated credential was never applied to it. Refusing to deliver a password that cannot sign in.",
-            credentialNotApplied: true,
-            skippedNodeId: unappliedBy.nodeId,
-          };
-          break;
-        }
+        const existingAccount = unappliedBy ? describeExistingAccount(unappliedBy.existing) : null;
 
         const { encryptSecret } = await import("./secret-crypto.ts");
         const [pendingSecret] = await db.insert(breakGlassPendingSecretsTable).values({
@@ -8151,8 +8153,14 @@ Return ONLY a JSON object with these exact keys (no prose outside the JSON):
           secretRef: generatedSecretRefsOf(payload).find(([field]) => field === secretField)?.[1] ?? null,
           gateNodeId: node.id,
           // #4015 — the account admin-override resets, bound to this secret row.
-          breakGlassAccountId: resolvedAccountId != null ? String(resolvedAccountId) : null,
+          // #4532 — when the create step found an existing account, that account's own
+          // id (from the step's output) is what a reset must hit, so it wins over the
+          // mapped payload key.
+          breakGlassAccountId: existingAccount?.id ?? (resolvedAccountId != null ? String(resolvedAccountId) : null),
           status: "pending_delivery",
+          // #4532 — never-applied credential: mark it so invite and reveal refuse it
+          // (#4041's marker) until the operator's decision resolves it.
+          ...(existingAccount ? { credentialUncertainAt: new Date() } : {}),
         }).returning();
 
         // Build a REDACTED payload snapshot for resume: strip the plaintext secret
@@ -8175,8 +8183,9 @@ Return ONLY a JSON object with these exact keys (no prose outside the JSON):
         redactedPayload.pendingSecretId = pendingSecret.id;
         // Canonicalize the (non-secret) account id so admin-override reads one stable
         // key even when accountIdField points at a differently-named source field.
-        if (resolvedAccountId != null) {
-          redactedPayload.breakGlassAccountId = String(resolvedAccountId);
+        const canonicalAccountId = existingAccount?.id ?? (resolvedAccountId != null ? String(resolvedAccountId) : null);
+        if (canonicalAccountId != null) {
+          redactedPayload.breakGlassAccountId = canonicalAccountId;
         }
 
         // #1911 — the top-level `delete` above is not sufficient on its own: the
@@ -8184,12 +8193,42 @@ Return ONLY a JSON object with these exact keys (no prose outside the JSON):
         // `steps.<nodeId>` / `nodes.<nodeId>`, so the start node's copy of the
         // plaintext sat one level below the key that was deleted. Deep-redact
         // before this reaches wf_runs.payload.
+        const persistedPayload = redactForPersistence(redactedPayload, payload);
         await db.update(wfRunsTable)
-          .set({ status: "awaiting_approval", payload: redactForPersistence(redactedPayload, payload) })
+          .set({ status: "awaiting_approval", payload: persistedPayload })
           .where(eq(wfRunsTable.id, runId));
 
+        // #4532 — the same pause, waiting on an operator's answer instead of a tenant
+        // admin's verification. The decision row carries the SAME redacted snapshot
+        // that was just persisted onto the run, which is what the chosen path resumes
+        // with. No plaintext is in it, in the node output, or in the log lines below.
+        let existingAccountDecisionId: number | null = null;
+        if (unappliedBy && existingAccount) {
+          const decision = await recordExistingAccountDecision({
+            runId,
+            gateNodeId: node.id,
+            customerId: gateCustomerId,
+            pendingSecretId: pendingSecret.id,
+            existingAccountId: existingAccount.id,
+            existingAccountUpn: existingAccount.upn,
+            skippedNodeId: unappliedBy.nodeId,
+            context: persistedPayload as Record<string, unknown>,
+          });
+          existingAccountDecisionId = decision.id;
+          await notifyExistingAccountDecision({
+            runId,
+            customerId: gateCustomerId,
+            decisionId: decision.id,
+            accountLabel: existingAccount.upn ?? existingAccount.id ?? "existing account",
+          });
+        }
+
         // Redacted output only — never the plaintext.
-        output = { pendingSecretId: pendingSecret.id, status: "pending_delivery" };
+        output = {
+          pendingSecretId: pendingSecret.id,
+          status: "pending_delivery",
+          ...(existingAccountDecisionId != null ? { awaitingExistingAccountDecision: true, decisionId: existingAccountDecisionId } : {}),
+        };
         const bgDurationMs = Date.now() - startMs;
         await db.insert(wfRunNodeOutputsTable).values({
           runId,
@@ -8203,7 +8242,9 @@ Return ONLY a JSON object with these exact keys (no prose outside the JSON):
           runId,
           nodeId: node.id,
           level: "info",
-          message: `break_glass_verification_gate (${node.id}): run paused, pending secret #${pendingSecret.id} awaiting tenant-admin verification`,
+          message: existingAccountDecisionId != null
+            ? `break_glass_verification_gate (${node.id}): run paused — step ${unappliedBy!.nodeId} found an existing break-glass account and did not create one, so the generated credential was never applied to it. Waiting on an operator to record the customer's answer (decision #${existingAccountDecisionId}): reset and redeliver, or resume without delivering.`
+            : `break_glass_verification_gate (${node.id}): run paused, pending secret #${pendingSecret.id} awaiting tenant-admin verification`,
         }).catch(() => { });
 
         // Return the pause sentinel immediately — skip the shared output/sample

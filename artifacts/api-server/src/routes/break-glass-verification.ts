@@ -30,6 +30,7 @@ import {
   breakGlassPendingSecretsTable,
   breakGlassVerificationAttemptsTable,
   breakGlassOverrideAuditTable,
+  breakGlassExistingAccountDecisionsTable,
   tenantsTable,
   mspsTable,
   wfRunsTable,
@@ -363,6 +364,26 @@ export const CREDENTIAL_UNCERTAIN_ERROR =
   "The last admin-override on this credential ended without a definite answer, so the tenant may no longer accept it. Run the admin-override again before inviting anyone.";
 
 /**
+ * Git #4532 — the refusal an operator sees when a row was parked because the
+ * pack's create step found an existing break-glass account: the run's generated
+ * password was never applied to it, so nothing can be delivered until an operator
+ * records the customer's answer on the Break-glass page.
+ */
+export const EXISTING_ACCOUNT_DECISION_PENDING_ERROR =
+  "This credential was never applied to the existing break-glass account, so it cannot be delivered. Record the customer's answer on the Break-glass page — reset and redeliver, or resume without delivering.";
+
+async function hasPendingExistingAccountDecision(pendingSecretId: number): Promise<boolean> {
+  const [row] = await db.select({ id: breakGlassExistingAccountDecisionsTable.id })
+    .from(breakGlassExistingAccountDecisionsTable)
+    .where(and(
+      eq(breakGlassExistingAccountDecisionsTable.pendingSecretId, pendingSecretId),
+      eq(breakGlassExistingAccountDecisionsTable.status, "pending"),
+    ))
+    .limit(1);
+  return !!row;
+}
+
+/**
  * Git #4041 — a link that reaches a row whose credential is uncertain is
  * retired rather than left pending. A pending (or consumed) link counts as live
  * to admin-override's precondition, so leaving it would block the one action
@@ -437,6 +458,11 @@ router.post("/portal/break-glass/:pendingSecretId/invite", requireAuth, async (r
       return res.status(409).json({ error: "This secret is no longer awaiting delivery" });
     }
     if (ctx.secret.credentialUncertainAt) {
+      // #4532 — a secret parked because the run found an existing account is not an
+      // interrupted override; say what it is actually waiting on.
+      if (await hasPendingExistingAccountDecision(pendingSecretId)) {
+        return res.status(409).json({ error: EXISTING_ACCOUNT_DECISION_PENDING_ERROR, detail: "existing_account_decision_pending" });
+      }
       return res.status(409).json({ error: CREDENTIAL_UNCERTAIN_ERROR, detail: "credential_uncertain" });
     }
 
@@ -1334,6 +1360,154 @@ export async function performBreakGlassAdminOverride(
 
   // 7. Do NOT resume — the run stays paused until the new secret is acknowledged.
   return { ok: true, newPendingSecretId, reissued: emails.length, sent };
+}
+
+/**
+ * Git #4532 — result of {@link performExistingAccountDecision}. Same shape as
+ * {@link AdminOverrideResult}: every EXPECTED refusal is a value, and only the
+ * `WriteBack*` gate errors propagate, so the route maps them as it does for an override.
+ */
+export type ExistingAccountDecisionResult =
+  | { ok: true; decision: "reset_and_redeliver"; newPendingSecretId: number; reissued: number; sent: number }
+  | { ok: true; decision: "resume_without_delivery"; runId: number }
+  | { ok: false; status: 404 | 409 | 500 | 502 | 503; error: string; detail?: string };
+
+/**
+ * Git #4532 — executes the operator's recorded answer for a run that paused because
+ * the pack's create step found an existing break-glass account and never applied the
+ * run's generated password to it. Exactly the chosen path runs; nothing is inferred.
+ *
+ *   reset_and_redeliver     — delegates to {@link performBreakGlassAdminOverride}
+ *     UNCHANGED (claim, hold the replacement, reset the tenant account, record a new
+ *     deliverable row on the same gate node, purge the unapplied copy). The run stays
+ *     paused and delivers through the normal verify-and-acknowledge flow.
+ *   resume_without_delivery — the customer says the existing credential is held. The
+ *     never-applied secret is discarded (ciphertext blanked, vault copy purged) and the
+ *     run resumes past the gate. No tenant write, no delivery.
+ *
+ * Callers own auth/ownership and validate `customerAnswer`/`reason`/`emails`. The
+ * pending-secret row's status is the mutex between the two paths: an override claims
+ * it (`pending_delivery -> reset_in_progress`), the discard is a conditional UPDATE
+ * from `pending_delivery`, so whichever runs second is refused with 409.
+ */
+export async function performExistingAccountDecision(
+  decisionId: number,
+  customerId: number,
+  actorUserId: number,
+  input: {
+    decision: "reset_and_redeliver" | "resume_without_delivery";
+    customerAnswer: string;
+    reason: string;
+    emails?: string[];
+  },
+): Promise<ExistingAccountDecisionResult> {
+  const [decision] = await db.select().from(breakGlassExistingAccountDecisionsTable)
+    .where(eq(breakGlassExistingAccountDecisionsTable.id, decisionId))
+    .limit(1);
+  // Both "not found" and "not this customer's" are a bare 404 — never confirm an id.
+  if (!decision || decision.customerId !== customerId) return { ok: false, status: 404, error: "Not found" };
+  if (decision.status !== "pending") {
+    return { ok: false, status: 409, error: "This decision has already been recorded" };
+  }
+
+  // The run must still be waiting on this decision: a run that was failed or
+  // cancelled since must not have its tenant account reset or be resumed.
+  const [run] = await db.select({ status: wfRunsTable.status }).from(wfRunsTable)
+    .where(eq(wfRunsTable.id, decision.runId)).limit(1);
+  if (!run || run.status !== "awaiting_approval") {
+    return { ok: false, status: 409, error: "The run is no longer waiting on this decision" };
+  }
+
+  const ctx = await resolvePendingContext(decision.pendingSecretId);
+  if (!ctx) return { ok: false, status: 409, error: "The pending credential for this decision no longer exists" };
+
+  if (input.decision === "reset_and_redeliver") {
+    const result = await performBreakGlassAdminOverride(ctx, decision.pendingSecretId, actorUserId, input.reason, input.emails);
+    if (!result.ok) return result;
+    // The reset has landed and a replacement is recorded; the answer is recorded
+    // against the decision only now, so a refused or interrupted override leaves the
+    // decision open and the operator can answer again.
+    await db.update(breakGlassExistingAccountDecisionsTable)
+      .set({
+        status: "reset_and_redeliver",
+        customerAnswer: input.customerAnswer,
+        reason: input.reason,
+        decidedByUserId: actorUserId,
+        decidedAt: new Date(),
+        resultPendingSecretId: result.newPendingSecretId,
+      })
+      .where(and(
+        eq(breakGlassExistingAccountDecisionsTable.id, decisionId),
+        eq(breakGlassExistingAccountDecisionsTable.status, "pending"),
+      ));
+    return { ok: true, decision: "reset_and_redeliver", newPendingSecretId: result.newPendingSecretId, reissued: result.reissued, sent: result.sent };
+  }
+
+  // resume_without_delivery — discard the unapplied secret and record the answer in
+  // one transaction, so a decision is never recorded against a secret an override
+  // has since claimed (and vice versa).
+  try {
+    await db.transaction(async (tx) => {
+      const discarded = await tx.update(breakGlassPendingSecretsTable)
+        .set({ status: "discarded_unapplied", encryptedValue: "" })
+        .where(and(
+          eq(breakGlassPendingSecretsTable.id, decision.pendingSecretId),
+          eq(breakGlassPendingSecretsTable.status, "pending_delivery"),
+        ))
+        .returning({ id: breakGlassPendingSecretsTable.id });
+      if (discarded.length === 0) throw new ExistingAccountDecisionRaceError();
+
+      const recorded = await tx.update(breakGlassExistingAccountDecisionsTable)
+        .set({
+          status: "resume_without_delivery",
+          customerAnswer: input.customerAnswer,
+          reason: input.reason,
+          decidedByUserId: actorUserId,
+          decidedAt: new Date(),
+        })
+        .where(and(
+          eq(breakGlassExistingAccountDecisionsTable.id, decisionId),
+          eq(breakGlassExistingAccountDecisionsTable.status, "pending"),
+        ))
+        .returning({ id: breakGlassExistingAccountDecisionsTable.id });
+      if (recorded.length === 0) throw new ExistingAccountDecisionRaceError();
+    });
+  } catch (err) {
+    if (err instanceof ExistingAccountDecisionRaceError) {
+      return { ok: false, status: 409, error: "This credential is no longer awaiting a decision — another action already handled it" };
+    }
+    throw err;
+  }
+
+  // The password was never applied to any tenant object and is never delivered: remove
+  // its vault copy now rather than leaving it for the orphan sweep.
+  await purgePendingSecretFromVault(ctx.secret, "existing break-glass account — resumed without delivering");
+
+  const resumePayload = {
+    ...decision.context,
+    existingAccountDecision: "resume_without_delivery",
+  };
+  const runId = decision.runId;
+  const gateNodeId = decision.gateNodeId;
+  setImmediate(() => {
+    void (async () => {
+      try {
+        const { resumeWorkflowRun } = await import("../lib/workflow-executor.ts");
+        await resumeWorkflowRun(runId, gateNodeId, resumePayload, "Existing break-glass account: resumed without delivering a credential");
+      } catch (err) {
+        log.warn({ err, runId }, "break-glass: resume after existing-account decision failed (non-fatal)");
+      }
+    })();
+  });
+
+  return { ok: true, decision: "resume_without_delivery", runId };
+}
+
+/** Git #4532 — a concurrent action took the secret or the decision first. */
+class ExistingAccountDecisionRaceError extends Error {
+  constructor() {
+    super("existing-account decision lost a race");
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -38,6 +38,14 @@
  *     — Override audit trail for one customer (break_glass_override_audit),
  *       with the acting admin's name/email resolved for display.
  *
+ *   GET  /api/msp/customers/:customerId/break-glass-decisions
+ *   POST /api/msp/customers/:customerId/break-glass-decisions/:decisionId/decide
+ *     — (#4532) a pack run that found an existing break-glass account pauses and
+ *       waits here. The operator records the customer's actual answer — reset and
+ *       redeliver, or resume without delivering — and exactly that path runs
+ *       (performExistingAccountDecision(), break-glass-verification.ts). A separate
+ *       path segment on purpose: the `:pendingSecretId` route would swallow it.
+ *
  * Auth: requireCapability("ladder.msp-operator") on every route (admits MSPOperator, MSPAdmin,
  * PlatformAdmin — see requireAuth.ts roleIndex) plus assertCustomerAccess on
  * every :customerId-scoped route, exactly the ownership-check pattern every
@@ -53,6 +61,7 @@ import {
   breakGlassPendingSecretsTable,
   breakGlassVerificationAttemptsTable,
   breakGlassOverrideAuditTable,
+  breakGlassExistingAccountDecisionsTable,
   tenantsTable,
   usersTable,
 } from "@workspace/db";
@@ -63,6 +72,7 @@ import { z } from "zod";
 import {
   resolvePendingContext,
   performBreakGlassAdminOverride,
+  performExistingAccountDecision,
 } from "./break-glass-verification.ts";
 import {
   WriteBackCustomerNotFoundError,
@@ -398,6 +408,142 @@ router.get(
     } catch (err) {
       log.error({ err, customerId }, "msp-break-glass: GET audit failed");
       return res.status(500).json({ error: "Failed to load override audit" });
+    }
+  },
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /msp/customers/:customerId/break-glass-decisions — existing-account decisions (#4532)
+// ─────────────────────────────────────────────────────────────────────────────
+router.get(
+  "/msp/customers/:customerId/break-glass-decisions",
+  requireCapability("ladder.msp-operator"),
+  async (req: Request, res: Response) => {
+    const customerId = parseInt(req.params.customerId as string, 10);
+    if (isNaN(customerId)) return res.status(400).json({ error: "Invalid customerId" });
+
+    try {
+      if (!(await assertCustomerAccess(req.user!, customerId))) {
+        return res.status(404).json({ error: "Customer not found" });
+      }
+
+      const rows = await db
+        .select({
+          id: breakGlassExistingAccountDecisionsTable.id,
+          runId: breakGlassExistingAccountDecisionsTable.runId,
+          pendingSecretId: breakGlassExistingAccountDecisionsTable.pendingSecretId,
+          existingAccountId: breakGlassExistingAccountDecisionsTable.existingAccountId,
+          existingAccountUpn: breakGlassExistingAccountDecisionsTable.existingAccountUpn,
+          status: breakGlassExistingAccountDecisionsTable.status,
+          customerAnswer: breakGlassExistingAccountDecisionsTable.customerAnswer,
+          reason: breakGlassExistingAccountDecisionsTable.reason,
+          decidedByUserId: breakGlassExistingAccountDecisionsTable.decidedByUserId,
+          decidedByName: usersTable.name,
+          decidedByEmail: usersTable.email,
+          decidedAt: breakGlassExistingAccountDecisionsTable.decidedAt,
+          resultPendingSecretId: breakGlassExistingAccountDecisionsTable.resultPendingSecretId,
+          createdAt: breakGlassExistingAccountDecisionsTable.createdAt,
+        })
+        .from(breakGlassExistingAccountDecisionsTable)
+        .leftJoin(usersTable, eq(usersTable.id, breakGlassExistingAccountDecisionsTable.decidedByUserId))
+        .where(eq(breakGlassExistingAccountDecisionsTable.customerId, customerId))
+        .orderBy(desc(breakGlassExistingAccountDecisionsTable.createdAt));
+
+      await auditPrivilegedRead({
+        actorUserId: req.user!.id,
+        actorName: req.user!.email,
+        actorRole: resolveAuditActorRole(req.user!),
+        actionType: "break_glass.existing_account_decisions_viewed",
+        entityType: "break_glass_existing_account_decision",
+        tenantId: customerId,
+        metadata: { count: rows.length },
+      });
+
+      return res.json({
+        decisions: rows.map((r) => ({
+          id: r.id,
+          runId: r.runId,
+          pendingSecretId: r.pendingSecretId,
+          existingAccountId: r.existingAccountId,
+          existingAccountUpn: r.existingAccountUpn,
+          status: r.status,
+          customerAnswer: r.customerAnswer,
+          reason: r.reason,
+          decidedByName: r.decidedByUserId == null ? null : (r.decidedByName ?? r.decidedByEmail ?? `user #${r.decidedByUserId}`),
+          decidedAt: r.decidedAt ? r.decidedAt.toISOString() : null,
+          resultPendingSecretId: r.resultPendingSecretId,
+          createdAt: r.createdAt.toISOString(),
+        })),
+      });
+    } catch (err) {
+      log.error({ err, customerId }, "msp-break-glass: GET existing-account decisions failed");
+      return res.status(500).json({ error: "Failed to load break-glass decisions" });
+    }
+  },
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /msp/customers/:customerId/break-glass-decisions/:decisionId/decide (#4532)
+// ─────────────────────────────────────────────────────────────────────────────
+router.post(
+  "/msp/customers/:customerId/break-glass-decisions/:decisionId/decide",
+  requireCapability("ladder.msp-operator"),
+  async (req: Request, res: Response) => {
+    const customerId = parseInt(req.params.customerId as string, 10);
+    const decisionId = parseInt(req.params.decisionId as string, 10);
+    if (isNaN(customerId) || isNaN(decisionId)) return res.status(404).json({ error: "Not found" });
+
+    // The customer's answer is the whole point of this route: refuse to act without
+    // a real one, and without the operator's reason. No default, no inference.
+    const body = z.object({
+      decision: z.enum(["reset_and_redeliver", "resume_without_delivery"]),
+      customerAnswer: z.string().trim().min(1).max(2000),
+      reason: z.string().trim().min(1).max(2000),
+      emails: z.array(z.string().email()).min(1).max(5).optional(),
+    }).safeParse(req.body);
+    if (!body.success) {
+      return res.status(400).json({ error: "decision, customerAnswer and reason are required; emails (if given) must be 1–5 valid addresses" });
+    }
+    if (body.data.decision === "resume_without_delivery" && body.data.emails) {
+      return res.status(400).json({ error: "emails only applies to reset_and_redeliver" });
+    }
+
+    try {
+      if (!(await assertCustomerAccess(req.user!, customerId))) {
+        return res.status(404).json({ error: "Not found" });
+      }
+
+      const result = await performExistingAccountDecision(decisionId, customerId, req.user!.id, body.data);
+      if (!result.ok) {
+        return res.status(result.status).json({ error: result.error, ...(result.detail ? { detail: result.detail } : {}) });
+      }
+      await createAuditLog({
+        actorUserId: req.user!.id,
+        actorName: req.user!.name ?? req.user!.email,
+        actorRole: req.user!.role,
+        actionType: "break_glass.existing_account_decision",
+        actionCategory: "security",
+        entityType: "break_glass_existing_account_decision",
+        entityId: decisionId,
+        tenantId: customerId,
+        metadata: {
+          decision: result.decision,
+          customerAnswer: body.data.customerAnswer,
+          reason: body.data.reason,
+          actorSurface: "msp",
+          ...(result.decision === "reset_and_redeliver"
+            ? { newPendingSecretId: result.newPendingSecretId, reissued: result.reissued, sent: result.sent }
+            : { runId: result.runId }),
+        },
+      });
+      return res.json(result);
+    } catch (err) {
+      if (err instanceof WriteBackNotEnabledError || err instanceof WriteBackCustomerNotFoundError || err instanceof WriteConsentRequiredError) {
+        log.warn({ customerId, decisionId, reason: err.reason }, "msp-break-glass: existing-account decision blocked by write-back gate");
+        return res.status(409).json({ error: err.message, blockedBy: err.reason });
+      }
+      log.error({ err, customerId, decisionId }, "msp-break-glass: existing-account decision failed");
+      return res.status(500).json({ error: "Failed to process decision" });
     }
   },
 );
