@@ -37,6 +37,7 @@ import {
   type BreakGlassStatus,
   type LinkStatus,
 } from "@/api/break-glass-api";
+import { ExistingAccountDecisionPanel } from "./ExistingAccountDecisionPanel";
 
 const CARD_LINE = border.card;
 const CARD_BG = "rgba(15,23,42,.6)";
@@ -47,6 +48,9 @@ const STATUS_TONE: Record<BreakGlassStatus, { color: string; tint: string; line:
   reset_in_progress: { color: "#60a5fa", tint: "rgba(96,165,250,.1)", line: "rgba(96,165,250,.26)", icon: "loader", label: "reset in progress" },
   delivered_purged: { color: "#34d399", tint: "rgba(52,211,153,.1)", line: "rgba(52,211,153,.26)", icon: "circle-check-big", label: "claimed and wiped" },
   superseded_by_reset: { color: "#94a3b8", tint: "rgba(148,163,184,.08)", line: "rgba(148,163,184,.2)", icon: "circle-minus", label: "reset, never claimed" },
+  // #4532 — not in the design: the run found an existing account, so this credential was
+  // never applied to it; the customer said they already hold theirs and nothing is delivered.
+  discarded_unapplied: { color: "#94a3b8", tint: "rgba(148,163,184,.08)", line: "rgba(148,163,184,.2)", icon: "circle-minus", label: "never applied, discarded" },
 };
 
 const LINK_TONE: Record<LinkStatus, { color: string; tint: string; line: string }> = {
@@ -213,6 +217,9 @@ export function BreakGlassPage({ customerId }: { customerId: number }) {
           <Icon name="eye-off" size={13} color={text.label} />The credential itself never reaches this console
         </span>
       </div>
+
+      {/* #4532 — a paused run waiting on the customer's answer about an existing account */}
+      <ExistingAccountDecisionPanel customerId={customerId} />
 
       {/* Shown-once override result */}
       {result && (

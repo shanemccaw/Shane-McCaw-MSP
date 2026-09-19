@@ -28,7 +28,7 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 
-export type BreakGlassStatus = "pending_delivery" | "reset_in_progress" | "delivered_purged" | "superseded_by_reset";
+export type BreakGlassStatus = "pending_delivery" | "reset_in_progress" | "delivered_purged" | "superseded_by_reset" | "discarded_unapplied";
 export type LinkStatus = "pending" | "consumed" | "expired" | "superseded";
 export type VerificationOutcome = "success" | "role_not_active_pim_eligible" | "role_absent" | "expired" | "superseded" | null;
 
@@ -139,6 +139,86 @@ export function useBreakGlassAudit(customerId: number | null): UseQueryResult<Br
       getJson<BreakGlassAuditResponse>(fetchWithAuth, `/api/msp/customers/${customerId}/break-glass/audit`, signal),
     enabled: !isLoading && !!accessToken && customerId !== null,
     staleTime: 20_000,
+  });
+}
+
+// ── Existing-account decisions (#4532) ──────────────────────────────────────
+// A pack run that found an existing break-glass account pauses and waits for the
+// operator to record the customer's answer. Real rows from
+// `GET /api/msp/customers/:id/break-glass-decisions`; statuses are the schema's
+// (`breakGlassExistingAccountDecisionsTable.status`).
+
+export type ExistingAccountDecisionStatus = "pending" | "reset_and_redeliver" | "resume_without_delivery";
+export type ExistingAccountChoice = Exclude<ExistingAccountDecisionStatus, "pending">;
+
+export interface ExistingAccountDecision {
+  readonly id: number;
+  readonly runId: number;
+  readonly pendingSecretId: number;
+  readonly existingAccountId: string | null;
+  readonly existingAccountUpn: string | null;
+  readonly status: ExistingAccountDecisionStatus;
+  readonly customerAnswer: string | null;
+  readonly reason: string | null;
+  readonly decidedByName: string | null;
+  readonly decidedAt: string | null;
+  readonly resultPendingSecretId: number | null;
+  readonly createdAt: string;
+}
+
+export interface ExistingAccountDecisionsResponse {
+  readonly decisions: readonly ExistingAccountDecision[];
+}
+
+export type DecideExistingAccountResult =
+  | { readonly ok: true; readonly decision: "reset_and_redeliver"; readonly newPendingSecretId: number; readonly reissued: number; readonly sent: number }
+  | { readonly ok: true; readonly decision: "resume_without_delivery"; readonly runId: number };
+
+export function useExistingAccountDecisions(customerId: number | null): UseQueryResult<ExistingAccountDecisionsResponse, BreakGlassApiError> {
+  const { fetchWithAuth, isLoading, accessToken } = useAuth();
+  return useQuery({
+    queryKey: ["msp", "break-glass", "decisions", customerId],
+    queryFn: ({ signal }) =>
+      getJson<ExistingAccountDecisionsResponse>(fetchWithAuth, `/api/msp/customers/${customerId}/break-glass-decisions`, signal),
+    enabled: !isLoading && !!accessToken && customerId !== null,
+    staleTime: 10_000,
+  });
+}
+
+/**
+ * Record the customer's answer for a paused run and run exactly that path. Both
+ * `customerAnswer` and `reason` are required by the route; `emails` only applies
+ * to "reset_and_redeliver" (omitted = no invites sent yet, the operator invites
+ * from the waiting credential afterwards).
+ */
+export function useDecideExistingAccount(customerId: number | null) {
+  const { fetchWithAuth } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ decisionId, decision, customerAnswer, reason, emails }: {
+      decisionId: number;
+      decision: ExistingAccountChoice;
+      customerAnswer: string;
+      reason: string;
+      emails?: string[];
+    }) => {
+      if (customerId === null) throw new BreakGlassApiError(400, "No customer selected");
+      const res = await fetchWithAuth(`/api/msp/customers/${customerId}/break-glass-decisions/${decisionId}/decide`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision, customerAnswer, reason, ...(emails && emails.length > 0 ? { emails } : {}) }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new BreakGlassApiError(res.status, (body as { error?: string }).error ?? `Request failed: ${res.status}`, (body as { detail?: string }).detail);
+      }
+      return body as DecideExistingAccountResult;
+    },
+    onSuccess: () => {
+      // Same shared prefix the override uses: history, detail, audit, decisions and
+      // the cross-tenant watchlist all refresh together.
+      void queryClient.invalidateQueries({ queryKey: ["msp", "break-glass"] });
+    },
   });
 }
 
