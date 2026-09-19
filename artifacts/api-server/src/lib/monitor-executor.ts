@@ -40,6 +40,7 @@ import { driftSpecForCheck } from "./drift-check-specs.ts";
 import { callPsExecution, PsExecutionError } from "./ps-execution-client.ts";
 import {
   getTenantSharingCapability,
+  getTenantProperties,
   sharePointAdminCredentialsPresent,
   SharingCapability,
   type SharePointTenantRef,
@@ -2636,7 +2637,45 @@ const SHARING_CAPABILITY_NAMES: Record<number, string> = {
  * enum they come from, rather than left to condition-grammar arithmetic over a
  * bare number in a stored severity rule.
  */
+/**
+ * #4838 — tenant SharePoint storage utilisation. No single Graph field carries a
+ * tenant-wide percent, so it is derived from two real reads: the tenant quota
+ * (CSOM `Tenant.StorageQuota`, MB) and the latest "Storage Used (Byte)" row of
+ * the Graph SharePoint usage-storage report. Throws rather than returning 0 when
+ * either input is missing or non-numeric.
+ */
+export function computeSharePointStoragePercent(
+  quotaMb: unknown,
+  reportRows: Record<string, string>[],
+): { sharepointStorageUsedBytes: number; sharepointStorageQuotaBytes: number; sharepointStorageUsagePercent: number } {
+  const quota = Number(quotaMb);
+  if (!Number.isFinite(quota) || quota <= 0) {
+    throw new Error(`tenant-storage-utilization: Tenant.StorageQuota is not a positive number (${JSON.stringify(quotaMb)})`);
+  }
+  const dated = reportRows
+    .filter(r => r["Storage Used (Byte)"] !== undefined && r["Storage Used (Byte)"] !== "")
+    .sort((a, b) => String(b["Report Date"] ?? "").localeCompare(String(a["Report Date"] ?? "")));
+  const used = Number(dated[0]?.["Storage Used (Byte)"]);
+  if (!Number.isFinite(used) || used < 0) {
+    throw new Error("tenant-storage-utilization: usage-storage report carried no numeric 'Storage Used (Byte)' row");
+  }
+  const quotaBytes = quota * 1024 * 1024;
+  return {
+    sharepointStorageUsedBytes: used,
+    sharepointStorageQuotaBytes: quotaBytes,
+    sharepointStorageUsagePercent: Math.round((used / quotaBytes) * 10000) / 100,
+  };
+}
+
 export const SHAREPOINT_ADMIN_OPERATIONS: Record<string, SharePointAdminOperation> = {
+  "tenant-storage-utilization": async (ref) => {
+    const props = await getTenantProperties(ref);
+    const res = await graphFetchForTenant(ref.aadTenantId, "/reports/getSharePointSiteUsageStorage(period='D7')");
+    if (!res.ok) {
+      throw new Error(`tenant-storage-utilization: usage-storage report failed: ${res.status} ${await res.text()}`);
+    }
+    return [computeSharePointStoragePercent(props.StorageQuota, parseCsvReport(await res.text()))];
+  },
   "tenant-sharing-capability": async (ref) => {
     const capability = await getTenantSharingCapability(ref);
     return [{
