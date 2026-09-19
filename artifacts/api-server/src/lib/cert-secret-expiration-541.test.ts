@@ -33,6 +33,8 @@ const CERT_SECRET_EXPIRATION_MAPPING: MappingRule[] = [
   { sourceField: "keyCredentials", targetField: "keyCredentialCount", transform: "countWhere('{{keyId}} != null')" },
   { sourceField: "passwordCredentials", targetField: "expiredPasswordCredentialCount", transform: "countWhere('{{endDateTime}} olderThanDays 0')" },
   { sourceField: "keyCredentials", targetField: "expiredKeyCredentialCount", transform: "countWhere('{{endDateTime}} olderThanDays 0')" },
+  // #4579 — combined total; must come AFTER the two fields it sums.
+  { sourceField: "*", targetField: "expiredCredentialCount", transform: "sumOf('expiredPasswordCredentialCount','expiredKeyCredentialCount')" },
 ];
 
 const CERT_SECRET_EXPIRATION_RULES: SeverityRule[] = [
@@ -148,5 +150,23 @@ describe("#541 — appgov:cert-secret-expiration mapping + severity rules", () =
     expect(extracted.passwordCredentialCount).toBe(1);
     expect(extracted.expiredPasswordCredentialCount).toBe(0);
     expect(classifySeverity(CERT_SECRET_EXPIRATION_RULES, extracted)).toBe(null);
+  });
+
+  it("#4579 — expiredCredentialCount sums expired secrets + certificates and keeps both individual fields", () => {
+    const items = [
+      appRegistration(["2018-06-01T00:00:00Z", "2099-01-01T00:00:00Z"], ["2019-01-01T00:00:00Z"]),
+      appRegistration(["2023-03-15T00:00:00Z", "2020-01-01T00:00:00Z"]),
+    ];
+    const extracted = applyMapping(items, CERT_SECRET_EXPIRATION_MAPPING, []);
+    expect(extracted.expiredPasswordCredentialCount).toBe(3);
+    expect(extracted.expiredKeyCredentialCount).toBe(1);
+    expect(extracted.expiredCredentialCount).toBe(4);
+  });
+
+  it("#4579 — sumOf counts a not-yet-computed operand as 0 instead of throwing", () => {
+    const extracted = applyMapping([], [
+      { sourceField: "*", targetField: "total", transform: "sumOf('nope','alsoNope')" },
+    ], []);
+    expect(extracted.total).toBe(0);
   });
 });

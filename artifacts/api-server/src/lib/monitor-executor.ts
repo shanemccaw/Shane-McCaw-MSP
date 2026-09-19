@@ -284,6 +284,8 @@ export interface MappingRule {
    * | "countEquals('value')" | "countIfLastSignInOlderThan(N)"
    * | "valueWhere('matchField','matchValue'[,'extractField'])"
    * | "flattenValues('field')" | "countDuplicatesBy('field')"
+   * | "sumOf('fieldA','fieldB'[,...])" — sums targetFields already computed
+   *   by EARLIER rules in this same mapping (order matters; sourceField unused)
    * | "countWhere('<condition expression>')" — the
    * parameterised forms carry their argument inline in the string since
    * MappingRule is stored as jsonb; parsed at runtime.
@@ -366,7 +368,7 @@ const KNOWN_TRANSFORMS = new Set([
   "countEquals", "countIfLastSignInOlderThan",
   "groupByCount", "countDuplicates",
   "valueWhere", "flattenValues", "countDuplicatesBy",
-  "countWhere",
+  "countWhere", "sumOf",
 ]);
 
 /**
@@ -1475,6 +1477,8 @@ export function applyMapping(
     // separately with its own character excluded, rather than with the
     // ['"]([^'"]*)['"] form the field-name transforms use: that form would
     // reject every predicate carrying a string literal.
+    const sumOfMatch = /^sumOf\(\s*((?:['"][^'"]+['"]\s*,\s*)*['"][^'"]+['"])\s*\)$/.exec(rawTransform);
+    const sumOfFields = sumOfMatch ? [...sumOfMatch[1].matchAll(/['"]([^'"]+)['"]/g)].map(m => m[1]) : undefined;
     const countWhereMatch =
       /^countWhere\(\s*'([^']*)'\s*\)$/.exec(rawTransform)
       ?? /^countWhere\(\s*"([^"]*)"\s*\)$/.exec(rawTransform);
@@ -1496,8 +1500,8 @@ export function applyMapping(
     // "countWhere" with no parsable expression joins the same branch: an empty
     // or unquoted predicate must warn, never silently count 0 (or, worse, count
     // every item, since an empty expression is falsy to the grammar).
-    const malformedParams = !valueWhereMatch && !flattenValuesMatch && !countDuplicatesByMatch && !countWhereExpr
-      && (["valueWhere", "flattenValues", "countDuplicatesBy", "countWhere"]
+    const malformedParams = !valueWhereMatch && !flattenValuesMatch && !countDuplicatesByMatch && !countWhereExpr && !sumOfFields
+      && (["valueWhere", "flattenValues", "countDuplicatesBy", "countWhere", "sumOf"]
         .some(p => rawTransform === p || rawTransform.startsWith(`${p}(`))
         || rawTransform.startsWith("raw("));
     const transform = countEqualsMatch ? "countEquals"
@@ -1507,6 +1511,7 @@ export function applyMapping(
       : flattenValuesMatch ? "flattenValues"
       : countDuplicatesByMatch ? "countDuplicatesBy"
       : countWhereExpr ? "countWhere"
+      : sumOfFields ? "sumOf"
       : malformedParams ? MALFORMED_PARAMS
       : rawTransform;
     const compareValue = countEqualsMatch ? countEqualsMatch[1] : undefined;
@@ -1879,6 +1884,22 @@ export function applyMapping(
             `monitor-executor: raw is passing ${items.length} whole items through to "${targetField}", which is persisted verbatim into tenant_monitor_profiles.extracted_properties on every run. Nothing was dropped — but a derived transform is almost certainly what this check wants at this volume.`,
           );
         }
+        break;
+      }
+      case "sumOf": {
+        // Sums numeric targetFields written by earlier rules of this same
+        // mapping (#4579). Non-numeric or not-yet-computed operands count as 0
+        // and warn, so a misordered rule is visible rather than silently low.
+        let total = 0;
+        for (const f of sumOfFields!) {
+          const n = result[f];
+          if (typeof n === "number" && Number.isFinite(n)) total += n;
+          else log.warn(
+            { targetField, operand: f, transform: rawTransform },
+            `monitor-executor: sumOf operand "${f}" is not a number on this run (missing, or the rule computing it comes AFTER this one) — counted as 0`,
+          );
+        }
+        result[targetField] = total;
         break;
       }
       case "countWhere": {
