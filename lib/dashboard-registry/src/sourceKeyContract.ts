@@ -332,79 +332,81 @@ export const DRIFT_EVENTS_PREFIX = "drift:";
  *
  * Shrinking this list is the goal. Adding to it requires a live audit, the same
  * bar as `AUDIT_CONFIRMED_ABSENT_SOURCE_KEYS`.
+ *
+ * ── #4573: THE PER-CHECK AUDIT (2026-09-18) ──────────────────────────────────
+ * The 65 keys were audited one at a time against the live catalog (202 active
+ * `monitor_checks` rows; none of the 65 exists in ANY status, and none has a
+ * single `tenant_monitor_profiles` row). Outcome: 6 remapped to a real successor
+ * whose `extractedProperties` shape was checked against the metric, 46 retired
+ * to the `not_collected:` sentinel because no check measures what they claim,
+ * and the 13 below left in place, each with the specific reason it is not safe
+ * to decide by inference (`blockers`). The full per-key evidence is in
+ * `build-journal/4573-plan.md`.
+ *
+ * The audit's practical lesson, worth keeping next to the list it produced: a
+ * successor that is close by NAME is often not a successor. Several candidates
+ * measured a different quantity than their name implies — a policy count under
+ * a mailbox caption, a total device count in a field called
+ * `outdatedOsDeviceCount`, a duplicate-license count that is structurally always
+ * 0, a distribution that would render one `unknown` bucket. Every one of those
+ * would have shown a confident number, not an empty cell.
  */
 export const CATALOG_DRIFT_BACKLOG: {
   readonly confirmedOn: string;
   readonly keys: readonly string[];
+  /**
+   * Why each key is STILL here (Git #4573) — exactly one entry per key (asserted
+   * by `registry-source-key-contract.test.ts`). A key stays on this list only
+   * because the per-check audit found a candidate successor that is not safe to
+   * remap by inference, or found the work needs a decision or a change outside
+   * the registry. Each blocker is the audit's own finding, not a note to self.
+   */
+  readonly blockers: Readonly<Record<string, string>>;
 } = {
-  confirmedOn: "2026-09-17",
+  confirmedOn: "2026-09-18",
   keys: [
-    "audit:directory-audits", // identity.changeEventCount
-    "audit:provisioning", // identity.provisioningEventCount
     "audit:signins", // identity.signinActivity
-    "collaboration:delegation-grants", // collaboration.delegationGrantCount
-    "collaboration:forwarding-mailboxes", // collaboration.forwardingMailboxCount
-    "collaboration:inbox-rules", // collaboration.inboxRuleCount
-    "collaboration:mailboxes", // collaboration.mailboxCount
-    "collaboration:shared-mailbox-signin", // collaboration.sharedMailboxSigninEnabledCount
-    "collaboration:teams-channels", // collaboration.teamsChannelCount
-    "compliance:active-ediscovery", // compliance.activeEdiscoveryCount
-    "compliance:external-invites", // compliance.externalInviteCount
-    "compliance:guest-users", // compliance.guestUserCount
-    "compliance:missing-retention-tags", // compliance.missingRetentionTagCount
     "compliance:onedrive-external", // compliance.oneDriveExternalCount
-    "compliance:orphaned-sites", // compliance.orphanedSiteCount
-    "compliance:orphaned-teams", // compliance.orphanedTeamCount
     "compliance:overshared-sites", // compliance.oversharedSiteCount
-    "compliance:public-channels", // compliance.publicChannelCount
     "compliance:sharepoint-sites", // compliance.sharePointSiteCount
     "copilot:license-readiness", // licensing.copilotLicenseBreakdown
-    "copilot:overshare-exposure", // copilot.overshareExposureCount
-    "dynamics:app-permissions", // dynamics.appPermissionCount
-    "dynamics:app-role-drift", // dynamics.appRoleDriftCount
-    "dynamics:consent-changes", // dynamics.consentChangeCount
-    "dynamics:orphaned-sps", // dynamics.orphanedSpCount
-    "dynamics:permission-grants", // dynamics.permissionGrantCount
-    "dynamics:role-assignments", // dynamics.roleAssignmentCount
-    "dynamics:sp-drift", // dynamics.spDriftCount
-    "identity:disabled-accounts", // identity.disabledAccountCount
-    "identity:passwordless-adoption", // identity.passwordlessUserCount
-    "intune:config-drift", // intune.configDriftCount
-    "intune:high-threat-devices", // intune.highThreatDeviceCount
-    "intune:jailbroken-devices", // intune.jailbrokenDeviceCount
-    "intune:non-compliant-devices", // intune.nonCompliantDeviceCount
     "intune:outdated-devices", // intune.outdatedDeviceCount
-    "intune:rooted-devices", // intune.rootedDeviceCount
-    "intune:unencrypted-devices", // intune.unencryptedDeviceCount
-    "intune:unenrolled-devices", // intune.unenrolledDeviceCount
     "licensing:duplicate-assignments", // licensing.duplicateLicenseCount
     "licensing:inactive-user-licenses", // licensing.inactiveLicenseCount
     "licensing:sku-utilization", // licensing.skuBreakdown
-    "platform:db-failures", // platform.dbFailureCount
-    "platform:expiring-tokens", // platform.expiringTokenCount
-    "platform:failed-services", // platform.failedServiceCount
-    "platform:graph-failed-endpoints", // platform.failedEndpointCount
-    "platform:graph-rate-limits", // platform.rateLimitEventCount
-    "platform:queue-depth", // platform.queueDepthCount
-    "platform:scheduler-delays", // platform.schedulerDelayCount
-    "power-platform:app-inventory", // powerPlatform.appCount
-    "power-platform:flow-inventory", // powerPlatform.flowCount
     "security:active-alerts", // security.activeAlertCount, security.alertsBySeverity
-    "security:attack-simulation", // security.failedSimulationCount
     "security:high-severity-alerts", // security.highSeverityAlertCount
-    "security:malware-alerts", // security.malwareAlertCount
-    "security:phishing-alerts", // security.phishingAlertCount
     "security:risk-detections", // security.riskDetectionCount
     "security:secure-score-controls", // security.secureScoreControls
-    "security:secure-score-drift", // security.secureScoreDriftCount
-    "workflow:dependency-failures", // workflow.dependencyFailureCount
-    "workflow:failures", // workflow.workflowFailureCount
-    "workflow:high-latency-nodes", // workflow.highLatencyNodeCount
-    "workflow:invalid-schema-nodes", // workflow.invalidSchemaNodeCount
-    "workflow:node-timeouts", // workflow.nodeTimeoutCount
-    "workflow:queue-backlog", // workflow.queueBacklogCount
-    "workflow:unhealthy-nodes", // workflow.unhealthyNodeCount
   ],
+  blockers: {
+    "audit:signins":
+      "the only check fetching /auditLogs/signIns is identity:legacy-auth-usage, which is license_gap on the only tenant with data (unverifiable) and whose own definition looks unfiltered (count(clientAppUsed) counts every sign-in, yet its severity rule says legacy). Coupling a heatmap to a check about to be corrected would be a guess",
+    "compliance:onedrive-external":
+      "genuinely ambiguous: onedrive:overshared-files maps oversharedDriveCount (incl. org-wide links), anonymousLinkDriveCount and everyoneDriveCount, and none of them is exactly 'external shares'. Needs a decision on which one",
+    "compliance:overshared-sites":
+      "obvious successor is compliance:eeeu-site-sharing.oversharedSiteCount (the resolver's picker chooses it correctly), but #357 deliberately left this metric off the new check ('not a rewrite'), and its denominatorMetric compliance.sharePointSiteCount is the next row. Needs Shane to confirm the #357 decision has lapsed",
+    "compliance:sharepoint-sites":
+      "two candidates with different populations: sharepoint:site-count (live 99, includes 5 personal sites and 1 site with no drive) vs compliance:eeeu-site-sharing.sitesScanned (live 93). It is the denominator of the already-live compliance.eeeuSiteCount, so remapping it would newly make that metric emit a percentage. Needs a decision on the population",
+    "copilot:license-readiness":
+      "a distribution metric declared status 'available', so the resolver returns a scalar; no check emits buckets. Needs a needs_aggregation transform (and a decision on what the buckets are), not a key swap",
+    "intune:outdated-devices":
+      "candidate devices:os-patch-compliance maps count(osVersion) into a field named outdatedOsDeviceCount, which counts EVERY device with an OS version. The check needs a per-OS minimum-build definition of 'outdated' first (a product decision); remapping now would print the total device count as outdated devices",
+    "licensing:duplicate-assignments":
+      "candidate cost:duplicate-assignments runs countDuplicates(skuId) over /users with no $select, and skuId is not a top-level /users field, so it is structurally always 0. The check must be fixed (a real definition of a duplicate license) before anything can point at it",
+    "licensing:inactive-user-licenses":
+      "candidate license:unused-assigned stores a bare countWhere with no predicate, which the executor treats as malformed and leaves unset; its tenant is also license_gap (Entra ID P1/P2 is needed for signInActivity). The check's mapping must be repaired first",
+    "licensing:sku-utilization":
+      "a distribution metric declared status 'available': license:sku-utilization's skuData is a raw array, so the scalar resolver would return _itemCount (the number of SKUs, live 4) under a breakdown caption. Needs a needs_aggregation transform",
+    "security:active-alerts":
+      "candidate security:alert-count-by-severity fetches /security/alerts_v2 with no status filter, so it counts resolved alerts too, and 'Active Alerts' is not 'all alerts'. The only tenant with data is license_gap (Defender), so the raw shape behind security.alertsBySeverity is unverifiable. Open-vs-all is a product decision",
+    "security:high-severity-alerts":
+      "candidate security:alert-count-by-severity.highSeverityAlertCount matches by name but counts alerts of every status, and the metric is smart-graded against a target of 0, so a resolved high alert would grade a tenant down. Unverifiable live (license_gap). Needs the open-vs-all decision",
+    "security:risk-detections":
+      "candidate identity:risky-signins is server-filtered to activity eq 'signin', a subset of 'Risk Detections by Type', and is license_gap on the only tenant with data. Not a genuine match without a decision on scope",
+    "security:secure-score-controls":
+      "candidate security:secure-score-by-category cannot back this metric as-is: its stored raw page is 90 daily score snapshots and controlScores_values is an array of 90 arrays, so aggregateGroupBy(controlCategory) renders ONE bucket 'unknown = 90' (verified over the real stored row). Needs a transform over the latest snapshot's controlScores[] and a decision whether buckets count controls or sum scores",
+  },
 };
 /**
  * The metrics whose `sourceKey` is NOT a catalog lookup, and so is not a claim

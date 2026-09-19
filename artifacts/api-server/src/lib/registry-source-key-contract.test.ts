@@ -48,6 +48,7 @@ import {
   PILLAR_STAT_WIRING_FAULT_REASONS,
   isStatWiringFault,
 } from "./pillar-summary-stats.ts";
+import { pickMappedValueField } from "./dashboard-resolvers.ts";
 
 const ALL_SPECS = PILLAR_SUMMARY_KEYS.flatMap((p) => [...PILLAR_STAT_SPECS[p]]);
 
@@ -209,5 +210,42 @@ describe("#441 — the Copilot Readiness Report's grounding survives every hop",
     expect(isStatWiringFault("not_in_scan_package")).toBe(false);
     expect(isStatWiringFault("no_data")).toBe(false);
     expect(isStatWiringFault(undefined)).toBe(false);
+  });
+});
+
+describe("#4573 - each remapped metric reads the field its label claims", () => {
+  // The resolver does not read a named field for a plain monitor_profile metric:
+  // pickMappedValueField chooses among the check's numeric mapping targetFields
+  // by token overlap. A check that maps several numeric fields therefore has to be
+  // proven to resolve to the RIGHT one - a wrong pick renders a confident wrong
+  // number, not an empty cell. `targetFields` below are the check's real
+  // `monitor_checks.mapping[].targetField` values, captured 2026-09-18 (numeric
+  // ones only - groupByCount maps are not scalars and the picker ignores them).
+  const REMAPS: ReadonlyArray<{ metricKey: string; checkKey: string; targetFields: string[]; expected: string }> = [
+    { metricKey: "intune.nonCompliantDeviceCount", checkKey: "devices:compliant-vs-noncompliant", targetFields: ["nonCompliantDeviceCount"], expected: "nonCompliantDeviceCount" },
+    { metricKey: "intune.unencryptedDeviceCount", checkKey: "devices:encryption-status", targetFields: ["unencryptedDeviceCount"], expected: "unencryptedDeviceCount" },
+    { metricKey: "collaboration.teamsChannelCount", checkKey: "teams:channel-sprawl", targetFields: ["channelCount"], expected: "channelCount" },
+    { metricKey: "compliance.guestUserCount", checkKey: "governance:guest-count", targetFields: ["guestAccountCount"], expected: "guestAccountCount" },
+    { metricKey: "compliance.orphanedTeamCount", checkKey: "teams:ownerless-teams", targetFields: ["ownerlessTeamCount"], expected: "ownerlessTeamCount" },
+    {
+      metricKey: "copilot.overshareExposureCount",
+      checkKey: "copilot:data-exposure-risk",
+      targetFields: [
+        "copilotExposedSiteCount",
+        "copilotSitesScanned",
+        "copilotAnonymousLinkSiteCount",
+        "copilotEveryoneSiteCount",
+        "copilotEeeuSiteCount",
+        "copilotOrganizationLinkSiteCount",
+      ],
+      expected: "copilotExposedSiteCount",
+    },
+  ];
+
+  it.each(REMAPS)("$metricKey reads $expected from $checkKey", ({ metricKey, checkKey, targetFields, expected }) => {
+    expect(getMetric(metricKey)?.sourceKey, `${metricKey} is not wired to ${checkKey}`).toBe(checkKey);
+    // Give every field a DISTINCT number so the assertion can tell which one won.
+    const props = Object.fromEntries(targetFields.map((f, i) => [f, 100 + i]));
+    expect(pickMappedValueField(metricKey, checkKey, targetFields, props)?.field).toBe(expected);
   });
 });

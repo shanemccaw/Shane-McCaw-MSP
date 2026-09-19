@@ -126,12 +126,11 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "percentage-eligible",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "identity:passwordless-adoption",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "identity:passwordless-adoption" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: no mapping reads a passwordless field (identity:mfa-method-breakdown maps only legacyMfaMethodCount).
+    sourceKey: "not_collected:identity-passwordless-adoption",
     scope: "customer",
-    status: "available",
-    smartEligible: true,
-    smartDefaultTarget: 100,
-    smartBands: COVERAGE_UP_BANDS,
+    status: "not_collected",
+    smartEligible: false,
   },
   {
     key: "identity.disabledAccountCount",
@@ -139,9 +138,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "identity:disabled-accounts",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "identity:disabled-accounts" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: no check counts accountEnabled == false; identity:break-glass-health and onedrive:departed-user-access each cover a narrower subset.
+    sourceKey: "not_collected:identity-disabled-accounts",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -288,9 +288,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "event-list",
     shape: "timeline",
     sourceType: "monitor_profile",
-    sourceKey: "audit:provisioning",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "audit:provisioning" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: no /auditLogs/provisioning check exists.
+    sourceKey: "not_collected:audit-provisioning",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -315,9 +316,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "event-list",
     shape: "timeline",
     sourceType: "monitor_profile",
-    sourceKey: "audit:directory-audits",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "audit:directory-audits" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: no /auditLogs/directoryAudits check exists.
+    sourceKey: "not_collected:audit-directory-audits",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
 
@@ -569,9 +571,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "security:malware-alerts",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "security:malware-alerts" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: no check filters alerts by malware category.
+    sourceKey: "not_collected:security-malware-alerts",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -580,9 +583,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "security:phishing-alerts",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "security:phishing-alerts" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: no check filters alerts by phishing category.
+    sourceKey: "not_collected:security-phishing-alerts",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -626,9 +630,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "security:attack-simulation",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "security:attack-simulation" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: no attack-simulation check exists.
+    sourceKey: "not_collected:security-attack-simulation",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -661,9 +666,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "security:secure-score-drift",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "security:secure-score-drift" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: no secure-score drift check or drift domain exists.
+    sourceKey: "not_collected:security-secure-score-drift",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -737,9 +743,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "compliance:active-ediscovery",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "compliance:active-ediscovery" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: no eDiscovery check exists.
+    sourceKey: "not_collected:compliance-active-ediscovery",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -792,12 +799,11 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "compliance:missing-retention-tags",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "compliance:missing-retention-tags" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: no retention-tag coverage check exists; compliance:record-tag-missing-reviewer measures regulatory labels without a reviewer, a different thing.
+    sourceKey: "not_collected:compliance-missing-retention-tags",
     scope: "customer",
-    status: "available",
-    smartEligible: true,
-    smartDefaultTarget: 0,
-    smartBands: RISK_COUNT_BANDS,
+    status: "not_collected",
+    smartEligible: false,
   },
   {
     key: "compliance.missingLabelCount",
@@ -818,7 +824,8 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "compliance:guest-users",
+    // #4573: was "compliance:guest-users", which names no row in monitor_checks. Remapped: single mapping countEquals('Guest')(userType) -> guestAccountCount. Live on tenant c4c814d4: 2 of 27 users.
+    sourceKey: "governance:guest-count",
     scope: "customer",
     status: "available",
     smartEligible: false,
@@ -829,9 +836,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "compliance:external-invites",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "compliance:external-invites" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: no /invitations or invite-audit check exists; identity:b2b-collaboration-settings is a policy setting, not an invite count.
+    sourceKey: "not_collected:compliance-external-invites",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -840,12 +848,11 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "compliance:orphaned-sites",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "compliance:orphaned-sites" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: no site-ownership check exists; sharepoint:inactive-sites is inactive, not orphaned.
+    sourceKey: "not_collected:compliance-orphaned-sites",
     scope: "customer",
-    status: "available",
-    smartEligible: true,
-    smartDefaultTarget: 0,
-    smartBands: RISK_COUNT_BANDS,
+    status: "not_collected",
+    smartEligible: false,
   },
   {
     key: "compliance.orphanedTeamCount",
@@ -853,7 +860,8 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "compliance:orphaned-teams",
+    // #4573: was "compliance:orphaned-teams", which names no row in monitor_checks. Remapped: countEmptyArray(owners) -> ownerlessTeamCount over Team groups with $expand=owners; orphaned = ownerless. Live on tenant c4c814d4: 0 of 18 teams.
+    sourceKey: "teams:ownerless-teams",
     scope: "customer",
     status: "available",
     smartEligible: true,
@@ -912,9 +920,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "compliance:public-channels",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "compliance:public-channels" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: teams:channel-sprawl does not map membershipType, and governance:public-teams-discoverable counts public TEAMS, not channels.
+    sourceKey: "not_collected:compliance-public-channels",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -936,9 +945,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "collaboration:mailboxes",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "collaboration:mailboxes" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: no mailbox-inventory check exists; adoption:email-activity-trend's emailLicensedUserCount is a usage-report row count that includes deleted accounts (the #441 trap).
+    sourceKey: "not_collected:collaboration-mailboxes",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -947,12 +957,11 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "collaboration:forwarding-mailboxes",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "collaboration:forwarding-mailboxes" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: exchange:auto-forwarding-rules counts outbound spam-filter POLICIES with AutoForwardingMode On (0 or 1), not mailboxes; remapping it would print a policy count under a mailbox caption.
+    sourceKey: "not_collected:collaboration-forwarding-mailboxes",
     scope: "customer",
-    status: "available",
-    smartEligible: true,
-    smartDefaultTarget: 0,
-    smartBands: RISK_COUNT_BANDS,
+    status: "not_collected",
+    smartEligible: false,
   },
   {
     key: "collaboration.inboxRuleCount",
@@ -960,9 +969,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "collaboration:inbox-rules",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "collaboration:inbox-rules" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: Get-InboxRule has no tenant-wide form, so no check enumerates inbox rules.
+    sourceKey: "not_collected:collaboration-inbox-rules",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -971,9 +981,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "collaboration:delegation-grants",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "collaboration:delegation-grants" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: no check enumerates mailbox delegation.
+    sourceKey: "not_collected:collaboration-delegation-grants",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -982,12 +993,11 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "collaboration:shared-mailbox-signin",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "collaboration:shared-mailbox-signin" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: exchange:shared-mailbox-licensing counts shared mailboxes (live 3), not those with sign-in enabled.
+    sourceKey: "not_collected:collaboration-shared-mailbox-signin",
     scope: "customer",
-    status: "available",
-    smartEligible: true,
-    smartDefaultTarget: 0,
-    smartBands: RISK_COUNT_BANDS,
+    status: "not_collected",
+    smartEligible: false,
   },
   {
     key: "collaboration.teamsChannelCount",
@@ -995,7 +1005,8 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "collaboration:teams-channels",
+    // #4573: was "collaboration:teams-channels", which names no row in monitor_checks. Remapped: fan-out over every Team with a single mapping count(id) -> channelCount. Live on tenant c4c814d4: 27 channels across 18 teams, not truncated.
+    sourceKey: "teams:channel-sprawl",
     scope: "customer",
     status: "available",
     smartEligible: false,
@@ -1151,7 +1162,8 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "intune:non-compliant-devices",
+    // #4573: was "intune:non-compliant-devices", which names no row in monitor_checks. Remapped: its single mapping is countEquals('noncompliant')(complianceState) -> nonCompliantDeviceCount, exactly this metric. Definition-verified only: no tenant has Intune data.
+    sourceKey: "devices:compliant-vs-noncompliant",
     scope: "customer",
     status: "available",
     smartEligible: true,
@@ -1164,9 +1176,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "intune:config-drift",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "intune:config-drift" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: no Intune drift domain exists (drift_baseline_snapshots holds only ca-policy, eeeu-site-sharing, email-authentication, tenant-sharing-capability, public-teams-discoverable).
+    sourceKey: "not_collected:intune-config-drift",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -1175,7 +1188,8 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "intune:unencrypted-devices",
+    // #4573: was "intune:unencrypted-devices", which names no row in monitor_checks. Remapped: its single mapping is countFalse(isEncrypted) -> unencryptedDeviceCount (strict === false, so unknown is not counted). Definition-verified only: no tenant has Intune data.
+    sourceKey: "devices:encryption-status",
     scope: "customer",
     status: "available",
     smartEligible: true,
@@ -1188,12 +1202,11 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "intune:unenrolled-devices",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "intune:unenrolled-devices" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: devices:enrollment-status maps enrolledDeviceCount, the opposite quantity, and unenrolled devices are absent from /managedDevices; no check measures them.
+    sourceKey: "not_collected:intune-unenrolled-devices",
     scope: "customer",
-    status: "available",
-    smartEligible: true,
-    smartDefaultTarget: 0,
-    smartBands: RISK_COUNT_BANDS,
+    status: "not_collected",
+    smartEligible: false,
   },
   {
     key: "intune.jailbrokenDeviceCount",
@@ -1201,12 +1214,11 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "intune:jailbroken-devices",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "intune:jailbroken-devices" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: no check's mapping reads managedDevices.jailBroken.
+    sourceKey: "not_collected:intune-jailbroken-devices",
     scope: "customer",
-    status: "available",
-    smartEligible: true,
-    smartDefaultTarget: 0,
-    smartBands: RISK_COUNT_BANDS,
+    status: "not_collected",
+    smartEligible: false,
   },
   {
     key: "intune.rootedDeviceCount",
@@ -1214,12 +1226,11 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "intune:rooted-devices",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "intune:rooted-devices" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: no check's mapping reads managedDevices.jailBroken (the field covering rooted Android devices).
+    sourceKey: "not_collected:intune-rooted-devices",
     scope: "customer",
-    status: "available",
-    smartEligible: true,
-    smartDefaultTarget: 0,
-    smartBands: RISK_COUNT_BANDS,
+    status: "not_collected",
+    smartEligible: false,
   },
   {
     key: "intune.highThreatDeviceCount",
@@ -1227,12 +1238,11 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "intune:high-threat-devices",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "intune:high-threat-devices" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: no check reads device threat level / partner threat state.
+    sourceKey: "not_collected:intune-high-threat-devices",
     scope: "customer",
-    status: "available",
-    smartEligible: true,
-    smartDefaultTarget: 0,
-    smartBands: RISK_COUNT_BANDS,
+    status: "not_collected",
+    smartEligible: false,
   },
   {
     key: "intune.outdatedDeviceCount",
@@ -1507,9 +1517,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "dynamics:app-permissions",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "dynamics:app-permissions" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: no Dynamics-scoped app check exists; teams:app-permission-policy is a Teams policy.
+    sourceKey: "not_collected:dynamics-app-permissions",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -1518,9 +1529,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "dynamics:role-assignments",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "dynamics:role-assignments" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: identity:pim-permanent-roles counts Entra directory roles, not Dynamics role assignments.
+    sourceKey: "not_collected:dynamics-role-assignments",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -1529,9 +1541,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "dynamics:permission-grants",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "dynamics:permission-grants" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: appgov:risky-permission-grants is the tenant-wide AllPrincipals subset, not Dynamics permission grants.
+    sourceKey: "not_collected:dynamics-permission-grants",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -1540,9 +1553,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "event-list",
     shape: "timeline",
     sourceType: "monitor_profile",
-    sourceKey: "dynamics:app-role-drift",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "dynamics:app-role-drift" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: no Dynamics drift domain exists.
+    sourceKey: "not_collected:dynamics-app-role-drift",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -1551,9 +1565,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "event-list",
     shape: "timeline",
     sourceType: "monitor_profile",
-    sourceKey: "dynamics:sp-drift",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "dynamics:sp-drift" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: no Dynamics drift domain exists.
+    sourceKey: "not_collected:dynamics-sp-drift",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -1562,9 +1577,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "event-list",
     shape: "timeline",
     sourceType: "monitor_profile",
-    sourceKey: "dynamics:consent-changes",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "dynamics:consent-changes" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: no Dynamics drift domain exists; appgov checks are tenant-wide point-in-time counts, not change events.
+    sourceKey: "not_collected:dynamics-consent-changes",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -1573,12 +1589,11 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "dynamics:orphaned-sps",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "dynamics:orphaned-sps" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: appgov:dormant-service-principals is tenant-wide and means no assigned access, not Dynamics-scoped orphaned.
+    sourceKey: "not_collected:dynamics-orphaned-sps",
     scope: "customer",
-    status: "available",
-    smartEligible: true,
-    smartDefaultTarget: 0,
-    smartBands: RISK_COUNT_BANDS,
+    status: "not_collected",
+    smartEligible: false,
   },
 
   // ---- Power Platform ---------------------------------------------------
@@ -1588,9 +1603,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "power-platform:app-inventory",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "power-platform:app-inventory" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: no active monitor_checks row has a pp_operation, and none targets /environments or /flows.
+    sourceKey: "not_collected:power-platform-app-inventory",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -1599,9 +1615,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "trend",
     sourceType: "monitor_profile",
-    sourceKey: "power-platform:flow-inventory",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "power-platform:flow-inventory" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: no active monitor_checks row has a pp_operation, and none targets /environments or /flows.
+    sourceKey: "not_collected:power-platform-flow-inventory",
     scope: "customer",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
 
@@ -1612,7 +1629,8 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "copilot:overshare-exposure",
+    // #4573: was "copilot:overshare-exposure", which names no row in monitor_checks. Remapped: #553 established copilotExposedSiteCount (countTruthy(broadAccess) per site) as the real Copilot exposure signal. Live on tenant c4c814d4: 1 exposed of 93 scanned.
+    sourceKey: "copilot:data-exposure-risk",
     scope: "customer",
     status: "available",
     smartEligible: true,
@@ -1910,9 +1928,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "platform:graph-failed-endpoints",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "platform:graph-failed-endpoints" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: platform telemetry: no tenant-facing check executor (Graph/PowerShell/DNS/SharePoint-admin) can produce it.
+    sourceKey: "not_collected:platform-graph-failed-endpoints",
     scope: "msp",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -1921,9 +1940,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "platform:graph-rate-limits",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "platform:graph-rate-limits" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: platform telemetry: no tenant-facing check executor can produce it.
+    sourceKey: "not_collected:platform-graph-rate-limits",
     scope: "msp",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -1932,9 +1952,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "platform:expiring-tokens",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "platform:expiring-tokens" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: platform telemetry: no tenant-facing check executor can produce it.
+    sourceKey: "not_collected:platform-expiring-tokens",
     scope: "msp",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -1943,9 +1964,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "platform:db-failures",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "platform:db-failures" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: platform telemetry: no tenant-facing check executor can produce it.
+    sourceKey: "not_collected:platform-db-failures",
     scope: "msp",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -1954,9 +1976,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "platform:queue-depth",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "platform:queue-depth" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: platform telemetry: no tenant-facing check executor can produce it (portalWf.jobQueueDepth is the platform-table equivalent, if one is wanted).
+    sourceKey: "not_collected:platform-queue-depth",
     scope: "msp",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -1965,9 +1988,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "platform:scheduler-delays",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "platform:scheduler-delays" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: platform telemetry: no tenant-facing check executor can produce it.
+    sourceKey: "not_collected:platform-scheduler-delays",
     scope: "msp",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -1976,9 +2000,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "platform:failed-services",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "platform:failed-services" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: platform telemetry: no tenant-facing check executor can produce it.
+    sourceKey: "not_collected:platform-failed-services",
     scope: "msp",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
 
@@ -1989,12 +2014,11 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "workflow:failures",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "workflow:failures" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: platform telemetry: no tenant-facing check executor can produce it (portalWf.failedWorkflowCount is the platform-table equivalent, if one is wanted).
+    sourceKey: "not_collected:workflow-failures",
     scope: "msp",
-    status: "available",
-    smartEligible: true,
-    smartDefaultTarget: 0,
-    smartBands: RISK_COUNT_BANDS,
+    status: "not_collected",
+    smartEligible: false,
   },
   {
     key: "workflow.unhealthyNodeCount",
@@ -2002,9 +2026,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "workflow:unhealthy-nodes",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "workflow:unhealthy-nodes" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: platform telemetry: no tenant-facing check executor can produce it.
+    sourceKey: "not_collected:workflow-unhealthy-nodes",
     scope: "msp",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -2013,9 +2038,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "workflow:high-latency-nodes",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "workflow:high-latency-nodes" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: platform telemetry: no tenant-facing check executor can produce it.
+    sourceKey: "not_collected:workflow-high-latency-nodes",
     scope: "msp",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -2024,9 +2050,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "workflow:invalid-schema-nodes",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "workflow:invalid-schema-nodes" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: platform telemetry: no tenant-facing check executor can produce it.
+    sourceKey: "not_collected:workflow-invalid-schema-nodes",
     scope: "msp",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -2035,9 +2062,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "workflow:node-timeouts",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "workflow:node-timeouts" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: platform telemetry: no tenant-facing check executor can produce it.
+    sourceKey: "not_collected:workflow-node-timeouts",
     scope: "msp",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -2046,9 +2074,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "workflow:dependency-failures",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "workflow:dependency-failures" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: platform telemetry: no tenant-facing check executor can produce it.
+    sourceKey: "not_collected:workflow-dependency-failures",
     scope: "msp",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
   {
@@ -2057,9 +2086,10 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     valueType: "count",
     shape: "scalar",
     sourceType: "monitor_profile",
-    sourceKey: "workflow:queue-backlog",
+    // #4573: retired from CATALOG_DRIFT_BACKLOG. "workflow:queue-backlog" names no row in monitor_checks (audited 2026-09-18) and no real successor exists: platform telemetry: no tenant-facing check executor can produce it.
+    sourceKey: "not_collected:workflow-queue-backlog",
     scope: "msp",
-    status: "available",
+    status: "not_collected",
     smartEligible: false,
   },
 
