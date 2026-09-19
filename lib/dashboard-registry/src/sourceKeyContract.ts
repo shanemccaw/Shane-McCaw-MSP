@@ -381,27 +381,27 @@ export const CATALOG_DRIFT_BACKLOG: {
   ],
   blockers: {
     "audit:signins":
-      "the only check fetching /auditLogs/signIns is identity:legacy-auth-usage, which is license_gap on the only tenant with data (unverifiable) and whose own definition looks unfiltered (count(clientAppUsed) counts every sign-in, yet its severity rule says legacy). Coupling a heatmap to a check about to be corrected would be a guess",
+      "(#4832) the only check fetching /auditLogs/signIns is identity:legacy-auth-usage, which is license_gap on the only tenant with data (unverifiable) and whose own definition looks unfiltered (count(clientAppUsed) counts every sign-in, yet its severity rule says legacy). Coupling a heatmap to a check about to be corrected would be a guess",
     "compliance:onedrive-external":
-      "genuinely ambiguous: onedrive:overshared-files maps oversharedDriveCount (incl. org-wide links), anonymousLinkDriveCount and everyoneDriveCount, and none of them is exactly 'external shares'. Needs a decision on which one",
+      "(#4835) genuinely ambiguous: onedrive:overshared-files maps oversharedDriveCount (incl. org-wide links), anonymousLinkDriveCount and everyoneDriveCount, and none of them is exactly 'external shares'. Needs a decision on which one",
     "compliance:overshared-sites":
-      "obvious successor is compliance:eeeu-site-sharing.oversharedSiteCount (the resolver's picker chooses it correctly), but #357 deliberately left this metric off the new check ('not a rewrite'), and its denominatorMetric compliance.sharePointSiteCount is the next row. Needs Shane to confirm the #357 decision has lapsed",
+      "(#4835) obvious successor is compliance:eeeu-site-sharing.oversharedSiteCount (the resolver's picker chooses it correctly), but #357 deliberately left this metric off the new check ('not a rewrite'), and its denominatorMetric compliance.sharePointSiteCount is the next row. Needs Shane to confirm the #357 decision has lapsed",
     "compliance:sharepoint-sites":
-      "two candidates with different populations: sharepoint:site-count (live 99, includes 5 personal sites and 1 site with no drive) vs compliance:eeeu-site-sharing.sitesScanned (live 93). It is the denominator of the already-live compliance.eeeuSiteCount, so remapping it would newly make that metric emit a percentage. Needs a decision on the population",
+      "(#4835) two candidates with different populations: sharepoint:site-count (live 99, includes 5 personal sites and 1 site with no drive) vs compliance:eeeu-site-sharing.sitesScanned (live 93). It is the denominator of the already-live compliance.eeeuSiteCount, so remapping it would newly make that metric emit a percentage. Needs a decision on the population",
     "copilot:license-readiness":
       "a distribution metric declared status 'available', so the resolver returns a scalar; no check emits buckets. Needs a needs_aggregation transform (and a decision on what the buckets are), not a key swap",
     "intune:outdated-devices":
-      "candidate devices:os-patch-compliance maps count(osVersion) into a field named outdatedOsDeviceCount, which counts EVERY device with an OS version. The check needs a per-OS minimum-build definition of 'outdated' first (a product decision); remapping now would print the total device count as outdated devices",
+      "(#4829) candidate devices:os-patch-compliance maps count(osVersion) into a field named outdatedOsDeviceCount, which counts EVERY device with an OS version. The check needs a per-OS minimum-build definition of 'outdated' first (a product decision); remapping now would print the total device count as outdated devices",
     "licensing:duplicate-assignments":
-      "candidate cost:duplicate-assignments runs countDuplicates(skuId) over /users with no $select, and skuId is not a top-level /users field, so it is structurally always 0. The check must be fixed (a real definition of a duplicate license) before anything can point at it",
+      "(#4830) candidate cost:duplicate-assignments runs countDuplicates(skuId) over /users with no $select, and skuId is not a top-level /users field, so it is structurally always 0. The check must be fixed (a real definition of a duplicate license) before anything can point at it",
     "licensing:inactive-user-licenses":
-      "candidate license:unused-assigned stores a bare countWhere with no predicate, which the executor treats as malformed and leaves unset; its tenant is also license_gap (Entra ID P1/P2 is needed for signInActivity). The check's mapping must be repaired first",
+      "(#4831) candidate license:unused-assigned stores a bare countWhere with no predicate, which the executor treats as malformed and leaves unset; its tenant is also license_gap (Entra ID P1/P2 is needed for signInActivity). The check's mapping must be repaired first",
     "licensing:sku-utilization":
       "a distribution metric declared status 'available': license:sku-utilization's skuData is a raw array, so the scalar resolver would return _itemCount (the number of SKUs, live 4) under a breakdown caption. Needs a needs_aggregation transform",
     "security:active-alerts":
-      "candidate security:alert-count-by-severity fetches /security/alerts_v2 with no status filter, so it counts resolved alerts too, and 'Active Alerts' is not 'all alerts'. The only tenant with data is license_gap (Defender), so the raw shape behind security.alertsBySeverity is unverifiable. Open-vs-all is a product decision",
+      "(#4835) candidate security:alert-count-by-severity fetches /security/alerts_v2 with no status filter, so it counts resolved alerts too, and 'Active Alerts' is not 'all alerts'. The only tenant with data is license_gap (Defender), so the raw shape behind security.alertsBySeverity is unverifiable. Open-vs-all is a product decision",
     "security:high-severity-alerts":
-      "candidate security:alert-count-by-severity.highSeverityAlertCount matches by name but counts alerts of every status, and the metric is smart-graded against a target of 0, so a resolved high alert would grade a tenant down. Unverifiable live (license_gap). Needs the open-vs-all decision",
+      "(#4835) candidate security:alert-count-by-severity.highSeverityAlertCount matches by name but counts alerts of every status, and the metric is smart-graded against a target of 0, so a resolved high alert would grade a tenant down. Unverifiable live (license_gap). Needs the open-vs-all decision",
     "security:risk-detections":
       "candidate identity:risky-signins is server-filtered to activity eq 'signin', a subset of 'Risk Detections by Type', and is license_gap on the only tenant with data. Not a genuine match without a decision on scope",
     "security:secure-score-controls":
