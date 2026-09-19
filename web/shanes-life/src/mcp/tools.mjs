@@ -35,6 +35,7 @@ import * as prices from "../core/prices.mjs";
 import * as recipes from "../core/recipes.mjs";
 import * as shares from "../core/shares.mjs";
 import * as storeAisles from "../core/store-aisles.mjs";
+import * as tasks from "../core/tasks.mjs";
 import * as tesla from "../core/tesla.mjs";
 import * as things from "../core/things.mjs";
 import * as timers from "../core/timers.mjs";
@@ -2149,6 +2150,63 @@ export const TOOLS = [
       const row = await dates.getDate(ctx.user.id, args.dateId);
       if (!row) throw new Error(`No date ${args.dateId}`);
       return row;
+    },
+  },
+
+  {
+    name: "push_task",
+    title: "Add a real to-do",
+    description:
+      "Create a real one-time to-do -- done or not done, optionally with a due date. Use this for 'call the attorney Monday', 'renew the tags', 'email Dana back'. It is NOT for appointments, birthdays or anything recurring with a lead time -- that is push_date. Put the full detail in `notes` so nothing is lost to a short title. Call list_tasks first to avoid a duplicate.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "The to-do at a glance, e.g. 'Call bankruptcy attorney candidates'." },
+        dueDate: { type: "string", description: "YYYY-MM-DD. Omit if the task has no due date." },
+        notes: { type: "string", description: "Full free-text detail (names, numbers, accommodations)." },
+      },
+      required: ["title"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const task = await tasks.createTask(ctx.user.id, { title: args.title, dueDate: args.dueDate ?? null, notes: args.notes ?? null });
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "task.create", entityId: task.id, detail: { title: task.title, dueDate: task.due_date } });
+      return task;
+    },
+  },
+
+  {
+    name: "list_tasks",
+    title: "Read Shane's real to-dos",
+    description:
+      "Real to-dos, open only by default -- \"what do I need to do\" in one call. Open tasks come soonest-due first, undated last. Pass status 'done' to see completed ones. dueBefore limits to tasks due on or before that date (undated tasks are excluded when it is set).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        status: { type: "string", enum: ["open", "done"], default: "open" },
+        dueBefore: { type: "string", description: "YYYY-MM-DD; only tasks due on or before this date." },
+      },
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      return tasks.listTasks(ctx.user.id, { status: args.status ?? "open", dueBefore: args.dueBefore ?? null });
+    },
+  },
+
+  {
+    name: "complete_task",
+    title: "Mark a to-do done",
+    description: "Mark one real task done by id (from list_tasks). Idempotent: completing an already-done task returns it unchanged and keeps its original completedAt.",
+    inputSchema: {
+      type: "object",
+      properties: { taskId: { type: "string" } },
+      required: ["taskId"],
+      additionalProperties: false,
+    },
+    async handler(args, ctx) {
+      const task = await tasks.completeTask(ctx.user.id, args.taskId);
+      await record({ userId: ctx.user.id, actor: "mcp", actorLabel: ctx.label, action: "task.complete", entityId: task.id, detail: { title: task.title } });
+      return task;
     },
   },
 
