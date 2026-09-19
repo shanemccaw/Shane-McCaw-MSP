@@ -22,9 +22,6 @@ namespace BuildConsole.Controls
         /// <summary>Git #937 — raised when the Sticky Notes icon is clicked; MainWindow toggles the always-on-top floaty open/closed.</summary>
         public event EventHandler? StickyNotesToggleRequested;
 
-        /// <summary>Git #973 — raised when the LinkedIn composer icon is clicked; MainWindow toggles the always-on-top LinkedIn post pre-fill floaty open/closed.</summary>
-        public event EventHandler? LinkedInComposerToggleRequested;
-
         /// <summary>Git #980 — raised when the Build Watch icon is clicked; MainWindow toggles the floaty 8-slot Build Watch window open/closed.</summary>
         public event EventHandler? BuildWatchToggleRequested;
 
@@ -36,10 +33,6 @@ namespace BuildConsole.Controls
         /// with the current entries' rows.</summary>
         public event EventHandler? ShelfOpenRequested;
 
-        /// <summary>Git #2809 — raised when the Git Doctor icon is clicked; MainWindow opens
-        /// the full-width Git Doctor Editor tab (OpenGitDoctorTab), not a LeftSidebar view.</summary>
-        public event EventHandler? GitDoctorRequested;
-
         /// <summary>Raised when the Git Mode icon is clicked; MainWindow toggles Git Mode open/closed.</summary>
         public event EventHandler? GitModeToggleRequested;
 
@@ -47,36 +40,6 @@ namespace BuildConsole.Controls
         {
             InitializeComponent();
 
-            // Git #3880 — reflect current bookmarked-state on load, then keep it live: any
-            // mutation from the tray itself or a floating toast's own bookmark button (#3878)
-            // fires NotificationHistoryStore.Changed, so the bell never goes stale even while
-            // the popout is closed.
-            UpdateNotificationBellColor();
-            NotificationHistoryStore.Changed += NotificationHistoryStore_Changed;
-            Unloaded += (_, _) => NotificationHistoryStore.Changed -= NotificationHistoryStore_Changed;
-        }
-
-        private void NotificationHistoryStore_Changed(object? sender, EventArgs e)
-        {
-            // Store's Changed event can fire from a background thread; hop to the UI thread.
-            Dispatcher.Invoke(UpdateNotificationBellColor);
-        }
-
-        /// <summary>Git #3880 — color is the ONLY signal on the bell (explicitly no count/badge,
-        /// per Shane's repeated ask): accent when at least one bookmarked entry exists, neutral
-        /// otherwise.</summary>
-        private void UpdateNotificationBellColor()
-        {
-            var hasBookmarks = NotificationHistoryStore.Bookmarked.Count > 0;
-            NotificationBellGlyph.Foreground = (Brush)FindResource(hasBookmarks ? "PeachBrush" : "Subtext1Brush");
-        }
-
-        /// <summary>Opens the #3879 tray panel in an anchored popout, reloading its real content
-        /// fresh every open — same convention as BtnWebTools_Click above.</summary>
-        private void BtnNotifications_Click(object sender, RoutedEventArgs e)
-        {
-            NotificationTray.Refresh();
-            NotificationsPopup.IsOpen = true;
         }
 
         /// <summary>Git #834 — File > Settings menu item routes here so it lands on the SAME SettingsView the cog icon already opens, instead of being a second, divergent path.</summary>
@@ -105,10 +68,6 @@ namespace BuildConsole.Controls
         private void BtnStickyNotes_Click(object sender, RoutedEventArgs e) =>
             StickyNotesToggleRequested?.Invoke(this, EventArgs.Empty);
 
-        /// <summary>Git #973 — toggles the always-on-top LinkedIn post pre-fill floaty.</summary>
-        private void BtnLinkedInComposer_Click(object sender, RoutedEventArgs e) =>
-            LinkedInComposerToggleRequested?.Invoke(this, EventArgs.Empty);
-
         /// <summary>Git #980 — toggles the floaty 8-slot Build Watch window.</summary>
         private void BtnBuildWatch_Click(object sender, RoutedEventArgs e) =>
             BuildWatchToggleRequested?.Invoke(this, EventArgs.Empty);
@@ -121,12 +80,6 @@ namespace BuildConsole.Controls
         /// to populate + open the popout via <see cref="ShowShelf"/>.</summary>
         private void BtnShelf_Click(object sender, RoutedEventArgs e) =>
             ShelfOpenRequested?.Invoke(this, EventArgs.Empty);
-
-        /// <summary>Git #2809 — opens Git Doctor as a full-width Editor tab (a plain Button,
-        /// not a workspace RadioButton, since it opens a separate tab rather than switching
-        /// the sidebar's content — same shape as Sticky Notes/LinkedIn Composer above).</summary>
-        private void BtnGitDoctor_Click(object sender, RoutedEventArgs e) =>
-            GitDoctorRequested?.Invoke(this, EventArgs.Empty);
 
         private void BtnGitMode_Click(object sender, RoutedEventArgs e) =>
             GitModeToggleRequested?.Invoke(this, EventArgs.Empty);

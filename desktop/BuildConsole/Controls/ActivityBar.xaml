@@ -85,31 +85,6 @@
                     </Grid>
                 </RadioButton>
 
-                <RadioButton x:Name="BtnGraphApi"
-                             GroupName="ActivityBar"
-                             Style="{StaticResource ActivityBarButton}"
-                             Checked="Btn_Checked" PreviewMouseLeftButtonDown="Btn_PreviewMouseLeftButtonDown" Tag="GraphApi"
-                             ToolTip="Microsoft Graph API Panel">
-                    <TextBlock Text="&#xE9A1;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource SubHeaderFontSize}" Foreground="{StaticResource BlueBrush}"/>
-                </RadioButton>
-
-                <!-- Git #2798/#2809 — Git Doctor: full-capability real repo status, diagnostic
-                     findings, branch management, commit lookup, PAT auth, Claude bridge, run log
-                     (ShaneBuilder's GitDoctorService/#2194 port). #2809: opens as a full-width
-                     Editor tab (MainWindow.OpenGitDoctorTab), not a narrow LeftSidebar ActivityBar
-                     panel — so this is a plain Button (like BtnStickyNotes below), not a
-                     RadioButton in the ActivityBar workspace-view group. Health/heart glyph, red,
-                     reads as "doctor". Placement note from #2798's bookend still applies once
-                     #2797 lands (move into the vacated Admin Center rail slot) — independent of
-                     this fix, which is about where the CONTENT opens. -->
-                <Button x:Name="BtnGitDoctor"
-                        Style="{StaticResource IconButton}"
-                        Width="48" Height="44"
-                        Click="BtnGitDoctor_Click"
-                        ToolTip="Git Doctor — real repo status, diagnostic findings, branch &amp; commit tools">
-                    <TextBlock Text="&#xE95E;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource HeaderFontSize}" Foreground="{StaticResource RedBrush}"/>
-                </Button>
-
                 <!-- Git Mode top-level entry (Ctrl+Shift+G) -->
                 <Button x:Name="BtnGitMode"
                         Style="{StaticResource IconButton}"
@@ -182,21 +157,6 @@
                     <TextBlock Text="&#x1F5D2;" FontSize="{StaticResource SubHeaderFontSize}"/>
                 </Button>
 
-                <!-- Git #973 — Shane: "pre-fill and then I'd press the actual
-                     schedule button." Toggles the always-on-top LinkedIn post
-                     composer floaty; Send pre-fills LinkedIn's real compose box
-                     (Shane presses Schedule/Post himself). Same plain-Button
-                     shape as Sticky Notes above (a separate top-level window,
-                     not a LeftSidebar view). -->
-                <Button x:Name="BtnLinkedInComposer"
-                        Style="{StaticResource IconButton}"
-                        Width="48" Height="44"
-                        ToolTip="LinkedIn Post pre-fill (always-on-top floaty)"
-                        Click="BtnLinkedInComposer_Click">
-                    <TextBlock Text="&#xE71B;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource SubHeaderFontSize}"
-                               Foreground="{StaticResource BlueBrush}"/>
-                </Button>
-
                 <!-- Git #980 — Shane: "a floaty panel so I can put it off to
                      another monitor and watch as it progresses." Toggles the
                      independent 8-slot Build Watch window (a separate top-level
@@ -222,29 +182,6 @@
                     <TextBlock Text="&#xE722;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource SubHeaderFontSize}"
                                Foreground="{StaticResource BlueBrush}"/>
                 </Button>
-
-                <!-- Git #3880 — Notification Tray bell: opens the #3879 tray popout listing every
-                     real NotificationHistoryStore entry. Color is the ONLY signal (no count
-                     badge, per Shane's explicit ask) — accent when at least one bookmarked entry
-                     exists, neutral otherwise. Same real popout convention as BtnWebTools/BtnShelf
-                     above (a plain Button + anchored Popup, reloaded fresh on every open). -->
-                <Button x:Name="BtnNotifications"
-                        Style="{StaticResource IconButton}"
-                        Width="48" Height="44"
-                        ToolTip="Notifications"
-                        Click="BtnNotifications_Click">
-                    <TextBlock x:Name="NotificationBellGlyph" Text="&#xE7E7;" FontFamily="{StaticResource IconFontFamily}" FontSize="{StaticResource HeaderFontSize}"
-                               Foreground="{StaticResource Subtext1Brush}"/>
-                </Button>
-
-                <Popup x:Name="NotificationsPopup"
-                       PlacementTarget="{Binding ElementName=BtnNotifications}"
-                       Placement="Right"
-                       StaysOpen="False"
-                       AllowsTransparency="True"
-                       PopupAnimation="Fade">
-                    <controls:NotificationTrayPanel x:Name="NotificationTray"/>
-                </Popup>
 
                 <!-- Separator -->
                 <Border Height="1" Background="{StaticResource Surface0Brush}" Margin="8,6"/>

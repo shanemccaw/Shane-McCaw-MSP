@@ -1440,15 +1440,13 @@ namespace BuildConsole
 
             // Git #937 — Sticky Notes floaty toggle + active-pane focus tracking.
             ActivityBar.StickyNotesToggleRequested += (s, e) => ToggleStickyNotes();
-            // Git #973 — LinkedIn post pre-fill floaty toggle (see MainWindow.LinkedInComposer.cs).
-            ActivityBar.LinkedInComposerToggleRequested += (s, e) => ToggleLinkedInComposer();
             // Git #980 — floaty 8-slot Build Watch window toggle.
             ActivityBar.BuildWatchToggleRequested += (s, e) => ToggleBuildWatch();
             // Git #1472 — Visual Test Tracker docked Test Mode toggle.
             ActivityBar.VisualTestTrackerToggleRequested += (s, e) => ToggleTestMode();
-            // Git #2809 — Git Doctor opens as a full-width Editor tab, not a LeftSidebar
-            // ActivityBar view; plain-Button click like Sticky Notes/LinkedIn Composer above.
-            ActivityBar.GitDoctorRequested += (s, e) => OpenGitDoctorTab();
+            // Git #4808 — Notifications bell / LinkedIn Post / Git Doctor / Graph API Panel now live in the
+            // top QAT strip (MainWindow.QatRelocated.cs), not the ActivityBar.
+            InitQatNotificationBell();
             ActivityBar.GitModeToggleRequested += (s, e) => ToggleGitMode();
             _activeEditorPane = EditorTabs;
             // Clicking into any pane's WebView2 to type moves WPF keyboard focus
