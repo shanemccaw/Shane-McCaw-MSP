@@ -102,6 +102,7 @@ import { resolveLicenseWasteCounts, paidSeatFiguresFromLines } from "./license-w
 import { evaluateDocGateCoverage } from "./doc-gate-coverage.ts";
 import { getTenantServiceState, serviceDisplayName } from "./service-availability.ts";
 import { driftDisplayNamesFromBaselineConfig, driftSpecForDomain, resolveDriftEventLabel } from "./drift-check-specs.ts";
+import { driftStateFromStatus } from "./pillar-drift.ts";
 import { TENANT_SERVICE_KEYS, type TenantServiceKey } from "@workspace/db";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -729,10 +730,12 @@ async function resolveMonitorProfile(def: MetricDef, ctx: ResolveContext): Promi
  * drift-collector.ts.
  *
  * Honest outcome, matching this file's zero-vs-no-data principle:
- *   - a scan RAN but couldn't be diffed (#1287, e.g. a fan-out that hit its
- *     coverage cap) → not_available("not_comparable") with the SPECIFIC reason
- *     the collector recorded, so the UI never shows a silent gap or a fabricated
- *     "no drift" for a domain that genuinely can't be compared this run.
+ *   - the domain's LATEST scan RAN but couldn't be diffed (#1287, e.g. a fan-out
+ *     that hit its coverage cap) or errored → not_available("not_comparable" |
+ *     "collection_error") with the SPECIFIC reason the collector recorded, so the
+ *     UI never shows a silent gap or a fabricated "no drift" for a domain that
+ *     genuinely can't be compared this run. Checked BEFORE the baseline and
+ *     regardless of an older baseline on file (#4837).
  *   - no baseline captured for the domain → not_available("no_data"): the tenant
  *     has never been scanned for this domain's drift (distinct from a real zero).
  *   - baseline exists, no events in window → ok with `events: []` + zeroRows:
@@ -742,28 +745,31 @@ async function resolveMonitorProfile(def: MetricDef, ctx: ResolveContext): Promi
 async function resolveDriftEvents(def: MetricDef, tenantId: string, ctx: ResolveContext): Promise<MetricResult> {
   const domainKey = def.sourceKey.slice("drift:".length);
 
+  // #4837 — the collector's verdict on the LATEST run comes first. The status row
+  // is unique per (tenant, domain) and upserted on every run, so it is the fact
+  // about the most recent scan; a baseline captured on an earlier run says nothing
+  // about whether THIS run could be compared. Classified by the same
+  // driftStateFromStatus the pillar-page drift panel (#4578) uses.
+  const [status] = await db
+    .select({ status: driftCollectionStatusTable.status, reason: driftCollectionStatusTable.reason })
+    .from(driftCollectionStatusTable)
+    .where(and(eq(driftCollectionStatusTable.tenantId, tenantId), eq(driftCollectionStatusTable.domainKey, domainKey)))
+    .limit(1);
+  const latestState = driftStateFromStatus(status?.status ?? null);
+  if (latestState !== "tracked") {
+    return notAvailable(
+      def,
+      latestState === "error" ? "collection_error" : "not_comparable",
+      status?.reason ?? `drift for "${def.sourceKey}" could not be compared on the most recent scan`,
+    );
+  }
+
   const [baseline] = await db
     .select({ id: driftBaselineSnapshotsTable.id, config: driftBaselineSnapshotsTable.config })
     .from(driftBaselineSnapshotsTable)
     .where(and(eq(driftBaselineSnapshotsTable.tenantId, tenantId), eq(driftBaselineSnapshotsTable.domainKey, domainKey)))
     .limit(1);
   if (!baseline) {
-    // Before falling back to the generic "never scanned" answer, check whether a
-    // scan actually ran but could not produce a comparable config this run — that
-    // is a distinct, honest state the collector records with a specific reason.
-    const [status] = await db
-      .select({ status: driftCollectionStatusTable.status, reason: driftCollectionStatusTable.reason })
-      .from(driftCollectionStatusTable)
-      .where(and(eq(driftCollectionStatusTable.tenantId, tenantId), eq(driftCollectionStatusTable.domainKey, domainKey)))
-      .limit(1);
-    if (status && (status.status === "not_comparable" || status.status === "error")) {
-      return notAvailable(
-        def,
-        status.status === "error" ? "collection_error" : "not_comparable",
-        status.reason ??
-          `drift for "${def.sourceKey}" could not be compared on the most recent scan`,
-      );
-    }
     return notAvailable(
       def,
       "no_data",
