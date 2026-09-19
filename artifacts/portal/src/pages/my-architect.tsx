@@ -92,7 +92,7 @@ export default function MyArchitectPage() {
   }, [data, activeMonth]);
 
   return (
-    <div className="flex flex-col gap-4 pb-14">
+    <div className="flex min-w-0 flex-1 flex-col gap-4 px-[26px] py-5">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-bold tracking-tight text-foreground">My Architect</h1>
         <span

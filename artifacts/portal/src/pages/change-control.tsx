@@ -82,7 +82,7 @@ export default function ChangeControlPage() {
   const stats = registerData?.stats;
 
   return (
-    <div className="flex flex-col gap-4 pb-14" data-testid="change-control-page">
+    <div className="flex min-w-0 flex-1 flex-col gap-4 px-[26px] py-5" data-testid="change-control-page">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-bold tracking-tight text-foreground">Change control</h1>
         <span

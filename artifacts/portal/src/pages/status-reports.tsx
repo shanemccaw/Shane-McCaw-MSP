@@ -105,7 +105,7 @@ export default function StatusReportsPage() {
   const isLive = !isLoading && !isError && (reports?.length ?? 0) > 0 && !requestedNotFound;
 
   return (
-    <div className="flex flex-col gap-4 pb-14">
+    <div className="flex min-w-0 flex-1 flex-col gap-4 px-[26px] py-5">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-bold tracking-tight text-foreground">Status reports</h1>
         <span

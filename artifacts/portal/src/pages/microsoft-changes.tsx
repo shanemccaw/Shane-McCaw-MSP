@@ -275,7 +275,7 @@ export function MicrosoftChangesContent() {
   }
 
   return (
-    <div className="mx-auto flex max-w-[1080px] flex-col gap-4 py-2" data-testid="ms-changes-page">
+    <div className="mx-auto flex min-w-0 max-w-[1080px] flex-1 flex-col gap-4 px-[26px] py-5" data-testid="ms-changes-page">
       <div className="flex flex-wrap items-baseline gap-2.5">
         <span className="text-lg font-bold text-foreground">Microsoft Changes</span>
         <span className="text-xs text-[#64748b]">What Microsoft is changing in your tenant — and whether you have to do anything</span>
