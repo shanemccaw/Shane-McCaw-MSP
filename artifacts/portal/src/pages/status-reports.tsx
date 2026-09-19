@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAddStatusReportComment, useStatusReportComments, useStatusReports } from "@/lib/status-reports-api";
 import type { WireMspStatusReport } from "@/lib/status-reports-types";
 import { cn } from "@/lib/utils";
+import { PageContainer } from "@/components/shell/PageContainer";
 
 /**
  * Status Reports (#4038, Feature #3435, phase 4 of 4). Adapted from
@@ -105,7 +106,7 @@ export default function StatusReportsPage() {
   const isLive = !isLoading && !isError && (reports?.length ?? 0) > 0 && !requestedNotFound;
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-4 px-[26px] py-5">
+    <PageContainer>
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-bold tracking-tight text-foreground">Status reports</h1>
         <span
@@ -399,6 +400,6 @@ export default function StatusReportsPage() {
         </div>
       )}
 
-    </div>
+    </PageContainer>
   );
 }

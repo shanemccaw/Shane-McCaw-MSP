@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { useScopeStatus, useSlaStatus } from "@/lib/scope-sla-api";
 import type { OverallStatus, ScopeAreaStatus } from "@/lib/scope-sla-types";
+import { PageContainer } from "@/components/shell/PageContainer";
 
 const OVERALL_STYLES: Record<OverallStatus, { label: string; ink: string; border: string; bg: string; pill: string }> = {
   on_track: {
@@ -92,7 +93,7 @@ export default function ScopeAndSlaPage() {
   const anyLive = (sla.data && !sla.isError) || (scope.data && !scope.isError);
 
   return (
-    <div className="flex flex-col gap-4 pb-14" data-testid="scope-and-sla-page">
+    <PageContainer data-testid="scope-and-sla-page">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-bold tracking-tight text-foreground">Service and scope</h1>
         <span
@@ -239,6 +240,6 @@ export default function ScopeAndSlaPage() {
         </Card>
       )}
 
-    </div>
+    </PageContainer>
   );
 }

@@ -20,6 +20,7 @@ import { PillarDriftPanel } from "@/components/pillar/PillarDriftPanel";
 import { PillarSignalsGrid } from "@/components/pillar/PillarSignalsGrid";
 import { PillarSkuLedger } from "@/components/pillar/PillarSkuLedger";
 import NotFound from "./not-found";
+import { PageContainer } from "@/components/shell/PageContainer";
 
 const HAIRLINE = "rgba(255,255,255,.09)";
 const CARD_BG = "rgba(255,255,255,.02)";
@@ -126,8 +127,8 @@ export default function PillarPage() {
   const stateDot = showError ? RED : showLoading ? NEVER_SCANNED_INK : GRN;
 
   return (
-    <div
-      className="relative flex min-w-0 flex-1 flex-col gap-4 px-[26px] py-5"
+    <PageContainer
+      className="relative"
       style={{ color: "#cbd5e1" }}
       data-testid={`pillar-page-${key}`}
       data-pillar-source={showLoading ? "loading" : showError ? "error" : scanned ? "live" : "never-scanned"}
@@ -424,6 +425,6 @@ export default function PillarPage() {
           {key === "licensing" && scanned ? <PillarSkuLedger ledger={payload?.licenseSkuLedger ?? null} /> : null}
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }

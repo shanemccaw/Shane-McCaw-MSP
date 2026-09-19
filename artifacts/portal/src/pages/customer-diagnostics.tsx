@@ -12,6 +12,7 @@ import {
 } from "@/components/diagnostics/diagnosticsDisplay";
 import { HEALTH_PILLAR_LABELS } from "@/components/diagnostics/types";
 import type { DiagnosticFindingSeverity } from "@/components/diagnostics/types";
+import { PageContainer } from "@/components/shell/PageContainer";
 
 const HAIRLINE = "rgba(255,255,255,.09)";
 const CARD_BG = "rgba(255,255,255,.02)";
@@ -85,7 +86,7 @@ export default function CustomerDiagnosticsPage() {
   const runBadge = run ? RUN_STATUS_BADGE[run.status] : null;
 
   return (
-    <div className="relative flex min-w-0 flex-1 flex-col gap-4 px-[26px] py-5" style={{ color: "#cbd5e1" }} data-testid="diagnostics-page">
+    <PageContainer className="relative" style={{ color: "#cbd5e1" }} data-testid="diagnostics-page">
       <div className="flex flex-wrap items-center gap-3">
         <span className="text-[20px] font-bold text-[#f8fafc]" style={{ letterSpacing: "-.01em" }}>
           Diagnostics
@@ -379,6 +380,6 @@ export default function CustomerDiagnosticsPage() {
           ) : null}
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }

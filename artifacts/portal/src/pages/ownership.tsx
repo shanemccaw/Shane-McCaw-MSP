@@ -14,6 +14,7 @@ import { useAssignOwnership, useOwnership } from "@/lib/ownership-api";
 import { buildCustomRows, buildMatrixRows, buildMineEntries, computeGaps, groupByType, type MatrixRow } from "@/lib/ownership-matrix";
 import { OWN_TYPE_LABEL } from "@/lib/ownership-types";
 import { cn } from "@/lib/utils";
+import { PageContainer } from "@/components/shell/PageContainer";
 
 /**
  * Ownership / RACI (#3040/#3041, Feature #1491). Adapted from
@@ -55,7 +56,7 @@ export default function OwnershipPage() {
   const hasRows = !isLoading && !isError && rows.length > 0;
 
   return (
-    <div className="flex flex-col gap-4 pb-14">
+    <PageContainer>
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-bold tracking-tight text-foreground" data-testid="ownership-page-title">
           Who owns what
@@ -240,6 +241,6 @@ export default function OwnershipPage() {
 
       <AddOwnershipRowDialog open={addRowOpen} onOpenChange={setAddRowOpen} />
       <DeclineOwnershipDialog target={declineTarget} onOpenChange={(open) => !open && setDeclineTarget(null)} />
-    </div>
+    </PageContainer>
   );
 }

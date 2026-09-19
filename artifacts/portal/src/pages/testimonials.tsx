@@ -14,6 +14,7 @@ import {
   useTestimonialHistory,
   type TestimonialKind,
 } from "@/lib/testimonials-api";
+import { PageContainer } from "@/components/shell/PageContainer";
 
 /**
  * Testimonials (#3894, Feature #3436, part of #1485).
@@ -237,8 +238,8 @@ export function TestimonialsContent() {
 
 export default function TestimonialsPage() {
   return (
-    <div className="mx-auto max-w-[720px] py-2 pb-14">
+    <PageContainer className="mx-auto max-w-[720px]">
       <TestimonialsContent />
-    </div>
+    </PageContainer>
   );
 }

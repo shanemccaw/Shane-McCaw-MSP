@@ -30,6 +30,7 @@ import {
 } from "@/lib/offers-sow-api";
 import type { WireCustomerOffer, WirePresentationDetail, WireSowPhase } from "@/lib/offers-sow-types";
 import { cn } from "@/lib/utils";
+import { PageContainer } from "@/components/shell/PageContainer";
 
 /**
  * Offers and SOW Acceptance (#3997, Feature #1657). Adapted from
@@ -109,7 +110,7 @@ export default function CustomerOffersPage() {
   );
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-4 px-[26px] py-5">
+    <PageContainer>
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-bold tracking-tight text-foreground">Offers</h1>
         <span
@@ -138,7 +139,7 @@ export default function CustomerOffersPage() {
           <SowTab />
         </TabsContent>
       </Tabs>
-    </div>
+    </PageContainer>
   );
 }
 

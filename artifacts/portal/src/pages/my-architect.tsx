@@ -11,6 +11,7 @@ import type {
   WireRetainerEntry,
 } from "@/lib/my-architect-types";
 import { cn } from "@/lib/utils";
+import { PageContainer } from "@/components/shell/PageContainer";
 
 /**
  * My Architect (#1746, Feature #1569). Adapted from
@@ -92,7 +93,7 @@ export default function MyArchitectPage() {
   }, [data, activeMonth]);
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-4 px-[26px] py-5">
+    <PageContainer>
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-bold tracking-tight text-foreground">My Architect</h1>
         <span
@@ -466,7 +467,7 @@ export default function MyArchitectPage() {
         </>
       )}
 
-    </div>
+    </PageContainer>
   );
 }
 

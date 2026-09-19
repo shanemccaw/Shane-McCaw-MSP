@@ -19,6 +19,7 @@ import type {
   WireWorkflowStep,
 } from "@/lib/projects-types";
 import { cn } from "@/lib/utils";
+import { PageContainer } from "@/components/shell/PageContainer";
 
 /**
  * Project detail (#1739, Feature #1570). Adapted from
@@ -180,7 +181,7 @@ export default function ProjectDetailPage() {
   const status = live && data ? (data.project.status as ProjectStatus) : null;
 
   return (
-    <div className="flex flex-col gap-4 pb-14">
+    <PageContainer>
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-bold tracking-tight text-foreground">Projects</h1>
         <span
@@ -656,6 +657,6 @@ export default function ProjectDetailPage() {
         </>
       )}
 
-    </div>
+    </PageContainer>
   );
 }

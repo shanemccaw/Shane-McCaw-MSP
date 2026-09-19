@@ -19,6 +19,7 @@ import {
   type SecurityPlanProseSection,
 } from "@/lib/security-plan-types";
 import { cn } from "@/lib/utils";
+import { PageContainer } from "@/components/shell/PageContainer";
 
 /**
  * Security Plan (#3027, Feature #1495). Adapted from
@@ -110,7 +111,7 @@ export default function SecurityPlanPage() {
   const activeSection = sections.find((s) => sectionId(s) === activeId) ?? sections[0] ?? null;
 
   return (
-    <div className="flex flex-col gap-4 pb-14">
+    <PageContainer>
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-bold tracking-tight text-foreground">Security plan</h1>
         <span
@@ -379,7 +380,7 @@ export default function SecurityPlanPage() {
         </>
       )}
 
-    </div>
+    </PageContainer>
   );
 }
 

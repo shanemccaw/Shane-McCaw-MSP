@@ -4,6 +4,7 @@ import { AlertCircle, CheckCircle2, XCircle } from "lucide-react";
 import { useBillingLive } from "@/components/billingLive";
 import { useRetainerIntervalProposalLive } from "@/components/retainerIntervalProposalLive";
 import { useAuth } from "@/lib/auth-context";
+import { PageContainer } from "@/components/shell/PageContainer";
 
 const HAIRLINE = "rgba(255,255,255,.09)";
 const CARD_BG = "rgba(255,255,255,.02)";
@@ -117,8 +118,7 @@ export default function BillingPage() {
   };
 
   return (
-    <div
-      className="flex min-w-0 flex-1 flex-col gap-4 px-[26px] py-5"
+    <PageContainer
       style={{ color: "#cbd5e1" }}
       data-testid="billing-source"
       data-billing-source={dataState}
@@ -491,7 +491,7 @@ export default function BillingPage() {
           </div>
         </div>
       ) : null}
-    </div>
+    </PageContainer>
   );
 }
 

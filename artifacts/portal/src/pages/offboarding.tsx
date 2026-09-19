@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "wouter";
 import { AlertCircle } from "lucide-react";
 import { useOffboardingLive } from "@/components/offboardingLive";
+import { PageContainer } from "@/components/shell/PageContainer";
 
 const HAIRLINE = "rgba(255,255,255,.09)";
 const CARD_BG = "rgba(255,255,255,.02)";
@@ -70,7 +71,7 @@ export default function OffboardingPage() {
   };
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-4 px-[26px] py-5" style={{ color: "#cbd5e1" }} data-testid="offboarding-source">
+    <PageContainer style={{ color: "#cbd5e1" }} data-testid="offboarding-source">
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
         <span className="text-[20px] font-bold text-[#f8fafc]" style={{ letterSpacing: "-.01em" }}>
@@ -361,6 +362,6 @@ export default function OffboardingPage() {
           </div>
         </div>
       ) : null}
-    </div>
+    </PageContainer>
   );
 }

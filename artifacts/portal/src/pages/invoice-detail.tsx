@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useParams } from "wouter";
 import { AlertCircle, ArrowLeft, ChevronDown, ChevronUp } from "lucide-react";
 import { useInvoiceDetailLive } from "@/components/invoiceDetailLive";
+import { PageContainer } from "@/components/shell/PageContainer";
 
 const HAIRLINE = "rgba(255,255,255,.09)";
 const CARD_BG = "rgba(255,255,255,.02)";
@@ -49,7 +50,7 @@ export default function InvoiceDetailPage() {
   };
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-4 px-[26px] py-5" style={{ color: "#cbd5e1" }} data-testid="invoice-detail-source" data-invoice-detail-source={dataState}>
+    <PageContainer style={{ color: "#cbd5e1" }} data-testid="invoice-detail-source" data-invoice-detail-source={dataState}>
       <div className="flex items-center gap-3">
         <Link href="/billing" className="flex items-center gap-[6px] text-[12px] font-semibold text-[#64748b] hover:text-[#cbd5e1]" data-testid="invoice-detail-back">
           <ArrowLeft className="size-[14px]" />
@@ -207,6 +208,6 @@ export default function InvoiceDetailPage() {
           ) : null}
         </>
       ) : null}
-    </div>
+    </PageContainer>
   );
 }

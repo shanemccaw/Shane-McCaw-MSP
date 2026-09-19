@@ -23,6 +23,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useDownloadDashboardPdf, useDownloadDashboardPpt, useDashboardShareStatus, useCreateDashboardShare } from "@/lib/dashboard-export-api";
+import { PageContainer } from "@/components/shell/PageContainer";
 
 const HAIRLINE = "rgba(255,255,255,.09)";
 const CARD_BG = "rgba(255,255,255,.02)";
@@ -191,7 +192,7 @@ export default function OverviewPage() {
     : [];
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-4 px-[26px] py-5" style={{ color: "#cbd5e1" }}>
+    <PageContainer style={{ color: "#cbd5e1" }}>
       {/* Header */}
       <div className="flex flex-wrap items-center gap-[14px]">
         <span className="text-[21px] font-extrabold text-[#f8fafc]" style={{ letterSpacing: "-.02em" }}>
@@ -520,7 +521,7 @@ export default function OverviewPage() {
       )}
 
       {sharing && <DashboardShareDialog onClose={() => setSharing(false)} />}
-    </div>
+    </PageContainer>
   );
 }
 

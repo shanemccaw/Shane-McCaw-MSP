@@ -9,6 +9,7 @@ import {
   type LiveAccountSecurityGraphSignals,
 } from "@/components/account-security/useAccountSecurityLive";
 import { useRemediationExport } from "@/lib/remediation-tracker-export-api";
+import { PageContainer } from "@/components/shell/PageContainer";
 
 const HAIRLINE = "rgba(255,255,255,.09)";
 const CARD_BG = "rgba(255,255,255,.02)";
@@ -454,7 +455,7 @@ export default function AccountSecurityPage() {
 
   return (
     <div className="flex min-w-0 flex-1 gap-6" style={{ color: "#cbd5e1" }}>
-      <div className="flex min-w-0 flex-1 flex-col gap-4 px-[26px] py-5">
+      <PageContainer>
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
         <span className="text-[20px] font-bold text-[#f8fafc]" style={{ letterSpacing: "-.01em" }}>
@@ -964,7 +965,7 @@ export default function AccountSecurityPage() {
           </div>
         </div>
       )}
-      </div>
+      </PageContainer>
 
       {panel ? (
         <EnrollmentPanel

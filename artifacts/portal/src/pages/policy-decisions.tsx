@@ -8,6 +8,7 @@ import { RecordDecisionDialog } from "@/components/policy-decisions/RecordDecisi
 import { useComplianceObligations, usePolicyRegister } from "@/lib/policy-decisions-api";
 import { formatDate } from "@/lib/risk-register-visuals";
 import { cn } from "@/lib/utils";
+import { PageContainer } from "@/components/shell/PageContainer";
 
 const HOW: { head: string; body: string }[] = [
   {
@@ -79,7 +80,7 @@ export default function PolicyDecisionsPage() {
   };
 
   return (
-    <div className="flex flex-col gap-4 pb-14">
+    <PageContainer>
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-bold tracking-tight text-foreground" data-testid="policy-decisions-page-title">
           Policy decisions
@@ -253,6 +254,6 @@ export default function PolicyDecisionsPage() {
       )}
 
       <RecordDecisionDialog open={formOpen} onOpenChange={setFormOpen} />
-    </div>
+    </PageContainer>
   );
 }

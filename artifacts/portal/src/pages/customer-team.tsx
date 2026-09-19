@@ -12,6 +12,7 @@ import {
   type AssignableRole,
   type TeamMember,
 } from "@/components/team/teamWire";
+import { PageContainer } from "@/components/shell/PageContainer";
 
 const HAIRLINE = "rgba(255,255,255,.09)";
 const CARD_BG = "rgba(255,255,255,.02)";
@@ -77,7 +78,7 @@ export default function CustomerTeamPage() {
   }
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-4 px-[26px] py-5" style={{ color: "#cbd5e1" }} data-testid="team-page">
+    <PageContainer style={{ color: "#cbd5e1" }} data-testid="team-page">
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
         <span className="text-[20px] font-bold text-[#f8fafc]" style={{ letterSpacing: "-.01em" }}>
@@ -205,7 +206,7 @@ export default function CustomerTeamPage() {
       {modal?.kind === "invite" ? (
         <InviteModal live={live} actionError={actionError} setActionError={setActionError} onClose={closeModal} onChangeModal={setModal} />
       ) : null}
-    </div>
+    </PageContainer>
   );
 }
 

@@ -9,6 +9,7 @@ import { PoamListRow } from "@/components/poams/PoamListRow";
 import { useListPoams } from "@/lib/poams-api";
 import type { PoamDeletion } from "@/lib/poams-types";
 import { cn } from "@/lib/utils";
+import { PageContainer } from "@/components/shell/PageContainer";
 
 export default function PoamsPage() {
   const { poams, isLoading, isError, tierGated, refetch, isRefetching } = useListPoams();
@@ -83,7 +84,7 @@ export default function PoamsPage() {
   };
 
   return (
-    <div className="flex flex-col gap-4 pb-14">
+    <PageContainer>
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-bold tracking-tight text-foreground">POA&amp;Ms</h1>
         <span
@@ -229,6 +230,6 @@ export default function PoamsPage() {
         </>
       )}
 
-    </div>
+    </PageContainer>
   );
 }

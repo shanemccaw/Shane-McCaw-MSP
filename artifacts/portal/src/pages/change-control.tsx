@@ -45,6 +45,7 @@ import {
   useMaintenanceWindows,
 } from "@/lib/change-control-api";
 import { cn } from "@/lib/utils";
+import { PageContainer } from "@/components/shell/PageContainer";
 
 export default function ChangeControlPage() {
   const { user, can } = useAuth();
@@ -82,7 +83,7 @@ export default function ChangeControlPage() {
   const stats = registerData?.stats;
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-4 px-[26px] py-5" data-testid="change-control-page">
+    <PageContainer data-testid="change-control-page">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-bold tracking-tight text-foreground">Change control</h1>
         <span
@@ -285,7 +286,7 @@ export default function ChangeControlPage() {
 
       <RaiseChangeDialog open={wizardOpen} onOpenChange={setWizardOpen} />
       <ChangeActionDialog target={actionTarget} onOpenChange={(open) => !open && setActionTarget(null)} />
-    </div>
+    </PageContainer>
   );
 }
 

@@ -9,6 +9,7 @@ import { RiskRow } from "@/components/risk-register/RiskRow";
 import { useRiskRegister } from "@/lib/risk-register-api";
 import { formatLiability, riskStatusSwatch } from "@/lib/risk-register-visuals";
 import { cn } from "@/lib/utils";
+import { PageContainer } from "@/components/shell/PageContainer";
 
 const RISK_STATUS_ORDER = ["Open", "Mitigating", "Accepted", "Closed", "Expired"] as const;
 
@@ -76,7 +77,7 @@ export default function RiskRegisterPage() {
   const hasRows = !isLoading && !isError && (risks?.length ?? 0) > 0;
 
   return (
-    <div className="flex flex-col gap-4 pb-14">
+    <PageContainer>
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-bold tracking-tight text-foreground">Risk register</h1>
         <span
@@ -215,6 +216,6 @@ export default function RiskRegisterPage() {
           <PolicyDecisionsCard onSelect={openFromDecision} />
         </>
       )}
-    </div>
+    </PageContainer>
   );
 }

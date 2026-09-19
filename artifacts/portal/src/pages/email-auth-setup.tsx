@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 
 import { useEmailAuthSetupLive, type WireEmailAuthStatus } from "@/components/emailAuthSetupLive";
+import { PageContainer } from "@/components/shell/PageContainer";
 
 const HAIRLINE = "rgba(255,255,255,.09)";
 const CARD_BG = "rgba(255,255,255,.02)";
@@ -146,7 +147,7 @@ export function EmailAuthSetupContent() {
   const stateInk = failed ? RED : "#64748b";
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-4 px-[26px] py-5" style={{ color: "#cbd5e1" }} data-testid="email-auth-setup-page" data-email-auth-source={dataState}>
+    <PageContainer style={{ color: "#cbd5e1" }} data-testid="email-auth-setup-page" data-email-auth-source={dataState}>
       <div className="flex flex-wrap items-center gap-3">
         <span className="text-[20px] font-bold text-[#f8fafc]" style={{ letterSpacing: "-.01em" }}>
           Email authentication
@@ -279,7 +280,7 @@ export function EmailAuthSetupContent() {
           </div>
         </div>
       ) : null}
-    </div>
+    </PageContainer>
   );
 }
 

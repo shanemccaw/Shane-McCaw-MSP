@@ -14,6 +14,7 @@ import {
 } from "@/lib/remediation-checklist-api";
 import type { RemediationFixRoute } from "@/lib/remediation-checklist-types";
 import { cn } from "@/lib/utils";
+import { PageContainer } from "@/components/shell/PageContainer";
 
 /**
  * Remediation Tracking (#1489, Feature #1485) — real Design export
@@ -62,7 +63,7 @@ export default function RemediationTrackingPage() {
   const stateDot = isLoading ? "bg-muted-foreground" : isError ? "bg-status-red" : checklist.data?.runId ? "bg-status-green" : "bg-muted-foreground";
 
   return (
-    <div className="flex flex-col gap-4 pb-14" data-testid="remediation-tracking-page">
+    <PageContainer data-testid="remediation-tracking-page">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-bold tracking-tight text-foreground">Remediation tracking</h1>
         <span
@@ -197,6 +198,6 @@ export default function RemediationTrackingPage() {
         </Tabs>
       )}
 
-    </div>
+    </PageContainer>
   );
 }

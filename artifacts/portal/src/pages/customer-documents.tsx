@@ -15,6 +15,7 @@ import {
   useShareDocument,
 } from "@/lib/documents-api";
 import { LIVE_RENDERED_DOC_TYPES, type WireInsightDocument, type WireReport } from "@/lib/documents-types";
+import { PageContainer } from "@/components/shell/PageContainer";
 
 /**
  * Documents (#4003, Feature #1658). Adapted from
@@ -143,7 +144,7 @@ export default function CustomerDocumentsPage() {
   };
 
   return (
-    <div className="flex flex-col gap-4 pb-14">
+    <PageContainer>
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-bold tracking-tight text-foreground">Documents</h1>
         <span
@@ -351,7 +352,7 @@ export default function CustomerDocumentsPage() {
       )}
 
       {sharingDoc && <ShareDocumentDialog doc={sharingDoc} onClose={() => setSharingDoc(null)} />}
-    </div>
+    </PageContainer>
   );
 }
 

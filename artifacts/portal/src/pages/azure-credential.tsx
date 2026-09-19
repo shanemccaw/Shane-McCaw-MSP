@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { PageContainer } from "@/components/shell/PageContainer";
 
 /**
  * Azure credential self-service (#3964, Phase 4 of Feature #3960).
@@ -131,7 +132,7 @@ export default function AzureCredentialPage() {
   const expiry = credential ? expiryState(credential.expiresOn) : null;
 
   return (
-    <div className="flex flex-col gap-4 pb-14" data-testid="azure-credential-page">
+    <PageContainer data-testid="azure-credential-page">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-bold tracking-tight text-foreground">Azure credential</h1>
         <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -305,6 +306,6 @@ export default function AzureCredentialPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 }
