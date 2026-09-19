@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ConsentOnboardingShell, ConsentCard, ConsentLedger } from "@/components/consent/ConsentOnboardingShell";
+import { ConsentOnboardingShell, ConsentCard } from "@/components/consent/ConsentOnboardingShell";
 import { Button } from "@/components/ui/button";
 import { fetchConsentScopes, scopeWhy } from "@/lib/consent-onboarding-api";
 
@@ -76,7 +76,6 @@ export default function ConsentDeclinedPage() {
           </Button>
         </div>
       </ConsentCard>
-      <ConsentLedger />
     </ConsentOnboardingShell>
   );
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, AlertCircle, ArrowRight, Loader2 } from "lucide-react";
-import { ConsentOnboardingShell, ConsentCard, ConsentLedger } from "@/components/consent/ConsentOnboardingShell";
+import { ConsentOnboardingShell, ConsentCard } from "@/components/consent/ConsentOnboardingShell";
 import { CaptchaGate } from "@/components/consent/CaptchaGate";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -176,7 +176,6 @@ export default function ConsentSuccessPage() {
             </Button>
           </div>
         </ConsentCard>
-        <ConsentLedger />
       </ConsentOnboardingShell>
     );
   }
@@ -198,7 +197,6 @@ export default function ConsentSuccessPage() {
             <ArrowRight className="ml-2 size-4" />
           </Button>
         </ConsentCard>
-        <ConsentLedger />
       </ConsentOnboardingShell>
     );
   }
@@ -329,7 +327,6 @@ export default function ConsentSuccessPage() {
           </>
         )}
       </ConsentCard>
-      <ConsentLedger />
     </ConsentOnboardingShell>
   );
 }

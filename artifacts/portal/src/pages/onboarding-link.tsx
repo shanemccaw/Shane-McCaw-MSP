@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "wouter";
 import { Loader2 } from "lucide-react";
-import { ConsentOnboardingShell, ConsentCard, ConsentLedger } from "@/components/consent/ConsentOnboardingShell";
+import { ConsentOnboardingShell, ConsentCard } from "@/components/consent/ConsentOnboardingShell";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -136,7 +136,6 @@ export default function OnboardingLinkPage() {
             </Button>
           </div>
         </ConsentCard>
-        <ConsentLedger />
       </ConsentOnboardingShell>
     );
   }
@@ -216,7 +215,6 @@ export default function OnboardingLinkPage() {
           </Button>
         </div>
       </ConsentCard>
-      <ConsentLedger />
     </ConsentOnboardingShell>
   );
 }
