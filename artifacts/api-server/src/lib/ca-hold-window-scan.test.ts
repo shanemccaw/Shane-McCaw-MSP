@@ -12,6 +12,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CaPolicyImpact } from "./ca-policy-promotion.ts";
+import type { CategoryImpactCounts, SignInCategory } from "./ca-policy-impact.ts";
 
 const POLICY = "6f2a1b0e-2c1d-4d8e-9a55-0b7f1c3e9d21";
 const TENANT_GUID = "c4c814d4-3afe-441e-9145-62461d0a4fd3";
@@ -69,6 +70,14 @@ vi.mock("./ca-policy-promotion.ts", () => ({
 
 const { deriveHoldScanFromImpact, handleCaPolicyHoldWindowScan } = await import("./ca-hold-window-scan.ts");
 
+const SIGN_IN_CATEGORIES: SignInCategory[] = ["interactiveUser", "nonInteractiveUser", "servicePrincipal", "managedIdentity"];
+
+function emptyByCategory(): Record<SignInCategory, CategoryImpactCounts> {
+  return Object.fromEntries(
+    SIGN_IN_CATEGORIES.map((c) => [c, { scanned: 0, evaluated: 0, wouldBlock: 0, wouldInterrupt: 0, wouldSatisfy: 0, notApplied: 0 }]),
+  ) as Record<SignInCategory, CategoryImpactCounts>;
+}
+
 function impact(over: Partial<CaPolicyImpact> = {}): CaPolicyImpact {
   return {
     status: "ok",
@@ -79,10 +88,11 @@ function impact(over: Partial<CaPolicyImpact> = {}): CaPolicyImpact {
     complete: true,
     pagesRead: 1,
     oldestSignInRead: "2026-09-10T10:00:00Z",
-    summary: { signInsScanned: 10, evaluated: 5, wouldBlock: 0, wouldInterrupt: 0, wouldSatisfy: 5, notApplied: 0, affectedUserCount: 0, affectedUsers: [], impactEvents: [] },
+    summary: { signInsScanned: 10, evaluated: 5, wouldBlock: 0, wouldInterrupt: 0, wouldSatisfy: 5, notApplied: 0, affectedUserCount: 0, affectedUsers: [], impactEvents: [], byCategory: emptyByCategory() },
     readiness: { eligible: true, ineligibleReason: null, requiresAcknowledgement: false, acknowledgementReasons: [] },
     fingerprint: "f".repeat(64),
     coverageNote: "note",
+    readByCategory: null,
     ...over,
   };
 }
@@ -97,7 +107,7 @@ describe("deriveHoldScanFromImpact", () => {
 
   it("'signals' when sign-ins would have been blocked, with the real counts in the sentence", () => {
     const r = deriveHoldScanFromImpact(impact({
-      summary: { signInsScanned: 40, evaluated: 12, wouldBlock: 2, wouldInterrupt: 0, wouldSatisfy: 10, notApplied: 0, affectedUserCount: 2, affectedUsers: [], impactEvents: [] },
+      summary: { signInsScanned: 40, evaluated: 12, wouldBlock: 2, wouldInterrupt: 0, wouldSatisfy: 10, notApplied: 0, affectedUserCount: 2, affectedUsers: [], impactEvents: [], byCategory: emptyByCategory() },
     }));
     expect(r.verdict).toBe("signals");
     expect(r.scanLine).toBe("2 sign-ins would have been blocked in the last 7 days across 2 users. Enforcing today breaks this.");
@@ -105,14 +115,14 @@ describe("deriveHoldScanFromImpact", () => {
 
   it("singular phrasing for exactly one blocked sign-in / one user", () => {
     const r = deriveHoldScanFromImpact(impact({
-      summary: { signInsScanned: 5, evaluated: 1, wouldBlock: 1, wouldInterrupt: 0, wouldSatisfy: 0, notApplied: 0, affectedUserCount: 1, affectedUsers: [], impactEvents: [] },
+      summary: { signInsScanned: 5, evaluated: 1, wouldBlock: 1, wouldInterrupt: 0, wouldSatisfy: 0, notApplied: 0, affectedUserCount: 1, affectedUsers: [], impactEvents: [], byCategory: emptyByCategory() },
     }));
     expect(r.scanLine).toBe("1 sign-in would have been blocked in the last 7 days across 1 user. Enforcing today breaks this.");
   });
 
   it("'watch' when sign-ins would only have been interrupted (no block)", () => {
     const r = deriveHoldScanFromImpact(impact({
-      summary: { signInsScanned: 20, evaluated: 3, wouldBlock: 0, wouldInterrupt: 3, wouldSatisfy: 0, notApplied: 0, affectedUserCount: 2, affectedUsers: [], impactEvents: [] },
+      summary: { signInsScanned: 20, evaluated: 3, wouldBlock: 0, wouldInterrupt: 3, wouldSatisfy: 0, notApplied: 0, affectedUserCount: 2, affectedUsers: [], impactEvents: [], byCategory: emptyByCategory() },
     }));
     expect(r.verdict).toBe("watch");
     expect(r.scanLine).toBe("3 sign-ins would have been interrupted for a grant control in the last 7 days, affecting 2 users. Worth a look before the window closes.");
@@ -120,7 +130,7 @@ describe("deriveHoldScanFromImpact", () => {
 
   it("'watch' when nothing has been evaluated yet — no evidence, not fabricated as clear", () => {
     const r = deriveHoldScanFromImpact(impact({
-      summary: { signInsScanned: 0, evaluated: 0, wouldBlock: 0, wouldInterrupt: 0, wouldSatisfy: 0, notApplied: 0, affectedUserCount: 0, affectedUsers: [], impactEvents: [] },
+      summary: { signInsScanned: 0, evaluated: 0, wouldBlock: 0, wouldInterrupt: 0, wouldSatisfy: 0, notApplied: 0, affectedUserCount: 0, affectedUsers: [], impactEvents: [], byCategory: emptyByCategory() },
     }));
     expect(r.verdict).toBe("watch");
     expect(r.scanLine).toContain("no evidence of its impact so far");
@@ -150,7 +160,7 @@ describe("handleCaPolicyHoldWindowScan", () => {
       { hold: { id: 501, policyId: POLICY, customerId: 2080 }, tenantId: TENANT_GUID },
     ];
     evaluateCaPolicyImpact.mockResolvedValue(impact({
-      summary: { signInsScanned: 4, evaluated: 2, wouldBlock: 2, wouldInterrupt: 0, wouldSatisfy: 0, notApplied: 0, affectedUserCount: 1, affectedUsers: [], impactEvents: [] },
+      summary: { signInsScanned: 4, evaluated: 2, wouldBlock: 2, wouldInterrupt: 0, wouldSatisfy: 0, notApplied: 0, affectedUserCount: 1, affectedUsers: [], impactEvents: [], byCategory: emptyByCategory() },
     }));
 
     const summary = await handleCaPolicyHoldWindowScan({}, {});
