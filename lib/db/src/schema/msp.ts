@@ -4687,7 +4687,11 @@ export const breakGlassPendingSecretsTable = pgTable("break_glass_pending_secret
   // resetting the tenant. It is never deliverable, and a second override is refused
   // with 409 while it holds. The claim returns to pending_delivery on any refusal,
   // or becomes superseded_by_reset once the replacement is recorded.
-  status: text("status", { enum: ["pending_delivery", "reset_in_progress", "delivered_purged", "superseded_by_reset"] }).notNull().default("pending_delivery"),
+  // Git #4532 — "discarded_unapplied" = the operator chose "resume without
+  // delivering" for an existing break-glass account: this row's password was never
+  // applied to the tenant, so it is discarded (ciphertext blanked, vault copy purged)
+  // and nothing is delivered from it.
+  status: text("status", { enum: ["pending_delivery", "reset_in_progress", "delivered_purged", "superseded_by_reset", "discarded_unapplied"] }).notNull().default("pending_delivery"),
   // Git #4040 — the claiming override's own random token, so only that call can
   // release or supersede the row; and when it claimed, so a claim left by a process
   // that died mid-override can be taken over once it is stale.
@@ -4750,6 +4754,48 @@ export const breakGlassOverrideAuditTable = pgTable("break_glass_override_audit"
 export const insertBreakGlassOverrideAuditSchema = createInsertSchema(breakGlassOverrideAuditTable).omit({ id: true, createdAt: true });
 export type BreakGlassOverrideAudit = typeof breakGlassOverrideAuditTable.$inferSelect;
 export type InsertBreakGlassOverrideAudit = typeof breakGlassOverrideAuditTable.$inferInsert;
+
+// ── Break Glass Existing-Account Decisions (#4532) ─────────────────────────────
+// A config-pack re-run whose break-glass create step found exactly one existing
+// account (#4514) never applied the run's generated password to it. The gate no
+// longer fails the run: it pauses (the same `pauseForApproval` mechanism as
+// approval_gate / generate_script) and writes one of these rows, and an operator
+// records the customer's actual answer:
+//   reset_and_redeliver     — performBreakGlassAdminOverride() resets the account and
+//                             the replacement is delivered through the normal flow;
+//   resume_without_delivery — the existing credential is treated as already held; the
+//                             run continues and nobody receives a credential.
+// `context` is the run's REDACTED payload snapshot (no plaintext) that
+// resumeWorkflowRun() needs back. `pendingSecretId` is the never-applied secret,
+// parked with `credential_uncertain_at` set so invite/reveal refuse it.
+export const breakGlassExistingAccountDecisionsTable = pgTable("break_glass_existing_account_decisions", {
+  id: serial("id").primaryKey(),
+  runId: integer("run_id").notNull().references((): AnyPgColumn => wfRunsTable.id, { onDelete: "cascade" }),
+  gateNodeId: text("gate_node_id").notNull(),
+  customerId: integer("customer_id").notNull(), // tenants.id — no FK by design, same as the other break-glass tables
+  pendingSecretId: integer("pending_secret_id").notNull().references((): AnyPgColumn => breakGlassPendingSecretsTable.id),
+  // The existing account the create step found (Entra object id / UPN) and the run
+  // node that skipped its write — identifiers only, never a credential.
+  existingAccountId: text("existing_account_id"),
+  existingAccountUpn: text("existing_account_upn"),
+  skippedNodeId: text("skipped_node_id").notNull(),
+  status: text("status", { enum: ["pending", "reset_and_redeliver", "resume_without_delivery"] }).notNull().default("pending"),
+  // The customer's actual answer as the operator relays it, and the operator's reason.
+  customerAnswer: text("customer_answer"),
+  reason: text("reason"),
+  decidedByUserId: integer("decided_by_user_id"),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  // reset_and_redeliver: the replacement pending secret the override recorded.
+  resultPendingSecretId: integer("result_pending_secret_id").references((): AnyPgColumn => breakGlassPendingSecretsTable.id),
+  context: jsonb("context").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("break_glass_existing_account_decisions_run_id_idx").on(t.runId),
+  index("break_glass_existing_account_decisions_customer_id_idx").on(t.customerId),
+]);
+
+export type BreakGlassExistingAccountDecision = typeof breakGlassExistingAccountDecisionsTable.$inferSelect;
+export type InsertBreakGlassExistingAccountDecision = typeof breakGlassExistingAccountDecisionsTable.$inferInsert;
 
 // ── MSP Custom Canvas Reports ────────────────────────────────────────────────
 
