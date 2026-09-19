@@ -16,6 +16,7 @@ import {
   trendDeltaLabel,
   COVERAGE_SEGMENT_DISPLAY,
 } from "@/components/pillar/pillarDisplay";
+import { PillarSkuLedger } from "@/components/pillar/PillarSkuLedger";
 import NotFound from "./not-found";
 
 const HAIRLINE = "rgba(255,255,255,.09)";
@@ -404,6 +405,9 @@ export default function PillarPage() {
               ))}
             </div>
           ) : null}
+
+          {/* Licensing SKU ledger — Licensing pillar only, once a scan has run (Git #4578) */}
+          {key === "licensing" && scanned ? <PillarSkuLedger ledger={payload?.licenseSkuLedger ?? null} /> : null}
         </>
       )}
     </div>

@@ -113,3 +113,43 @@ export function trendDeltaLabel(trend: { series: number[] } | null): string | nu
   if (delta === 0) return "no change since last scan";
   return `${delta > 0 ? "+" : ""}${delta} since last scan`;
 }
+
+// ── Licensing SKU ledger (Git #4578) ─────────────────────────────────────────
+
+/**
+ * The design's own chip wording for a SKU left out of the waste maths
+ * (`Pillar Pages.dc.html` → `ledgerEx`: "zero price" / "no price on file"),
+ * keyed by the server's real `UnpaidSkuReason`. An unlisted reason still
+ * renders, spelled out, rather than being hidden.
+ */
+const LEDGER_EXCLUDED_COPY: Record<string, string> = {
+  zero_price: "zero price",
+  no_price_on_file: "no price on file",
+};
+
+export function ledgerExcludedReason(reason: string): string {
+  return LEDGER_EXCLUDED_COPY[reason] ?? reason.replace(/_/g, " ");
+}
+
+/** Whole cents → "$23.00" (`fractional`) or "$847" — the ledger's price column vs its waste column. */
+export function formatCents(cents: number, fractional: boolean): string {
+  return (cents / 100).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: fractional ? 2 : 0,
+    maximumFractionDigits: fractional ? 2 : 0,
+  });
+}
+
+/** "×10,000" — the design's purchased-count marker beside an excluded SKU. */
+export function formatPurchasedMultiple(purchased: number): string {
+  return `×${purchased.toLocaleString("en-US")}`;
+}
+
+/**
+ * The ledger footnote's real sentence: how many of the tenant's SKUs carry a
+ * price at all. The words are the design's, the two numbers are the tenant's.
+ */
+export function ledgerFootnote(pricedCount: number, totalCount: number): string {
+  return `Waste is computed only where a real unit price is on file — ${pricedCount} of ${totalCount} SKUs today. Excluded is a rendered state, not a hidden one.`;
+}
