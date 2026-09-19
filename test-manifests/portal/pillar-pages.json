@@ -2,7 +2,7 @@
   "issue": 1749,
   "feature": "Pillar pages (#1485/#1621, screen 12) — the six real pillar landing pages in artifacts/portal, wired to the already-built GET /api/portal/pillars (pillar-summary-stats.ts). Real design landed in Design/portal/design_handoff_full_site/screens/Pillar Pages.dc.html; pages live at artifacts/portal/src/pages/pillar.tsx, route /pillars/:pillar, reached from the shell's PillarTabStrip. Scope: pillar summary cards + scores only — the design's full per-check 'block' breakdown and the click-a-finding-for-full-breakdown + SOP/Runbook remediation offer are a real, separate follow-up (#1621's own open architecture questions).",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "d22f547a7",
+  "lastVerifiedAgainstCommit": "97d3031dd",
   "notes": [
     "Git #4557 — NOT live-executed this session, for a real, confirmed-live reason: the serving checkout (C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP) could not fast-forward to this commit. `refresh-main-server.mjs`'s real ff-only merge failed with 'untracked working tree files would be overwritten' against `Bugs/Portal/2026-09-17-1236/...` (the exact QA session that filed #4557) — confirmed real error text, not a guess; filed as its own finding, #4559 (parented under #3707, labeled Shane To-Do since only Shane can clear the blocking directory). Root-cause A (the stale-fetch race) is instead verified by tracing the actual data flow end to end: usePillarPage.ts / usePillarSummary.ts's effects now list `scanPhase` as a dependency, sourced from PortalShell's real `useScanState()` (SSE + adaptive poll) via `scanStateContext.ts`, so a transition into `complete`/`partial` now genuinely re-triggers the fetch that used to fire once at mount. `tsc --noEmit` clean on artifacts/portal confirms the wiring type-checks end to end.",
     "apiTests prove the real, already-built backend contract directly: log in via POST /api/auth/login, extract a bearer token, then exercise GET /api/portal/pillars exactly as usePillarPage.ts's own fetchWithAuth call does.",
@@ -16,7 +16,8 @@
     "Git #4560 — the 'value' assertion on $.pillars[0].stats[0].value is deliberately an 'exists' check, not a pinned number: 26 ownerless groups is real tenant data that changes with every scan. What must never regress is that it is a NUMBER rather than null-with-unknown_check_key, which is exactly what exists proves here.",
     "Git #4560 — this block uses TEST_RBAC_CUSTOMER_EMAIL/PASSWORD, not TEST_CUSTOMER_EMAIL/PASSWORD. Confirmed live 2026-09-17: TEST_CUSTOMER_EMAIL, TEST_CUSTOMER_PASSWORD, TEST_ADMIN_*, and TEST_NEVERSCANNED_* are all literally the string \"<unset>\" in BuildConsole Settings > Test Environment Variables, so every step interpolating them fails with \"unresolved variable(s)\" before it reaches the app — which is what the untagged steps above still do. TEST_RBAC_CUSTOMER_EMAIL (shanemccaw+customer@outlook.com) IS set and resolves to users.id 4681, role client, tenants.id 2080 — the same McCawSoft testbed tenant, so it exercises the identical data. Filed as its own finding.",
     "Git #4560 — every step in this block carries sessionTag \"4560-stat-tiles\", INCLUDING its own login/SETUP steps. onlyTag filters the whole file, so a tagged block that leans on an untagged SETUP step for {{authToken}} fails with \"unresolved variable(s): {{authToken}}\" when run under onlyTag. Any future tagged block must be self-contained the same way.",
-    "Git #4560 — the '4560-stat-tiles' block was LIVE-EXECUTED and passed 22/22 on 2026-09-17 against commit d22f547a7, via shaneapp://runTest with onlyTag=4560-stat-tiles, through a real WebView2 browser session logged in as shanemccaw+customer@outlook.com (users.id 4681, tenants.id 2080). Real result: the Governance page renders its stat tiles with the design captions (\"groups with no owner\", \"dormant service principals\"), the coverage panel with \"observed with data\" and a drawn ok segment, the trend dots and the Open findings chips; the Health page renders \"stale device records\" from the real devices:* check. The api half returned the real payload with governance score 47 and 32 evaluable signals."
+    "Git #4560 — the '4560-stat-tiles' block was LIVE-EXECUTED and passed 22/22 on 2026-09-17 against commit d22f547a7, via shaneapp://runTest with onlyTag=4560-stat-tiles, through a real WebView2 browser session logged in as shanemccaw+customer@outlook.com (users.id 4681, tenants.id 2080). Real result: the Governance page renders its stat tiles with the design captions (\"groups with no owner\", \"dormant service principals\"), the coverage panel with \"observed with data\" and a drawn ok segment, the trend dots and the Open findings chips; the Health page renders \"stale device records\" from the real devices:* check. The api half returned the real payload with governance score 47 and 32 evaluable signals.",
+    "Git #4578 — sessionTag '4578-signals' covers the SIGNALS grid, the CONFIG DRIFT BASELINE panel and the Licensing SKU ledger. The block is self-contained (own login, TEST_RBAC_CUSTOMER_* as in the 4560 block). Positional jsonPaths (governance=0, security=5, groups[g].cards[c]) follow the fixed order in pillar-signal-specs.ts, which pillar-signals.test.ts pins (governance = 6 groups / 44 cards). The card assertions rely on the testbed tenant (McCawSoft, tenants.id 2080) genuinely having: an inactive catalog check (sharepoint:anonymous-links), a licence-gapped check (governance:guest-staleness), a real zero (teams:ownerless-teams) and a ca-policy drift domain recorded not_comparable — all confirmed live 2026-09-19 by artifacts/api-server/src/scripts/verify-pillar-signals-4578.ts (577 assertions, 0 failed). If the tenant is later licensed for Entra P1, SIG-API4/5 and SIG5 stop being true for a real reason, not a regression."
   ],
   "apiTests": [
     {
@@ -209,6 +210,154 @@
         "value": "devices:enrollment-status"
       },
       "sessionTag": "4560-stat-tiles"
+    },
+    {
+      "name": "SETUP (#4578) — log in and extract a bearer, tagged so this block runs standalone under onlyTag.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "email": "{{TEST_RBAC_CUSTOMER_EMAIL}}",
+        "password": "{{TEST_RBAC_CUSTOMER_PASSWORD}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.accessToken",
+        "exists": true
+      },
+      "extract": {
+        "as": "authToken",
+        "jsonPath": "$.accessToken"
+      },
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "SIG-API1 (#4578) — the governance card serves the design's full signals grid: 44 cards.",
+      "method": "GET",
+      "path": "/api/portal/pillars",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.pillars[0].signals.cardCount",
+        "value": 44
+      },
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "SIG-API2 (#4578) — an INACTIVE catalog check (sharepoint:anonymous-links) is served as tier na, never a zero.",
+      "method": "GET",
+      "path": "/api/portal/pillars",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.pillars[0].signals.groups[0].cards[7].tier",
+        "value": "na"
+      },
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "SIG-API3 (#4578) — …and carries the real reason it cannot be measured.",
+      "method": "GET",
+      "path": "/api/portal/pillars",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.pillars[0].signals.groups[0].cards[7].unavailableReason",
+        "value": "inactive_in_catalog"
+      },
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "SIG-API4 (#4578) — a LICENCE-GAPPED check (governance:guest-staleness) carries its real reason.",
+      "method": "GET",
+      "path": "/api/portal/pillars",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.pillars[0].signals.groups[2].cards[1].unavailableReason",
+        "value": "license_gap"
+      },
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "SIG-API5 (#4578) — …and the tenant's own licence feature, verbatim from the scan.",
+      "method": "GET",
+      "path": "/api/portal/pillars",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.pillars[0].signals.groups[2].cards[1].licenseFeature",
+        "exists": true
+      },
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "SIG-API6 (#4578) — a REAL zero (teams:ownerless-teams ran and found none) stays 0, distinct from the unmeasurable cards above.",
+      "method": "GET",
+      "path": "/api/portal/pillars",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.pillars[0].signals.groups[1].cards[0].value",
+        "value": 0
+      },
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "SIG-API7 (#4578) — the licensing SKU ledger the Licensing page renders is on the wire.",
+      "method": "GET",
+      "path": "/api/portal/pillars",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.licenseSkuLedger.checkKey",
+        "exists": true
+      },
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "SIG-API8 (#4578) — drift is status-first: ca-policy has a baseline AND a not_comparable collector status, and is served as not_comparable, not as clean.",
+      "method": "GET",
+      "path": "/api/portal/pillars",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.pillars[5].drift[0].state",
+        "value": "not_comparable"
+      },
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "SIG-API9 (#4578) — …with the collector's own recorded reason.",
+      "method": "GET",
+      "path": "/api/portal/pillars",
+      "headers": {
+        "Authorization": "Bearer {{authToken}}"
+      },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.pillars[5].drift[0].reason",
+        "value": "gate_not_satisfied"
+      },
+      "sessionTag": "4578-signals"
     }
   ],
   "uiSteps": [
@@ -462,6 +611,156 @@
       "textContains": "stale device records",
       "critical": true,
       "sessionTag": "4560-stat-tiles"
+    },
+    {
+      "name": "Git #4578 login.",
+      "action": "goto",
+      "target": "/portal/login",
+      "sessionTag": "4578-signals"
+    },
+    {
+      "action": "expect",
+      "selector": "[data-testid='login-email']",
+      "state": "visible",
+      "critical": true,
+      "sessionTag": "4578-signals"
+    },
+    {
+      "action": "input",
+      "selector": "[data-testid='login-email']",
+      "value": "{{TEST_RBAC_CUSTOMER_EMAIL}}",
+      "sessionTag": "4578-signals"
+    },
+    {
+      "action": "input",
+      "selector": "[data-testid='login-password']",
+      "value": "{{TEST_RBAC_CUSTOMER_PASSWORD}}",
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "sign in.",
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "critical": true,
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "goto the real Governance pillar page.",
+      "action": "goto",
+      "target": "/portal/pillars/governance",
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "SIG1 — the SIGNALS grid renders with the design's heading.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-signals']",
+      "state": "visible",
+      "textContains": "SIGNALS — WHAT WAS MEASURED",
+      "critical": true,
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "SIG2 — a design group title renders.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-signals']",
+      "state": "visible",
+      "textContains": "SHARING & COLLABORATION",
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "SIG3 — an inactive-in-catalog card shows its real reason, in the design's words.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-signal-card-sharepoint:anonymous-links']",
+      "state": "visible",
+      "textContains": "inactive in catalog",
+      "critical": true,
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "SIG4 — …and its figure is the unmeasurable dash, not a zero.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-signal-value-sharepoint:anonymous-links']",
+      "state": "visible",
+      "textContains": "—",
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "SIG5 — a licence-gapped card names the licence the tenant's own scan reported.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-signal-card-governance:guest-staleness']",
+      "state": "visible",
+      "textContains": "Needs Microsoft Entra ID",
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "SIG6 — a real zero still renders as 0.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-signal-value-teams:ownerless-teams']",
+      "state": "visible",
+      "textContains": "0",
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "SIG7 — the grid's own footer counts the real un-carded checks.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-signals-more']",
+      "state": "present",
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "goto the Security pillar page.",
+      "action": "goto",
+      "target": "/portal/pillars/security",
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "DRIFT1 — the CONFIG DRIFT BASELINE panel renders.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-drift']",
+      "state": "visible",
+      "textContains": "CONFIG DRIFT BASELINE",
+      "critical": true,
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "DRIFT2 — ca-policy is shown as not comparable (collector status wins over the existing baseline).",
+      "action": "expect",
+      "selector": "[data-testid='pillar-drift-state-ca-policy']",
+      "state": "visible",
+      "textContains": "not comparable",
+      "critical": true,
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "DRIFT3 — its note carries the collector's real reason.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-drift-ca-policy']",
+      "state": "visible",
+      "textContains": "gate not satisfied",
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "goto the Licensing pillar page.",
+      "action": "goto",
+      "target": "/portal/pillars/licensing",
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "LEDGER1 — the SKU ledger renders with the design's heading.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-sku-ledger']",
+      "state": "visible",
+      "textContains": "SKU LEDGER — PRICED WHERE A PRICE EXISTS",
+      "critical": true,
+      "sessionTag": "4578-signals"
+    },
+    {
+      "name": "LEDGER2 — an excluded SKU is rendered, with its real reason.",
+      "action": "expect",
+      "selector": "[data-testid='pillar-sku-excluded-FLOW_FREE']",
+      "state": "visible",
+      "textContains": "zero price",
+      "sessionTag": "4578-signals"
     }
   ]
 }
