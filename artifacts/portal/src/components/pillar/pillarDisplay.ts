@@ -1,6 +1,8 @@
 import type {
   PillarCoverageSegmentKind,
   PillarCoverageWire,
+  PillarDriftDomainWire,
+  PillarDriftState,
   PillarStatUnit,
   PillarStatWire,
 } from "./types";
@@ -152,4 +154,38 @@ export function formatPurchasedMultiple(purchased: number): string {
  */
 export function ledgerFootnote(pricedCount: number, totalCount: number): string {
   return `Waste is computed only where a real unit price is on file — ${pricedCount} of ${totalCount} SKUs today. Excluded is a rendered state, not a hidden one.`;
+}
+
+// ── CONFIG DRIFT BASELINE (Git #4578) ────────────────────────────────────────
+
+/** The design's pill wording per real collector state (`Pillar Pages.dc.html` → `driftState`). */
+export const DRIFT_STATE_LABEL: Record<PillarDriftState, string> = {
+  tracked: "tracked",
+  not_comparable: "not comparable",
+  error: "error",
+};
+
+/**
+ * The design's explanatory note under a drift domain, with the tenant's real
+ * numbers/reason substituted. The two design sentences are kept verbatim; the
+ * collector's own recorded reason is appended for the two states that have one,
+ * because "not comparable" with no cause is the shrug the design's own copy
+ * ("reported as such rather than papered over") says not to give.
+ *
+ * `error` is not in the design (it has only tracked / not comparable) — it is
+ * the collector's third real outcome, and it must not read as "clean".
+ */
+export function driftNote(domain: PillarDriftDomainWire): string {
+  if (domain.state === "tracked") {
+    const captured = domain.baselineCapturedAt
+      ? `Baseline captured ${new Date(domain.baselineCapturedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+      : "Baseline captured";
+    const n = domain.deviationCount;
+    return `${captured} · ${n} deviation${n === 1 ? "" : "s"} since. A drift event appears the moment a tracked setting changes.`;
+  }
+  const reason = domain.reason ? ` Collector's reason: ${domain.reason.replace(/_/g, " ")}.` : "";
+  if (domain.state === "not_comparable") {
+    return `The drift collector can't diff this shape yet — an honest limitation, reported as such rather than papered over.${reason}`;
+  }
+  return `The last drift collection errored, so nothing was compared — that is not the same as no drift.${reason}`;
 }

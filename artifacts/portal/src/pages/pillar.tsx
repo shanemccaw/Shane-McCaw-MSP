@@ -16,6 +16,7 @@ import {
   trendDeltaLabel,
   COVERAGE_SEGMENT_DISPLAY,
 } from "@/components/pillar/pillarDisplay";
+import { PillarDriftPanel } from "@/components/pillar/PillarDriftPanel";
 import { PillarSkuLedger } from "@/components/pillar/PillarSkuLedger";
 import NotFound from "./not-found";
 
@@ -333,6 +334,9 @@ export default function PillarPage() {
               ) : null}
             </div>
           ) : null}
+
+          {/* Config drift baseline — only for a pillar that owns a drift domain (Git #4578) */}
+          {card && scanned ? <PillarDriftPanel domains={card.drift} /> : null}
 
           {/* Findings */}
           <div
