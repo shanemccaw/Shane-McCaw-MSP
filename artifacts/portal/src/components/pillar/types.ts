@@ -135,7 +135,7 @@ export interface LicenseSkuLedgerWire {
  */
 export type PillarSignalTier = "good" | "meh" | "bad" | "na" | "ungraded";
 
-export type PillarSignalFormat = "count" | "percent" | "flag" | "text";
+export type PillarSignalFormat = "count" | "percent" | "text";
 
 export interface PillarSignalCardWire {
   checkKey: string;

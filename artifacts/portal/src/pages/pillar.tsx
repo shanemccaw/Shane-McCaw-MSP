@@ -17,6 +17,7 @@ import {
   COVERAGE_SEGMENT_DISPLAY,
 } from "@/components/pillar/pillarDisplay";
 import { PillarDriftPanel } from "@/components/pillar/PillarDriftPanel";
+import { PillarSignalsGrid } from "@/components/pillar/PillarSignalsGrid";
 import { PillarSkuLedger } from "@/components/pillar/PillarSkuLedger";
 import NotFound from "./not-found";
 
@@ -51,16 +52,20 @@ const FSEV: Record<"critical" | "warning", string> = { critical: RED, warning: "
  * observation of every check tagged to this pillar — not a second,
  * drifting client-side tally.
  *
+ * Git #4578 added the design's remaining sections, again all from the same
+ * real payload: the CONFIG DRIFT BASELINE panel (`card.drift`), the grouped
+ * "SIGNALS — WHAT WAS MEASURED" card grid (`card.signals`) and, on Licensing
+ * only, the SKU ledger (`payload.licenseSkuLedger`). A card that could not be
+ * measured shows "—" and its real reason, never a zero.
+ *
  * Deliberately NOT wired here — scope carried from the dispatch, not an
- * oversight: the design's full per-check "block" breakdown (the `groups`
- * tables of dozens of individual checks with per-check tiers/history), the
- * CONFIG DRIFT BASELINE panel, the Licensing SKU ledger table, and the
- * click-a-finding-for-full-breakdown + SOP/Runbook remediation offer flow.
- * #1621's own body leaves "what is a block" and which of the four
- * remediation vehicles a finding offers as open architecture questions not
- * yet settled in chat — building either now would mean inventing an answer
- * to a question Shane hasn't decided, not a missing-backend gap. Those are
- * tracked as real, separate follow-ups filed under #1621.
+ * oversight: the click-a-finding-for-full-breakdown drill-down and the
+ * SOP/Runbook remediation offer flow. #1621's own body leaves "what is a
+ * block" and which of the four remediation vehicles a finding offers as open
+ * architecture questions not yet settled in chat — building either now would
+ * mean inventing an answer to a question Shane hasn't decided, not a
+ * missing-backend gap. The design's "View all checks" link is that
+ * drill-down's entry point, so it is not rendered either.
  */
 
 /** The design's 5-checkpoint trend strip (`trendDots` / `hTrendNote`). */
@@ -408,6 +413,11 @@ export default function PillarPage() {
                 </a>
               ))}
             </div>
+          ) : null}
+
+          {/* SIGNALS — the design's grouped per-check grid (Git #4578) */}
+          {card?.signals && scanned ? (
+            <PillarSignalsGrid signals={card.signals} pillarLabel={identity.label} />
           ) : null}
 
           {/* Licensing SKU ledger — Licensing pillar only, once a scan has run (Git #4578) */}
